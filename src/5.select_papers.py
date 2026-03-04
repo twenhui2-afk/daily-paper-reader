@@ -53,6 +53,7 @@ CARRYOVER_RATIO = 0.5
 SOURCE_FRESH_FETCH = "fresh_fetch"
 SOURCE_CARRYOVER_CACHE = "carryover_cache"
 PRIORITY_DEEP_SCORE = 9.0
+CARRYOVER_MIN_SCORE = 8.0
 
 
 def log(message: str) -> None:
@@ -305,6 +306,8 @@ def build_candidates(
 
     for item in carryover_items:
         pid = str(item.get("id") or item.get("paper_id") or "").strip()
+        if float(item.get("llm_score", 0)) < CARRYOVER_MIN_SCORE:
+            continue
         if not pid or pid in seen_ids:
             continue
         copied = dict(item)
@@ -867,6 +870,8 @@ def main() -> None:
             candidates = []
             for item in carryover_items:
                 pid = str(item.get("id") or item.get("paper_id") or "").strip()
+                if float(item.get("llm_score", 0)) < CARRYOVER_MIN_SCORE:
+                    continue
                 if not pid:
                     continue
                 copied = dict(item)

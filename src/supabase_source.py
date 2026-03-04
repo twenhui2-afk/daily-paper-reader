@@ -68,17 +68,24 @@ def _is_within_time_window(
     if end_dt <= start_dt:
         return True
 
-    # 为防止兼容字段导致时间窗口被放宽，始终仅基于 published 做硬过滤。
-    fields = [f for f in (time_fields or ("published",)) if str(f).strip() == "published"]
+    # 为防止兼容字段导致时间窗口被放宽，优先基于 published 做硬过滤；
+    # 当存在可解析时间时，不在窗口内直接剔除；仅在时间字段缺失时按 keep_without_time 回退。
+    fields = [f for f in (time_fields or ("published",)) if str(f).strip()]
     if not fields:
         fields = ["published"]
 
-    for field in fields:
+    normalized_fields = [str(f).strip() for f in fields]
+    has_time = False
+    for field in normalized_fields:
         dt = _parse_datetime_like(record.get(field))
         if dt is None:
             continue
+        has_time = True
         if start_dt <= dt < end_dt:
             return True
+
+    if has_time:
+        return False
 
     return keep_without_time
 
