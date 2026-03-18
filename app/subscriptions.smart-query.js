@@ -1853,7 +1853,7 @@ window.SubscriptionsSmartQuery = (function () {
     try {
       const candidates = await requestCandidatesByDesc(finalTag, finalDesc);
       const isFirstRound = !(Array.isArray(modalState.requestHistory) && modalState.requestHistory.length);
-      const nextCandidates = parseCandidatesForState(candidates, false);
+      const nextCandidates = parseCandidatesForState(candidates, true);
       const shouldMergeKeywords = !isFirstRound || hasRealCandidates(modalState.keywords);
       const shouldMergeIntentQueries =
         !isFirstRound || hasRealCandidates(modalState.intent_queries);
@@ -1897,7 +1897,7 @@ window.SubscriptionsSmartQuery = (function () {
       modalState.lastTag = finalTag;
       modalState.lastDesc = finalDesc;
       modalState.requestHistory = history;
-      modalState.chatStatus = `已生成候选（关键词 ${nextCandidates.keywords.length} 条，意图 ${nextCandidates.intent_queries.length} 条）。`;
+      modalState.chatStatus = `已生成候选并默认勾选（关键词 ${nextCandidates.keywords.length} 条，意图 ${nextCandidates.intent_queries.length} 条）。`;
       if (document.getElementById('dpr-chat-desc-input')) {
         document.getElementById('dpr-chat-desc-input').value = '';
       }
