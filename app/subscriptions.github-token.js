@@ -61,93 +61,72 @@ window.SubscriptionsGithubToken = (function () {
     return null;
   };
 
+  const detectRepoFromContext = async (login) => {
+    const currentUrl = window.location.href;
+    const urlObj = new URL(currentUrl);
+    const host = urlObj.hostname || '';
+
+    let repoOwner = '';
+    let repoName = '';
+
+    if (host === 'localhost' || host === '127.0.0.1') {
+      repoOwner = login || '';
+      repoName = 'daily-paper-reader';
+    } else {
+      const githubPagesMatch = currentUrl.match(
+        /https?:\/\/([^.]+)\.github\.io\/([^\/]+)/,
+      );
+      if (githubPagesMatch) {
+        repoOwner = githubPagesMatch[1];
+        repoName = githubPagesMatch[2];
+      } else {
+        const parsedRepo = await readConfigYamlForRepo();
+        if (parsedRepo) {
+          repoOwner = parsedRepo.owner || repoOwner;
+          repoName = parsedRepo.repo || repoName;
+        }
+        if (!repoOwner) {
+          repoOwner = login || '';
+        }
+      }
+    }
+
+    return {
+      owner: String(repoOwner || '').trim(),
+      repo: String(repoName || '').trim(),
+    };
+  };
+
   // 验证 GitHub Token 并检查权限
   const verifyGithubToken = async (token, options = {}) => {
     const { requireWorkflow = true } = options;
     try {
+      const headers = {
+        Authorization: `token ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+      };
+
       // 1. 获取用户信息
-      const userRes = await fetch('https://api.github.com/user', {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-        },
-      });
+      const userRes = await fetch('https://api.github.com/user', { headers });
 
       if (!userRes.ok) {
         throw new Error('Token 无效或已过期');
       }
 
       const userData = await userRes.json();
-
-      // 2. 检查权限 - 通过响应头的 X-OAuth-Scopes
       const scopes = userRes.headers.get('X-OAuth-Scopes');
       const scopeList = scopes ? scopes.split(',').map((s) => s.trim()) : [];
 
-      const requiredScopes = requireWorkflow ? ['repo', 'workflow'] : ['repo'];
-      const missingScopes = requiredScopes.filter(
-        (scope) => !scopeList.includes(scope),
-      );
+      // 2. 推断当前站点绑定的仓库
+      const repoInfo = await detectRepoFromContext(userData.login || '');
+      const repoOwner = repoInfo.owner;
+      const repoName = repoInfo.repo;
 
-      if (missingScopes.length > 0) {
-        // 权限不足时直接返回失败结果，并带上现有权限列表，供 UI 做更友好的展示
-        return {
-          valid: false,
-          error: `Token 权限不足：缺少 ${missingScopes.join(
-            ', ',
-          )}。请在 GitHub 中重新生成 Personal Access Token 并补充所示权限。`,
-          scopes: scopeList,
-          login: userData.login,
-        };
-      }
-
-      // 3. 获取当前页面的仓库信息
-      // 规则：
-      // - 若运行在 localhost（含 127.0.0.1），默认仓库名为 daily-paper-reader，owner 为当前登录用户
-      // - 若运行在 username.github.io/repo-name，则从 URL 解析 owner/repo
-      // - 其它域名：尝试从当前站点 config.yaml 中读取 github 信息
-      const currentUrl = window.location.href;
-      const urlObj = new URL(currentUrl);
-      const host = urlObj.hostname || '';
-
-      let repoOwner = '';
-      let repoName = '';
-
-      // 情况 A：本地开发（localhost 或 127.0.0.1）
-      if (host === 'localhost' || host === '127.0.0.1') {
-        repoOwner = userData.login || '';
-        repoName = 'daily-paper-reader';
-      } else {
-        // 情况 B：GitHub Pages
-        const githubPagesMatch = currentUrl.match(
-          /https?:\/\/([^.]+)\.github\.io\/([^\/]+)/,
-        );
-        if (githubPagesMatch) {
-          repoOwner = githubPagesMatch[1];
-          repoName = githubPagesMatch[2];
-        } else {
-          const parsedRepo = await readConfigYamlForRepo();
-          if (parsedRepo) {
-            repoOwner = parsedRepo.owner || repoOwner;
-            repoName = parsedRepo.repo || repoName;
-          }
-          // 情况 C：其它域名，尝试从当前站点的 config.yaml 中读取 github 信息
-          // 若 config.yaml 未提供 owner，则至少使用当前用户作为 owner
-          if (!repoOwner) {
-            repoOwner = userData.login || '';
-          }
-        }
-      }
-
-      // 4. 如果有仓库信息，验证 Token 是否有权限访问该仓库
+      // 3. 验证 Token 是否能访问目标仓库
       if (repoOwner && repoName) {
         const repoRes = await fetch(
           `https://api.github.com/repos/${repoOwner}/${repoName}`,
-          {
-            headers: {
-              Authorization: `token ${token}`,
-              Accept: 'application/vnd.github.v3+json',
-            },
-          },
+          { headers },
         );
 
         if (!repoRes.ok) {
@@ -158,22 +137,33 @@ window.SubscriptionsGithubToken = (function () {
 
         const repoData = await repoRes.json();
 
-        if (!repoData.permissions || !repoData.permissions.push) {
+        const secretsRes = await fetch(
+          `https://api.github.com/repos/${repoOwner}/${repoName}/actions/secrets/public-key`,
+          { headers },
+        );
+        if (requireWorkflow && !secretsRes.ok) {
           throw new Error(
-            `没有仓库 ${repoOwner}/${repoName} 的写入权限`,
+            `无法访问仓库 ${repoOwner}/${repoName} 的 Actions Secrets（HTTP ${secretsRes.status}）`,
           );
         }
+
+        return {
+          valid: true,
+          login: userData.login,
+          name: userData.name,
+          repo: repoData.full_name || `${repoOwner}/${repoName}`,
+          scopes: scopeList,
+          tokenType: scopeList.length ? 'classic' : 'fine-grained',
+        };
       }
 
       return {
         valid: true,
         login: userData.login,
         name: userData.name,
-        repo:
-          repoOwner && repoName
-            ? `${repoOwner}/${repoName}`
-            : '未检测到仓库',
+        repo: '未检测到仓库',
         scopes: scopeList,
+        tokenType: scopeList.length ? 'classic' : 'fine-grained',
       };
     } catch (error) {
       return {
@@ -512,6 +502,10 @@ window.SubscriptionsGithubToken = (function () {
           updateAuthButtonStatus();
           githubTokenInput.value = '';
         } else {
+          const tokenTypeText =
+            result.tokenType === 'fine-grained'
+              ? 'Token 类型: fine-grained（已按仓库能力验证）<br>'
+              : '';
           const userText =
             result.login && typeof result.login === 'string'
               ? `用户: ${result.login}<br>`
@@ -522,7 +516,7 @@ window.SubscriptionsGithubToken = (function () {
               : '现有权限: （无）<br>';
           githubTokenMessage.innerHTML = `
             <div style="font-size:12px; line-height:1.6;">
-              ${userText}${scopesText}
+              ${userText}${tokenTypeText}${scopesText}
               <span style="color:#dc3545;">❌ ${result.error}</span>
             </div>
           `;
