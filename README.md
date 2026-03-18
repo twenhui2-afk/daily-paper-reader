@@ -96,11 +96,11 @@
 
 ### 1) 🔑 准备大模型 API Key
 
-当前 README 默认以 **柏拉图 API 平台** 为示例，建议先按默认配置跑通。
+推荐准备一个 **OpenAI 兼容 API**，支持自建代理、本地网关或云端服务。
 
-- 🌐 打开 [柏拉图 API 平台](https://api.bltcy.ai/)
-- 📝 完成注册 / 登录
-- 🔐 充值并创建密钥
+- 🌐 准备一个可访问的 OpenAI 兼容 `base_url`
+- 📝 准备对应的 API Key
+- 🤖 确认接口支持 `GET /v1/models` 与 `POST /v1/chat/completions`
 
 ### 2) 🪪 准备 GitHub PAT
 
@@ -137,6 +137,37 @@ https://<你的用户名>.github.io/daily-paper-reader
 ```
 
 完成以上步骤后，后续大多数日常使用和配置都可以直接在网页端完成。后续教程参考：[daily-paper-reader 指引](https://ziwenhahaha.github.io/daily-paper-reader/#/tutorial/README)
+
+> [!NOTE]
+> 如果你把 `base_url` 配成 `http://localhost:xxxx/v1` 这类本地代理，GitHub Pages 页面里的聊天功能在你的电脑上可以正常工作；
+> 但 GitHub Actions 运行在云端，无法访问你本机的 `localhost`。
+> 当前项目会在这种场景下自动降级为“无远程 LLM”模式，保留抓取、启发式排序与文档生成流程，跳过云端 LLM 重排/精修。
+
+## 🧪 PubMed 支持
+
+项目默认抓取 arXiv / OpenReview；如需同时纳入 PubMed，可在 `config.yaml` 中启用：
+
+```yaml
+pubmed:
+  enabled: true
+  email: "your-email@example.com"
+  api_key: ""
+  tool: "daily-paper-reader"
+  retmax: 30
+  query_limit: 12
+```
+
+说明：
+
+- `email` 为 NCBI 要求的联系邮箱
+- `api_key` 可选，但建议配置以提高请求速率
+- PubMed 文献会和 arXiv 结果一起进入推荐流，并在文档页标注来源
+
+## 📝 Zotero 集成
+
+- 网页侧支持一键保存到 Zotero
+- 聊天记录默认保存在浏览器本地（IndexedDB / localStorage）
+- 若要把摘要/笔记自动写入 Zotero，建议安装 `Better Notes` 与 `Actions & Tags`
 
 ## ❓ FAQ
 

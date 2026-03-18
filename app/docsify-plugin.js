@@ -39,7 +39,7 @@ window.$docsify = {
 
       const metaFallbacks = {
         citation_title: 'Daily Paper Reader Default Entry',
-        citation_journal_title: 'arxiv',
+        citation_journal_title: 'Daily Paper Reader',
         citation_pdf_url: 'https://daily-paper-reader.invalid/default.pdf',
         citation_publication_date: '2024-01-01',
         citation_date: '2024/01/01',
@@ -430,6 +430,15 @@ window.$docsify = {
               return {};
             }
           })();
+          if (!pdfUrl) {
+            pdfUrl = String(
+              frontmatterPaperMeta.pdf ||
+                frontmatterPaperMeta.PDF ||
+                frontmatterPaperMeta.source_link ||
+                frontmatterPaperMeta.link ||
+                ''
+            ).trim();
+          }
 
           let date = parseDateFromText(frontmatterPaperMeta.date);
           if (!date) {
@@ -482,8 +491,22 @@ window.$docsify = {
             }
           });
 
+          const source = String(
+            frontmatterPaperMeta.source || frontmatterPaperMeta.Source || ''
+          ).trim().toLowerCase();
+          const journalTitle = String(
+            frontmatterPaperMeta.journal ||
+              frontmatterPaperMeta.Journal ||
+              frontmatterPaperMeta.primary_category ||
+              frontmatterPaperMeta.category ||
+              ''
+          ).trim();
+
           updateMetaTag('citation_title', title);
-          updateMetaTag('citation_journal_title', 'arxiv');
+          updateMetaTag(
+            'citation_journal_title',
+            journalTitle || (source === 'pubmed' ? 'PubMed' : 'arXiv'),
+          );
           updateMetaTag('citation_pdf_url', pdfUrl, {
             useFallback: false,
           });
@@ -2387,8 +2410,12 @@ window.$docsify = {
           const href = String(a.getAttribute('href') || '').trim();
           const routeMatch = href.match(/#\/(.+)$/);
           const routeId = routeMatch ? decodeURIComponent(routeMatch[1]).replace(/\/$/, '') : '';
-          const arxivId = routeId ? routeId.split('/').slice(-1)[0] : '';
-          const fallbackLink = arxivId ? `https://arxiv.org/abs/${arxivId}` : '';
+          const rawId = routeId ? routeId.split('/').slice(-1)[0] : '';
+          const fallbackLink = rawId
+            ? rawId.startsWith('pubmed-')
+              ? `https://pubmed.ncbi.nlm.nih.gov/${rawId.replace(/^pubmed-/, '')}/`
+              : `https://arxiv.org/abs/${rawId}`
+            : '';
 
           let payload = null;
           const raw = a.getAttribute('data-sidebar-item') || '';

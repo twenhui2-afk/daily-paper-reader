@@ -357,13 +357,17 @@ class OllamaClient(LLMClient):
 class BltClient(LLMClient):
     """BLT（柏拉图）网关，OpenAI Chat Completions 兼容接口。"""
     def __init__(self, api_key: str, model: str, base_url: str = None):
-        legacy_base = base_url or os.getenv('BLT_API_BASE', DEFAULT_BLT_BASE_URL)
-        primary_base = (
-            os.getenv("LLM_PRIMARY_BASE_URL")
-            or os.getenv("BLT_PRIMARY_BASE_URL")
-            or os.getenv("GPTBEST_BASE_URL")
-            or PRIMARY_LLM_BASE_URL
-        ).strip() or PRIMARY_LLM_BASE_URL
+        explicit_base = (base_url or os.getenv('BLT_API_BASE', '')).strip()
+        legacy_base = explicit_base or DEFAULT_BLT_BASE_URL
+        if explicit_base:
+            primary_base = explicit_base
+        else:
+            primary_base = (
+                os.getenv("LLM_PRIMARY_BASE_URL")
+                or os.getenv("BLT_PRIMARY_BASE_URL")
+                or os.getenv("GPTBEST_BASE_URL")
+                or PRIMARY_LLM_BASE_URL
+            ).strip() or PRIMARY_LLM_BASE_URL
         super().__init__(api_key=api_key, model=model, base_url=primary_base)
         self._base_urls = self._normalize_base_urls([primary_base, legacy_base])
 

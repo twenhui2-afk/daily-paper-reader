@@ -20,7 +20,7 @@ ARCHIVE_DIR = os.path.join(ROOT_DIR, "archive", TODAY_STR)
 RANKED_DIR = os.path.join(ARCHIVE_DIR, "rank")
 CONFIG_FILE = os.path.join(ROOT_DIR, "config.yaml")
 
-DEFAULT_FILTER_MODEL = os.getenv("BLT_FILTER_MODEL") or "gemini-3-flash-preview-nothinking"
+DEFAULT_FILTER_MODEL = os.getenv("BLT_FILTER_MODEL") or "gpt-5.4"
 DEFAULT_FILTER_CONCURRENCY = 4
 MAX_FILTER_RETRIES = 3
 
@@ -48,6 +48,16 @@ def save_json(data: Dict[str, Any], path: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     log(f"[INFO] saved: {path}")
+
+
+def remote_llm_disabled() -> bool:
+    flag = str(os.getenv("DPR_DISABLE_REMOTE_LLM") or "").strip().lower()
+    if flag in {"1", "true", "yes", "on"}:
+        return True
+    if str(os.getenv("GITHUB_ACTIONS") or "").strip().lower() not in {"1", "true"}:
+        return False
+    base = str(os.getenv("BLT_API_BASE") or "").strip().lower()
+    return base.startswith("http://localhost") or base.startswith("http://127.0.0.1")
 
 
 def load_config() -> Dict[str, Any]:
@@ -819,6 +829,34 @@ def process_file(
         log("[WARN] no user requirements built from config/queries, skip.")
         save_json(data, output_path)
         return
+    if remote_llm_disabled():
+        log("[WARN] remote LLM disabled，使用 Step 3 排序结果直通 Step 4。")
+        merged: Dict[str, Dict[str, Any]] = {}
+        for query in queries:
+            ranked = query.get("ranked") or []
+            if not isinstance(ranked, list):
+                continue
+            for item in ranked:
+                if not isinstance(item, dict):
+                    continue
+                pid = _norm_text(item.get("paper_id") or item.get("id") or "")
+                if not pid:
+                    continue
+                score = float(item.get("score") or 0.0)
+                existing = merged.get(pid)
+                if existing is None or score > float(existing.get("score") or 0.0):
+                    merged[pid] = {
+                        "paper_id": pid,
+                        "score": score,
+                        "star_rating": _safe_int(item.get("star_rating"), 0),
+                        "matched_requirements": [],
+                        "analysis": "LLM refine skipped because remote LLM is disabled.",
+                    }
+        data["llm_ranked"] = sorted(merged.values(), key=lambda item: item.get("score", 0), reverse=True)
+        data["llm_ranked_at"] = datetime.now(timezone.utc).isoformat()
+        data["llm_refine_fallback"] = "remote_llm_disabled"
+        save_json(data, output_path)
+        return
     paper_map = build_paper_map(papers)
 
     api_key = os.getenv("BLT_API_KEY")
@@ -990,7 +1028,7 @@ def main() -> None:
         "--filter-model",
         type=str,
         default=DEFAULT_FILTER_MODEL,
-        help="model for filter (gemini-3-flash-preview-nothinking).",
+        help="model for filter (for example: gpt-5.4).",
     )
     parser.add_argument(
         "--max-output-tokens",

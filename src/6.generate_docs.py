@@ -27,9 +27,21 @@ RANGE_DATE_RE = re.compile(r"^(\d{8})-(\d{8})$")
 
 # LLM 配置（使用 llm.py 内的 BLT 客户端）
 BLT_API_KEY = os.getenv("BLT_API_KEY")
-BLT_MODEL = os.getenv("BLT_SUMMARY_MODEL", "gemini-3-flash-preview")
+BLT_MODEL = os.getenv("BLT_SUMMARY_MODEL", "gpt-5.4")
+
+
+def remote_llm_disabled() -> bool:
+    flag = str(os.getenv("DPR_DISABLE_REMOTE_LLM") or "").strip().lower()
+    if flag in {"1", "true", "yes", "on"}:
+        return True
+    if str(os.getenv("GITHUB_ACTIONS") or "").strip().lower() not in {"1", "true"}:
+        return False
+    base = str(os.getenv("BLT_API_BASE") or "").strip().lower()
+    return base.startswith("http://localhost") or base.startswith("http://127.0.0.1")
+
+
 LLM_CLIENT = None
-if BLT_API_KEY:
+if BLT_API_KEY and not remote_llm_disabled():
     LLM_CLIENT = BltClient(api_key=BLT_API_KEY, model=BLT_MODEL)
 
 DEFAULT_DOCS_CONCURRENCY = 4
@@ -186,6 +198,31 @@ def slugify(title: str) -> str:
     s = re.sub(r"\s+", "-", s)
     s = re.sub(r"[^a-z0-9\-]+", "", s)
     return s or "paper"
+
+
+def resolve_external_paper_link(paper: Dict[str, Any]) -> str:
+    source = str(paper.get("source") or "").strip().lower()
+    source_link = str(paper.get("source_link") or "").strip()
+    if source_link:
+        return source_link
+    if source == "pubmed":
+        pmid = str(paper.get("pmid") or "").strip()
+        if pmid:
+            return f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+    pdf_or_link = str(paper.get("link") or paper.get("pdf_url") or "").strip()
+    if pdf_or_link:
+        return pdf_or_link
+    paper_id = str(paper.get("id") or paper.get("paper_id") or "").strip()
+    if paper_id.startswith("pubmed-"):
+        return f"https://pubmed.ncbi.nlm.nih.gov/{paper_id.split('pubmed-', 1)[1]}/"
+    if paper_id:
+        return f"https://arxiv.org/abs/{paper_id}"
+    return ""
+
+
+def is_probable_pdf_url(url: str) -> bool:
+    text = str(url or "").strip().lower()
+    return text.endswith(".pdf") or "/pdf/" in text
 
 
 def extract_pdf_text(pdf_path: str) -> str:
@@ -1233,18 +1270,23 @@ def extract_sidebar_tags(paper: Dict[str, Any], max_tags: int = 6) -> List[Tuple
     return score_tag + tags
 
 
-def ensure_text_content(pdf_url: str, txt_path: str) -> str:
+def ensure_text_content(pdf_url: str, txt_path: str, paper: Dict[str, Any] | None = None) -> str:
     if os.path.exists(txt_path):
         with open(txt_path, "r", encoding="utf-8") as f:
             return f.read()
     text_content = fetch_paper_markdown_via_jina(pdf_url)
-    if text_content is None and pdf_url:
+    if text_content is None and pdf_url and is_probable_pdf_url(pdf_url):
         resp = requests.get(pdf_url, timeout=60)
         resp.raise_for_status()
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tmp_pdf:
             tmp_pdf.write(resp.content)
             tmp_pdf.flush()
             text_content = extract_pdf_text(tmp_pdf.name)
+    if text_content is None:
+        title = str((paper or {}).get("title") or "").strip()
+        abstract = str((paper or {}).get("abstract") or "").strip()
+        if title or abstract:
+            text_content = "\n\n".join(part for part in [title, abstract] if part).strip()
     os.makedirs(os.path.dirname(txt_path), exist_ok=True)
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(text_content or "")
@@ -1278,8 +1320,13 @@ def build_markdown_content(
     ).strip()
     abstract_en = (paper.get("abstract") or "").strip()
     if not abstract_en:
-        abstract_en = "arXiv did not provide an abstract for this paper."
+        abstract_en = "The source did not provide an abstract for this paper."
     selection_source = str(paper.get("selection_source") or "").strip()
+    source = str(paper.get("source") or "arxiv").strip()
+    journal = str(paper.get("journal") or paper.get("primary_category") or "").strip()
+    pmid = str(paper.get("pmid") or "").strip()
+    doi = str(paper.get("doi") or "").strip()
+    external_link = resolve_external_paper_link(paper)
 
     # 解析速览内容
     glance = paper.get("_glance_overview", "").strip()
@@ -1318,10 +1365,19 @@ def build_markdown_content(
     # 构建 YAML front matter
     lines = ["---"]
     lines.append(f"title: {yaml_escape(title)}")
+    lines.append(f"source: {yaml_escape(source)}")
     if zh_title:
         lines.append(f"title_zh: {yaml_escape(zh_title)}")
     lines.append(f"authors: {yaml_escape(', '.join(authors) if authors else 'Unknown')}")
     lines.append(f"date: {yaml_escape(published or 'Unknown')}")
+    if journal:
+        lines.append(f"journal: {yaml_escape(journal)}")
+    if pmid:
+        lines.append(f"pmid: {yaml_escape(pmid)}")
+    if doi:
+        lines.append(f"doi: {yaml_escape(doi)}")
+    if external_link:
+        lines.append(f"source_link: {yaml_escape(external_link)}")
     if pdf_url:
         lines.append(f"pdf: {yaml_escape(pdf_url)}")
     if tags_list:
@@ -1405,7 +1461,7 @@ def process_paper(
         # 即使是 glance-only，也要确保生成/补齐 .txt（用于前端聊天上下文等）
         if glance_only and pdf_url:
             try:
-                ensure_text_content(pdf_url, txt_path)
+                ensure_text_content(pdf_url, txt_path, paper)
             except Exception:
                 # 不阻塞文档生成流程：txt 拉取失败时继续（避免因为网络/源站问题导致整批中断）
                 pass
@@ -1540,7 +1596,7 @@ def process_paper(
 
             # 生成详细总结
             pdf_url = str(paper.get("link") or paper.get("pdf_url") or "").strip()
-            ensure_text_content(pdf_url, txt_path)
+            ensure_text_content(pdf_url, txt_path, paper)
             summary = generate_deep_summary(md_path, txt_path)
             if summary:
                 upsert_auto_block(md_path, "论文详细总结（自动生成）", summary)
@@ -1554,7 +1610,7 @@ def process_paper(
         # 速览模式也需要生成/补齐全文 txt（优先 jina，失败则 pymupdf 兜底）
         if pdf_url:
             try:
-                ensure_text_content(pdf_url, txt_path)
+                ensure_text_content(pdf_url, txt_path, paper)
             except Exception:
                 pass
         glance = generate_glance_overview(title, abstract_en) or build_glance_fallback(paper)
@@ -1569,7 +1625,7 @@ def process_paper(
 
     # 新文件：生成完整内容
     pdf_url = str(paper.get("link") or paper.get("pdf_url") or "").strip()
-    ensure_text_content(pdf_url, txt_path)
+    ensure_text_content(pdf_url, txt_path, paper)
 
     zh_title, zh_abstract = translate_title_and_abstract_to_zh(title, abstract_en)
     tags_list = build_tags_list(section, paper.get("llm_tags") or [])
@@ -1622,8 +1678,11 @@ def update_sidebar(
                 continue
             clean_tags.append({"kind": safe_kind, "label": safe_label})
 
-        arxiv_id = str(paper_id or "").strip().split("/")[-1]
-        paper_link = f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else route_href
+        raw_id = str(paper_id or "").strip().split("/")[-1]
+        if raw_id.startswith("pubmed-"):
+            paper_link = f"https://pubmed.ncbi.nlm.nih.gov/{raw_id.split('pubmed-', 1)[1]}/"
+        else:
+            paper_link = f"https://arxiv.org/abs/{raw_id}" if raw_id else route_href
         payload = {
             "title": (title or "").strip() or paper_id,
             "link": paper_link,

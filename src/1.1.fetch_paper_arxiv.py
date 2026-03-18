@@ -5,11 +5,13 @@ import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from supabase_source import (
     get_supabase_read_config,
     fetch_recent_papers,
     fetch_papers_by_date_range,
 )
+from pubmed_source import fetch_pubmed_for_topics, get_pubmed_config
 
 # 项目根目录（当前脚本位于 src/ 下）
 SCRIPT_DIR = os.path.dirname(__file__)
@@ -30,6 +32,40 @@ RANGE_TOKEN_RE = re.compile(r"^\d{8}-\d{8}$")
 def load_config() -> dict:
     if not os.path.exists(CONFIG_FILE):
         return {}
+
+
+def _parse_datetime_like(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def merge_prefetched_rows(
+    rows: list[dict],
+    *,
+    seen_ids: set[str],
+    unique_papers: dict[str, dict],
+) -> datetime | None:
+    max_published_new: datetime | None = None
+    for paper in rows or []:
+        if not isinstance(paper, dict):
+            continue
+        pid = str(paper.get("id") or "").strip()
+        if not pid or pid in seen_ids or pid in unique_papers:
+            continue
+        unique_papers[pid] = paper
+        seen_ids.add(pid)
+        published_dt = _parse_datetime_like(paper.get("published"))
+        if published_dt and (max_published_new is None or published_dt > max_published_new):
+            max_published_new = published_dt
+    return max_published_new
     try:
         import yaml  # type: ignore
     except Exception:
@@ -402,6 +438,8 @@ def fetch_all_domains_metadata_robust(
     include_embedding_fields: bool = False,
 ) -> None:
     config = load_config()
+    pubmed_conf = get_pubmed_config(config)
+    pubmed_enabled = bool(pubmed_conf.get("enabled"))
 
     # 1. 计算时间窗口（优先使用上次抓取时间）
     end_date = datetime.now(timezone.utc)
@@ -416,6 +454,7 @@ def fetch_all_domains_metadata_robust(
     if disable_supabase_read:
         sb["enabled"] = False
         log("ℹ️ 已关闭 Supabase 优先读取，本次将强制本地 arXiv 抓取。")
+    prefetched_rows: list[dict] = []
     if sb.get("enabled"):
         group_start("Step 1 - fetch from Supabase (preferred)")
         sb_url = str(sb.get("url") or "")
@@ -450,22 +489,23 @@ def fetch_all_domains_metadata_robust(
                 )
             log(f"[Supabase] {msg}")
             if papers:
-                if not output_file:
-                    run_token = get_run_date_token(end_date)
-                    archive_dir = os.path.join(ROOT_DIR, "archive", run_token)
-                    raw_dir = os.path.join(archive_dir, "raw")
-                    output_file = os.path.join(raw_dir, f"arxiv_papers_{run_token}.json")
-
-                os.makedirs(os.path.dirname(output_file) if os.path.dirname(output_file) else ".", exist_ok=True)
-                with open(output_file, "w", encoding="utf-8") as f:
-                    json.dump(papers, f, ensure_ascii=False, indent=2)
-                log(f"💾 Supabase 结果已写入：{output_file}")
+                prefetched_rows = list(papers)
                 log(f"[Supabase] 该批次时间区间：{_format_supabase_batch_window(papers)}")
+                if not pubmed_enabled:
+                    if not output_file:
+                        run_token = get_run_date_token(end_date)
+                        archive_dir = os.path.join(ROOT_DIR, "archive", run_token)
+                        raw_dir = os.path.join(archive_dir, "raw")
+                        output_file = os.path.join(raw_dir, f"arxiv_papers_{run_token}.json")
 
-                # 记录抓取时间，维持后续流程一致性
-                save_last_crawl_at(end_date)
-                group_end()
-                return
+                    os.makedirs(os.path.dirname(output_file) if os.path.dirname(output_file) else ".", exist_ok=True)
+                    with open(output_file, "w", encoding="utf-8") as f:
+                        json.dump(papers, f, ensure_ascii=False, indent=2)
+                    log(f"💾 Supabase 结果已写入：{output_file}")
+                    save_last_crawl_at(end_date)
+                    group_end()
+                    return
+                log("ℹ️ PubMed 已启用：保留 Supabase arXiv 结果并继续抓取 PubMed。")
 
             log("ℹ️ Supabase 返回 0 条或不可用，回退本地 arXiv 抓取。")
             group_end()
@@ -513,24 +553,56 @@ def fetch_all_domains_metadata_robust(
     # 结果集使用字典去重 (因为有些论文跨领域，比如同时在 cs 和 stat)
     unique_papers = {}
     max_published_new: datetime | None = None
-    
-    client = arxiv.Client(
-        page_size=200,    # 降级：从 1000 降到 200，避免单次响应过大导致 500
-        delay_seconds=3.0,
-        num_retries=5
-    )
-
-    # 2. 遍历分类进行抓取
-    for category in CATEGORIES_TO_FETCH:
-        cat_max = fetch_category_in_windows(
-            client=client,
-            category=category,
-            windows=windows,
+    if prefetched_rows:
+        merged_max = merge_prefetched_rows(
+            prefetched_rows,
             seen_ids=seen_ids,
             unique_papers=unique_papers,
         )
-        if cat_max and (max_published_new is None or cat_max > max_published_new):
-            max_published_new = cat_max
+        if merged_max and (max_published_new is None or merged_max > max_published_new):
+            max_published_new = merged_max
+
+    if prefetched_rows:
+        log("ℹ️ 本次 arXiv 结果已由 Supabase 提供，跳过本地 arXiv 全量抓取。")
+    else:
+        client = arxiv.Client(
+            page_size=200,    # 降级：从 1000 降到 200，避免单次响应过大导致 500
+            delay_seconds=3.0,
+            num_retries=5
+        )
+
+        # 2. 遍历分类进行抓取
+        for category in CATEGORIES_TO_FETCH:
+            cat_max = fetch_category_in_windows(
+                client=client,
+                category=category,
+                windows=windows,
+                seen_ids=seen_ids,
+                unique_papers=unique_papers,
+            )
+            if cat_max and (max_published_new is None or cat_max > max_published_new):
+                max_published_new = cat_max
+
+    if pubmed_enabled:
+        group_start("Step 1b - fetch PubMed")
+        try:
+            pubmed_rows, pubmed_logs = fetch_pubmed_for_topics(
+                config=config,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            for line in pubmed_logs:
+                log(line)
+            merged_max = merge_prefetched_rows(
+                pubmed_rows,
+                seen_ids=seen_ids,
+                unique_papers=unique_papers,
+            )
+            if merged_max and (max_published_new is None or merged_max > max_published_new):
+                max_published_new = merged_max
+            log(f"✅ PubMed 抓取完成：新增 {len(pubmed_rows)} 条候选记录。")
+        finally:
+            group_end()
 
     # 3. 保存汇总结果
     total_count = len(unique_papers)
@@ -569,7 +641,7 @@ if __name__ == "__main__":
         "--days",
         type=int,
         default=None,
-        help="抓取窗口天数（优先级高于 config.yaml）。不填则使用 config.yaml 的 days_window。",
+        help="抓取窗口天数（优先级高于 config.yaml）。不填则使用 config.yaml 的 days_window。会同时应用到 PubMed 时间窗。",
     )
     parser.add_argument(
         "--output",

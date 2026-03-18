@@ -82,6 +82,15 @@ def save_json(data: Dict[str, Any], path: str) -> None:
   log(f"[INFO] 已将打分结果写入：{path}")
 
 
+def remote_llm_disabled() -> bool:
+  if str(os.getenv("DPR_DISABLE_REMOTE_LLM") or "").strip().lower() in {"1", "true", "yes", "on"}:
+    return True
+  if str(os.getenv("GITHUB_ACTIONS") or "").strip().lower() not in {"1", "true"}:
+    return False
+  base = str(os.getenv("BLT_API_BASE") or "").strip().lower()
+  return base.startswith("http://localhost") or base.startswith("http://127.0.0.1")
+
+
 def format_doc(title: str, abstract: str) -> str:
   content = f"Title: {title}\nAbstract: {abstract}".strip()
   if len(content) > MAX_CHARS_PER_DOC:
@@ -386,6 +395,48 @@ def process_file(
   group_end()
 
 
+def process_file_without_rerank(
+  *,
+  input_path: str,
+  output_path: str,
+  top_n: Optional[int],
+  reason: str,
+) -> None:
+  data = load_json(input_path)
+  papers_list = data.get("papers") or []
+  all_queries = data.get("queries") or []
+  if not papers_list or not all_queries:
+    log(f"[WARN] 文件 {os.path.basename(input_path)} 中缺少 papers 或 queries，跳过。")
+    return
+
+  log(f"[WARN] 使用启发式排序替代 rerank：{reason}")
+  for q in all_queries:
+    ranked = q.get("ranked") or []
+    if not isinstance(ranked, list) or not ranked:
+      continue
+    sorted_ranked = sorted(
+      [item for item in ranked if isinstance(item, dict)],
+      key=lambda item: (
+        -float(item.get("score") or 0.0),
+        -int(item.get("star_rating") or 0),
+        str(item.get("paper_id") or item.get("id") or ""),
+      ),
+    )
+    if top_n is not None:
+      sorted_ranked = sorted_ranked[:top_n]
+    for item in sorted_ranked:
+      score = float(item.get("score") or 0.0)
+      item["score"] = score
+      item["star_rating"] = score_to_stars(score)
+    q["ranked"] = sorted_ranked
+
+  meta_generated_at = data.get("generated_at") or ""
+  data["reranked_at"] = datetime.now(timezone.utc).isoformat()
+  data["generated_at"] = meta_generated_at
+  data["rerank_fallback"] = reason
+  save_json(data, output_path)
+
+
 def main() -> None:
   parser = argparse.ArgumentParser(
     description="步骤 3：使用 BLT Rerank API 对候选论文做重排序（简化版）。",
@@ -429,18 +480,42 @@ def main() -> None:
     log(f"[WARN] 输入文件不存在（今天可能没有新论文）：{input_path}，将跳过 Step 3。")
     return
 
-  api_key = os.getenv("BLT_API_KEY")
-  if not api_key:
-    raise RuntimeError("缺少 BLT_API_KEY 环境变量，无法调用 BLT Rerank API。")
+  if remote_llm_disabled():
+    process_file_without_rerank(
+      input_path=input_path,
+      output_path=output_path,
+      top_n=args.top_n,
+      reason="remote_llm_disabled",
+    )
+    return
 
-  reranker = BltClient(api_key=api_key, model=args.rerank_model)
-  process_file(
-    reranker=reranker,
-    input_path=input_path,
-    output_path=output_path,
-    top_n=args.top_n,
-    rerank_model=args.rerank_model,
-  )
+  api_key = os.getenv("BLT_API_KEY")
+  rerank_model = str(args.rerank_model or "").strip()
+  if not api_key or rerank_model.lower() in {"disabled", "none", "off"}:
+    process_file_without_rerank(
+      input_path=input_path,
+      output_path=output_path,
+      top_n=args.top_n,
+      reason="rerank_api_not_configured",
+    )
+    return
+
+  reranker = BltClient(api_key=api_key, model=rerank_model)
+  try:
+    process_file(
+      reranker=reranker,
+      input_path=input_path,
+      output_path=output_path,
+      top_n=args.top_n,
+      rerank_model=rerank_model,
+    )
+  except Exception as exc:
+    process_file_without_rerank(
+      input_path=input_path,
+      output_path=output_path,
+      top_n=args.top_n,
+      reason=f"rerank_failed:{exc}",
+    )
 
 
 if __name__ == "__main__":

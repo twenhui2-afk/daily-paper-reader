@@ -184,12 +184,59 @@
     return { owner: repoOwner, repo: repoName };
   }
 
+  function normalizeApiBaseUrl(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    return text
+      .replace(/\/chat\/completions\/?$/i, '')
+      .replace(/\/completions\/?$/i, '')
+      .replace(/\/+$/, '');
+  }
+
+  function buildModelsEndpoint(baseUrl) {
+    const normalized = normalizeApiBaseUrl(baseUrl);
+    if (!normalized) return '';
+    if (/\/v\d+$/i.test(normalized)) {
+      return `${normalized}/models`;
+    }
+    return `${normalized}/v1/models`;
+  }
+
+  async function verifyOpenAICompatibleConfig(baseUrl, apiKey) {
+    const endpoint = buildModelsEndpoint(baseUrl);
+    if (!endpoint) {
+      throw new Error('API Base URL 不能为空。');
+    }
+    const resp = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const data = await resp.json().catch(() => null);
+    const models = Array.isArray(data && data.data)
+      ? data.data
+          .map((item) => String((item && item.id) || '').trim())
+          .filter(Boolean)
+      : [];
+    return {
+      endpoint,
+      models,
+    };
+  }
+
   // 将总结大模型 / 重排序模型的配置写入 GitHub Secrets
   // 可选 progress 回调用于在 UI 中展示上传进度：progress(currentIndex, total, secretName)
   async function saveSummarizeSecretsToGithub(
     token,
     summarisedApiKey,
+    summarisedBaseUrl,
     summarisedModel,
+    rerankerModel,
     progress,
   ) {
     try {
@@ -246,17 +293,11 @@
         return sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
       };
 
-      // 简易配置下的约定：
-      // - Summarized_LLM_API_KEY：用户输入的柏拉图 API Key
-      // - Summarized_LLM_BASE_URL：默认 https://api.bltcy.ai/v1/chat/completions
-      // - Summarized_LLM_MODEL：用户选择的总结模型
-      // - BLT_API_KEY：写入后端流水线使用的 BLT_API_KEY（与 Summarized_LLM_API_KEY 相同）
-      // - Reranker_LLM_API_KEY：与 Summarized_LLM_API_KEY 相同
-      // - Reranker_LLM_BASE_URL：默认 https://api.bltcy.ai/v1/rerank
-      // - Reranker_LLM_MODEL：默认 qwen3-reranker-4b
-      const summarisedBaseUrl = 'https://api.bltcy.ai/v1/chat/completions';
-      const rerankerBaseUrl = 'https://api.bltcy.ai/v1/rerank';
-      const rerankerModel = 'qwen3-reranker-4b';
+      const normalizedBaseUrl = normalizeApiBaseUrl(summarisedBaseUrl);
+      if (!normalizedBaseUrl) {
+        throw new Error('缺少可用的 API Base URL。');
+      }
+      const normalizedRerankerModel = String(rerankerModel || 'disabled').trim() || 'disabled';
 
       const secretNameSummKey = 'Summarized_LLM_API_KEY';
       const secretNameSummUrl = 'Summarized_LLM_BASE_URL';
@@ -267,11 +308,11 @@
       const secretNameRerankModel = 'Reranker_LLM_MODEL';
 
       const encSummKey = encryptValue(summarisedApiKey);
-      const encSummUrl = encryptValue(summarisedBaseUrl);
+      const encSummUrl = encryptValue(normalizedBaseUrl);
       const encSummModel = encryptValue(summarisedModel);
       const encRerankKey = encryptValue(summarisedApiKey);
-      const encRerankUrl = encryptValue(rerankerBaseUrl);
-      const encRerankModel = encryptValue(rerankerModel);
+      const encRerankUrl = encryptValue(normalizedBaseUrl);
+      const encRerankModel = encryptValue(normalizedRerankerModel);
 
       const putSecret = async (name, encrypted) => {
         const body = {
@@ -657,7 +698,7 @@
         <div style="margin-bottom:10px; font-size:13px;">
           <label style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
             <input type="radio" name="secret-setup-mode" value="simple" checked />
-            <span><strong>简易配置（推荐）</strong>：填写 GitHub Token 与柏拉图 API Key，即可启用订阅与论文总结能力。</span>
+            <span><strong>简易配置（推荐）</strong>：填写 GitHub Token 与 OpenAI 兼容接口配置，即可启用订阅、聊天与论文总结能力。</span>
           </label>
           <label style="display:flex; align-items:center; gap:6px; color:#aaa;">
             <input type="radio" name="secret-setup-mode" value="advanced" disabled />
@@ -680,54 +721,57 @@
             需要具备 <code>repo</code> 和 <code>workflow</code> 权限。
           </div>
 
-          <div style="font-weight:500; margin-bottom:4px;">柏拉图（BLTCY）API Key（必填）</div>
+          <div style="font-weight:500; margin-bottom:4px;">OpenAI 兼容 API Base URL（必填）</div>
+          <input
+            id="secret-setup-api-base"
+            type="text"
+            autocomplete="off"
+            value="http://localhost:8317/v1"
+            placeholder="例如：http://localhost:8317/v1"
+            style="width:100%; box-sizing:border-box; padding:6px 8px; margin-bottom:8px; font-size:13px;"
+          />
+
+          <div style="font-weight:500; margin-bottom:4px;">OpenAI 兼容 API Key（必填）</div>
           <input
             id="secret-setup-plato"
             type="password"
             autocomplete="off"
-            placeholder="例如：sk-xxxx"
+            placeholder="例如：sk-xxxx 或你的本地代理 key"
             style="width:100%; box-sizing:border-box; padding:6px 8px; margin-bottom:4px; font-size:13px;"
           />
           <button id="secret-setup-plato-verify" type="button" class="secret-gate-btn secondary" style="margin-bottom:4px;">
-            验证柏拉图 API Key
+            验证 API 配置
           </button>
           <div id="secret-setup-plato-status" style="min-height:18px; font-size:12px; color:#999; margin-bottom:8px;">
-            将通过 <code>/v1/token/quota</code> 接口验证可用性。
+            将通过 <code>/v1/models</code> 接口验证可用性。
           </div>
 
           <div style="font-weight:500; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
-            用于「总结整篇论文」的大模型（推荐选择 Gemini 3 Flash）
+            用于「总结整篇论文」的大模型（推荐选择 GPT-5.4）
             <span class="secret-model-tip">!
               <span class="secret-model-tip-popup">
-                按照 Thinking（思考模式）的高负载场景估算：<br/>
-                <br/>
-                总结：15k 输入 + 4k 输出（含思考）<br/>
-                提问：16.1k 输入 + 2k 输出（含思考）<br/>
-                <br/>
-                模型 · 约价（单次）：<br/>
-                - Gemini 3 Flash：总结 ¥0.0195，提问 ¥0.0141（不到 2 分钱，100 篇论文约 2 元）<br/>
-                - DeepSeek V3：总结 ¥0.0294，提问 ¥0.0267（不到 3 分钱，长输出性价比极高）<br/>
-                - GPT-5：总结 ¥0.0588，提问 ¥0.0401（约 6 分钱）<br/>
-                - Gemini 3 Pro：总结 ¥0.0780，提问 ¥0.0562（约 8 分钱，一篇论文不到 1 毛钱）
+                GitHub Pages 页面里的聊天能力会直接走你配置的 OpenAI 兼容接口。<br/>
+                如果该接口是 <code>localhost</code>，浏览器本地可用，但 GitHub Actions 云端会自动降级为“无远端 LLM”模式。<br/>
+                这样仍然能抓取、推荐、生成页面，只是云端不会做远端总结与 LLM refine。
               </span>
             </span>
           </div>
           <div style="font-size:13px; margin-bottom:6px;">
             <label style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
-              <input type="radio" name="secret-setup-summarize-model" value="gemini-3-flash-preview-thinking-1000" checked />
-              <span>Gemini 3 Flash（思考版，推荐）</span>
+              <input type="radio" name="secret-setup-summarize-model" value="gpt-5.4" checked />
+              <span>GPT-5.4（推荐）</span>
             </label>
             <label style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
-              <input type="radio" name="secret-setup-summarize-model" value="deepseek-v3.2" />
-              <span>DeepSeek V3.2 · 深度思考</span>
+              <input type="radio" name="secret-setup-summarize-model" value="gpt-5.2" />
+              <span>GPT-5.2</span>
             </label>
             <label style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
-              <input type="radio" name="secret-setup-summarize-model" value="gpt-5-chat" />
-              <span>GPT-5 Chat · 通用高质量对话</span>
+              <input type="radio" name="secret-setup-summarize-model" value="gpt-5" />
+              <span>GPT-5</span>
             </label>
             <label style="display:flex; align-items:center; gap:6px;">
-              <input type="radio" name="secret-setup-summarize-model" value="gemini-3-pro-preview" />
-              <span>Gemini 3 Pro（更强思考能力）</span>
+              <input type="radio" name="secret-setup-summarize-model" value="gpt-5.3-codex" />
+              <span>GPT-5.3 Codex</span>
             </label>
           </div>
         </div>
@@ -755,6 +799,7 @@
       const githubStatusEl = document.getElementById(
         'secret-setup-github-status',
       );
+      const apiBaseInput = document.getElementById('secret-setup-api-base');
       const platoInput = document.getElementById('secret-setup-plato');
       const platoVerifyBtn = document.getElementById(
         'secret-setup-plato-verify',
@@ -765,10 +810,11 @@
       const closeBtn = document.getElementById('secret-setup-close');
       const genBtn = document.getElementById('secret-setup-generate');
 
-      if (!githubInput || !githubVerifyBtn || !platoInput || !platoVerifyBtn || !backBtn || !closeBtn || !genBtn) return;
+      if (!githubInput || !githubVerifyBtn || !apiBaseInput || !platoInput || !platoVerifyBtn || !backBtn || !closeBtn || !genBtn) return;
 
       let githubOk = false;
       let platoOk = false;
+      let verifiedModels = [];
 
       backBtn.addEventListener('click', () => {
         // 返回第 1 步，重新设置密码
@@ -831,36 +877,30 @@
       });
 
       platoVerifyBtn.addEventListener('click', async () => {
+        const apiBase = apiBaseInput.value.trim();
         const key = platoInput.value.trim();
+        if (!apiBase) {
+          platoStatusEl.textContent = '请先输入 API Base URL。';
+          platoStatusEl.style.color = '#c00';
+          platoOk = false;
+          return;
+        }
         if (!key) {
-          platoStatusEl.textContent = '请先输入柏拉图 API Key。';
+          platoStatusEl.textContent = '请先输入 API Key。';
           platoStatusEl.style.color = '#c00';
           platoOk = false;
           return;
         }
         platoVerifyBtn.disabled = true;
-        platoStatusEl.textContent = '正在验证柏拉图 API Key...';
+        platoStatusEl.textContent = '正在验证 API 配置...';
         platoStatusEl.style.color = '#666';
         try {
-          const resp = await fetch(
-            'https://api.bltcy.ai/v1/token/quota',
-            {
-              method: 'GET',
-              headers: {
-                Authorization: `Bearer ${key}`,
-              },
-            },
-          );
-          if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status}`);
-          }
-          const data = await resp.json().catch(() => null);
-          const quota =
-            data && typeof data.quota === 'number' ? data.quota : 0;
-          const used = -quota;
-          platoStatusEl.textContent = `✅ 验证成功：已用额度约 ${used.toFixed(
-            2,
-          )}`;
+          const result = await verifyOpenAICompatibleConfig(apiBase, key);
+          verifiedModels = Array.isArray(result.models) ? result.models : [];
+          const modelText = verifiedModels.length
+            ? `，模型：${verifiedModels.slice(0, 6).join(', ')}${verifiedModels.length > 6 ? ' ...' : ''}`
+            : '';
+          platoStatusEl.textContent = `✅ 验证成功：${result.endpoint}${modelText}`;
           platoStatusEl.style.color = '#28a745';
           platoOk = true;
         } catch (e) {
@@ -873,6 +913,7 @@
       });
 
       genBtn.addEventListener('click', async () => {
+        const apiBase = apiBaseInput.value.trim();
         const githubToken = githubInput.value.trim();
         const platoKey = platoInput.value.trim();
         const modeInputs = document.querySelectorAll(
@@ -896,9 +937,16 @@
           }
           return;
         }
+        if (!apiBase) {
+          if (errorEl) {
+            errorEl.textContent = '请先填写 API Base URL。';
+            errorEl.style.color = '#c00';
+          }
+          return;
+        }
         if (!platoKey || !platoOk) {
           if (errorEl) {
-            errorEl.textContent = '请先填写并通过验证柏拉图 API Key。';
+            errorEl.textContent = '请先填写并通过验证 API 配置。';
             errorEl.style.color = '#c00';
           }
           return;
@@ -919,9 +967,12 @@
         }
 
         const createdAt = new Date().toISOString();
-        const summarizedBaseUrl = 'https://api.bltcy.ai/v1/chat/completions';
-        const rerankerBaseUrl = 'https://api.bltcy.ai/v1/rerank';
-        const rerankerModel = 'qwen3-reranker-4b';
+        const summarizedBaseUrl = normalizeApiBaseUrl(apiBase);
+        const rerankerBaseUrl = summarizedBaseUrl;
+        const rerankerModel = 'disabled';
+        const chatModelList = Array.isArray(verifiedModels) && verifiedModels.length
+          ? Array.from(new Set([model, ...verifiedModels]))
+          : [model];
 
         const plainConfig = {
           createdAt,
@@ -942,12 +993,7 @@
             {
               apiKey: platoKey,
               baseUrl: summarizedBaseUrl,
-              models: [
-                'gemini-3-flash-preview-thinking-1000',
-                'deepseek-v3.2',
-                'gpt-5-chat',
-                'gemini-3-pro-preview-thinking-1000',
-              ],
+              models: chatModelList,
             },
           ],
         };
@@ -963,7 +1009,9 @@
           const secretsOk = await saveSummarizeSecretsToGithub(
             githubToken,
             platoKey,
+            summarizedBaseUrl,
             model,
+            rerankerModel,
             (current, total, secretName) => {
               if (!errorEl) return;
               errorEl.textContent = `(${current}/${total}) 正在上传 GitHub Secret：${secretName}...`;
