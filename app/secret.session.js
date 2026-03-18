@@ -229,6 +229,56 @@
     };
   }
 
+  async function verifyGithubTokenForRepo(token) {
+    const headers = {
+      Authorization: `token ${token}`,
+      Accept: 'application/vnd.github.v3+json',
+    };
+
+    const userRes = await fetch('https://api.github.com/user', { headers });
+    if (!userRes.ok) {
+      throw new Error(`无法获取 GitHub 用户信息（HTTP ${userRes.status}）`);
+    }
+
+    const userData = await userRes.json().catch(() => ({}));
+    const scopesHeader = userRes.headers.get('X-OAuth-Scopes') || '';
+    const scopeList = scopesHeader
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const { owner, repo } = await detectGithubRepoFromToken(token);
+
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers,
+    });
+    if (!repoRes.ok) {
+      throw new Error(
+        `无法访问目标仓库 ${owner}/${repo}（HTTP ${repoRes.status}）`,
+      );
+    }
+    const repoData = await repoRes.json().catch(() => ({}));
+
+    const secretsRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/actions/secrets/public-key`,
+      { headers },
+    );
+    if (!secretsRes.ok) {
+      throw new Error(
+        `无法访问仓库 Secrets（HTTP ${secretsRes.status}）。请确认该 Token 对 ${owner}/${repo} 具有 Actions Secrets 写入权限。`,
+      );
+    }
+
+    return {
+      login: userData.login || '',
+      owner,
+      repo,
+      repoFullName: repoData.full_name || `${owner}/${repo}`,
+      scopeList,
+      tokenType: scopeList.length ? 'classic' : 'fine-grained',
+    };
+  }
+
   // 将总结大模型 / 重排序模型的配置写入 GitHub Secrets
   // 可选 progress 回调用于在 UI 中展示上传进度：progress(currentIndex, total, secretName)
   async function saveSummarizeSecretsToGithub(
@@ -837,33 +887,11 @@
         githubStatusEl.textContent = '正在验证 GitHub Token...';
         githubStatusEl.style.color = '#666';
         try {
-          const res = await fetch('https://api.github.com/user', {
-            headers: {
-              Authorization: `token ${token}`,
-              Accept: 'application/vnd.github.v3+json',
-            },
-          });
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
-          }
-          const scopesHeader = res.headers.get('X-OAuth-Scopes') || '';
-          const scopeList = scopesHeader
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean);
-          const requiredScopes = ['repo', 'workflow'];
-          const missing = requiredScopes.filter(
-            (s) => !scopeList.includes(s),
-          );
-          if (missing.length) {
-            throw new Error(
-              `Token 权限不足，缺少：${missing.join(
-                ', ',
-              )}。请在 GitHub 中重新生成 PAT。`,
-            );
-          }
-          const userData = await res.json().catch(() => ({}));
-          githubStatusEl.innerHTML = `✅ 验证成功：用户 ${userData.login || ''}，权限：${scopeList.join(', ')}`;
+          const result = await verifyGithubTokenForRepo(token);
+          const scopeText = result.scopeList.length
+            ? `；classic scopes：${result.scopeList.join(', ')}`
+            : '；fine-grained token 已通过仓库能力验证';
+          githubStatusEl.innerHTML = `✅ 验证成功：用户 ${result.login}，仓库 ${result.repoFullName}${scopeText}`;
           githubStatusEl.style.color = '#28a745';
           githubOk = true;
         } catch (e) {
