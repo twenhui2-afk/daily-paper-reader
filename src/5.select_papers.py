@@ -265,13 +265,33 @@ def build_scored_papers(papers: List[Dict[str, Any]], llm_ranked: List[Dict[str,
     merged: Dict[str, Dict[str, Any]] = {}
     for item in llm_ranked:
         pid = str(item.get("paper_id") or item.get("id") or "").strip()
-        if not pid or pid not in paper_map:
+        if not pid:
             continue
         score = parse_score(item.get("score"))
         prev = merged.get(pid)
         if prev is not None and score <= float(prev.get("llm_score", 0)):
             continue
-        paper = dict(paper_map[pid])
+        paper = dict(paper_map.get(pid) or {})
+        if not paper:
+            paper = {
+                "id": pid,
+                "paper_id": pid,
+                "title": str(item.get("title") or "").strip(),
+                "abstract": str(item.get("abstract") or "").strip(),
+                "authors": item.get("authors") or [],
+                "source": str(item.get("source") or "").strip(),
+                "source_link": str(item.get("source_link") or "").strip(),
+                "link": str(item.get("link") or "").strip(),
+                "pdf_url": str(item.get("pdf_url") or "").strip(),
+                "published": str(item.get("published") or "").strip(),
+                "pmid": str(item.get("pmid") or "").strip(),
+                "journal": str(item.get("journal") or "").strip(),
+            }
+        if not any(
+            str(paper.get(field) or "").strip()
+            for field in ("title", "abstract", "source_link", "link", "pdf_url", "paper_id", "id")
+        ):
+            continue
         paper["llm_score"] = score
         evidence_cn = str(item.get("evidence_cn") or "").strip()
         evidence_en = str(item.get("evidence_en") or "").strip()

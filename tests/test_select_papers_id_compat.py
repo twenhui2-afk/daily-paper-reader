@@ -35,6 +35,21 @@ class SelectPapersIdCompatTest(unittest.TestCase):
         self.assertEqual(out[0].get("id"), "p-1")
         self.assertEqual(out[0].get("paper_id"), "p-1")
 
+    def test_build_scored_papers_can_fall_back_to_embedded_llm_metadata(self):
+        llm_ranked = [
+            {
+                "paper_id": "p-9",
+                "title": "Fallback Paper",
+                "abstract": "Useful abstract",
+                "score": 8.3,
+                "matched_query_tag": "query:oral-seg",
+            }
+        ]
+        out = self.mod.build_scored_papers([], llm_ranked)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].get("id"), "p-9")
+        self.assertEqual(out[0].get("title"), "Fallback Paper")
+
 
 if __name__ == "__main__":
     unittest.main()

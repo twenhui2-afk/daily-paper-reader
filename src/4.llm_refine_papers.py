@@ -148,6 +148,7 @@ def collect_candidate_ids(queries: List[Dict[str, Any]], min_star: int) -> List[
 def build_passthrough_llm_ranked(
     queries: List[Dict[str, Any]],
     analysis: str,
+    paper_lookup: Dict[str, Dict[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
     merged: Dict[str, Dict[str, Any]] = {}
     for query in queries:
@@ -167,13 +168,17 @@ def build_passthrough_llm_ranked(
                 star_rating = 0
             existing = merged.get(pid)
             if existing is None or score > float(existing.get("score") or 0.0):
-                merged[pid] = {
+                base_paper = dict((paper_lookup or {}).get(pid) or {})
+                base_paper["id"] = base_paper.get("id") or pid
+                base_paper["paper_id"] = base_paper.get("paper_id") or pid
+                base_paper.update({
                     "paper_id": pid,
                     "score": score,
                     "star_rating": star_rating,
                     "matched_requirements": [],
                     "analysis": analysis,
-                }
+                })
+                merged[pid] = base_paper
     return sorted(merged.values(), key=lambda item: item.get("score", 0), reverse=True)
 
 
@@ -184,8 +189,9 @@ def save_passthrough_llm_ranked(
     output_path: str,
     fallback_reason: str,
     analysis: str,
+    paper_lookup: Dict[str, Dict[str, Any]] | None = None,
 ) -> bool:
-    llm_ranked = build_passthrough_llm_ranked(queries, analysis)
+    llm_ranked = build_passthrough_llm_ranked(queries, analysis, paper_lookup=paper_lookup)
     if not llm_ranked:
         return False
     data["llm_ranked"] = llm_ranked
@@ -362,9 +368,12 @@ def build_user_requirements(
 def build_paper_map(papers: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     paper_map: Dict[str, Dict[str, Any]] = {}
     for p in papers:
-        pid = p.get("id")
+        pid = p.get("id") or p.get("paper_id")
         if pid:
-            paper_map[str(pid)] = p
+            copied = dict(p)
+            copied["id"] = copied.get("id") or str(pid)
+            copied["paper_id"] = copied.get("paper_id") or str(pid)
+            paper_map[str(pid)] = copied
     return paper_map
 
 
@@ -891,6 +900,7 @@ def process_file(
         log("[WARN] missing papers or queries, skip.")
         return
 
+    paper_map = build_paper_map(papers)
     config = load_config()
     user_requirements = build_user_requirements(config, queries)
     if not user_requirements:
@@ -905,9 +915,9 @@ def process_file(
             output_path=output_path,
             fallback_reason="remote_llm_disabled",
             analysis="LLM refine skipped because remote LLM is disabled.",
+            paper_lookup=paper_map,
         )
         return
-    paper_map = build_paper_map(papers)
 
     group_start(f"Step 4 - llm refine {os.path.basename(input_path)}")
     log(
@@ -934,6 +944,7 @@ def process_file(
             output_path=output_path,
             fallback_reason=f"empty_candidate_gate:{_norm_text(data.get('rerank_fallback')) or 'no_ranked_candidates'}",
             analysis="LLM refine skipped because candidate gating removed all ranked papers.",
+            paper_lookup=paper_map,
         )
         if not saved:
             save_json(data, output_path)
@@ -950,6 +961,7 @@ def process_file(
             output_path=output_path,
             fallback_reason=f"{existing_reason}|missing_blt_api_key" if existing_reason else "missing_blt_api_key",
             analysis="LLM refine skipped because BLT_API_KEY is missing.",
+            paper_lookup=paper_map,
         )
         group_end()
         return
@@ -1053,6 +1065,7 @@ def process_file(
             output_path=output_path,
             fallback_reason=f"{existing_reason}|{fallback_reason}" if existing_reason else fallback_reason,
             analysis="LLM refine skipped because no valid filter results were returned.",
+            paper_lookup=paper_map,
         )
         if not saved:
             save_json(data, output_path)
