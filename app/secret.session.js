@@ -603,7 +603,7 @@
           或选择以游客身份访问（仅支持阅读论文，无法使用后台大模型能力）。
         </p>
         <label for="secret-gate-password" style="font-size:13px; color:#333; display:block; margin-bottom:4px;">
-          解锁密码（至少 8 位，包含数字、小写字母、大写字母和特殊符号）：
+          解锁密码：
         </label>
         <input
           id="secret-gate-password"
@@ -639,10 +639,9 @@
 
       unlockBtn.addEventListener('click', async () => {
         const pwd = (pwdInput.value || '').trim();
-        const msg = validatePassword(pwd);
-        if (msg) {
+        if (!pwd) {
           if (errorEl) {
-            errorEl.textContent = msg;
+            errorEl.textContent = '请输入解锁密码。';
             errorEl.style.color = '#c00';
           }
           return;
