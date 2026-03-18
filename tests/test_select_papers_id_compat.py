@@ -50,6 +50,16 @@ class SelectPapersIdCompatTest(unittest.TestCase):
         self.assertEqual(out[0].get("id"), "p-9")
         self.assertEqual(out[0].get("title"), "Fallback Paper")
 
+    def test_build_retrieval_fallback_scored_papers_keeps_paper_identity(self):
+        papers = [
+            {"paper_id": "p-1", "title": "Paper 1"},
+            {"paper_id": "p-2", "title": "Paper 2"},
+        ]
+        out = self.mod.build_retrieval_fallback_scored_papers(papers, limit=2)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0].get("id"), "p-1")
+        self.assertGreaterEqual(float(out[0].get("llm_score", 0)), 8.0)
+
 
 if __name__ == "__main__":
     unittest.main()

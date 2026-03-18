@@ -320,6 +320,31 @@ def build_scored_papers(papers: List[Dict[str, Any]], llm_ranked: List[Dict[str,
     return list(merged.values())
 
 
+def build_retrieval_fallback_scored_papers(
+    papers: List[Dict[str, Any]],
+    limit: int = 80,
+) -> List[Dict[str, Any]]:
+    fallback: List[Dict[str, Any]] = []
+    for idx, paper in enumerate(papers[: max(1, limit)]):
+        pid = str(paper.get("id") or paper.get("paper_id") or "").strip()
+        if not pid:
+            continue
+        copied = dict(paper)
+        copied["id"] = copied.get("id") or pid
+        copied["paper_id"] = copied.get("paper_id") or pid
+        copied["llm_score"] = max(6.0, 8.6 - idx * 0.05)
+        copied["llm_tags"] = normalize_tags(copied.get("llm_tags"))
+        copied["llm_evidence_en"] = copied.get("llm_evidence_en") or "retrieval fallback candidate"
+        copied["llm_evidence_cn"] = copied.get("llm_evidence_cn") or "检索回退候选"
+        copied["llm_evidence"] = copied.get("llm_evidence") or copied["llm_evidence_cn"]
+        copied["canonical_evidence"] = copied.get("canonical_evidence") or copied["llm_evidence"]
+        copied["llm_tldr_en"] = copied.get("llm_tldr_en") or ""
+        copied["llm_tldr_cn"] = copied.get("llm_tldr_cn") or copied.get("llm_tldr") or ""
+        copied["llm_tldr"] = copied.get("llm_tldr") or copied["llm_tldr_cn"]
+        fallback.append(copied)
+    return fallback
+
+
 def build_candidates(
     scored_papers: List[Dict[str, Any]],
     carryover_items: List[Dict[str, Any]],
@@ -870,6 +895,9 @@ def main() -> None:
     log_substep("5.2", "构建评分论文列表", "START")
     try:
         scored_papers = build_scored_papers(papers, llm_ranked)
+        if not scored_papers and papers:
+            log("[WARN] scored_papers=0 after LLM refine; using retrieval fallback scored papers.")
+            scored_papers = build_retrieval_fallback_scored_papers(papers)
         log(f"[INFO] scored_papers={len(scored_papers)}")
     finally:
         log_substep("5.2", "构建评分论文列表", "END")
