@@ -12,7 +12,7 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 from urllib.parse import quote_plus
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple
 
 import fitz  # PyMuPDF
@@ -28,6 +28,7 @@ RANGE_DATE_RE = re.compile(r"^(\d{8})-(\d{8})$")
 # LLM 配置（使用 llm.py 内的 BLT 客户端）
 BLT_API_KEY = os.getenv("BLT_API_KEY")
 BLT_MODEL = os.getenv("BLT_SUMMARY_MODEL", "gpt-5.4")
+DISPLAY_TZ = timezone(timedelta(hours=8), name="UTC+8")
 
 
 def remote_llm_disabled() -> bool:
@@ -148,6 +149,18 @@ def parse_llm_json(content: str) -> Dict[str, Any] | list[Any] | None:
 def log(message: str) -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] {message}", flush=True)
+
+
+def now_display_time() -> datetime:
+    return datetime.now(timezone.utc).astimezone(DISPLAY_TZ)
+
+
+def format_display_time() -> str:
+    return now_display_time().strftime("%Y-%m-%d %H:%M:%S UTC+8")
+
+
+def format_display_iso() -> str:
+    return now_display_time().isoformat(timespec="seconds")
 
 def log_substep(code: str, name: str, phase: str) -> None:
     """
@@ -1788,7 +1801,7 @@ def build_day_report_markdown(
     recommend_exists: bool,
 ) -> str:
     effective_label = (date_label or "").strip() or format_date_str(date_str)
-    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    generated_at = format_display_time()
     total = len(deep_entries) + len(quick_entries)
     run_status = "成功" if recommend_exists else "未产出 recommend 文件（视为无结果）"
     summary = build_daily_brief_summary(
@@ -1983,7 +1996,7 @@ def write_run_daily_log(
     payload = {
         "date": format_date_str(date_str),
         "mode": mode,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": format_display_iso(),
         "recommend_path": recommend_path,
         "recommend_exists": bool(recommend_exists),
         "deep_count": int(deep_count),
@@ -2364,7 +2377,7 @@ def write_day_meta_index_json(
     payload = {
         "label": effective_label,
         "date": format_date_str(date_str),
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "generated_at": format_display_iso(),
         "count": len(papers),
         "papers": papers,
         "errors": errors,
@@ -2615,7 +2628,7 @@ def main() -> None:
         log_substep("6.3", "生成速读区文章", "END")
 
     log_substep("6.4", "生成当日日报并同步首页 README", "START")
-    run_generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    run_generated_at = format_display_time()
     day_readme = write_day_report_readme(
         docs_dir=docs_dir,
         date_str=date_str,
