@@ -254,10 +254,13 @@ def parse_score(value: Any) -> float:
 def build_scored_papers(papers: List[Dict[str, Any]], llm_ranked: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     paper_map = {}
     for p in papers:
-        pid = str(p.get("id") or "").strip()
+        pid = str(p.get("id") or p.get("paper_id") or "").strip()
         if not pid:
             continue
-        paper_map[pid] = p
+        copied = dict(p)
+        copied["id"] = copied.get("id") or pid
+        copied["paper_id"] = copied.get("paper_id") or pid
+        paper_map[pid] = copied
 
     merged: Dict[str, Dict[str, Any]] = {}
     for item in llm_ranked:
