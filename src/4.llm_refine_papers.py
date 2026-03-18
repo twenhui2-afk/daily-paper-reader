@@ -145,6 +145,56 @@ def collect_candidate_ids(queries: List[Dict[str, Any]], min_star: int) -> List[
     return [item["tag"] for item in unique_ids]
 
 
+def build_passthrough_llm_ranked(
+    queries: List[Dict[str, Any]],
+    analysis: str,
+) -> List[Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    for query in queries:
+        ranked = query.get("ranked") or []
+        if not isinstance(ranked, list):
+            continue
+        for item in ranked:
+            if not isinstance(item, dict):
+                continue
+            pid = _norm_text(item.get("paper_id") or item.get("id") or "")
+            if not pid:
+                continue
+            score = float(item.get("score") or 0.0)
+            try:
+                star_rating = int(item.get("star_rating") or 0)
+            except Exception:
+                star_rating = 0
+            existing = merged.get(pid)
+            if existing is None or score > float(existing.get("score") or 0.0):
+                merged[pid] = {
+                    "paper_id": pid,
+                    "score": score,
+                    "star_rating": star_rating,
+                    "matched_requirements": [],
+                    "analysis": analysis,
+                }
+    return sorted(merged.values(), key=lambda item: item.get("score", 0), reverse=True)
+
+
+def save_passthrough_llm_ranked(
+    *,
+    data: Dict[str, Any],
+    queries: List[Dict[str, Any]],
+    output_path: str,
+    fallback_reason: str,
+    analysis: str,
+) -> bool:
+    llm_ranked = build_passthrough_llm_ranked(queries, analysis)
+    if not llm_ranked:
+        return False
+    data["llm_ranked"] = llm_ranked
+    data["llm_ranked_at"] = datetime.now(timezone.utc).isoformat()
+    data["llm_refine_fallback"] = fallback_reason
+    save_json(data, output_path)
+    return True
+
+
 def _slug(text: str, fallback: str = "query") -> str:
     raw = str(text or "").strip().lower()
     raw = re.sub(r"[^a-z0-9]+", "-", raw)
@@ -849,37 +899,15 @@ def process_file(
         return
     if remote_llm_disabled():
         log("[WARN] remote LLM disabled，使用 Step 3 排序结果直通 Step 4。")
-        merged: Dict[str, Dict[str, Any]] = {}
-        for query in queries:
-            ranked = query.get("ranked") or []
-            if not isinstance(ranked, list):
-                continue
-            for item in ranked:
-                if not isinstance(item, dict):
-                    continue
-                pid = _norm_text(item.get("paper_id") or item.get("id") or "")
-                if not pid:
-                    continue
-                score = float(item.get("score") or 0.0)
-                existing = merged.get(pid)
-                if existing is None or score > float(existing.get("score") or 0.0):
-                    merged[pid] = {
-                        "paper_id": pid,
-                        "score": score,
-                        "star_rating": _safe_int(item.get("star_rating"), 0),
-                        "matched_requirements": [],
-                        "analysis": "LLM refine skipped because remote LLM is disabled.",
-                    }
-        data["llm_ranked"] = sorted(merged.values(), key=lambda item: item.get("score", 0), reverse=True)
-        data["llm_ranked_at"] = datetime.now(timezone.utc).isoformat()
-        data["llm_refine_fallback"] = "remote_llm_disabled"
-        save_json(data, output_path)
+        save_passthrough_llm_ranked(
+            data=data,
+            queries=queries,
+            output_path=output_path,
+            fallback_reason="remote_llm_disabled",
+            analysis="LLM refine skipped because remote LLM is disabled.",
+        )
         return
     paper_map = build_paper_map(papers)
-
-    api_key = os.getenv("BLT_API_KEY")
-    if not api_key:
-        raise RuntimeError("missing BLT_API_KEY")
 
     group_start(f"Step 4 - llm refine {os.path.basename(input_path)}")
     log(
@@ -889,20 +917,40 @@ def process_file(
     )
 
     candidate_ids = collect_candidate_ids(queries, min_star)
-    effective_min_star = min_star
-    if not candidate_ids and data.get("rerank_fallback"):
-        effective_min_star = 0
-        candidate_ids = collect_candidate_ids(queries, effective_min_star)
+    if not candidate_ids:
+        fallback_reason = _norm_text(data.get("rerank_fallback")) or "empty_min_star_gate"
+        candidate_ids = collect_candidate_ids(queries, 0)
         if candidate_ids:
-            fallback_reason = _norm_text(data.get("rerank_fallback"))
-            data["llm_refine_fallback"] = f"relaxed_min_star_due_to_{fallback_reason or 'rerank_fallback'}"
+            data["llm_refine_fallback"] = f"relaxed_min_star_due_to_{fallback_reason}"
             log(
-                "[WARN] no candidates met min_star after rerank fallback; "
-                f"retrying Step 4 with min_star={effective_min_star}."
+                "[WARN] no candidates met min_star; "
+                f"retrying Step 4 with relaxed threshold due to {fallback_reason}."
             )
     if not candidate_ids:
-        log("[WARN] no candidates found with star_rating >= min_star.")
-        save_json(data, output_path)
+        log("[WARN] no candidates found after min_star filter; using passthrough ranked results.")
+        saved = save_passthrough_llm_ranked(
+            data=data,
+            queries=queries,
+            output_path=output_path,
+            fallback_reason=f"empty_candidate_gate:{_norm_text(data.get('rerank_fallback')) or 'no_ranked_candidates'}",
+            analysis="LLM refine skipped because candidate gating removed all ranked papers.",
+        )
+        if not saved:
+            save_json(data, output_path)
+        group_end()
+        return
+
+    api_key = os.getenv("BLT_API_KEY")
+    if not api_key:
+        log("[WARN] missing BLT_API_KEY; using passthrough ranked results.")
+        existing_reason = _norm_text(data.get("llm_refine_fallback"))
+        save_passthrough_llm_ranked(
+            data=data,
+            queries=queries,
+            output_path=output_path,
+            fallback_reason=f"{existing_reason}|missing_blt_api_key" if existing_reason else "missing_blt_api_key",
+            analysis="LLM refine skipped because BLT_API_KEY is missing.",
+        )
         group_end()
         return
 
@@ -996,8 +1044,18 @@ def process_file(
                 merge_filter_result(merged, item, requirement_by_index)
 
     if not merged:
-        log("[WARN] no llm results returned.")
-        save_json(data, output_path)
+        log("[WARN] no llm results returned; using passthrough ranked results.")
+        existing_reason = _norm_text(data.get("llm_refine_fallback"))
+        fallback_reason = f"empty_llm_results:{_norm_text(data.get('rerank_fallback')) or 'llm_filter_failed'}"
+        saved = save_passthrough_llm_ranked(
+            data=data,
+            queries=queries,
+            output_path=output_path,
+            fallback_reason=f"{existing_reason}|{fallback_reason}" if existing_reason else fallback_reason,
+            analysis="LLM refine skipped because no valid filter results were returned.",
+        )
+        if not saved:
+            save_json(data, output_path)
         group_end()
         return
 
