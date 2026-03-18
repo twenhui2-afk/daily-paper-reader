@@ -127,6 +127,24 @@ def unique_tagged(items: List[Dict[str, str]], tag_key: str = "tag") -> List[Dic
     return result
 
 
+def collect_candidate_ids(queries: List[Dict[str, Any]], min_star: int) -> List[str]:
+    candidate_ids: List[str] = []
+    for q in queries:
+        ranked = q.get("ranked") or []
+        for item in ranked:
+            try:
+                star_rating = int(item.get("star_rating") or 0)
+            except Exception:
+                star_rating = 0
+            if star_rating < min_star:
+                continue
+            pid = _norm_text(item.get("paper_id") or item.get("id"))
+            if pid:
+                candidate_ids.append(pid)
+    unique_ids = unique_tagged([{"tag": pid} for pid in candidate_ids])
+    return [item["tag"] for item in unique_ids]
+
+
 def _slug(text: str, fallback: str = "query") -> str:
     raw = str(text or "").strip().lower()
     raw = re.sub(r"[^a-z0-9]+", "-", raw)
@@ -870,17 +888,18 @@ def process_file(
         f"concurrency={filter_concurrency}"
     )
 
-    candidate_ids: List[str] = []
-    for q in queries:
-        ranked = q.get("ranked") or []
-        for item in ranked:
-            if item.get("star_rating", 0) >= min_star:
-                pid = str(item.get("paper_id"))
-                if pid:
-                    candidate_ids.append(pid)
-
-    candidate_ids = unique_tagged([{"tag": pid} for pid in candidate_ids])
-    candidate_ids = [item["tag"] for item in candidate_ids]
+    candidate_ids = collect_candidate_ids(queries, min_star)
+    effective_min_star = min_star
+    if not candidate_ids and data.get("rerank_fallback"):
+        effective_min_star = 0
+        candidate_ids = collect_candidate_ids(queries, effective_min_star)
+        if candidate_ids:
+            fallback_reason = _norm_text(data.get("rerank_fallback"))
+            data["llm_refine_fallback"] = f"relaxed_min_star_due_to_{fallback_reason or 'rerank_fallback'}"
+            log(
+                "[WARN] no candidates met min_star after rerank fallback; "
+                f"retrying Step 4 with min_star={effective_min_star}."
+            )
     if not candidate_ids:
         log("[WARN] no candidates found with star_rating >= min_star.")
         save_json(data, output_path)
