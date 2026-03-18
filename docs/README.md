@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-02-17 ~ 2026-03-18
-- 运行时间：2026-03-18 06:08:30 UTC
+- 最新运行日期：2026-03-18
+- 运行时间：2026-03-19 04:17:02 UTC+8
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
@@ -15,63 +15,63 @@
 
 ### 今日简报（AI）
 - 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《OrthoAI: A Lightweight Deep Learning Framework for Automated Biomechanical Analysis in Clear Aligner Orthodontics -- A Methodological Proof-of-Concept》（8.6/10）, 《TCATSeg: A Tooth Center-Wise Attention Network for 3D Dental Model Semantic Segmentation》（8.5/10）
-- 速读：《MADCrowner: Margin Aware Dental Crown Design with Template Deformation and Refinement》（8.3/10）, 《DM-CFO: A Diffusion Model for Compositional 3D Tooth Generation with Collision-Free Optimization》（8.2/10）, 《Athena: An Autonomous Open-Hardware Tracked Rescue Robot Platform》（8.2/10）
+- 精读：《Sturm-Liouville problems with a boundary condition depending bilinearly on an eigenparameter》（8.3/10）, 《Morphemes Without Borders: Evaluating Root-Pattern Morphology in Arabic Tokenizers and LLMs》（8.2/10）
+- 速读：《Primitive-Root Determinant Densities over Prime Fields and Implications for PRIM-LWE》（8.1/10）, 《AgentTrace: Causal Graph Tracing for Root Cause Analysis in Deployed Multi-Agent Systems》（8.0/10）, 《ECHO: Edge-Cloud Humanoid Orchestration for Language-to-Motion Control》（7.9/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/20260217-20260318/README](/20260217-20260318/README)
+- 详情：[/202603/18/README](/202603/18/README)
 
 ### 精读区论文标签
-1. [OrthoAI: A Lightweight Deep Learning Framework for Automated Biomechanical Analysis in Clear Aligner Orthodontics -- A Methodological Proof-of-Concept](/20260217-20260318/2603.00124v1-orthoai-a-lightweight-deep-learning-framework-for-automated-biomechanical-analysis-in-clear-aligner-orthodontics----a-methodological-proof-of-concept)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [TCATSeg: A Tooth Center-Wise Attention Network for 3D Dental Model Semantic Segmentation](/20260217-20260318/2603.16620v1-tcatseg-a-tooth-center-wise-attention-network-for-3d-dental-model-semantic-segmentation)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-3. [OrthoAI v2: From Single-Agent Segmentation to Dual-Agent Treatment Planning for Clear Aligners](/20260217-20260318/2603.15663v1-orthoai-v2-from-single-agent-segmentation-to-dual-agent-treatment-planning-for-clear-aligners)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-4. [Innovative Tooth Segmentation Using Hierarchical Features and Bidirectional Sequence Modeling](/20260217-20260318/2602.21712v1-innovative-tooth-segmentation-using-hierarchical-features-and-bidirectional-sequence-modeling)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-5. [Prompt-Based Caption Generation for Single-Tooth Dental Images Using Vision-Language Models](/20260217-20260318/2603.07403v1-prompt-based-caption-generation-for-single-tooth-dental-images-using-vision-language-models)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-6. [SemiTooth: a Generalizable Semi-supervised Framework for Multi-Source Tooth Segmentation](/20260217-20260318/2603.11616v1-semitooth-a-generalizable-semi-supervised-framework-for-multi-source-tooth-segmentation)  
+1. [Sturm-Liouville problems with a boundary condition depending bilinearly on an eigenparameter](/202603/18/2603.14817v1-sturm-liouville-problems-with-a-boundary-condition-depending-bilinearly-on-an-eigenparameter)  
    标签：评分：8.3/10
+   evidence：检索回退候选
+2. [Morphemes Without Borders: Evaluating Root-Pattern Morphology in Arabic Tokenizers and LLMs](/202603/18/2603.15773v1-morphemes-without-borders-evaluating-root-pattern-morphology-in-arabic-tokenizers-and-llms)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+3. [COAD: Constant-Time Planning for Continuous Goal Manipulation with Compressed Library and Online Adaptation](/202603/18/2603.12488v1-coad-constant-time-planning-for-continuous-goal-manipulation-with-compressed-library-and-online-adaptation)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+4. [Burning rooted graph products](/202603/18/2603.00304v1-burning-rooted-graph-products)  
+   标签：评分：8.1/10
+   evidence：检索回退候选
+5. [Complexity Bounds for Hamiltonian Simulation in Unitary Representations](/202603/18/2603.07231v1-complexity-bounds-for-hamiltonian-simulation-in-unitary-representations)  
+   标签：评分：8.0/10
+   evidence：检索回退候选
+6. [Exceptional horns in $n$-root graphene and Lieb photonic ring lattices](/202603/18/2602.16670v1-exceptional-horns-in-n-root-graphene-and-lieb-photonic-ring-lattices)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [MADCrowner: Margin Aware Dental Crown Design with Template Deformation and Refinement](/20260217-20260318/2603.04771v1-madcrowner-margin-aware-dental-crown-design-with-template-deformation-and-refinement)  
-   标签：评分：8.3/10
+1. [Primitive-Root Determinant Densities over Prime Fields and Implications for PRIM-LWE](/202603/18/2603.11196v1-primitive-root-determinant-densities-over-prime-fields-and-implications-for-prim-lwe)  
+   标签：评分：8.1/10
    evidence：检索回退候选
-2. [DM-CFO: A Diffusion Model for Compositional 3D Tooth Generation with Collision-Free Optimization](/20260217-20260318/2603.03602v1-dm-cfo-a-diffusion-model-for-compositional-3d-tooth-generation-with-collision-free-optimization)  
-   标签：评分：8.2/10
+2. [AgentTrace: Causal Graph Tracing for Root Cause Analysis in Deployed Multi-Agent Systems](/202603/18/2603.14688v1-agenttrace-causal-graph-tracing-for-root-cause-analysis-in-deployed-multi-agent-systems)  
+   标签：评分：8.0/10
    evidence：检索回退候选
-3. [Athena: An Autonomous Open-Hardware Tracked Rescue Robot Platform](/20260217-20260318/2602.19898v1-athena-an-autonomous-open-hardware-tracked-rescue-robot-platform)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [OPGAgent: An Agent for Auditable Dental Panoramic X-ray Interpretation](/20260217-20260318/2603.00462v1-opgagent-an-agent-for-auditable-dental-panoramic-x-ray-interpretation)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-5. [A strong nullity parameter for rooted graphs](/20260217-20260318/2603.00899v1-a-strong-nullity-parameter-for-rooted-graphs)  
+3. [ECHO: Edge-Cloud Humanoid Orchestration for Language-to-Motion Control](/202603/18/2603.16188v1-echo-edge-cloud-humanoid-orchestration-for-language-to-motion-control)  
    标签：评分：7.9/10
    evidence：检索回退候选
-6. [Automating Detection and Root-Cause Analysis of Flaky Tests in Quantum Software](/20260217-20260318/2603.09029v1-automating-detection-and-root-cause-analysis-of-flaky-tests-in-quantum-software)  
+4. [Counting Polynomials via Galois Actions on Root Subsets](/202603/18/2603.14617v1-counting-polynomials-via-galois-actions-on-root-subsets)  
    标签：评分：7.9/10
    evidence：检索回退候选
-7. [On the Real Reliability Roots of Graphs](/20260217-20260318/2603.09059v1-on-the-real-reliability-roots-of-graphs)  
+5. [Robust Automatic Differentiation of Square-Root Kalman Filters via Gramian Differentials](/202603/18/2603.13559v1-robust-automatic-differentiation-of-square-root-kalman-filters-via-gramian-differentials)  
    标签：评分：7.8/10
    evidence：检索回退候选
-8. [(Non-)Linearizable RGD systems](/20260217-20260318/2602.21005v1-non-linearizable-rgd-systems)  
+6. [A geometric proof of Lagrange's theorem for continued fractions](/202603/18/2603.12425v1-a-geometric-proof-of-lagranges-theorem-for-continued-fractions)  
    标签：评分：7.8/10
    evidence：检索回退候选
-9. [Infinite families of APN permutations in constrained trivariate classes over $\mathbb{F}_{2^m}$](/20260217-20260318/2603.15146v1-infinite-families-of-apn-permutations-in-constrained-trivariate-classes-over-mathbbf2m)  
+7. [Logarithmically enhanced hyperbolic square-root deformation of Starobinsky inflation](/202603/18/2603.14743v1-logarithmically-enhanced-hyperbolic-square-root-deformation-of-starobinsky-inflation)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+8. [Globally stable, ghost-free hyperbolic square-root deformation of the Starobinsky model](/202603/18/2603.09944v1-globally-stable-ghost-free-hyperbolic-square-root-deformation-of-the-starobinsky-model)  
+   标签：评分：7.7/10
+   evidence：检索回退候选
+9. [Intelligent Materials Modelling: Large Language Models Versus Partial Least Squares Regression for Predicting Polysulfone Membrane Mechanical Performance](/202603/18/2603.13834v1-intelligent-materials-modelling-large-language-models-versus-partial-least-squares-regression-for-predicting-polysulfone-membrane-mechanical-performance)  
    标签：评分：6.9/10
    evidence：检索回退候选
-10. [Beyond BFS: A Comparative Study of Rooted Spanning Tree Algorithms on GPUs](/20260217-20260318/2603.11645v1-beyond-bfs-a-comparative-study-of-rooted-spanning-tree-algorithms-on-gpus)  
+10. [Eleven Primitives and Three Gates: The Universal Structure of Computational Imaging](/202603/18/2603.13521v1-eleven-primitives-and-three-gates-the-universal-structure-of-computational-imaging)  
    标签：评分：6.9/10
    evidence：检索回退候选
-11. [Relaxed Newton's Method as a Family of Root-finding Methods: Dynamics and Convergence](/20260217-20260318/2603.11591v1-relaxed-newtons-method-as-a-family-of-root-finding-methods-dynamics-and-convergence)  
+11. [Lattice Discrete Particle Model (LDPM): Comparison of Various Time Integration Solvers and Implementations](/202603/18/2603.13190v1-lattice-discrete-particle-model-ldpm-comparison-of-various-time-integration-solvers-and-implementations)  
    标签：评分：6.8/10
    evidence：检索回退候选
 
