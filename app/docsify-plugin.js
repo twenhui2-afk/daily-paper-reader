@@ -3605,6 +3605,24 @@ window.$docsify = {
             return `<span class="tag-label ${css}">${escapeHtml(label)}</span>`;
           }).join(' ');
         };
+        const renderVocabulary = (items) => {
+          if (!items || !items.length) return '';
+          return items.map(item => {
+            const raw = String(item || '').trim();
+            if (!raw) return '';
+            const parts = raw.split('|').map(s => s.trim());
+            const term = parts[0] || raw;
+            const meaning = parts[1] || '';
+            const level = parts[2] || '';
+            return [
+              '<div class="paper-vocab-item">',
+              `<div class="paper-vocab-term">${escapeHtml(term)}</div>`,
+              meaning ? `<div class="paper-vocab-meaning">${escapeHtml(meaning)}</div>` : '',
+              level ? `<div class="paper-vocab-level">${escapeHtml(level)}</div>` : '',
+              '</div>',
+            ].join('');
+          }).join('');
+        };
 
         const lines = [];
 
@@ -3625,25 +3643,25 @@ window.$docsify = {
         // 左侧：Evidence 和 TLDR
         lines.push('<div class="paper-meta-left">');
         if (meta.evidence) {
-          lines.push(`<p><strong>Evidence</strong>: ${escapeHtml(meta.evidence)}</p>`);
+          lines.push(`<p><strong>推荐依据</strong>：${escapeHtml(meta.evidence)}</p>`);
         }
         if (meta.tldr) {
-          lines.push(`<p><strong>TLDR</strong>: ${escapeHtml(meta.tldr)}</p>`);
+          lines.push(`<p><strong>一句话总结</strong>：${escapeHtml(meta.tldr)}</p>`);
         }
         lines.push('</div>');
 
         // 右侧：基本信息
         lines.push('<div class="paper-meta-right">');
-        lines.push(`<p><strong>Authors</strong>: ${escapeHtml(meta.authors || 'Unknown')}</p>`);
-        lines.push(`<p><strong>Date</strong>: ${escapeHtml(meta.date || 'Unknown')}</p>`);
+        lines.push(`<p><strong>作者</strong>：${escapeHtml(meta.authors || 'Unknown')}</p>`);
+        lines.push(`<p><strong>日期</strong>：${escapeHtml(meta.date || 'Unknown')}</p>`);
         if (meta.pdf) {
-          lines.push(`<p><strong>PDF</strong>: <a href="${escapeHtml(meta.pdf)}" target="_blank">${escapeHtml(meta.pdf)}</a></p>`);
+          lines.push(`<p><strong>原文 / PDF</strong>：<a href="${escapeHtml(meta.pdf)}" target="_blank">${escapeHtml(meta.pdf)}</a></p>`);
         }
         if (meta.tags && meta.tags.length) {
-          lines.push(`<p><strong>Tags</strong>: ${renderTags(meta.tags)}</p>`);
+          lines.push(`<p><strong>标签</strong>：${renderTags(meta.tags)}</p>`);
         }
         if (meta.score !== undefined && meta.score !== null) {
-          lines.push(`<p><strong>Score</strong>: ${escapeHtml(String(meta.score))}</p>`);
+          lines.push(`<p><strong>评分</strong>：${escapeHtml(String(meta.score))}</p>`);
         }
         lines.push('</div>');
 
@@ -3657,25 +3675,36 @@ window.$docsify = {
           lines.push('<div class="paper-glance-row">');
 
           lines.push('<div class="paper-glance-col">');
-          lines.push('<div class="paper-glance-label">Motivation</div>');
+          lines.push('<div class="paper-glance-label">研究动机</div>');
           lines.push(`<div class="paper-glance-content">${escapeHtml(meta.motivation || '-')}</div>`);
           lines.push('</div>');
 
           lines.push('<div class="paper-glance-col">');
-          lines.push('<div class="paper-glance-label">Method</div>');
+          lines.push('<div class="paper-glance-label">方法</div>');
           lines.push(`<div class="paper-glance-content">${escapeHtml(meta.method || '-')}</div>`);
           lines.push('</div>');
 
           lines.push('<div class="paper-glance-col">');
-          lines.push('<div class="paper-glance-label">Result</div>');
+          lines.push('<div class="paper-glance-label">结果</div>');
           lines.push(`<div class="paper-glance-content">${escapeHtml(meta.result || '-')}</div>`);
           lines.push('</div>');
 
           lines.push('<div class="paper-glance-col">');
-          lines.push('<div class="paper-glance-label">Conclusion</div>');
+          lines.push('<div class="paper-glance-label">结论</div>');
           lines.push(`<div class="paper-glance-content">${escapeHtml(meta.conclusion || '-')}</div>`);
           lines.push('</div>');
 
+          lines.push('</div>');
+          lines.push('</div>');
+          lines.push('');
+        }
+
+        if (meta.vocabulary && meta.vocabulary.length) {
+          lines.push('<div class="paper-vocab-section">');
+          lines.push('<h2 class="paper-vocab-title">英语词汇</h2>');
+          lines.push('<p class="paper-vocab-desc">中文优先阅读，顺手积累论文中的学术高频词。</p>');
+          lines.push('<div class="paper-vocab-grid">');
+          lines.push(renderVocabulary(meta.vocabulary));
           lines.push('</div>');
           lines.push('</div>');
           lines.push('');

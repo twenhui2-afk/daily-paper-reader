@@ -29,6 +29,43 @@ RANGE_DATE_RE = re.compile(r"^(\d{8})-(\d{8})$")
 BLT_API_KEY = os.getenv("BLT_API_KEY")
 BLT_MODEL = os.getenv("BLT_SUMMARY_MODEL", "gpt-5.4")
 DISPLAY_TZ = timezone(timedelta(hours=8), name="UTC+8")
+ACADEMIC_VOCAB = [
+    ("foundation model", "基础模型", "学术高频"),
+    ("contrastive learning", "对比学习", "学术高频"),
+    ("super-resolution", "超分辨率", "学术高频"),
+    ("fine-tuning", "微调", "学术高频"),
+    ("pretraining", "预训练", "学术高频"),
+    ("multimodal", "多模态", "学术高频"),
+    ("downstream", "下游任务", "学术高频"),
+    ("benchmark", "基准测试", "CET6/IELTS"),
+    ("robustness", "鲁棒性", "IELTS"),
+    ("generalization", "泛化能力", "IELTS"),
+    ("annotation", "标注", "CET6"),
+    ("retrieval", "检索", "CET6/IELTS"),
+    ("diffusion", "扩散", "学术高频"),
+    ("transformer", "Transformer 架构", "学术高频"),
+    ("embedding", "嵌入表示", "学术高频"),
+    ("segmentation", "分割", "CET6/IELTS"),
+    ("classification", "分类", "CET6"),
+    ("detection", "检测", "CET6"),
+    ("localization", "定位", "CET6"),
+    ("augmentation", "数据增强", "CET6"),
+    ("reconstruction", "重建", "CET6"),
+    ("synthesis", "合成", "CET6"),
+    ("denoising", "去噪", "学术高频"),
+    ("uncertainty", "不确定性", "IELTS"),
+    ("interpretability", "可解释性", "IELTS"),
+    ("optimization", "优化", "CET6"),
+    ("inference", "推理", "CET6"),
+    ("clinical", "临床的", "CET6"),
+    ("diagnosis", "诊断", "IELTS"),
+    ("lesion", "病损", "IELTS"),
+    ("radiograph", "X 光影像", "IELTS"),
+    ("volumetric", "体数据的 / 三维体积的", "学术高频"),
+    ("generative", "生成式的", "IELTS"),
+    ("discriminative", "判别式的", "IELTS"),
+    ("alignment", "对齐", "CET6"),
+]
 
 
 def remote_llm_disabled() -> bool:
@@ -161,6 +198,29 @@ def format_display_time() -> str:
 
 def format_display_iso() -> str:
     return now_display_time().isoformat(timespec="seconds")
+
+
+def extract_study_vocabulary(title: str, abstract: str, limit: int = 8) -> List[Tuple[str, str, str]]:
+    text = f"{title or ''}\n{abstract or ''}".lower()
+    if not text.strip():
+        return []
+    found: List[Tuple[str, str, str]] = []
+    seen = set()
+    for term, meaning, level in sorted(ACADEMIC_VOCAB, key=lambda item: (-len(item[0]), item[0])):
+        if " " in term:
+            matched = term in text
+        else:
+            matched = re.search(rf"\b{re.escape(term)}\b", text) is not None
+        if not matched:
+            continue
+        key = term.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append((term, meaning, level))
+        if len(found) >= limit:
+            break
+    return found
 
 def log_substep(code: str, name: str, phase: str) -> None:
     """
@@ -785,6 +845,8 @@ def build_glance_fallback(paper: Dict[str, Any]) -> str:
         str(paper.get("llm_tldr_cn") or paper.get("llm_tldr") or paper.get("llm_tldr_en") or "").strip()
     )
     evidence = str(paper.get("canonical_evidence") or "").strip()
+    if evidence in {"检索回退候选", "retrieval fallback candidate"}:
+        evidence = ""
 
     def first_sentence(text: str) -> str:
         s = (text or "").strip()
@@ -799,8 +861,12 @@ def build_glance_fallback(paper: Dict[str, Any]) -> str:
         tldr = evidence
     tldr = ensure_single_sentence_end(tldr or "基于摘要生成的速览信息。")
 
+    title = str(paper.get("title") or "").strip()
+    normalized_evidence = evidence.strip()
+
     motivation = ensure_single_sentence_end(
-        first_sentence(evidence) or "本文关注一个具有代表性的研究问题，并尝试提升现有方法的效果或可解释性。"
+        first_sentence(normalized_evidence)
+        or (f"这篇工作围绕《{title}》对应的问题展开，重点关注任务中的核心挑战。" if title else "这篇工作围绕一个具体研究问题展开，重点关注任务中的核心挑战。")
     )
 
     method_hint = ""
@@ -808,16 +874,22 @@ def build_glance_fallback(paper: Dict[str, Any]) -> str:
         m = re.search(r"(we (?:propose|present|introduce|develop)[^\\.]{0,200})\\.", abstract, re.I)
         if m:
             method_hint = m.group(1).strip()
-    method = ensure_single_sentence_end(method_hint or "方法与实现细节请参考摘要与正文。")
+    method = ensure_single_sentence_end(
+        method_hint or "方法部分建议结合摘要与原文阅读，重点关注模型设计、训练流程与实验设置。"
+    )
 
     result_hint = ""
     if abstract:
         m = re.search(r"(experiments? (?:show|demonstrate)[^\\.]{0,200})\\.", abstract, re.I)
         if m:
             result_hint = m.group(1).strip()
-    result = ensure_single_sentence_end(result_hint or "结果与对比结论请参考摘要与正文。")
+    result = ensure_single_sentence_end(
+        result_hint or "结果部分建议重点查看与基线方法的对比、消融实验以及泛化表现。"
+    )
 
-    conclusion = ensure_single_sentence_end("总体而言，该工作在所述任务上展示了有效性，并提供了可复用的思路或工具。")
+    conclusion = ensure_single_sentence_end(
+        "总体来看，这项工作提供了可复用的方法思路，是否值得重点阅读可结合实验结果与任务相关性进一步判断。"
+    )
 
     return "\n".join(
         [
@@ -1340,6 +1412,7 @@ def build_markdown_content(
     pmid = str(paper.get("pmid") or "").strip()
     doi = str(paper.get("doi") or "").strip()
     external_link = resolve_external_paper_link(paper)
+    vocabulary_items = extract_study_vocabulary(title, abstract_en)
 
     # 解析速览内容
     glance = paper.get("_glance_overview", "").strip()
@@ -1404,6 +1477,9 @@ def build_markdown_content(
         lines.append(f"tldr: {yaml_escape(display_tldr)}")
     if selection_source:
         lines.append(f"selection_source: {yaml_escape(selection_source)}")
+    if vocabulary_items:
+        vocab_payload = [f"{term} | {meaning} | {level}" for term, meaning, level in vocabulary_items]
+        lines.append(f"vocabulary: [{', '.join(yaml_escape(item) for item in vocab_payload)}]")
 
     # 速览字段
     if glance_motivation:
@@ -1426,6 +1502,12 @@ def build_markdown_content(
 
     lines.append("## Abstract")
     lines.append(abstract_en)
+
+    if vocabulary_items:
+        lines.append("")
+        lines.append("## 英语词汇")
+        for term, meaning, level in vocabulary_items:
+            lines.append(f"- **{term}**：{meaning}（{level}）")
 
     return "\n".join(lines)
 

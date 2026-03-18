@@ -21,6 +21,12 @@ class GenerateDocsMetaParseTest(unittest.TestCase):
             llm_stub.BltClient = DummyBltClient
             sys.modules["llm"] = llm_stub
 
+        if "fitz" not in sys.modules:
+            import types
+
+            fitz_stub = types.ModuleType("fitz")
+            sys.modules["fitz"] = fitz_stub
+
         src_path = root / "src" / "6.generate_docs.py"
         spec = importlib.util.spec_from_file_location("gen6_mod", src_path)
         cls.mod = importlib.util.module_from_spec(spec)
@@ -85,6 +91,27 @@ class GenerateDocsMetaParseTest(unittest.TestCase):
         self.assertIn(("query", "equation-discovery"), tags)
         self.assertNotIn(("query", "sr:composite"), tags)
         self.assertEqual(tags.count(("query", "sr")), 1)
+
+    def test_extract_study_vocabulary_returns_academic_terms(self):
+        vocab = self.mod.extract_study_vocabulary(
+            "Multimodal Dental Image Segmentation Benchmark",
+            "We study multimodal segmentation, robustness, and clinical diagnosis with a benchmark dataset.",
+        )
+        terms = [item[0] for item in vocab]
+        self.assertIn("multimodal", terms)
+        self.assertIn("segmentation", terms)
+        self.assertIn("benchmark", terms)
+
+    def test_build_glance_fallback_avoids_mechanical_retrieval_text(self):
+        text = self.mod.build_glance_fallback(
+            {
+                "title": "Dental Segmentation with Multimodal Learning",
+                "abstract": "",
+                "canonical_evidence": "检索回退候选",
+            }
+        )
+        self.assertNotIn("检索回退候选", text)
+        self.assertIn("**Motivation**", text)
 
 
 if __name__ == "__main__":
