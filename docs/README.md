@@ -6,73 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-18
-- 运行时间：2026-03-19 04:17:02 UTC+8
+- 最新运行日期：2026-03-19
+- 运行时间：2026-03-20 03:59:32 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Sturm-Liouville problems with a boundary condition depending bilinearly on an eigenparameter》（8.3/10）, 《Morphemes Without Borders: Evaluating Root-Pattern Morphology in Arabic Tokenizers and LLMs》（8.2/10）
-- 速读：《Primitive-Root Determinant Densities over Prime Fields and Implications for PRIM-LWE》（8.1/10）, 《AgentTrace: Causal Graph Tracing for Root Cause Analysis in Deployed Multi-Agent Systems》（8.0/10）, 《ECHO: Edge-Cloud Humanoid Orchestration for Language-to-Motion Control》（7.9/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《Interpretable AI-Assisted Early Reliability Prediction for a Two-Parameter Parallel Root-Finding Scheme》（8.2/10）, 《Primitive-Root Determinant Densities over Prime Fields and Implications for PRIM-LWE》（8.1/10）
+- 速读：《On Directed Graphs with the Same Sum over Arborescence Weights》（7.8/10）, 《Physics-informed neural networks for solving strong-field saddle-point equations in strong-field physics with tailored fields》（7.7/10）, 《Novel cluster-algebraic letters for 5- and 6-point QCD processes》（7.6/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202603/18/README](/202603/18/README)
+- 详情：[/202603/19/README](/202603/19/README)
 
 ### 精读区论文标签
-1. [Sturm-Liouville problems with a boundary condition depending bilinearly on an eigenparameter](/202603/18/2603.14817v1-sturm-liouville-problems-with-a-boundary-condition-depending-bilinearly-on-an-eigenparameter)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-2. [Morphemes Without Borders: Evaluating Root-Pattern Morphology in Arabic Tokenizers and LLMs](/202603/18/2603.15773v1-morphemes-without-borders-evaluating-root-pattern-morphology-in-arabic-tokenizers-and-llms)  
+1. [Interpretable AI-Assisted Early Reliability Prediction for a Two-Parameter Parallel Root-Finding Scheme](/202603/19/2603.16980v1-interpretable-ai-assisted-early-reliability-prediction-for-a-two-parameter-parallel-root-finding-scheme)  
    标签：评分：8.2/10
    evidence：检索回退候选
-3. [COAD: Constant-Time Planning for Continuous Goal Manipulation with Compressed Library and Online Adaptation](/202603/18/2603.12488v1-coad-constant-time-planning-for-continuous-goal-manipulation-with-compressed-library-and-online-adaptation)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [Burning rooted graph products](/202603/18/2603.00304v1-burning-rooted-graph-products)  
+2. [Primitive-Root Determinant Densities over Prime Fields and Implications for PRIM-LWE](/202603/19/2603.11196v2-primitive-root-determinant-densities-over-prime-fields-and-implications-for-prim-lwe)  
    标签：评分：8.1/10
-   evidence：检索回退候选
-5. [Complexity Bounds for Hamiltonian Simulation in Unitary Representations](/202603/18/2603.07231v1-complexity-bounds-for-hamiltonian-simulation-in-unitary-representations)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
-6. [Exceptional horns in $n$-root graphene and Lieb photonic ring lattices](/202603/18/2602.16670v1-exceptional-horns-in-n-root-graphene-and-lieb-photonic-ring-lattices)  
-   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Primitive-Root Determinant Densities over Prime Fields and Implications for PRIM-LWE](/202603/18/2603.11196v1-primitive-root-determinant-densities-over-prime-fields-and-implications-for-prim-lwe)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
-2. [AgentTrace: Causal Graph Tracing for Root Cause Analysis in Deployed Multi-Agent Systems](/202603/18/2603.14688v1-agenttrace-causal-graph-tracing-for-root-cause-analysis-in-deployed-multi-agent-systems)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
-3. [ECHO: Edge-Cloud Humanoid Orchestration for Language-to-Motion Control](/202603/18/2603.16188v1-echo-edge-cloud-humanoid-orchestration-for-language-to-motion-control)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-4. [Counting Polynomials via Galois Actions on Root Subsets](/202603/18/2603.14617v1-counting-polynomials-via-galois-actions-on-root-subsets)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-5. [Robust Automatic Differentiation of Square-Root Kalman Filters via Gramian Differentials](/202603/18/2603.13559v1-robust-automatic-differentiation-of-square-root-kalman-filters-via-gramian-differentials)  
+1. [On Directed Graphs with the Same Sum over Arborescence Weights](/202603/19/2603.11451v1-on-directed-graphs-with-the-same-sum-over-arborescence-weights)  
    标签：评分：7.8/10
    evidence：检索回退候选
-6. [A geometric proof of Lagrange's theorem for continued fractions](/202603/18/2603.12425v1-a-geometric-proof-of-lagranges-theorem-for-continued-fractions)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-7. [Logarithmically enhanced hyperbolic square-root deformation of Starobinsky inflation](/202603/18/2603.14743v1-logarithmically-enhanced-hyperbolic-square-root-deformation-of-starobinsky-inflation)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-8. [Globally stable, ghost-free hyperbolic square-root deformation of the Starobinsky model](/202603/18/2603.09944v1-globally-stable-ghost-free-hyperbolic-square-root-deformation-of-the-starobinsky-model)  
+2. [Physics-informed neural networks for solving strong-field saddle-point equations in strong-field physics with tailored fields](/202603/19/2603.15786v1-physics-informed-neural-networks-for-solving-strong-field-saddle-point-equations-in-strong-field-physics-with-tailored-fields)  
    标签：评分：7.7/10
    evidence：检索回退候选
-9. [Intelligent Materials Modelling: Large Language Models Versus Partial Least Squares Regression for Predicting Polysulfone Membrane Mechanical Performance](/202603/18/2603.13834v1-intelligent-materials-modelling-large-language-models-versus-partial-least-squares-regression-for-predicting-polysulfone-membrane-mechanical-performance)  
+3. [Novel cluster-algebraic letters for 5- and 6-point QCD processes](/202603/19/2603.16743v1-novel-cluster-algebraic-letters-for-5--and-6-point-qcd-processes)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+4. [Security-by-Design for LLM-Based Code Generation: Leveraging Internal Representations for Concept-Driven Steering Mechanisms](/202603/19/2603.11212v1-security-by-design-for-llm-based-code-generation-leveraging-internal-representations-for-concept-driven-steering-mechanisms)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+5. [Anisotropic Inviscid Limit for the Navier-Stokes Equations with Transport Noise Between Two Plates](/202603/19/2603.13199v2-anisotropic-inviscid-limit-for-the-navier-stokes-equations-with-transport-noise-between-two-plates)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+6. [Practical MCTS-based Query Optimization: A Reproducibility Study and new MCTS algorithm for complex queries](/202603/19/2603.16474v1-practical-mcts-based-query-optimization-a-reproducibility-study-and-new-mcts-algorithm-for-complex-queries)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+7. [Learning Image-Text Matching with Optimal Partial Transport](/202603/19/2603.14349v1-learning-image-text-matching-with-optimal-partial-transport)  
    标签：评分：6.9/10
    evidence：检索回退候选
-10. [Eleven Primitives and Three Gates: The Universal Structure of Computational Imaging](/202603/18/2603.13521v1-eleven-primitives-and-three-gates-the-universal-structure-of-computational-imaging)  
+8. [Cryptographic Runtime Governance for Autonomous AI Systems: The Aegis Architecture for Verifiable Policy Enforcement](/202603/19/2603.16938v1-cryptographic-runtime-governance-for-autonomous-ai-systems-the-aegis-architecture-for-verifiable-policy-enforcement)  
    标签：评分：6.9/10
    evidence：检索回退候选
-11. [Lattice Discrete Particle Model (LDPM): Comparison of Various Time Integration Solvers and Implementations](/202603/18/2603.13190v1-lattice-discrete-particle-model-ldpm-comparison-of-various-time-integration-solvers-and-implementations)  
+9. [Steve-Evolving: Open-World Embodied Self-Evolution via Fine-Grained Diagnosis and Dual-Track Knowledge Distillation](/202603/19/2603.13131v1-steve-evolving-open-world-embodied-self-evolution-via-fine-grained-diagnosis-and-dual-track-knowledge-distillation)  
    标签：评分：6.8/10
+   evidence：检索回退候选
+10. [Deconstructing the Failure of Ideal Noise Correction: A Three-Pillar Diagnosis](/202603/19/2603.12997v1-deconstructing-the-failure-of-ideal-noise-correction-a-three-pillar-diagnosis)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+11. [Diffusion Models Generalize but Not in the Way You Might Think](/202603/19/2603.13419v1-diffusion-models-generalize-but-not-in-the-way-you-might-think)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
