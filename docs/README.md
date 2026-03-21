@@ -6,61 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-20
-- 运行时间：2026-03-21 04:09:20 UTC+8
+- 最新运行日期：2026-03-21
+- 运行时间：2026-03-22 03:48:20 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Peltier cooling in Corbino-geometry quantum Hall systems》（8.5/10）, 《Norm-trace and Kloosterman sums in finite semi-simple algebras》（8.0/10）
-- 速读：《Robust Near-Critical Dynamics in Heavy-Tailed Neural Networks》（7.8/10）, 《Beyond the Covariance Trap: Unlocking Generalization in Same-Subject Knowledge Editing for Large Language Models》（7.7/10）, 《CRASH: Cognitive Reasoning Agent for Safety Hazards in Autonomous Driving》（7.6/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Maximising homomorphism counts between digraphs》（7.8/10）, 《AIMER: Calibration-Free Task-Agnostic MoE Pruning》（7.8/10）, 《Axis-Aligned Relaxations for Mixed-Integer Nonlinear Programming》（7.7/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202603/20/README](/202603/20/README)
+- 详情：[/202603/21/README](/202603/21/README)
 
 ### 精读区论文标签
-1. [Peltier cooling in Corbino-geometry quantum Hall systems](/202603/20/2603.18922v1-peltier-cooling-in-corbino-geometry-quantum-hall-systems)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [Norm-trace and Kloosterman sums in finite semi-simple algebras](/202603/20/2603.18511v1-norm-trace-and-kloosterman-sums-in-finite-semi-simple-algebras)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Robust Near-Critical Dynamics in Heavy-Tailed Neural Networks](/202603/20/2603.18478v1-robust-near-critical-dynamics-in-heavy-tailed-neural-networks)  
+1. [Maximising homomorphism counts between digraphs](/202603/21/2603.18847v1-maximising-homomorphism-counts-between-digraphs)  
    标签：评分：7.8/10
    evidence：检索回退候选
-2. [Beyond the Covariance Trap: Unlocking Generalization in Same-Subject Knowledge Editing for Large Language Models](/202603/20/2603.15518v1-beyond-the-covariance-trap-unlocking-generalization-in-same-subject-knowledge-editing-for-large-language-models)  
+2. [AIMER: Calibration-Free Task-Agnostic MoE Pruning](/202603/21/2603.18492v1-aimer-calibration-free-task-agnostic-moe-pruning)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+3. [Axis-Aligned Relaxations for Mixed-Integer Nonlinear Programming](/202603/21/2603.18458v1-axis-aligned-relaxations-for-mixed-integer-nonlinear-programming)  
    标签：评分：7.7/10
    evidence：检索回退候选
-3. [CRASH: Cognitive Reasoning Agent for Safety Hazards in Autonomous Driving](/202603/20/2603.15364v1-crash-cognitive-reasoning-agent-for-safety-hazards-in-autonomous-driving)  
+4. [Stochastic 3-D Foliage Modeling at 80 GHz: Experimental Validation and Ray-Tracing Simulations](/202603/21/2603.18810v1-stochastic-3-d-foliage-modeling-at-80-ghz-experimental-validation-and-ray-tracing-simulations)  
    标签：评分：7.6/10
    evidence：检索回退候选
-4. [Make it SING: Analyzing Semantic Invariants in Classifiers](/202603/20/2603.14610v2-make-it-sing-analyzing-semantic-invariants-in-classifiers)  
+5. [General multi-Novikov algebras, multi-differential algebras and their free constructions](/202603/21/2603.16766v1-general-multi-novikov-algebras-multi-differential-algebras-and-their-free-constructions)  
    标签：评分：7.6/10
    evidence：检索回退候选
-5. [Accurate electronic and optical properties of bulk antiferromagnet CrSBr via a tuned hybrid density functional with on-site corrections](/202603/20/2603.13494v1-accurate-electronic-and-optical-properties-of-bulk-antiferromagnet-crsbr-via-a-tuned-hybrid-density-functional-with-on-site-corrections)  
+6. [Closing Trees into Unicyclic Counterexamples](/202603/21/2603.17114v1-closing-trees-into-unicyclic-counterexamples)  
    标签：评分：7.5/10
    evidence：检索回退候选
-6. [Variations of Demushkin Groups that are not Absolute Galois Groups](/202603/20/2603.15464v1-variations-of-demushkin-groups-that-are-not-absolute-galois-groups)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-7. [Improved GNSS Positioning in Urban Environments Using a Logistic Error Model](/202603/20/2603.16420v1-improved-gnss-positioning-in-urban-environments-using-a-logistic-error-model)  
+7. [Hidden Zeeman Field in Odd-Parity Magnets: An Ideal Platform for Topological Superconductivity](/202603/21/2603.15147v1-hidden-zeeman-field-in-odd-parity-magnets-an-ideal-platform-for-topological-superconductivity)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Environment-aware Near-field UE Tracking under Partial Blockage and Reflection](/202603/20/2603.12896v1-environment-aware-near-field-ue-tracking-under-partial-blockage-and-reflection)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-9. [Significant Wave Height Estimation Incorporating Second-Order Scattering](/202603/20/2603.17116v1-significant-wave-height-estimation-incorporating-second-order-scattering)  
+8. [Keys on Doormats: Exposed API Credentials on the Web](/202603/21/2603.12498v2-keys-on-doormats-exposed-api-credentials-on-the-web)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Physics-informed neural networks for solving saddle-point equations in strong-field physics with tailored fields](/202603/20/2603.15786v2-physics-informed-neural-networks-for-solving-saddle-point-equations-in-strong-field-physics-with-tailored-fields)  
-   标签：评分：6.8/10
+9. [Finite and infinite frieze patterns from p-angulations and a generalization of Weyl groupoids](/202603/21/2603.18975v1-finite-and-infinite-frieze-patterns-from-p-angulations-and-a-generalization-of-weyl-groupoids)  
+   标签：评分：6.6/10
    evidence：检索回退候选
-11. [Post-processing Probabilistic Forecasts of the Solar Wind by Data Mining Similar Scenarios](/202603/20/2603.11284v1-post-processing-probabilistic-forecasts-of-the-solar-wind-by-data-mining-similar-scenarios)  
-   标签：评分：6.8/10
+10. [The non-abelian Leopoldt conjecture and equalities of $\mathcal{L}$-invariants](/202603/21/2603.18961v1-the-non-abelian-leopoldt-conjecture-and-equalities-of-mathcall-invariants)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+11. [Simplest cubic fields with small class number](/202603/21/2603.18802v1-simplest-cubic-fields-with-small-class-number)  
+   标签：评分：6.5/10
    evidence：检索回退候选
 
 
