@@ -1,0 +1,441 @@
+Title: SseRex: Practical Symbolic Execution of Solana Smart Contracts
+
+URL Source: https://arxiv.org/pdf/2603.16349v1
+
+Published Time: Wed, 18 Mar 2026 01:08:32 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# SseRex : Practical Symbolic Execution of Solana Smart Contracts 
+
+Tobias Cloosters 1[0009-0008-3682-0197] , Pascal Winkler 1[0009-0002-8324-4993] ,Jens-Rene Giesen 1[0009-0004-0685-6237] , Ghassan Karame 2⋆[0000-0002-2828-4071] ,and Lucas Davi 1[0000-0002-7322-2777]  
+
+> 1
+
+University of Duisburg-Essen, Essen, Germany. {firstname.lastname}@uni-due.de  
+
+> 2
+
+Ruhr University Bochum, Bochum, Germany. ghassan@karame.org 
+
+Abstract. Solana is rapidly gaining traction among smart contract de-velopers and users. However, its growing adoption has been accompanied by a series of major security incidents, which have spurred research into automated analysis techniques for Solana smart contracts. Unfortunately, existing approaches do not address the unique and complex account model of Solana. In this paper, we propose SseRex , the first symbolic execution vulnerability detection approach for finding Solana-specific bugs such as missing owner checks, missing signer checks, and missing key checks, as well as arbitrary cross-program invocations. Our evaluation of 8,714 bytecode-only contracts shows that our approach outperforms existing approaches and identifies potential bugs in 467 different contracts. Additionally, we analyzed 120 open-source Solana projects and conducted in-depth case studies on four of them. Our findings reveal that subtle, easily overlooked issues often serve as the root cause of severe exploits, further highlighting the need for specialized analysis tools like SseRex .
+
+## 1 Introduction 
+
+The Solana blockchain is gaining popularity due to its ability to provide smart contract functionality with high transaction throughput and low transaction fees [35, 56]. Solana smart contracts, also called programs , are usually written in Rust and compiled to an eBPF-based bytecode [19]. Unlike the Linux kernel’s eBPF, it lacks the control-flow verification mechanism [13]. This lack of validation has led to numerous Solana exploits in recent years [12, 27, 59], resulting in a loss of more than $523 million. The exploited contracts exhibited bugs ranging from logical errors, like missing input data validation [27, 59], to missing signature verification, as seen in the Wormhole exploit [7]. Solana programs separate data from logic to employ concurrent transaction execution [9, 21], requiring the full context state in every Solana transaction. As this context is created by a potentially malicious creator of the transaction, there  
+
+> ⋆
+
+The author was additionally affiliated with NEC Laboratories Europe at the time of writing. 
+
+> arXiv:2603.16349v1 [cs.CR] 17 Mar 2026
+
+is a significant risk that such a context is manipulated. To mitigate this, the Solana runtime provides trustworthy metadata—validated a priori—such as public keys, account owners, account signatures, and cryptographically derived accounts—so-called program-derived addresses (PDAs). While automated validation exists, effective validation remains highly dependent on the contract’s specific goal. As a remedy, the Anchor [1] framework employs Rust types and macros to automatically check accounts and metadata. Yet, Anchor cannot cover the full space of attacks; developers must still manually perform signer checks and verify data dependencies such as authority ownership of a given wallet. Recently, several approaches have been proposed to detect vulnerabilities in Solana. VRust [15] analyzes source code for specific bug patterns; however, source code is largely unavailable for Solana contracts. Further, VRust suffers from a high false positive rate, e.g., only one of the 108 reported bugs was indeed a missing key check. FuzzDelSol [44] applies fuzzing to a custom Solana runtime to detect bugs during program execution. Fuzzing fundamentally prioritizes speed and is limited by the high computational overhead required to implement effective oracles, and its sensitivity to “magic bytes” in the input—such as public keys and type identifiers—which are essential for exploring meaningful execution paths. In general, current analysis approaches have a limited view of the execution context and cannot holistically evaluate a contract’s code. For instance, VRust’s patterns need explicit adaptation to find errors in Anchor programs, whereas FuzzDelSol cannot analyze Anchor contracts, which currently make up at least 
+
+43 % of deployed contracts. In this paper, we introduce SseRex , the first symbolic execution framework 
+
+for vulnerability detection in Solana programs. Symbolic execution, by design, comprehensively captures data flows and program constraints [25, 49]. As our approach demonstrates, it enables precise tracking of all account verifications and their relations, without sacrificing generality, as evidenced by its ability to analyze Anchor contracts (in contrast to previous work [15, 44]). SseRex counteracts path explosion via static pre-analysis to resolve account deserialization and string formatting. Further, we develop hybrid symbolic lengths, which avoid symbolic pointers but allow symbolic data lengths. We design specialized oracles for Solana-specific issues—missing key, owner, or signer checks—that evaluate whether an execution path leads to unexpected or unsafe behavior. Particularly, they flag critical actions—such as cross-program invocations or state-modifying account writes—occurring without proper verification of the involved entities. We comprehensively evaluate SseRex on all deployed Solana contracts, a dataset of 8,714 bytecode-only contracts, 120 projects with source code from the Anchor registry, and previous approaches’ datasets [15, 44]. Our results show that 
+
+SseRex significantly reduces false positives and discovers more vulnerabilities than previous work. In particular, the large-scale study identifies 467 vulnerable contracts. We performed intensive manual analysis of a sample of 30 reported bugs, and verified 26 as true bugs ( 87 % true positive rate). Finally, we also present four detailed case studies to showcase the challenges of finding bugs in Solana. 2,owns seed  
+
+> Program Account
+> Data Account
+> Attacker-generated Transaction
+> Malicious
+> Data Account
+> Unsigned
+> User Account
+> Malicious Program
+> owns
+> System Program
+> PDA Account
+> Missing Owner Check Arbitrary CPI Missing Signer Check
+> Fig. 1: Malicious attack transactions in Solana and their targets.
+
+To foster research on the security of Solana programs, we will release all components of SseRex publicly on GitHub. 
+
+## 2 Background 
+
+Solana uses an account-based model with stateless execution, where accounts store program bytecode or data [20]. Solana programs receive all data via instructions and cannot access any external state. Programs commonly dispatch logic based on instruction bytes, as in the Anchor framework [1]. The runtime provides metadata for each account—including owner, signer field, executable flag, and balance in lamports (1 bn lamports = 1 SOL) [48]. The signer field 
+
+indicates that the account signed the transaction [22]. Programs can interact via cross-program invocation (CPI) [46] and delegate access using Program Derived Addresses (PDAs) deterministically derived from program ID and arbitrary seed bytes [47]. 
+
+2.1 Solana’s Threat Model 
+
+Since the creator of a transaction can freely select input data, programs must carefully validate inputs before performing critical actions, e.g., transferring funds, writing data to an account, or performing CPI [33]. As shown in Figure 1, there are three strategies to manipulate the execution context. First, an attacker may impersonate another user and authorize a transaction due to a missing signer check (MSC) [3, 33, 43]. For example, in Figure 1, the attacker supplies an unsigned user account and authorizes access to the data account of the impersonated user, as the program lacks an explicit signer check. As illustrated in Listing 1, lines 11–14, the contract verifies the authority key but omits an 
+
+is_signer check that confirms private key control for the authority. Without the signer check, anyone can supply the correct key. Second, attackers might craft accounts containing counterfeit state. In this case, a missing owner check (MOC) can trick the program into performing critical actions [3, 43]. Listing 1, lines 7– 9 read data of the vault_account which is supplied as an argument to the instruction. However, as shown in Figure 1, a program account owns the data 31 pub fn process_instruction(program_id: &Pubkey, accounts: &[AccountInfo], ix_data: &[u8],) -> ProgramResult {                  
+
+> 2let vault_account = &accounts.iter_mut().nth(0)?; // vault state [owner check]
+> 3let authority_account = &accounts.iter_mut().nth(1)?; // admin [signer check]
+> 4let target_program = &accounts.iter_mut().nth(2)?; // target program [acpi]
+> 5let cpi_accounts: Vec<AccountInfo> = accounts_iter.cloned().collect(); // cpi args
+> 67// MOC assert_eq!(vault_account.owner, program_id);
+> 8let data = vault_account.try_borrow_data()?; // trusts unverified account
+> 9let balance = u64::from(&data[0..8].into()); // data from unverified account
+> 10 11 // MSC if !authority_account.is_signer { return Err(...) }
+> 12 let expected_authority = ...; // often from another account
+> 13 if authority_account.key != &expected_authority {return Err(...);}
+> 14 // attacker supplies correct key without needing the private key
+> 15 16 let cpi_ix = solana_program::instruction::Instruction {
+> 17 program_id: *target_program.key, // unvalidated CPI target
+> 18 accounts: cpi_accounts, // attacker-controlled accounts
+> 19 data: ix_data.to_vec()}; // attacker-controlled CPI data
+> 20 invoke(&cpi_ix, &cpi_accounts)?;// attacker can manipulate program and accounts
+> 21 // ...
+
+Listing 1: The contract exhibits multiple vulnerabilities that an attacker can exploit. 
+
+account. Without verifying that the data read originates from an account owned by the program, the program trusts unverified data. Third, improper use of CPI allows malicious programs to gain unauthorized privileges [3, 43]. Listing 1 lines 16–20 invoke a CPI solely on an address given by the attacker. As the accounts given to the CPI are all attacker-controlled, it is possible to manipulate or even write into those accounts and call arbitrary programs. Since programs can delegate privileges to call targets, an attacker can call their own malicious program but with the caller’s privileges. That is, using a malicious arbitrary CPI (ACPI) target, an attacker gains control over the program’s PDA accounts. In general, the design of Solana requires developers to add several specific checks even for simple use cases, e.g., a program requires an owner check once it reads the ID of an authority from its storage account. The actual validation of the authority subsequently needs to check the public key and signer flag. This makes errors and missing checks very likely. Apart from missing checks and ACPI, Solana suffers from other security issues that we omit in our research. Solana programs receive all accounts as untyped serialized bytes. Hence, programs have to scrutinize the exact data structure and type. Account confusion occurs when an attacker sends an account that is assumed to be the correct type due to common serialized forms but actually is of a different type, leading to unintended behavior. Second, integer overflows and underflows occur when integers grow past their natural bit boundaries. While Rust mitigates them in debug mode, the release mode optimizes overflows and wrapping behavior. So, paths in bytecode that result in overflows may be pruned by the compiler resulting in many incorrectly detected or missed integer overflows. Additionally, the Solana VM uses overflows explicitly to clear registers at runtime. Thus, we ignore integer overflows to reasonably reduce false negatives. Finally, reentrancy-like attacks reenter the 4original contract. While Solana hinders Ethereum-like reentrancy, a versatile attacker could route through multiple contracts to reenter a call. However, due to Solana’s CPI depth limit of 4 calls, the pseudo reentrancy will only work once as direct recalls are not allowed. Further, reentrancy attacks are only feasible in specific setups where the initial caller controls owner checked accounts of the victim as otherwise, writing into the data of the account is stopped by Solana. 
+
+2.2 Differences to Ethereum 
+
+Unlike Ethereum, where trusted variables like msg.sender guarantee transaction origin, Solana requires explicit signer and owner checks for each account, as programs can receive any account via instructions. Third-party accounts and CPI targets are selected by index rather than by key, creating risks of account confusion and missing authorization checks that can lead to vulnerabilities. Solana forbids the infamous Reentrancy vulnerability by limiting the depth of nested calls to 4 and disallowing direct reentrant calls. While this technically still allows various Reentrancy attacks, these are mitigated in practice due to data ownership and decoupled contract logic. 
+
+## 3 Related Work 
+
+Prior research has explored smart contract security, yet few approaches address the unique challenges of Solana’s account-based, stateless execution. 
+
+3.1 Vulnerability Detection in Ethereum 
+
+Ongoing smart contract security research largely targets Ethereum. Static analysis approaches [6, 8, 24, 50, 53] face scalability limits and often miss complex data/control-flow vulnerabilities, such as reentrancy [10]. Dynamic techniques like fuzzing [38, 42, 57] are effective for diverse bugs, but face challenges on Solana programs as described in Section 3.2. Symbolic execution has gained traction for Ethereum due to small contract sizes [14, 23, 29, 31, 32, 34, 45, 52, 55]. Tools like Manticore [32] and hybrid methods, which combine symbolic execution with fuzzing [14] or large-language models [45] provide comprehensive path exploration. However, none of these approaches transfer to Solana due to its distinct programming model and vulnerabilities (see also Section 2.2). Other lines of work include runtime monitoring [37, 51], which requires platform modifications, and machine-learning-based analysis [26, 40, 54]. These methods show promise but rely on large datasets and reliable ground truth, which are currently unavailable for Solana. 
+
+3.2 Vulnerability Detection in Solana 
+
+As Solana’s popularity grows, ensuring its security is paramount. Existing tools like VRust [15] and FuzzDelSol [44] cannot analyze all programs comprehensively. 5Symbolic Execution Engine    
+
+> Symbolic Preparations
+> Critical Action
+> Initial Symbolic Account Structure
+> Merge Deserialization Symbolize Account Length
+> Skip string_format
+> Lifting
+> BN IL
+> Solana Blockchain
+> Relocations
+> Lift sBPF
+> Report
+> Vulnerability Analysis
+> ACPI Check
+> Signer Checks
+> Owner Checks
+> Exit Check
+> Symbolic Exploration Strategies
+> CPI Main Random
+> Exploit
+> Concretize Input
+> Generate Exploit
+
+Fig. 2: Architecture of SseRex 
+
+VRust relies on Rust’s MIR and requires source code, which is unavailable for 
+
+98 % of deployed programs [44], and raises many false positives—only 12 of 160 reported issues in eight projects were actual bugs [15]. Some bug oracles cover very specific cases (e.g., unchecked Solana Program Library contract IDs), while others rely on small whitelists, raising completeness concerns. FuzzDelSol [44] integrates fuzzing into Solana’s runtime and does not require source code, but cannot handle complex input structures of Anchor-based contracts used by 43 % of deployed programs. Solana’s stateless nature makes fuzzing challenging: all input data—including multiple accounts and instruction fields—must be generated precisely to achieve meaningful coverage, otherwise, fuzzing risks low precision. FuzzDelSol ignores account trustworthiness in arbitrary CPI and requires extra knowledge of vulnerable functions for its missing key check (MKC) oracle [44]. Recent efforts apply formal verification to Solana [58], but they target the underlying eBPF runtime and therefore face an entirely different class of vulnerabilities than Solana programs. Andreina et al. combined a developer study with static analysis of Solana bytecode [2]. The analysis finds few bugs and only targets arbitrary program invocations, while the study shows developers often neglect security, highlighting the need for better vulnerability detection. The bug detection mechanism is central to any vulnerability scanner, yet, existing tools’ bug oracles vastly differ. The bug oracles’ limitations show that Solana vulnerabilities are complex and often undecidable, leading to large variations in the results. 64 Design of SseRex 
+
+This section presents the design of SseRex , the first symbolic execution framework for effectively detecting diverse vulnerabilities in Solana contracts. Our main goal is to avoid state explosion while at the same time achieving high coverage. Further, we aim to cover the full set of contracts, meaning that we can analyze contracts for which source code is unavailable and contracts created with Anchor. As a result, our approach tackles the key limitations of previous work in this field [15, 44], and raises fewer false alarms. At a high level, the functionality of SseRex is separated into four phases, which are illustrated in Figure 2: (1) Lifting: We dump the blockchain contracts’ ELF files containing sBPF bytecode instructions and prepare the files using Binary Ninja, i.e., lift the bytecode to IL and apply relocations; (2) Symbolic Preparations: We load the lifted bytecode into the symbolic execution engine and prepare the symbolic state optimized for Solana programs; (3) Symbolic Exploration: Our symbolic exploration strategies advance the symbolic state towards critical actions, where attackers may influence the contract’s state on the blockchain; (4) Vulnerability Analysis: Upon reaching points of critical actions, the symbolic state is evaluated to assess the vulnerability and a report is generated if missing checks are detected. Last but not least, the detailed report facilitates automatic exploit generation, i.e., constructing proof-of-concept exploits. SseRex can automatically synthesize exploit transactions for reported vulnerabilities. These exploits are valid for the analyzed path constraints, but they depend on a compatible initial blockchain state. Hence, in practice, exploitability depends on whether such a state is reachable on-chain. In future work, one could extend the capabilities of SseRex to generate full precondition-establishing transaction chains, including interactions with additional contracts. By focusing on exploit generation rather than transaction chains, SseRex isolates and exposes security-critical behaviors with high precision. 
+
+4.1 Initial Symbolic Account Structure 
+
+Initially, we prepare the symbolic state and optimize the computationally expensive symbolic pointers and string operations as follows. 
+
+Deserialization. All Solana contracts deserialize account data from the input, posing two challenges for symbolic execution. First, deserialization produces many similar states, e.g., an account’s signer field is either true or false. Just from the three boolean account fields (signer, writable, executable), 23 = 8 states are created. For example 10 accounts result in (2 3)10 ≈ 10 9 states. We address this by merging similar states into a single state during deserialization (Section 5.2), leveraging common deserialization routines from the Solana framework. Second, the account data structure contains fields of variable length, in particular its main data field, which causes the deserialized state to contain variably positioned buffers. The serialized data stores accounts sequentially, making each account’s start depend on preceding lengths. The symbolic pointers 7to the account data would accumulate these lengths, e.g., the pointer for the tenth account will be the sum of all nine preceding buffer lengths plus a constant, which would exceed the solving capabilities of the symbolic engine. We avoid variably positioned buffers by using a constant maximum size during deserialization and symbolizing the lengths afterward in the deserialized state (cf. Section 5.3). 
+
+String Formatting. String operations are a challenge for symbolic execution, in particular, formatting numbers. The bytecode to convert a symbolic number to its decimal string representation produces complex dependencies between the symbolic bits and the resulting string. Consequently, when this string is used, the solver has to solve for a string representation that satisfies the constraints of the symbolic number, which often stalls the execution engine. However, Solana programs almost exclusively use string formatting for logging, which does not affect the outcome of transactions. Therefore, we search for string format/logging calls and skip these functions. Here, our starting point is the Solana system call used for logging and the string format function of Rust, which is very stable and can be identified from its bytecode. Then, we analyze the calls to these functions and identify sequences of 
+
+format , log , and string deallocation to ensure that the formatted string is only used for logging. When all checks succeed, we skip this call to format during symbolic execution. 
+
+4.2 Exploration for Critical Actions 
+
+During the main analysis stage, we use several exploration strategies to prioritize execution paths in the contracts that are more likely to be security-critical, which decreases the time for bug discovery. That said, given sufficient time, SseRex 
+
+will still analyze the complete contract. In general, our exploration strategies prefer uncovered paths and prune paths that deterministically lead to abort 
+
+(cf. Section 5.1). Further, switching strategies and selecting different execution paths prevents stalling of the symbolic exploration in complex states. For SseRex ,we developed three strategies to target critical actions within Solana programs. (1) The CPI exploration only follows paths that are statically determined to reach the Solana system call for CPI .(2) The Main exploration identifies the core switch tree, which Solana programs commonly employ to dispatch the desired high-level instruction number to its bytecode, and leads the symbolic execution into the leaves of this tree. This is where most contracts implement their logic. (3) The Random exploration extends coverage beyond common code paths, selecting paths at random. This is especially useful to guide the symbolic executor through code sections that the other strategies might not consider interesting. In our evaluation, we leverage all explorations and apply each strategy uniformly to uncover diverse bugs. Specifically, we execute each of the three exploration strategies round-robin until a critical action is found, or at most for 
+
+10 min . This time limit has proven sufficient for progress while remaining small enough to avoid stalling in undecidable path constraints. Further, a strategy is skipped if its target cannot be reached (e.g., a syscall for CPI). 84.3 Vulnerability Analysis 
+
+The symbolic exploration of SseRex analyzes the control flow to find critical actions that are vulnerable without proper validation. When such a state is reached, we test for the conditions described in this section and generate a report if validation is missing. SseRex reacts to unintended program behavior that results in security-critical actions, regardless of whether the root cause is a missing validation, flawed access-control logic, incorrect state transitions, or subtle memory-safety violations. The underlying symbolic execution reasons about full program behavior and can still expose traditional low-level root causes (e.g., memory corruption effects) when they manifest as vulnerable Solana critical actions. We begin by outlining the types of checks we assess, followed by criteria for identifying when a missing check constitutes a vulnerability in the context of certain critical actions. 
+
+Signer Checks. Every input account may be a signer, indicated by the signer 
+
+field. SseRex checks which signer flags are required by the path constraints for each critical action. A program function without any signer check can be called by anyone, which is usually not desired (cf. Section 7), so we consider this a missing signer check bug. Since full business logic is unavailable (without source code), it is not possible to precisely identify which accounts require signer checks. Thus, we consider a single signer check on any account to be sufficient. Since paths may branch on the signer field without affecting the bottom line (similar to deserialization, cf. Section 4.1), we double-check and re-execute the path to the current state with the same constraints as before, but all signer fields set to false. Thus, we can confidently evaluate if any signer fields are checked on the path to the critical action, and if not, report a Missing Signer Check (MSC) .
+
+Owner and Key Checks. There are multiple ways to verify the authenticity of an account. (1) Every account has a unique address/ID, bound to its key pair. This can be used to identify an account uniquely. (2) Accounts have an owner, either a contract, or the system program in the case of user accounts. Solana programs can verify the ownership of accounts, in particular, that the contract itself owns an account. (3) Programs may cryptographically derive related accounts (PDAs) using one account’s public key. Since an attacker cannot control the address of the PDA, this account is also considered trustworthy. (4) An account that is written to is considered trustworthy because accounts can only be modified by the owner. As a result, changing account data implies an owner check. This also holds if an account write occurs after the critical action, as the runtime discards any changes when encountering an exception. Consequently, the accounts vulnerable to missing owner checks are only read. In the first two cases, the owner or key field is compared to other data. Since the bytecode does not document which value a key/owner field must be compared with, we consider any check on the key/owner valid. The fourth case, implicit owner checks, requires the execution of the contract from the entry point until 9the contract gracefully terminates. Hence, we gather account write operations not only until we reach a critical action but also continue to collect them afterward. 
+
+Authority Checks. Contracts frequently implement authority verification by combining owner checks and signer checks, i.e., they validate that a trusted 
+
+account has signed the transaction. In this context, we consider an account trusted if the contract has validated its public key against either a constant value or the data stored in an owner-checked account. We consider this authority check sufficient to protect a transaction from manipulated data. Assessing more complex scenarios, such as multi-authority schemes, requires additional information about the purpose of each account, which is not available at the bytecode level. 
+
+4.4 Vulnerabilities 
+
+Vulnerabilities arise when critical actions are performed without adequate input validation. In the following, we describe critical actions and how we validate the checks to identify vulnerable critical actions . We focus on generic oracles that can be applied to a wide range of contracts. In particular, we exclude oracles for vulnerabilities that are already fully mitigated by current toolchains: The safe-math option of Rust generates code safe from integer overflows, type confusion is averted by serialization libraries that use type IDs, and the updated Solana SDK mitigates the missing system account check known from the Wormhole incident. 
+
+Unchecked Account Writes. Modifying persistent data stored on the blockchain, i.e., writes to account data, is a critical action. This includes metadata fields like the account’s lamport balance as well as contract-specific data stored in data accounts, such as token balances. We consider account writes vulnerable if they lack sufficient owner/key checks (MOC) or are performed without a signer check (MSC). In addition, the execution path must exit gracefully; otherwise, the runtime will rollback and invalidate the transaction. We consider any account checked for which any of the following is true: (1) Owner field compared (2) Public key compared to constant value (3) Data field written or changed (4) PDA derived from public key. If there is any used but unchecked account ( read_accounts \checked_accounts ), and there is no trusted signer ( authority check ), we classify this as a missing owner check vulnerability. Both checks may also be missing in combination (MOC/MSC), which grants even more freedom to an attacker. 
+
+Arbitrary Cross-Program Invocation (ACPI). A CPI is a (privileged) delegated call of a Solana program to other contracts. This is a critical action because it allows the target to perform state modifications on behalf of the caller. 
+
+SseRex tests each CPI to determine if the target is arbitrary, whether the source of the target address is not owner-checked (MOC), and if there is no signer check (MSC). If all these conditions are met, we consider this a vulnerability. If either an MOC or an MSC is present, the CPI may still be vulnerable. However, analyzing such cases requires access to the source code and a deep understanding of the contract’s business logic. 10 5 Implementation 
+
+Implementing SseRex required substantial engineering efforts. First, we added bytecode lifting ( 400 loc ) to the reverse-engineering toolkit Binary Ninja [4, 39] including precise instruction semantics and calling conventions for automated symbolic execution. Next, we built symbolic execution for Solana atop the SENinja [5] AMD64 framework, requiring 3 kloc , forming the foundation for implementing Solana-specific oracles and vulnerability detection ( 4 kloc ). The implementation follows the design in Section 4 to search critical actions using custom symbolic exploration and vulnerability oracles. We also optimized the symbolic exploration to handle variable data lengths (Section 5.3) and string formatting (Section 5.4). For example, the Neodyme workshop examples (Section 6.1) print formatted log strings, which caused a path explosion and never reached the critical actions. Further, Anchor contracts perform input-length checks; fixed lengths fail the check and fully symbolic lengths cause a constraint explosion. The hybrid symbolic length avoids both issues (Section 5.3). 
+
+5.1 Exploration and Static Path Pruning Exploration. SseRex begins exploration at the entry point, executing instructions until the next symbolic branch. This is when the subsequent instruction is ambiguous, e.g., due to a conditional jump that depends on a symbolic value, which causes a state fork into two or more program states to execute. Similar states may be merged (cf. Section 5.2), but generally, the executor must select one state to follow. Effective selection or pruning of states can greatly improve symbolic exploration efficiency. SseRex keeps track of covered instructions and selects the state to execute as follows: (1) Continue executing the current state if its instructions are not yet covered. (2) Select any uncovered deferred state. (3) Continue executing the current state if it is not at the program exit or in an unsatisfiable condition. (4) Select the most recently forked state. (5) Select a state at random. 
+
+Path Pruning. The exploration strategies CPI and Main select specific addresses in the contract executable, which are more likely to contain vulnerabilities. During exploration, the active states are evaluated to determine whether the targets are still reachable using the control-flow and caller graphs. First, a state may dominate and directly reach a target. Second, a state may be within a caller of a target, hence, the target is reachable if the call to the target function is reachable. Third, a parent function in the current call stack may be within the caller graph, hence, the target is reachable if the current state can return. Otherwise, a state is rejected and not followed by the execution strategy. Notably, this avoids common panic! error handling paths that merely print a message and abort the execution. These paths cannot reach the targets nor return to a function that can. 11 for i in 0..number_of_accounts account[i].is_signer = 1 if read_serialized_signer() == 0 account[i].is_signer = 0 
+
+> Listing 2: The listing shows the decompiled bytecode of the signer field’s deserialization.
+
+5.2 State Merging after Deserialization 
+
+Symbolic state merging combines different states’ path constraints into a single state with memory constraints [41]. Executing Listing 2, symbolic execution creates two states, one where 
+
+is_signer is 1 and the condition was assumed false, and the other where the if branch was taken and is_signer is 0. State merging combines these two states into one conditional memory expression, i.e., is_signer is 
+
+read_serialized_signer() == 0 ? 0 : 1 . This eliminates many redundant states, e.g., deserializing three boolean fields for 10 input accounts, reduces the redundancy by (2 3)10 ≈ 10 9, significantly easing main analysis. To optimize state merging, we identify the point in the control flow where states differ minimally, as with the signer field in the example above. We detect the loop deserializing accounts and merge states after every loop. Our algorithm analyzes the entry function and its callees for the characteristic comparison (jeq/jne r*, 0xff ) of the constant first byte in the account structure. Then, it traverses the control-flow graph to find the enclosing loop that iterates all accounts. Lastly, we find the exit condition in the basic blocks of the loop, which will be the point for state merging. Usually, this yields a single deserialization loop, and otherwise, state merging is disabled. 
+
+5.3 Hybrid Symbolic Data Length 
+
+The serialized transaction context, containing all account fields, is parsed into Rust objects. To avoid symbolic pointers—which produce complex constraints that overload the solver—we limit account data lengths during deserialization ➀
+
+and release these constraints afterward ➁ (Figure 3). Symbolic variables represent data lengths, constrained to the maximum supported length. Deserialization creates Rust strings with fixed pointers, and once all accounts are deserialized, the length constraints are removed to allow variable data sizes. 
+
+5.4 String Format Detection 
+
+String operations are a challenge for symbolic execution, in particular, formatting numbers. The bytecode to convert a symbolic number to its decimal string representation produces complex dependencies between the symbolic bits and the resulting string. Consequently, when this string is used, the solver has to solve for a string representation that satisfies the constraints of the symbolic 12 meta data storage data account 1 meta data storage data account 2     
+
+> fi xed1 variable1 fi xed2 variable2
+> *data_ptr = fixed1 + variable1 + fixed2 data_len = variable2
+> Rust: account 2 use max use symbol 12Fig. 3: The position of the second account is symbolized with the fixed offset of all preceding fixed metadata sizes and each account’s maximum storage data size.
+
+number, which often stalls the execution engine. However, Solana programs almost exclusively use string formatting for logging, which does not affect the outcome of transactions. Therefore, we search for string format/logging calls and skip these functions. Here, our starting point is the Solana system call used for logging and the string format function of Rust, which is very stable and can be identified from its bytecode. Then, we analyze the calls to these functions and identify sequences of 
+
+format , log , and string deallocation to ensure that the formatted string is only used for logging. When all checks succeed, we skip this call to format during symbolic execution. 
+
+## 6 Evaluation 
+
+We evaluate the correctness of SseRex using open-source contracts and prior datasets with known vulnerabilities. 
+
+6.1 Vulnerability Oracles 
+
+Because source code is unavailable for most public contracts, large-scale measurements alone are insufficient to validate findings against developer intent. Therefore, we establish a baseline for SseRex ’s oracles by analyzing known vulnerabilities from the Neodyme workshop and from the datasets of VRust [15] and FuzzDelSol [44]. Overall, the evaluation shows that SseRex detects known true positives while reporting substantially fewer false positives. 
+
+Neodyme. Each Neodyme Workshop contract demonstrates one specific vulnerability. Level 0 implements a wallet service that stores user lamports in contract-managed wallets. The contract contains a missing owner check, allowing attackers to steal funds from other users. During withdrawals, four entities must be verified: The Vault holds all user assets and is identified from wallet data. When lamports decrease, the runtime implicitly enforces deduction permissions. The Authority owns the funds and must authorize the transaction via a signature check. The Payout destination receives lamports and is not further validated 13 because payout is already authorized by the user/owner. The Wallet links these entities and stores user ID, balance, and vault ID. However, because wallet ownership is not verified, attackers can construct counterfeit wallets for arbitrary vault owners and withdraw all managed funds. SseRex detects that wallet account data is checked, but wallet owner field is not, and reports this vulnerability. Level 1 demonstrates a missing signer check: wallet ownership is verified, but the authority signature is not, allowing unauthorized withdrawals from existing wallets. SseRex detects this as a (lamport) state modification without a signer check. Level 2 and 3 address integer overflows and type confusion, which are mitigated by compiler-generated safe math and type identifiers. Consequently, we did not implement corresponding oracles and SseRex did not detect an error. Level 4 contains an arbitrary cross-program invocation vulnerability: attackers directly control the CPI target and can inject arbitrary logic into the control flow. SseRex reports this when the call target is neither constant-checked nor read from an owner-checked account. 
+
+VRust. The static source-code analysis tool VRust reports results for eight projects. According to the authors, VRust found 30 integer overflows (21 FP), 3 key check errors (2 FP), and 2 vulnerable CPIs. We analyze the same projects and versions with SseRex .First, we consider integer overflows out of scope for bytecode analysis (cf. Sections 3 and 4). VRust’s own results indicate that integer-overflow detection is unreliable; even with source code, the false-positive rate is 70 % 
+
+(92 % before manual triage). Second, VRust reports “one wrong key check in spl-governance” [15], but the raw report lists 11 missing key checks with two patterns. In the first case, the owner check is done after the potentially unsafe read, which is fine in Solana. In the other case, result data is written back to an account, thus it is implicitly owner-checked by the runtime. Hence, analysis tools must account for both post-action checks and implicit runtime checks. Third, 
+
+SseRex attests that all system CPIs are correctly validated when using the updated Solana program library. 
+
+SseRex further reports 11 missing signer checks and one arbitrary cross-program invocation in spl-instruction-padding [30]. Because that program intentionally wraps arbitrary invocations, this behavior is expected. Additionally, spl-governance [30] allows unsigned version-number updates. While this is not directly exploitable on its own, it can be used in downgrade or type-confusion attacks. The transfer-lamports example in the Solana program library [30] is intentionally minimal and contains no checks, leaving it vulnerable and contract-owned accounts drainable by attackers. 
+
+FuzzDelSol. FuzzDelSol is the state-of-the-art fuzzer for Solana programs. We analyze the same contracts reported by FuzzDelSol [44]. As shown in Table 1a, 
+
+SseRex classifies these contracts as vulnerable and largely matches the reported bug types. Note that FuzzDelSol’s results are based on a large-scale study of all contracts on the blockchain with a timeout of 5 minutes per contract. In comparison, SseRex ’s large-scale study identified 467 contracts with missing 14 (a) Comparison of SseRex to FuzzDelSol                           
+
+> Type
+> 3od3X...nsW
+> 3VtjH...q8v
+> 3w57i...bPW
+> 4hPkN...P5N
+> 4M2fa...Stx
+> 6Lanq...zqi
+> 7FWEc...p7p
+> 9a5di...ZP9
+> 9tSWs...1yy
+> 9WoLn...49B
+> GQ6qc...u6K
+> H5rpf...PSG
+> ACPI F✓✓ ✓ ✓✓
+> S✓✓ ✓ ✓✓
+> MSC F✓ ✓ ✓
+> S✓ ✓ ✓ ✓ ✓
+> IO F✓✓×✓✓ ✓
+> MOC FS✓ ✓ ✓ ✓ ✓✓
+
+F: FuzzDelSol S: SseRex                        
+
+> (b) Anchor Contract Transparency Program
+> Project Anchor SseRex Manual Analysis quarry-registry ✓MSC Deterministic data serum-dex ×MSC Zeroed account sol-did ✓MOC Pot. Exploitable spl-token-2022 ×MSC Fresh account
+> (c) Large-scale Analysis of SseRex
+> Contracts Total Analyzed 8,714
+> Unchecked Account Write 374 – Missing Owner Check (MOC) 117 – Missing Signer Check (MSC) 241 – MOC/MSC 33 Arbitrary Cross-Program Invocation 100 Total Reported 467
+
+Table 1: The tables show the evaluation results of SseRex .
+
+checks (cf. Table 1c). Since both analyses are greybox techniques, source code was unavailable for manual ground-truth verification. 
+
+Anchor Contract Transparency Program. The Anchor project provided a registry of verified Solana contracts from April to November 2022, containing 666 builds from about 120 projects. 90 % of the projects in this registry are Anchor-based. Because Anchor provides strong built-in mitigations, we use this registry as a baseline to assess the false-positive rate of SseRex . Only four vulnerabilities were reported across 120 projects (Table 1b). The most notable report concerns the Anchor-based project sol-did [28], which manages decentralized identities in 
+
+DidAccounts .Solana requires accounts to maintain a minimum rent -exempt balance determined by account size. The function resize in sol-did allows users to grow or shrink their DidAccounts as needed. Because resizing changes required 
+
+rent , Anchor adjusts balances automatically and pays out surplus rent . However, 
+
+SseRex found that the resized DidAccount is not verified, allowing arbitrary resizing. Our manual analysis confirms this observation. In sol-did, the secp256k1 signature used for Ethereum authority checks is constructed solely from the requested DidAccount size. Hence, an attacker can impersonate an Ethereum authority and resize DidAccounts .Enlarging foreign DidAccounts is unattractive because the attacker must pay additional rent . Anchor also prevents zeroing an account by enforcing that account metadata still fits. Yet attackers can shrink accounts to the minimum 15 size and collect surplus above the lower rent -exemption threshold, including by racing transactions after a user increases account size. Manual analysis of the remaining contracts shows that these functions are indeed unchecked and correctly reported by the oracle, but their practical impact is often constrained by business logic or deployment context. We discuss such challenges that arise in automatically examining logic-related vulnerabilities in more detail in Section 7. 
+
+6.2 Large-scale Analysis 
+
+We analyze 8,714 contracts deployed on the Solana blockchain of which 
+
+3,763 (43 .2 % ) are Anchor-based. To the best of our knowledge, this is the largest vulnerability study in Solana as of now. We run SseRex on two machines with 240 GB RAM each, processing contracts in groups of 8 parallel jobs. We limit the time per job to 2 h to keep the overall analysis time feasible. Our results in Table 1c suggest that a notable share, about 5.4 % , of the deployed contracts contain at least one vulnerability. Note that Table 1c counts contracts, so categories overlap. Since most of these contracts are deployed anonymously, we examined a set of 11 contracts in detail pertaining to 6 open-source projects (cf. Section 7). To further assess oracle validity, we manually analyze a random sample of 30 anonymous contracts. We exclude contracts with just the deployment transaction, so we can use information from the transaction history to infer the use cases of the contracts. Since source code is unavailable, we combine multiple signals to infer contract purpose: SseRex ’s report, similar open-source code, bytecode inspection, and historical transaction data. Our results, which are described in detail in the artifact, show that for the 30 contracts, we discovered 
+
+87 % true bugs. We note that several contracts currently do not own or manage targetable accounts or lamports. For example, some contracts contain an ACPI vulnerability that allows attackers to modify private accounts. However, since the contracts do not rely on these accounts, they exhibit only benign behavior—even in the presence of the bug. Similarly, we observed contracts with technically valid draining paths where no relevant contract-owned assets were present in practice. During this evaluation, we did not observe false positives caused by incorrect oracle predicates. However, some reports describe vulnerabilities that are technically present but context-dependent in impact. For example, a contract may expose a path that can drain contract-owned accounts, while the observed deployment does not hold targetable assets. We further observe 14 missing signer checks, i.e., attackers can impersonate legitimate users and perform restricted actions. 
+
+6.3 Coverage 
+
+Figure 4 shows the coverage during our large-scale analysis, which follows the typical progression of binary analysis. Most basic blocks are covered early, then coverage grows incrementally until reaching a plateau. Upon termination of the 16 0 1000 2000 3000 4000 5000 6000 7000 
+
+> Time [s]
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Coverage
+> Coverage over time per contract
+> 10 2
+> 10 3
+> 10 4
+> Contract size
+
+Fig. 4: Coverage ratio over time per contract. Violins summarize the individual runs at each point in time. Color encodes total contract size in basic blocks. 
+
+analysis, SseRex reached a mean coverage of 33 % (σ = 18 .5 % ). For binary-only analysis, coverage percentages must be interpreted carefully because bytecode contains unreachable code, e.g., unused functions from linked libraries such as string-formatting routines. Further, SseRex excludes paths for error handling that abort the transaction (cf. Section 5.1). An analysis of 239 contracts, where 
+
+SseRex covered all relevant paths, indicates a mean unreachable code ratio of 
+
+84 .6 % (σ = 18 .6 % ). 
+
+## 7 Case Studies and Lessons Learned for Solana Vulnerability Analysis 
+
+This section presents three case studies and discusses their root causes, security impact, and implications for automated analysis. The first two case studies present previously unknown vulnerabilities detected by SseRex . In the third case study, Wormhole, we discuss limitations of automated oracles. 
+
+7.1 Case Study: Censo Solana Wallet 
+
+The Censo [11] Solana Wallet program (formerly Strike Wallet) provides multi-signature wallets through an m-of-n signature scheme. Our analysis reports a missing signer check in the Censo Solana Wallet program, whose source code 17 1 pub fn handle(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {          
+
+> 2let accounts_iter = &mut accounts.iter();
+> 3let wai = next_wallet_account_info(accounts_iter, program_id)?;
+> 4let cai = next_program_account_info(accounts_iter, program_id)?;
+> 5let rrai = next_account_info(accounts_iter)?;
+> 6+ assert!(rrai.is_signer);
+> 7· · ·
+> 8collect_remaining_balance(cai, rrai)?;
+> 9Ok(())
+> 10 }
+
+Listing 3: The code shows Censo’s cleanup handler in Rust. While the program performs several sanity checks, the transaction signer is never checked. We highlight a possible fix in green. 
+
+was available until recently. The program is written against Solana’s plain Rust SDK, i.e., it does not use Anchor. Through source code analysis, we found two vulnerabilities caused by this missing signer check. First, wallets may be terminated without authorization, which still pays out to the rightful owner. Because the attacker cannot directly profit, this is a griefing attack. Second, the wallet upgrade function allows changing the recipient of the termination payout. Combined, the second bug escalates the griefing attack into a profitable attack. 
+
+Unauthorized Wallet Termination. When a multi-signature wallet data account is created, one authority pays the rent and stores its address for reimbursement when the wallet is deleted. Censo wallet’s cleanup handler (cf. Listing 3) requires three accounts: (1) the multi-signature wallet, (2) the account to be deleted, and (3) the rent return account, i.e., the authority’s wallet account. Ideally, only the wallet authority should call this handler, but the missing signer check allows anyone to delete accounts. Since the rent return account is validated, the attacker receives no direct profit (griefing attack). 
+
+Unauthorized Migration. The second vulnerability is an unauthorized migration, shown in Listing 4. When the contract data structure changes, the Censo Wallet migration handler updates all accounts. We discovered that the migration handler uses the caller’s public key as the rent return account instead of preserving the original value. Because it also lacks a signer check, an attacker can migrate accounts and insert their own address as rent return account. In combination with the unauthorized wallet termination bug, this allows attackers to profit from un-migrated wallet accounts. Note that both the migration from version 2 to 3 and the migration from version 3 to 4 are affected, as the migration functions do not include any checks. 
+
+7.2 Case Study: Elusiv 
+
+Elusiv [17, 18] enables private token transfers via zero-knowledge proofs and multiparty computation [16, 36]. Elusiv consists of the core protocol, the Warden, and the ZEUS protocol. Users deposit tokens in the core token pool, where the 18 1 fn migrations() -> BTreeMap<u32, MigrationFunction> {                       
+
+> 2BTreeMap::from([
+> 3(MIGRATION_TEST_VERSION, migration_test as MigrationFunction),
+> 4(2, v2_to_v3_add_name_to_signers as MigrationFunction),
+> 5(3, v3_to_v4_add_latest_activity_at as MigrationFunction),
+> 6])
+> 7}
+> 89pub fn handle(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+> 10 let accounts_iter = &mut accounts.iter();
+> 11 let sai = next_program_account_info(accounts_iter, program_id)?;
+> 12 let dai = next_program_account_info(accounts_iter, program_id)?;
+> 13 let rrai = next_account_info(accounts_iter)?;
+> 14 +assert!(rrai.is_signer);
+> 15 · · ·
+> 16 if let Some(migrator) = migrations().get(&source_version) {
+> 17 migrator(
+> 18 &sai.data.borrow(),
+> 19 &mut dai.data.borrow_mut(),
+> 20 rrai.key,);
+> 21 Ok(())
+> 22 · · · }
+
+Listing 4: The code shows Censo’s migration handler in Rust. We highlight a possible fix in green.        
+
+> 1pub fn compute_base_commitment_hash(
+> 2hashing_account: &mut BaseCommitmentHashingAccount,
+> 3_hash_account_index: u32,) -> ProgramResult {
+> 4guard!(hashing_account.get_is_active(),
+> 5ElusivError::ComputationIsNotYetStarted);
+> 6compute_base_commitment_hash_partial( hashing_account)
+> 7}
+
+Listing 5: The code shows Elusiv’s vulnerable function in Rust. While the program checks that the hashing account is active, the transaction signer is never checked. 
+
+funds are hidden among other tokens and tracked via commitments. Receivers withdraw funds from the pool using a zero-knowledge proof. The ZEUS protocol verifies benign users to block malicious actors, while the Warden processes requests and prevents flagged users from interacting with the core protocol. Listing 5 shows the vulnerable contract code. SseRex reports a missing signer check in Elusiv’s compute_base_commitment_hash . This function initializes hashing for a BaseCommitmentHashingAccount , which is a crucial step in tracking user funds. Because the function does not verify the signer for the tracked funds, any valid account suffices; an attacker who pays the transaction fee can start hashing any commitment. Normally, contracts process only user-authorized accounts. Here, the attacker triggers a deterministic calculation on trusted data using their own funds, so we classify this bug as low risk. Even with high transaction volume, it is unlikely to affect Elusiv’s performance or expose sensitive commitment data. 19 1 // The previous ix must be a secp verification instruction      
+
+> 2let secp_ix_index = (current_instruction - 1) as u8;
+> 3let secp_ix = solana_program::sysvar ::instructions::load_instruction_at(
+> 4secp_ix_index as usize,
+> 5&accs.instruction_acc.try_borrow_mut_data()?,
+> 6).map_err(|_| ProgramError::InvalidAccountData)?;
+
+Listing 6: The listing shows the vulnerability that led to Wormhole accepting an arbitrary secp256k account. 
+
+At bytecode level, the oracle correctly flags an unauthorized modification of foreign data. Yet, the contract logic renders this bug harmless. This case study demonstrates that evaluating real user impact still requires a deep understanding of contract logic. 
+
+7.3 Case Study: Wormhole 
+
+Wormhole is a cross-chain bridge that transfers assets between blockchains such as Solana and Ethereum. In 2022, Wormhole was exploited through a missing key check in load_instruction_at . This allowed an attacker to supply a counterfeit system account and forge the payment-signature context, creating Solana tokens without corresponding payments. Listing 6 shows the vulnerable function. Because contracts for different instructions are independent and stateless, 
+
+load_instruction_at reads from a special system account that stores previous instruction data. Wormhole verifies the secp256k signature from prior payment transactions and then processes the payment. However, the contract did not verify 
+
+that this account was the intended system account, allowing an attacker to provide counterfeit secp256k instruction data to the vulnerable load_instruction_at 
+
+call. To mitigate this vulnerability, Wormhole should have checked that the public key of the given account matched the expected system-account key. This vulnerability is beyond the scope of generic oracles. VRust [15] and FuzzDelSol [44] implement special oracles tailored to this contract’s vulnerability only. The Wormhole function properly validates relevant owner and signer fields except one system-account key; therefore, the generic oracles of VRust, FuzzDelSol, and SseRex do not detect this vulnerability. At both bytecode and source-code level, a system account is structurally indistinguishable from other accounts. Without explicit key check, there is no indicator for automated tools that a user account might be unintended. This is also true at source-code level. The only hint that a system account is intended can be found in a comment, not in the code itself. Therefore, generic oracles of automated bytecode or source-code analysis cannot detect this bug. An analysis that includes comments might be possible now, but also requires at least open-source contracts. 20 8 Conclusion 
+
+SseRex is the first efficient and practical symbolic execution framework for Solana programs. Based on a large-scale evaluation, we show that SseRex 
+
+significantly outperforms previous approaches. SseRex operates directly on bytecode contracts, supports complex Anchor-based specifications, and is carefully optimized to reduce false positives. We identified 374 missing key checks (e.g., owner and signer checks) and 100 arbitrary CPI bugs. These findings show that 
+
+SseRex is a crucial step toward enabling developers to deploy secure contracts on a rapidly growing blockchain. 
+
+Acknowledgements. This work has been partially funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation)—SFB 1119 (CROSSING) 236615297 within project T1, EXC 2092 (CASA) 39078197—, the European Union (ERC, CONSEC, No. 101042266, and Horizon 2020 R&I, DYNABIC, No. 101070455). The views and opinions expressed are those of the authors only and do not necessarily reflect those of the European Union or the European Research Council Executive Agency. Neither the European Union nor the granting authority can be held responsible for them. 
+
+## References 
+
+[1] Anchor Development Team. Anchor – Introduction . 2024. url : www . anchor -lang.com .[2] Sébastien Andreina, Tobias Cloosters, Lucas Davi, Jens-Rene Giesen, Marco Gutfleisch, Ghassan Karame, Alena Naiakshina, and Houda Naji. “Defying the Odds: Solana’s Unexpected Resilience in Spite of the Security Challenges Faced by Developers”. In: Proceedings of the 2024 on ACM SIGSAC Conference on Computer and Communications Security . CCS ’24. Salt Lake City, UT, USA: Association for Computing Machinery, 2024, pp. 4226–4240. isbn : 9798400706363. 
+
+doi : 10.1145/3658644.3670333 . url : https://doi.org/10.1145/3658644. 3670333 .[3] AuditFirst. “Common Vulnerabilities in Solana Programs (Smart Contracts)”. In: Medium (2022). Accessed: 2024-07-10. url : medium . com / @auditfirst . io / common - vulnerabilities - in - solana - programs - smart - contracts -bd59af774022 .[4] Binary Ninja . binary.ninja/ . Vector 35 Inc. [5] Davide Borzacchiello. SENinja: Symbolic execution plugin for Binary Ninja .
+
+https://github.com/borzacchiello/seninja .[6] Priyanka Bose, Dipanjan Das, Yanju Chen, Yu Feng, Christopher Kruegel, and Giovanni Vigna. “SAILFISH: Vetting Smart Contract State-Inconsistency Bugs in Seconds”. In: 2022 IEEE Symposium on Security and Privacy (SP) . 2022, pp. 161–178. doi : 10.1109/SP46214.2022.9833721 .[7] Julien Bouteloup. Wormhole – REKT . Accessed: 2024-07-09. 2022. url : rekt. news/wormhole-rekt/ .
+
+21 [8] Lexi Brent, Anton Jurisevic, Michael Kong, Eric Liu, Francois Gauthier, Vincent Gramoli, Ralph Holz, and Bernhard Scholz. Vandal: A Scalable Security Analysis Framework for Smart Contracts . 2018. arXiv: 1809.03981 .[9] Irvin Steve Cardenas and Yugart Song. Lollipop: SVM Rollups on Solana . 2024. arXiv: 2405.08882 [cs.DC] . url : https://arxiv.org/abs/2405.08882 .[10] Ethan Cecchetti, Siqiu Yao, Haobin Ni, and Andrew C. Myers. “Compositional Security for Reentrant Applications”. In: 2021 IEEE Symposium on Security and Privacy (S&P) . 2021, pp. 1249–1267. doi : 10.1109/SP40001.2021.00084 .[11] Censo . web . archive . org / web / 20230701182015 / https : / / www . censo . co/ .Accessed: 2024-06-11, archived on 2023-07-01. 2023. [12] CertiK. 2022 Solana Exploits Overview . Accessed: 2024-04-25. 2022. url : www. certik.com/resources/blog/2022-solana-exploits-overview .[13] The kernel development community. eBPF verifier . Accessed: 2024-07-10. url :
+
+docs.kernel.org/bpf/verifier.html .[14] Consenys. Mythril: Security analysis tool for EVM bytecode. Supports smart contracts built for Ethereum, Hedera, Quorum, Vechain, Rootstock, Tron and other EVM-compatible blockchains. 2024. url : github.com/ConsenSys/mythril .[15] Siwei Cui, Gang Zhao, Yifei Gao, Tien Tavu, and Jeff Huang. “VRust: Automated Vulnerability Detection for Solana Smart Contracts”. In: Proceedings of the 2022 ACM SIGSAC Conference on Computer and Communications Security . 2022. [16] Eiger. Elusiv: Bringing Privacy To Solana . Accessed: 2024-07-04. 2023. url :
+
+eiger.co/blog/elusiv-bringing-privacy-to-solana .[17] Elusiv . elusiv.io/ . Accessed: 2024-06-11. 2023. [18] Elusiv Privacy. elusiv-privacy/elusiv: Elusiv Solana program library . github.com/ elusiv-privacy/elusiv . Accessed: 2024-06-11. 2023. [19] Solana Foundation. Programs – Solana . Accessed: 2024-07-10. 2024. url : solana. com/docs/core/programs .[20] Solana Foundation. Solana Account Model . Accessed: 2024-07-02. 2024. url :
+
+solana.com/de/docs/core/accounts .[21] Solana Foundation. Solana Account Model – Solana . Accessed: 2024-07-10. 2024. 
+
+url : solana.com/de/docs/core/accounts .[22] Solana Foundation. Transactions and Instructions . Accessed: 2024-07-02. 2024. 
+
+url : solana.com/de/docs/core/transactions .[23] Joel Frank, Cornelius Aschermann, and Thorsten Holz. “ETHBMC: A Bounded Model Checker for Smart Contracts”. In: USENIX Security Symposium, USENIX Security 2020 . 2020. [24] Neville Grech, Lexi Brent, Bernhard Scholz, and Yannis Smaragdakis. “Gigahorse: thorough, declarative decompilation of smart contracts”. In: IEEE/ACM International Conference on Software Engineering (ICSE) . 2019. [25] Jingxuan He, Mislav Balunović, Nodar Ambroladze, Petar Tsankov, and Martin Vechev. “Learning to Fuzz from Symbolic Execution with Application to Smart Contracts”. In: Proceedings of the 2019 ACM SIGSAC Conference on Computer and Communications Security . CCS ’19. London, United Kingdom: Association for Computing Machinery, 2019, pp. 531–548. isbn : 9781450367479. doi : 10. 1145/3319535.3363230 . url : https://doi.org/10.1145/3319535.3363230 .
+
+22 [26] Teng Hu, Xiaolei Liu, Ting Chen, Xiaosong Zhang, Xiaoming Huang, Weina Niu, Jiazhong Lu, Kun Zhou, and Yuan Liu. “Transaction-based classification and detection approach for Ethereum smart contract”. In: Information Processing & Management 58.2 (2021), p. 102462. issn : 0306-4573. doi : https://doi.org/ 10.1016/j.ipm.2020.102462 . url : https://www.sciencedirect.com/science/ article/pii/S0306457320309547 .[27] Louis Husney. Mango Markets Madness: A Case Study On The Mango Markets Exploit . Accessed: 2024-07-09. 2023. url : infotrend . com / mango - markets -madness-a-case-study-on-the-mango-markets-exploit/ .[28] Identity.com. identity-com/sol-did: Specification for the did:sol method . github. com/identity-com/sol-did . 2023. [29] Johannes Krupp and Christian Rossow. “teEther: Gnawing at Ethereum to Automatically Exploit Smart Contracts”. In: USENIX Security Symposium (USENIX Security 2018) . 2018. [30] Solana Labs. solana-labs/solana-program-library: Solana Program Library . github. com/solana-labs/solana-program-library . Accessed: 2024-06-11. 2023. [31] Loi Luu, Duc-Hiep Chu, Hrishi Olickel, Prateek Saxena, and Aquinas Hobor. “Making Smart Contracts Smarter”. In: Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security . CCS ’16. Vienna, Austria: Association for Computing Machinery, 2016, pp. 254–269. isbn : 9781450341394. 
+
+doi : 10.1145/2976749.2978309 . url : https://doi.org/10.1145/2976749. 2978309 .[32] Mark Mossberg, Felipe Manzano, Eric Hennenfent, Alex Groce, Gustavo Grieco, Josselin Feist, Trent Brunson, and Artem Dinaburg. “Manticore: A User-Friendly Symbolic Execution Framework for Binaries and Smart Contracts”. In: 2019 34th IEEE/ACM International Conference on Automated Software Engineering (ASE) .2019, pp. 1186–1189. doi : 10.1109/ASE.2019.00133 .[33] Neodyme. Solana Smart Contracts: Common Pitfalls and How to Avoid Them .Neodyme Blog. Accessed: 2024-07-10. 2024. url : neodyme.io/en/blog/solana_ common_pitfalls/ .[34] Anton Permenev, Dimitar Dimitrov, Petar Tsankov, Dana Drachsler-Cohen, and Martin Vechev. “Verx: Safety verification of smart contracts”. In: IEEE Symposium on Security and Privacy (S&P) . 2020. [35] Giuseppe Antonio Pierro and Roberto Tonelli. “Can Solana be the Solution to the Blockchain Scalability Problem?” In: 2022 IEEE International Conference on Software Analysis, Evolution and Reengineering (SANER) . 2022, pp. 1219–1226. 
+
+doi : 10.1109/SANER53432.2022.00144 .[36] Quiknode. How to Enable Token Privacy on Solana with Zero-Knowledge Proofs from Elusiv . Accessed: 2024-07-04. 2024. url : quicknode.com/guides/solana-development/3rd-party-integrations/privacy-with-elusiv .[37] Michael Rodler, Wenting Li, Ghassan Karame, and Lucas Davi. “Sereum: Pro-tecting Existing Smart Contracts Against Re-Entrancy Attacks”. In: Proceedings of the Network and Distributed System Security Symposium (NDSS) . 2019. [38] Michael Rodler, David Paaßen, Wenting Li, Lukas Bernhard, Thorsten Holz, Ghassan Karame, and Lucas Davi. “EFCF: High Performance Smart Contract Fuzzing for Exploit Generation”. In: 2023 IEEE 8th European Symposium on Security and Privacy (EuroS&P) . 2023, pp. 449–471. doi : 10.1109/EuroSP57164. 2023.00034 .
+
+23 [39] Otter Security. otter-sec/bn-ebpf-solana . github . com / otter - sec / bn - ebpf -solana .[40] Christian Sendner, Haoyu Chen, Hamed Fereidooni, Lukas Petzi, Johannes König, Julian Stang, Alexandra Dmitrienko, Ahmad-Reza Sadeghi, and Farinaz Koushanfar. “Smarter Contracts: Detecting Vulnerabilities in Smart Contracts with Deep Transfer Learning”. In: Proceedings of the Network and Distributed System Security Symposium (NDSS) . NDSS Symposium. 2023. [41] Yan Shoshitaishvili, Ruoyu Wang, Christopher Salls, Nick Stephens, Mario Polino, Audrey Dutcher, John Grosen, Siji Feng, Christophe Hauser, Christopher Kruegel, and Giovanni Vigna. “SoK: (State of) The Art of War: Offensive Techniques in Binary Analysis”. In: IEEE Symposium on Security and Privacy . 2016. [42] Chaofan Shou, Shangyin Tan, and Koushik Sen. “ItyFuzz: Snapshot-Based Fuzzer for Smart Contract”. In: Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis . ISSTA 2023. Seattle, WA, USA: Association for Computing Machinery, 2023, pp. 322–333. isbn : 9798400702211. 
+
+doi : 10.1145/3597926.3598059 . url : https://doi.org/10.1145/3597926. 3598059 .[43] SlowMist. Solana Smart Contract Security Best Practices . GitHub repository. Accessed: 2024-07-10. 2024. url : github . com / slowmist / solana - smart -contract-security-best-practices .[44] Sven Smolka, Jens-Rene Giesen, Pascal Winkler, Oussama Draissi, Lucas Davi, Ghassan Karame, and Klaus Pohl. “Fuzz on the Beach: Fuzzing Solana Smart Contracts”. In: Proc. of the ACM Conference on Computer and Communications Security (CCS) . Kopenhagen, Denmark, Nov. 2023. [45] Sunbeom So, Seongjoon Hong, and Hakjoo Oh. “SmarTest: Effectively Hunting Vulnerable Transaction Sequences in Smart Contracts through Language Model-Guided Symbolic Execution”. In: 30th USENIX Security Symposium (USENIX Security 21) . USENIX Association, Aug. 2021, pp. 1361–1378. isbn : 978-1-939133-24-3. url : https://www.usenix.org/conference/usenixsecurity21/ presentation/so .[46] Solana Foundation. Cross Program Invocation (CPI) . Solana Documentation. Accessed: 2024-07-10. 2024. url : solana.com/de/docs/core/cpi .[47] Solana Foundation. Program Derived Address (PDA) . Solana Documentation. Accessed: 2024-07-10. 2024. url : solana.com/de/docs/core/pda .[48] Solana Foundation. Terminology - Lamport . Solana Documentation. Accessed: 2024-07-10. 2024. url : solana.com/de/docs/terminology#lamport .[49] Ting Su, Zhoulai Fu, Geguang Pu, Jifeng He, and Zhendong Su. “Combining Symbolic Execution and Model Checking for Data Flow Testing”. In: 2015 IEEE/ACM 37th IEEE International Conference on Software Engineering . Vol. 1. 2015, pp. 654–665. doi : 10.1109/ICSE.2015.81 .[50] Sergei Tikhomirov, Ekaterina Voskresenskaya, Ivan Ivanitskiy, Ramil Takhaviev, Evgeny Marchenko, and Yaroslav Alexandrov. “SmartCheck: static analysis of ethereum smart contracts”. In: Proceedings of the 1st International Workshop on Emerging Trends in Software Engineering for Blockchain . WETSEB ’18. Gothenburg, Sweden: Association for Computing Machinery, 2018, pp. 9–16. isbn :9781450357265. doi : 10.1145/3194113.3194115 . url : https://doi.org/10. 1145/3194113.3194115 .
+
+24 [51] Christof Ferreira Torres, Mathis Baden, Robert Norvill, and Hugo Jonker. “ÆGIS: Smart Shielding of Smart Contracts”. In: Proceedings of the ACM SIGSAC Conference on Computer and Communications Security, CCS 2019 . 2019. doi :
+
+10.1145/3319535.3363263 .[52] Christof Ferreira Torres, Julian Schütte, et al. “Osiris: Hunting for Integer Bugs in Ethereum Smart Contracts”. In: 34th Annual Computer Security Applications Conference (ACSAC18) . 2018. [53] Petar Tsankov, Andrei Dan, Dana Drachsler-Cohen, Arthur Gervais, Florian Buenzli, and Martin Vechev. “Securify: Practical security analysis of smart contracts”. In: Proceedings of the ACM SIGSAC Conference on Computer and Communications Security . 2018. [54] Yin Wu, Xiaofei Xie, Chenyang Peng, Dijun Liu, Hao Wu, Ming Fan, Ting Liu, and Haijun Wang. “AdvSCanner: Generating Adversarial Smart Contracts to Exploit Reentrancy Vulnerabilities Using LLM and Static Analysis”. In: Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering .ASE ’24. Sacramento, CA, USA: Association for Computing Machinery, 2024, pp. 1019–1031. isbn : 9798400712487. doi : 10 . 1145 / 3691620 . 3695482 . url :
+
+https://doi.org/10.1145/3691620.3695482 .[55] Yinxing Xue, Mingliang Ma, Yun Lin, Yulei Sui, Jiaming Ye, and Tianyong Peng. “Cross-contract static analysis for detecting practical reentrancy vulnerabilities in smart contracts”. In: Proceedings of the 35th IEEE/ACM International Conference on Automated Software Engineering . ASE ’20. Virtual Event, Australia: Association for Computing Machinery, 2021, pp. 1029–1040. isbn : 9781450367684. 
+
+doi : 10.1145/3324884.3416553 . url : https://doi.org/10.1145/3324884. 3416553 .[56] Anatoly Yakovenko. Solana: A new architecture for a high performance blockchain .Whitepaper. Solana, 2018. url : https://solana.com/solana-whitepaper.pdf .[57] Mingxi Ye, Xingwei Lin, Yuhong Nan, Jiajing Wu, and Zibin Zheng. “Midas: Mining Profitable Exploits in On-Chain Smart Contracts via Feedback-Driven Fuzzing and Differential Analysis”. In: Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis . ISSTA 2024. Vienna, Austria: Association for Computing Machinery, 2024, pp. 794–805. isbn :9798400706127. doi : 10 . 1145 / 3650212 . 3680321 . url : https : / / doi . org / 10.1145/3650212.3680321 .[58] Shenghao Yuan, Zhuoruo Zhang, Jiayi Lu, David Sanan, Rui Chang, and Yongwang Zhao. “A Complete Formal Semantics of eBPF Instruction Set Architecture for Solana”. In: Proc. ACM Program. Lang. 9.OOPSLA1 (Apr. 2025). doi : 10.1145/3720414 . url : https://doi.org/10.1145/3720414 .[59] Aleksandra Yudina. 2022 Solana Hacks Explained: Cashio . Accessed: 2024-07-09. 2023. url : ackee.xyz/blog/2022-solana-hacks-explained-cashio/ .
+
+25

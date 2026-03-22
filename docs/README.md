@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-21
-- 运行时间：2026-03-22 03:48:20 UTC+8
+- 最新运行日期：2026-03-22
+- 运行时间：2026-03-23 03:07:21 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Maximising homomorphism counts between digraphs》（7.8/10）, 《AIMER: Calibration-Free Task-Agnostic MoE Pruning》（7.8/10）, 《Axis-Aligned Relaxations for Mixed-Integer Nonlinear Programming》（7.7/10）
+- 速读：《Via Negativa for AI Alignment: Why Negative Constraints Are Structurally Superior to Positive Preferences》（7.8/10）, 《SseRex: Practical Symbolic Execution of Solana Smart Contracts》（7.8/10）, 《Persistence Spheres: a Bi-continuous Linear Representation of Measures for Partial Optimal Transport》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202603/21/README](/202603/21/README)
+- 详情：[/202603/22/README](/202603/22/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Maximising homomorphism counts between digraphs](/202603/21/2603.18847v1-maximising-homomorphism-counts-between-digraphs)  
+1. [Via Negativa for AI Alignment: Why Negative Constraints Are Structurally Superior to Positive Preferences](/202603/22/2603.16417v1-via-negativa-for-ai-alignment-why-negative-constraints-are-structurally-superior-to-positive-preferences)  
    标签：评分：7.8/10
    evidence：检索回退候选
-2. [AIMER: Calibration-Free Task-Agnostic MoE Pruning](/202603/21/2603.18492v1-aimer-calibration-free-task-agnostic-moe-pruning)  
+2. [SseRex: Practical Symbolic Execution of Solana Smart Contracts](/202603/22/2603.16349v1-sserex-practical-symbolic-execution-of-solana-smart-contracts)  
    标签：评分：7.8/10
    evidence：检索回退候选
-3. [Axis-Aligned Relaxations for Mixed-Integer Nonlinear Programming](/202603/21/2603.18458v1-axis-aligned-relaxations-for-mixed-integer-nonlinear-programming)  
+3. [Persistence Spheres: a Bi-continuous Linear Representation of Measures for Partial Optimal Transport](/202603/22/2603.15384v1-persistence-spheres-a-bi-continuous-linear-representation-of-measures-for-partial-optimal-transport)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+4. [Windowed Fourier Propagator: A Frequency-Local Neural Operator for Wave Equations in Inhomogeneous Media](/202603/22/2603.14289v1-windowed-fourier-propagator-a-frequency-local-neural-operator-for-wave-equations-in-inhomogeneous-media)  
    标签：评分：7.7/10
    evidence：检索回退候选
-4. [Stochastic 3-D Foliage Modeling at 80 GHz: Experimental Validation and Ray-Tracing Simulations](/202603/21/2603.18810v1-stochastic-3-d-foliage-modeling-at-80-ghz-experimental-validation-and-ray-tracing-simulations)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-5. [General multi-Novikov algebras, multi-differential algebras and their free constructions](/202603/21/2603.16766v1-general-multi-novikov-algebras-multi-differential-algebras-and-their-free-constructions)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-6. [Closing Trees into Unicyclic Counterexamples](/202603/21/2603.17114v1-closing-trees-into-unicyclic-counterexamples)  
+5. [Luck and magic for Pitman-Stanley polytopes and parking functions](/202603/22/2603.19194v1-luck-and-magic-for-pitman-stanley-polytopes-and-parking-functions)  
    标签：评分：7.5/10
    evidence：检索回退候选
-7. [Hidden Zeeman Field in Odd-Parity Magnets: An Ideal Platform for Topological Superconductivity](/202603/21/2603.15147v1-hidden-zeeman-field-in-odd-parity-magnets-an-ideal-platform-for-topological-superconductivity)  
+6. [On the (Generative) Linear Sketching Problem](/202603/22/2603.14474v1-on-the-generative-linear-sketching-problem)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+7. [Why Agents Compromise Safety Under Pressure](/202603/22/2603.14975v1-why-agents-compromise-safety-under-pressure)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Keys on Doormats: Exposed API Credentials on the Web](/202603/21/2603.12498v2-keys-on-doormats-exposed-api-credentials-on-the-web)  
+8. [On subgroups of Brin-Thompson groups $nV$](/202603/22/2603.18410v1-on-subgroups-of-brin-thompson-groups-nv)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+9. [Phonon collisional broadening and heat transport beyond the Boltzmann equation](/202603/22/2603.16753v1-phonon-collisional-broadening-and-heat-transport-beyond-the-boltzmann-equation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [Finite and infinite frieze patterns from p-angulations and a generalization of Weyl groupoids](/202603/21/2603.18975v1-finite-and-infinite-frieze-patterns-from-p-angulations-and-a-generalization-of-weyl-groupoids)  
-   标签：评分：6.6/10
+10. [PLUME: Building a Network-Native Foundation Model for Wireless Traces via Protocol-Aware Tokenization](/202603/22/2603.13647v1-plume-building-a-network-native-foundation-model-for-wireless-traces-via-protocol-aware-tokenization)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-10. [The non-abelian Leopoldt conjecture and equalities of $\mathcal{L}$-invariants](/202603/21/2603.18961v1-the-non-abelian-leopoldt-conjecture-and-equalities-of-mathcall-invariants)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-11. [Simplest cubic fields with small class number](/202603/21/2603.18802v1-simplest-cubic-fields-with-small-class-number)  
-   标签：评分：6.5/10
+11. [Terahertz cavity hybridization of collective proteins vibrations](/202603/22/2603.14476v1-terahertz-cavity-hybridization-of-collective-proteins-vibrations)  
+   标签：评分：6.7/10
    evidence：检索回退候选
 
 
