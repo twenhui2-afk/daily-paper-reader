@@ -6,58 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-25
-- 运行时间：2026-03-26 04:16:49 UTC+8
+- 最新运行日期：2026-03-26
+- 运行时间：2026-03-27 04:23:04 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《Enhanced Direction-Sensing Methods and Performance Analysis in Low-Altitude Wireless Network via a Rotation Antenna Array》（8.0/10）
-- 速读：《Exact density-functional theory as parallel ensemble variational hierarchies: from Lieb's formulation to Kohn-Sham theory》（7.7/10）, 《Convergence Analysis of the Random Bisection Method》（7.6/10）, 《From the Stochastic Embedding Sufficiency Theorem to a Superspace Diffusion Framework》（7.6/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《Root Finding and Metamodeling for Rapid and Robust Computer Model Calibration》（8.5/10）, 《Praxium: Diagnosing Cloud Anomalies with AI-based Telemetry and Dependency Analysis》（8.2/10）
+- 速读：《A velocity-dependent two-scale model for cosmic string networks with small-scale structure》（7.8/10）, 《Understanding Bugs in Quantum Simulators: An Empirical Study》（7.6/10）, 《Graded spherical skein 2+1-G-HQFT and modified Turaev-Viro invariants》（7.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202603/25/README](/202603/25/README)
+- 详情：[/202603/26/README](/202603/26/README)
 
 ### 精读区论文标签
-1. [Enhanced Direction-Sensing Methods and Performance Analysis in Low-Altitude Wireless Network via a Rotation Antenna Array](/202603/25/2603.20784v2-enhanced-direction-sensing-methods-and-performance-analysis-in-low-altitude-wireless-network-via-a-rotation-antenna-array)  
-   标签：评分：8.0/10
+1. [Root Finding and Metamodeling for Rapid and Robust Computer Model Calibration](/202603/26/2603.23790v1-root-finding-and-metamodeling-for-rapid-and-robust-computer-model-calibration)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+2. [Praxium: Diagnosing Cloud Anomalies with AI-based Telemetry and Dependency Analysis](/202603/26/2603.23890v1-praxium-diagnosing-cloud-anomalies-with-ai-based-telemetry-and-dependency-analysis)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Exact density-functional theory as parallel ensemble variational hierarchies: from Lieb's formulation to Kohn-Sham theory](/202603/25/2603.23399v1-exact-density-functional-theory-as-parallel-ensemble-variational-hierarchies-from-liebs-formulation-to-kohn-sham-theory)  
-   标签：评分：7.7/10
+1. [A velocity-dependent two-scale model for cosmic string networks with small-scale structure](/202603/26/2603.23619v1-a-velocity-dependent-two-scale-model-for-cosmic-string-networks-with-small-scale-structure)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-2. [Convergence Analysis of the Random Bisection Method](/202603/25/2603.20483v1-convergence-analysis-of-the-random-bisection-method)  
+2. [Understanding Bugs in Quantum Simulators: An Empirical Study](/202603/26/2603.22789v1-understanding-bugs-in-quantum-simulators-an-empirical-study)  
    标签：评分：7.6/10
    evidence：检索回退候选
-3. [From the Stochastic Embedding Sufficiency Theorem to a Superspace Diffusion Framework](/202603/25/2603.20423v1-from-the-stochastic-embedding-sufficiency-theorem-to-a-superspace-diffusion-framework)  
-   标签：评分：7.6/10
+3. [Graded spherical skein 2+1-G-HQFT and modified Turaev-Viro invariants](/202603/26/2603.23440v1-graded-spherical-skein-21-g-hqft-and-modified-turaev-viro-invariants)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-4. [From False Roots to Phasors: Negative and Complex Numbers in Mathematics, Physics, and Electrical Engineering](/202603/25/2603.21445v1-from-false-roots-to-phasors-negative-and-complex-numbers-in-mathematics-physics-and-electrical-engineering)  
-   标签：评分：7.2/10
+4. [Spectral Structure of the Mixed Hessian of the Dispersionless Toda $τ$-Function](/202603/26/2603.23424v1-spectral-structure-of-the-mixed-hessian-of-the-dispersionless-toda--function)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-5. [Three-Dimensional Variational Data Assimilation with Rapid Update Cycling for Short-Range Precipitation Forecasting: A Case Study of Heavy Rainfall in Bali, Indonesia](/202603/25/2603.20468v1-three-dimensional-variational-data-assimilation-with-rapid-update-cycling-for-short-range-precipitation-forecasting-a-case-study-of-heavy-rainfall-in-bali-indonesia)  
-   标签：评分：7.1/10
+5. [Branches of Markoff $m$-triples with two $k$-Fibonacci components](/202603/26/2603.23306v1-branches-of-markoff-m-triples-with-two-k-fibonacci-components)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-6. [High-resolution vertical wind and turbulence measurements with quadcopter uncrewed aerial systems: wind tunnel calibration and field validation](/202603/25/2603.19989v1-high-resolution-vertical-wind-and-turbulence-measurements-with-quadcopter-uncrewed-aerial-systems-wind-tunnel-calibration-and-field-validation)  
-   标签：评分：7.1/10
+6. [Entropy of affine permutations and universality of affine atomic lengths](/202603/26/2603.22256v1-entropy-of-affine-permutations-and-universality-of-affine-atomic-lengths)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-7. [AEGIS: From Clues to Verdicts -- Graph-Guided Deep Vulnerability Reasoning via Dialectics and Meta-Auditing](/202603/25/2603.20637v1-aegis-from-clues-to-verdicts----graph-guided-deep-vulnerability-reasoning-via-dialectics-and-meta-auditing)  
+7. [The Fermi-Pasta-Ulam-Tsingou problem after 70 years: Universal laws of thermalization in lattice systems](/202603/26/2603.23347v1-the-fermi-pasta-ulam-tsingou-problem-after-70-years-universal-laws-of-thermalization-in-lattice-systems)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Solar Radio Burst in the metric to kilometric range](/202603/25/2603.22087v1-solar-radio-burst-in-the-metric-to-kilometric-range)  
+8. [Two-dimensional bound excitons in the real space and Landau quantization space: a comparative study](/202603/26/2603.22715v2-two-dimensional-bound-excitons-in-the-real-space-and-landau-quantization-space-a-comparative-study)  
    标签：评分：6.9/10
    evidence：检索回退候选
-9. [SoK: From Silicon to Netlist and Beyond $-$ Two Decades of Hardware Reverse Engineering Research](/202603/25/2603.17883v1-sok-from-silicon-to-netlist-and-beyond---two-decades-of-hardware-reverse-engineering-research)  
+9. [Emergent thermal fluctuations and non-Hermitian phase transitions in open photon condensates](/202603/26/2603.21927v1-emergent-thermal-fluctuations-and-non-hermitian-phase-transitions-in-open-photon-condensates)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Dynamic analysis enhances issue resolution](/202603/25/2603.22048v1-dynamic-analysis-enhances-issue-resolution)  
-   标签：评分：6.6/10
+10. [Exact center symmetry and first-order phase transition in QCD with three degenerate dynamical quarks](/202603/26/2603.22046v1-exact-center-symmetry-and-first-order-phase-transition-in-qcd-with-three-degenerate-dynamical-quarks)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-11. [Reasoning Provenance for Autonomous AI Agents: Structured Behavioral Analytics Beyond State Checkpoints and Execution Traces](/202603/25/2603.21692v1-reasoning-provenance-for-autonomous-ai-agents-structured-behavioral-analytics-beyond-state-checkpoints-and-execution-traces)  
-   标签：评分：6.5/10
+11. [Isospin-breaking effects of the double-charm molecular pentaquarks](/202603/26/2603.21667v1-isospin-breaking-effects-of-the-double-charm-molecular-pentaquarks)  
+   标签：评分：6.8/10
    evidence：检索回退候选
 
 
