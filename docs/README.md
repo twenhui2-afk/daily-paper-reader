@@ -6,61 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-26
-- 运行时间：2026-03-27 04:23:04 UTC+8
+- 最新运行日期：2026-03-27
+- 运行时间：2026-03-28 03:59:24 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Root Finding and Metamodeling for Rapid and Robust Computer Model Calibration》（8.5/10）, 《Praxium: Diagnosing Cloud Anomalies with AI-based Telemetry and Dependency Analysis》（8.2/10）
-- 速读：《A velocity-dependent two-scale model for cosmic string networks with small-scale structure》（7.8/10）, 《Understanding Bugs in Quantum Simulators: An Empirical Study》（7.6/10）, 《Graded spherical skein 2+1-G-HQFT and modified Turaev-Viro invariants》（7.5/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《The Price Reversal Phenomenon: When Cheaper Reasoning Models End Up Costing More》（7.6/10）, 《From the Stochastic Embedding Sufficiency Theorem to a Superspace Diffusion Framework》（7.4/10）, 《Beyond Semantic Priors: Mitigating Optimization Collapse for Generalizable Visual Forensics》（7.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202603/26/README](/202603/26/README)
+- 详情：[/202603/27/README](/202603/27/README)
 
 ### 精读区论文标签
-1. [Root Finding and Metamodeling for Rapid and Robust Computer Model Calibration](/202603/26/2603.23790v1-root-finding-and-metamodeling-for-rapid-and-robust-computer-model-calibration)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [Praxium: Diagnosing Cloud Anomalies with AI-based Telemetry and Dependency Analysis](/202603/26/2603.23890v1-praxium-diagnosing-cloud-anomalies-with-ai-based-telemetry-and-dependency-analysis)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [A velocity-dependent two-scale model for cosmic string networks with small-scale structure](/202603/26/2603.23619v1-a-velocity-dependent-two-scale-model-for-cosmic-string-networks-with-small-scale-structure)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-2. [Understanding Bugs in Quantum Simulators: An Empirical Study](/202603/26/2603.22789v1-understanding-bugs-in-quantum-simulators-an-empirical-study)  
+1. [The Price Reversal Phenomenon: When Cheaper Reasoning Models End Up Costing More](/202603/27/2603.23971v1-the-price-reversal-phenomenon-when-cheaper-reasoning-models-end-up-costing-more)  
    标签：评分：7.6/10
    evidence：检索回退候选
-3. [Graded spherical skein 2+1-G-HQFT and modified Turaev-Viro invariants](/202603/26/2603.23440v1-graded-spherical-skein-21-g-hqft-and-modified-turaev-viro-invariants)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-4. [Spectral Structure of the Mixed Hessian of the Dispersionless Toda $τ$-Function](/202603/26/2603.23424v1-spectral-structure-of-the-mixed-hessian-of-the-dispersionless-toda--function)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-5. [Branches of Markoff $m$-triples with two $k$-Fibonacci components](/202603/26/2603.23306v1-branches-of-markoff-m-triples-with-two-k-fibonacci-components)  
+2. [From the Stochastic Embedding Sufficiency Theorem to a Superspace Diffusion Framework](/202603/27/2603.20423v2-from-the-stochastic-embedding-sufficiency-theorem-to-a-superspace-diffusion-framework)  
    标签：评分：7.4/10
    evidence：检索回退候选
-6. [Entropy of affine permutations and universality of affine atomic lengths](/202603/26/2603.22256v1-entropy-of-affine-permutations-and-universality-of-affine-atomic-lengths)  
-   标签：评分：7.4/10
+3. [Beyond Semantic Priors: Mitigating Optimization Collapse for Generalizable Visual Forensics](/202603/27/2603.24057v1-beyond-semantic-priors-mitigating-optimization-collapse-for-generalizable-visual-forensics)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-7. [The Fermi-Pasta-Ulam-Tsingou problem after 70 years: Universal laws of thermalization in lattice systems](/202603/26/2603.23347v1-the-fermi-pasta-ulam-tsingou-problem-after-70-years-universal-laws-of-thermalization-in-lattice-systems)  
+4. [From Morality Installation in LLMs to LLMs in Morality-as-a-System](/202603/27/2603.22944v1-from-morality-installation-in-llms-to-llms-in-morality-as-a-system)  
+   标签：评分：7.1/10
+   evidence：检索回退候选
+5. [RAMPAGE: RAndomized Mid-Point for debiAsed Gradient Extrapolation](/202603/27/2603.22155v1-rampage-randomized-mid-point-for-debiased-gradient-extrapolation)  
+   标签：评分：7.0/10
+   evidence：检索回退候选
+6. [Inverting Neural Networks: New Methods to Generate Neural Network Inputs from Prescribed Outputs](/202603/27/2603.20461v1-inverting-neural-networks-new-methods-to-generate-neural-network-inputs-from-prescribed-outputs)  
+   标签：评分：7.0/10
+   evidence：检索回退候选
+7. [Cohesive phase-field fracture with an explicit strength surface: an eigenstrain-based return-mapping formulation](/202603/27/2603.21811v1-cohesive-phase-field-fracture-with-an-explicit-strength-surface-an-eigenstrain-based-return-mapping-formulation)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Two-dimensional bound excitons in the real space and Landau quantization space: a comparative study](/202603/26/2603.22715v2-two-dimensional-bound-excitons-in-the-real-space-and-landau-quantization-space-a-comparative-study)  
+8. [Dynamic analysis enhances issue resolution](/202603/27/2603.22048v2-dynamic-analysis-enhances-issue-resolution)  
    标签：评分：6.9/10
    evidence：检索回退候选
-9. [Emergent thermal fluctuations and non-Hermitian phase transitions in open photon condensates](/202603/26/2603.21927v1-emergent-thermal-fluctuations-and-non-hermitian-phase-transitions-in-open-photon-condensates)  
+9. [EruDiff: Refactoring Knowledge in Diffusion Models for Advanced Text-to-Image Synthesis](/202603/27/2603.20828v1-erudiff-refactoring-knowledge-in-diffusion-models-for-advanced-text-to-image-synthesis)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Exact center symmetry and first-order phase transition in QCD with three degenerate dynamical quarks](/202603/26/2603.22046v1-exact-center-symmetry-and-first-order-phase-transition-in-qcd-with-three-degenerate-dynamical-quarks)  
-   标签：评分：6.8/10
+10. [PowerLens: Taming LLM Agents for Safe and Personalized Mobile Power Management](/202603/27/2603.19584v1-powerlens-taming-llm-agents-for-safe-and-personalized-mobile-power-management)  
+   标签：评分：6.7/10
    evidence：检索回退候选
-11. [Isospin-breaking effects of the double-charm molecular pentaquarks](/202603/26/2603.21667v1-isospin-breaking-effects-of-the-double-charm-molecular-pentaquarks)  
-   标签：评分：6.8/10
+11. [Communication Complexity of Disjointness under Product Distributions](/202603/27/2603.19490v1-communication-complexity-of-disjointness-under-product-distributions)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
