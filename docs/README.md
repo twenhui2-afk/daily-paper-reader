@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-27
-- 运行时间：2026-03-28 03:59:24 UTC+8
+- 最新运行日期：2026-03-28
+- 运行时间：2026-03-29 03:09:56 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《The Price Reversal Phenomenon: When Cheaper Reasoning Models End Up Costing More》（7.6/10）, 《From the Stochastic Embedding Sufficiency Theorem to a Superspace Diffusion Framework》（7.4/10）, 《Beyond Semantic Priors: Mitigating Optimization Collapse for Generalizable Visual Forensics》（7.2/10）
+- 速读：《Accelerating Low-Frequency Convergence for Limited-Angle DBT via Two-Channel Fidelity in PDHG》（7.8/10）, 《Elliptic equations with Hardy potentials and gradient-dependent absorption: existence and refined asymptotics》（7.8/10）, 《Moment inequalities for Chow polynomials of matroids and bounds on Chern numbers》（7.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202603/27/README](/202603/27/README)
+- 详情：[/202603/28/README](/202603/28/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [The Price Reversal Phenomenon: When Cheaper Reasoning Models End Up Costing More](/202603/27/2603.23971v1-the-price-reversal-phenomenon-when-cheaper-reasoning-models-end-up-costing-more)  
-   标签：评分：7.6/10
+1. [Accelerating Low-Frequency Convergence for Limited-Angle DBT via Two-Channel Fidelity in PDHG](/202603/28/2603.23955v1-accelerating-low-frequency-convergence-for-limited-angle-dbt-via-two-channel-fidelity-in-pdhg)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-2. [From the Stochastic Embedding Sufficiency Theorem to a Superspace Diffusion Framework](/202603/27/2603.20423v2-from-the-stochastic-embedding-sufficiency-theorem-to-a-superspace-diffusion-framework)  
+2. [Elliptic equations with Hardy potentials and gradient-dependent absorption: existence and refined asymptotics](/202603/28/2603.23771v1-elliptic-equations-with-hardy-potentials-and-gradient-dependent-absorption-existence-and-refined-asymptotics)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+3. [Moment inequalities for Chow polynomials of matroids and bounds on Chern numbers](/202603/28/2603.21680v1-moment-inequalities-for-chow-polynomials-of-matroids-and-bounds-on-chern-numbers)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+4. [A note on gamma factors for pairs](/202603/28/2603.25437v1-a-note-on-gamma-factors-for-pairs)  
    标签：评分：7.4/10
    evidence：检索回退候选
-3. [Beyond Semantic Priors: Mitigating Optimization Collapse for Generalizable Visual Forensics](/202603/27/2603.24057v1-beyond-semantic-priors-mitigating-optimization-collapse-for-generalizable-visual-forensics)  
-   标签：评分：7.2/10
+5. [Class number zeta function of imaginary quadratic fields](/202603/28/2603.24313v1-class-number-zeta-function-of-imaginary-quadratic-fields)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-4. [From Morality Installation in LLMs to LLMs in Morality-as-a-System](/202603/27/2603.22944v1-from-morality-installation-in-llms-to-llms-in-morality-as-a-system)  
-   标签：评分：7.1/10
+6. [Multiple-group (Controlled) Interrupted Time Series Analysis with Higher-Order Autoregressive Errors: A Simulation Study Comparing Newey-West and Prais-Winsten Methods](/202603/28/2603.24814v1-multiple-group-controlled-interrupted-time-series-analysis-with-higher-order-autoregressive-errors-a-simulation-study-comparing-newey-west-and-prais-winsten-methods)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-5. [RAMPAGE: RAndomized Mid-Point for debiAsed Gradient Extrapolation](/202603/27/2603.22155v1-rampage-randomized-mid-point-for-debiased-gradient-extrapolation)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-6. [Inverting Neural Networks: New Methods to Generate Neural Network Inputs from Prescribed Outputs](/202603/27/2603.20461v1-inverting-neural-networks-new-methods-to-generate-neural-network-inputs-from-prescribed-outputs)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-7. [Cohesive phase-field fracture with an explicit strength surface: an eigenstrain-based return-mapping formulation](/202603/27/2603.21811v1-cohesive-phase-field-fracture-with-an-explicit-strength-surface-an-eigenstrain-based-return-mapping-formulation)  
+7. [Quasiperiodic Slipping Motion of Flare Ribbon Fine Structures Anchored in a Sunspot Light Bridge](/202603/28/2603.22940v1-quasiperiodic-slipping-motion-of-flare-ribbon-fine-structures-anchored-in-a-sunspot-light-bridge)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Dynamic analysis enhances issue resolution](/202603/27/2603.22048v2-dynamic-analysis-enhances-issue-resolution)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-9. [EruDiff: Refactoring Knowledge in Diffusion Models for Advanced Text-to-Image Synthesis](/202603/27/2603.20828v1-erudiff-refactoring-knowledge-in-diffusion-models-for-advanced-text-to-image-synthesis)  
+8. [Inverting Neural Networks: New Methods to Generate Neural Network Inputs from Prescribed Outputs](/202603/28/2603.20461v2-inverting-neural-networks-new-methods-to-generate-neural-network-inputs-from-prescribed-outputs)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [PowerLens: Taming LLM Agents for Safe and Personalized Mobile Power Management](/202603/27/2603.19584v1-powerlens-taming-llm-agents-for-safe-and-personalized-mobile-power-management)  
+9. [Sparse stability diagrams of LSCF method via strategic pole destabilization using orthogonal matching pursuit](/202603/28/2603.20614v1-sparse-stability-diagrams-of-lscf-method-via-strategic-pole-destabilization-using-orthogonal-matching-pursuit)  
    标签：评分：6.7/10
    evidence：检索回退候选
-11. [Communication Complexity of Disjointness under Product Distributions](/202603/27/2603.19490v1-communication-complexity-of-disjointness-under-product-distributions)  
+10. [Challenge-Response Authentication for LEO Satellite Channels: Exploiting Orbit-Specific Uniqueness](/202603/28/2603.25576v1-challenge-response-authentication-for-leo-satellite-channels-exploiting-orbit-specific-uniqueness)  
    标签：评分：6.6/10
+   evidence：检索回退候选
+11. [Terahertz Beamforming and Group Sparse Channel Estimation Relying on Low-Resolution ADCs in MU Hybrid MIMO systems](/202603/28/2603.20878v1-terahertz-beamforming-and-group-sparse-channel-estimation-relying-on-low-resolution-adcs-in-mu-hybrid-mimo-systems)  
+   标签：评分：6.5/10
    evidence：检索回退候选
 
 
