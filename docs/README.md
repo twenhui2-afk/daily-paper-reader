@@ -6,70 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-31
-- 运行时间：2026-04-01 04:36:13 UTC+8
+- 最新运行日期：2026-04-01
+- 运行时间：2026-04-02 04:31:21 UTC+8
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：5
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
-- 精读：《DinoDental: Benchmarking DINOv3 as a Unified Vision Encoder for Dental Image Analysis》（8.6/10）, 《Root lattices over totally real fields》（8.4/10）
-- 速读：《RADAR-Q: Resource-Aware Distributed Asynchronous Routing for Entanglement Distribution in Multi-Tenant Quantum Networks》（7.9/10）, 《A Gray code for arborescences of tournaments》（7.8/10）, 《Towards Embodied AI with MuscleMimic: Unlocking full-body musculoskeletal motor learning at scale》（7.8/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Wherefore Art Thou? Provenance-Guided Automatic Online Debugging with Lumos》（8.3/10）, 《Towards a formalism for $ππ$ scattering from staggered lattice QCD》（8.3/10）
+- 速读：《CausalPulse: An Industrial-Grade Neurosymbolic Multi-Agent Copilot for Causal Diagnostics in Smart Manufacturing》（7.7/10）, 《1.5 Million Messages Per Second on 3 Machines: Benchmarking and Latency Optimization of Apache Pulsar at Enterprise Scale》（7.6/10）, 《Accessibility Percolation with Rough Mount Fuji labels》（7.6/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202603/31/README](/202603/31/README)
+- 详情：[/202604/01/README](/202604/01/README)
 
 ### 精读区论文标签
-1. [DinoDental: Benchmarking DINOv3 as a Unified Vision Encoder for Dental Image Analysis](/202603/31/2603.28297v1-dinodental-benchmarking-dinov3-as-a-unified-vision-encoder-for-dental-image-analysis)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [Root lattices over totally real fields](/202603/31/2603.27545v1-root-lattices-over-totally-real-fields)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-3. [A Simple Trigonometric Classification of Quintic Roots](/202603/31/2603.28352v1-a-simple-trigonometric-classification-of-quintic-roots)  
+1. [Wherefore Art Thou? Provenance-Guided Automatic Online Debugging with Lumos](/202604/01/2603.29013v1-wherefore-art-thou-provenance-guided-automatic-online-debugging-with-lumos)  
    标签：评分：8.3/10
    evidence：检索回退候选
-4. [Control Forward-Backward Consistency: Quantifying the Accuracy of Koopman Control Family Models](/202603/31/2603.27548v1-control-forward-backward-consistency-quantifying-the-accuracy-of-koopman-control-family-models)  
-   标签：评分：8.2/10
+2. [Towards a formalism for $ππ$ scattering from staggered lattice QCD](/202604/01/2603.28967v1-towards-a-formalism-for--scattering-from-staggered-lattice-qcd)  
+   标签：评分：8.3/10
    evidence：检索回退候选
-5. [Effects of Plunging Acceleration on the Passive Morphing of Avian-Inspired Flexible Foils](/202603/31/2603.27794v1-effects-of-plunging-acceleration-on-the-passive-morphing-of-avian-inspired-flexible-foils)  
+3. [A Simple Trigonometric Classification of Quartic Roots](/202604/01/2603.28814v1-a-simple-trigonometric-classification-of-quartic-roots)  
    标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [RADAR-Q: Resource-Aware Distributed Asynchronous Routing for Entanglement Distribution in Multi-Tenant Quantum Networks](/202603/31/2603.27570v1-radar-q-resource-aware-distributed-asynchronous-routing-for-entanglement-distribution-in-multi-tenant-quantum-networks)  
-   标签：评分：7.9/10
+1. [CausalPulse: An Industrial-Grade Neurosymbolic Multi-Agent Copilot for Causal Diagnostics in Smart Manufacturing](/202604/01/2603.29755v1-causalpulse-an-industrial-grade-neurosymbolic-multi-agent-copilot-for-causal-diagnostics-in-smart-manufacturing)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-2. [A Gray code for arborescences of tournaments](/202603/31/2603.28614v1-a-gray-code-for-arborescences-of-tournaments)  
-   标签：评分：7.8/10
+2. [1.5 Million Messages Per Second on 3 Machines: Benchmarking and Latency Optimization of Apache Pulsar at Enterprise Scale](/202604/01/2603.29113v1-15-million-messages-per-second-on-3-machines-benchmarking-and-latency-optimization-of-apache-pulsar-at-enterprise-scale)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-3. [Towards Embodied AI with MuscleMimic: Unlocking full-body musculoskeletal motor learning at scale](/202603/31/2603.25544v1-towards-embodied-ai-with-musclemimic-unlocking-full-body-musculoskeletal-motor-learning-at-scale)  
-   标签：评分：7.8/10
+3. [Accessibility Percolation with Rough Mount Fuji labels](/202604/01/2603.29561v1-accessibility-percolation-with-rough-mount-fuji-labels)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-4. [From Prediction to Diagnosis: Reasoning-Aware AI for Photovoltaic Defect Inspection](/202603/31/2603.26776v1-from-prediction-to-diagnosis-reasoning-aware-ai-for-photovoltaic-defect-inspection)  
+4. [A Dual-Sideband Attosecond Interferometry Setup](/202604/01/2603.27477v1-a-dual-sideband-attosecond-interferometry-setup)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+5. [Rethinking Structure Preservation in Text-Guided Image Editing with Visual Autoregressive Models](/202604/01/2603.28367v1-rethinking-structure-preservation-in-text-guided-image-editing-with-visual-autoregressive-models)  
    标签：评分：7.4/10
    evidence：检索回退候选
-5. [PRISMA: Toward a Normative Information Infrastructure for Responsible Pharmaceutical Knowledge Management](/202603/31/2603.26324v1-prisma-toward-a-normative-information-infrastructure-for-responsible-pharmaceutical-knowledge-management)  
-   标签：评分：6.6/10
+6. [Not All Subjectivity Is the Same! Defining Desiderata for the Evaluation of Subjectivity in NLP](/202604/01/2603.28351v1-not-all-subjectivity-is-the-same-defining-desiderata-for-the-evaluation-of-subjectivity-in-nlp)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-6. [Associated varieties of integral minimal highest weight modules](/202603/31/2603.26371v1-associated-varieties-of-integral-minimal-highest-weight-modules)  
-   标签：评分：6.5/10
+7. [From Hole Theory to Quantum Field Theory: Relativistic Fermions and the Role of Ettore Majorana (1933-1937)](/202604/01/2603.28538v1-from-hole-theory-to-quantum-field-theory-relativistic-fermions-and-the-role-of-ettore-majorana-1933-1937)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-7. [No Hard Negatives Required: Concept Centric Learning Leads to Compositionality without Degrading Zero-shot Capabilities of Contrastive Models](/202603/31/2603.25722v1-no-hard-negatives-required-concept-centric-learning-leads-to-compositionality-without-degrading-zero-shot-capabilities-of-contrastive-models)  
-   标签：评分：6.5/10
+8. [Non-Hermitian Anomalous Scaling Engineering](/202604/01/2603.26175v1-non-hermitian-anomalous-scaling-engineering)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-8. [Missing-Aware Multimodal Fusion for Unified Microservice Incident Management](/202603/31/2603.25538v2-missing-aware-multimodal-fusion-for-unified-microservice-incident-management)  
+9. [Porous-Medium Scaling of CO$_2$ Plume Footprint Growth](/202604/01/2603.26169v1-porous-medium-scaling-of-co2-plume-footprint-growth)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+10. [A Dataset of Nonlinear Equations for Subdivision](/202604/01/2603.27499v1-a-dataset-of-nonlinear-equations-for-subdivision)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+11. [Theory of (Co)homological Invariants on Quantum LDPC Codes](/202604/01/2603.25831v1-theory-of-cohomological-invariants-on-quantum-ldpc-codes)  
    标签：评分：6.4/10
-   evidence：检索回退候选
-9. [Missing-Aware Multimodal Fusion for Unified Microservice Incident Management](/202603/31/2603.25538v1-missing-aware-multimodal-fusion-for-unified-microservice-incident-management)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-10. [$q$-Deformed Quantum Mechanics and the Thermodynamics of Black Hole/White Hole Spectral pair](/202603/31/2603.27621v1-q-deformed-quantum-mechanics-and-the-thermodynamics-of-black-holewhite-hole-spectral-pair)  
-   标签：评分：6.1/10
-   evidence：检索回退候选
-11. [Largest $2$-regular Subgraphs in complete $S$-partite Graphs](/202603/31/2603.27424v1-largest-2-regular-subgraphs-in-complete-s-partite-graphs)  
-   标签：评分：6.0/10
    evidence：检索回退候选
 
 
