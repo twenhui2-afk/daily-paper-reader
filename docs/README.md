@@ -6,63 +6,60 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-01
-- 运行时间：2026-04-02 04:31:21 UTC+8
+- 最新运行日期：2026-04-02
+- 运行时间：2026-04-03 03:40:03 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Wherefore Art Thou? Provenance-Guided Automatic Online Debugging with Lumos》（8.3/10）, 《Towards a formalism for $ππ$ scattering from staggered lattice QCD》（8.3/10）
-- 速读：《CausalPulse: An Industrial-Grade Neurosymbolic Multi-Agent Copilot for Causal Diagnostics in Smart Manufacturing》（7.7/10）, 《1.5 Million Messages Per Second on 3 Machines: Benchmarking and Latency Optimization of Apache Pulsar at Enterprise Scale》（7.6/10）, 《Accessibility Percolation with Rough Mount Fuji labels》（7.6/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《MATHENA: Mamba-based Architectural Tooth Hierarchical Estimator and Holistic Evaluation Network for Anatomy》（8.6/10）, 《Valency Classification of Mapudungun Verbal Roots. Established by the language's own morphotactics》（8.2/10）
+- 速读：《Unsupervised 4D Flow MRI Velocity Enhancement and Unwrapping Using Divergence-Free Neural Networks》（7.5/10）, 《A Framework for Parameterized Subexponential-Subcubic-Time Algorithms for Weighted Problems in Planar Graphs》（7.5/10）, 《A Categorification of Subword Complexes and Its Hall Algebra》（7.4/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/01/README](/202604/01/README)
+- 详情：[/202604/02/README](/202604/02/README)
 
 ### 精读区论文标签
-1. [Wherefore Art Thou? Provenance-Guided Automatic Online Debugging with Lumos](/202604/01/2603.29013v1-wherefore-art-thou-provenance-guided-automatic-online-debugging-with-lumos)  
-   标签：评分：8.3/10
+1. [MATHENA: Mamba-based Architectural Tooth Hierarchical Estimator and Holistic Evaluation Network for Anatomy](/202604/02/2604.00537v1-mathena-mamba-based-architectural-tooth-hierarchical-estimator-and-holistic-evaluation-network-for-anatomy)  
+   标签：评分：8.6/10
    evidence：检索回退候选
-2. [Towards a formalism for $ππ$ scattering from staggered lattice QCD](/202604/01/2603.28967v1-towards-a-formalism-for--scattering-from-staggered-lattice-qcd)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-3. [A Simple Trigonometric Classification of Quartic Roots](/202604/01/2603.28814v1-a-simple-trigonometric-classification-of-quartic-roots)  
+2. [Valency Classification of Mapudungun Verbal Roots. Established by the language's own morphotactics](/202604/02/2604.00789v1-valency-classification-of-mapudungun-verbal-roots-established-by-the-languages-own-morphotactics)  
    标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [CausalPulse: An Industrial-Grade Neurosymbolic Multi-Agent Copilot for Causal Diagnostics in Smart Manufacturing](/202604/01/2603.29755v1-causalpulse-an-industrial-grade-neurosymbolic-multi-agent-copilot-for-causal-diagnostics-in-smart-manufacturing)  
-   标签：评分：7.7/10
-   evidence：检索回退候选
-2. [1.5 Million Messages Per Second on 3 Machines: Benchmarking and Latency Optimization of Apache Pulsar at Enterprise Scale](/202604/01/2603.29113v1-15-million-messages-per-second-on-3-machines-benchmarking-and-latency-optimization-of-apache-pulsar-at-enterprise-scale)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-3. [Accessibility Percolation with Rough Mount Fuji labels](/202604/01/2603.29561v1-accessibility-percolation-with-rough-mount-fuji-labels)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-4. [A Dual-Sideband Attosecond Interferometry Setup](/202604/01/2603.27477v1-a-dual-sideband-attosecond-interferometry-setup)  
+1. [Unsupervised 4D Flow MRI Velocity Enhancement and Unwrapping Using Divergence-Free Neural Networks](/202604/02/2604.00205v1-unsupervised-4d-flow-mri-velocity-enhancement-and-unwrapping-using-divergence-free-neural-networks)  
    标签：评分：7.5/10
    evidence：检索回退候选
-5. [Rethinking Structure Preservation in Text-Guided Image Editing with Visual Autoregressive Models](/202604/01/2603.28367v1-rethinking-structure-preservation-in-text-guided-image-editing-with-visual-autoregressive-models)  
+2. [A Framework for Parameterized Subexponential-Subcubic-Time Algorithms for Weighted Problems in Planar Graphs](/202604/02/2604.00891v1-a-framework-for-parameterized-subexponential-subcubic-time-algorithms-for-weighted-problems-in-planar-graphs)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+3. [A Categorification of Subword Complexes and Its Hall Algebra](/202604/02/2604.00879v1-a-categorification-of-subword-complexes-and-its-hall-algebra)  
    标签：评分：7.4/10
    evidence：检索回退候选
-6. [Not All Subjectivity Is the Same! Defining Desiderata for the Evaluation of Subjectivity in NLP](/202604/01/2603.28351v1-not-all-subjectivity-is-the-same-defining-desiderata-for-the-evaluation-of-subjectivity-in-nlp)  
-   标签：评分：7.4/10
+4. [An Explicit Surrogate for Gaussian Mixture Flow Matching with Wasserstein Gap Bounds](/202604/02/2603.28992v1-an-explicit-surrogate-for-gaussian-mixture-flow-matching-with-wasserstein-gap-bounds)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-7. [From Hole Theory to Quantum Field Theory: Relativistic Fermions and the Role of Ettore Majorana (1933-1937)](/202604/01/2603.28538v1-from-hole-theory-to-quantum-field-theory-relativistic-fermions-and-the-role-of-ettore-majorana-1933-1937)  
-   标签：评分：6.9/10
+5. [Collisionless Multi-Agent Path Planning in the Hamilton-Jacobi Formulation](/202604/02/2603.28993v1-collisionless-multi-agent-path-planning-in-the-hamilton-jacobi-formulation)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-8. [Non-Hermitian Anomalous Scaling Engineering](/202604/01/2603.26175v1-non-hermitian-anomalous-scaling-engineering)  
-   标签：评分：6.9/10
+6. [The Priority Lattice](/202604/02/2603.28905v1-the-priority-lattice)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-9. [Porous-Medium Scaling of CO$_2$ Plume Footprint Growth](/202604/01/2603.26169v1-porous-medium-scaling-of-co2-plume-footprint-growth)  
+7. [Generating Key Postures of Bharatanatyam Adavus with Pose Estimation](/202604/02/2603.29570v1-generating-key-postures-of-bharatanatyam-adavus-with-pose-estimation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [A Dataset of Nonlinear Equations for Subdivision](/202604/01/2603.27499v1-a-dataset-of-nonlinear-equations-for-subdivision)  
+8. [Communication Outage-Resistant UUV State Estimation: A Variational History Distillation Approach](/202604/02/2603.29512v1-communication-outage-resistant-uuv-state-estimation-a-variational-history-distillation-approach)  
    标签：评分：6.8/10
    evidence：检索回退候选
-11. [Theory of (Co)homological Invariants on Quantum LDPC Codes](/202604/01/2603.25831v1-theory-of-cohomological-invariants-on-quantum-ldpc-codes)  
+9. [Seeing the Evidence, Missing the Answer: Tool-Guided Vision-Language Models on Visual Illusions](/202604/02/2603.29428v1-seeing-the-evidence-missing-the-answer-tool-guided-vision-language-models-on-visual-illusions)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+10. [ELT-Bench-Verified: Benchmark Quality Issues Underestimate AI Agent Capabilities](/202604/02/2603.29399v1-elt-bench-verified-benchmark-quality-issues-underestimate-ai-agent-capabilities)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+11. [A Weak Structural Form of Commutative Equivalence in Finite Codes](/202604/02/2603.27656v1-a-weak-structural-form-of-commutative-equivalence-in-finite-codes)  
    标签：评分：6.4/10
    evidence：检索回退候选
 
