@@ -6,58 +6,70 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-06
-- 运行时间：2026-04-07 03:59:05 UTC+8
+- 最新运行日期：2026-04-07
+- 运行时间：2026-04-08 03:52:54 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：16
+- 精读区：5
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《Cliques in graphs constructed from Strongly Orthogonal Subsets in exceptional root systems》（8.5/10）
-- 速读：《The radial component of the local Galactic magnetic field in 3D》（7.6/10）, 《The "Intensity" Countoscope: Measuring particle dynamics in real space from microscopy images》（7.2/10）, 《A Mollification Approach to Ramified Transport and Tree Shape Optimization》（7.1/10）
+- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
+- 精读：《Quantum affine vertex algebra at root of unity》（8.4/10）, 《Real Reliability Roots of Simple Graphs are Dense》（8.2/10）
+- 速读：《Occupational Diversity and Stratification in Platform Work: A Longitudinal Study of Online Freelancers》（7.8/10）, 《Trustless Provenance Trees: A Game-Theoretic Framework for Operator-Gated Blockchain Registries》（7.7/10）, 《The Role of Generator Access in Autoregressive Post-Training》（7.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/06/README](/202604/06/README)
+- 详情：[/202604/07/README](/202604/07/README)
 
 ### 精读区论文标签
-1. [Cliques in graphs constructed from Strongly Orthogonal Subsets in exceptional root systems](/202604/06/2604.02983v1-cliques-in-graphs-constructed-from-strongly-orthogonal-subsets-in-exceptional-root-systems)  
-   标签：评分：8.5/10
+1. [Quantum affine vertex algebra at root of unity](/202604/07/2604.04666v1-quantum-affine-vertex-algebra-at-root-of-unity)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+2. [Real Reliability Roots of Simple Graphs are Dense](/202604/07/2604.03530v1-real-reliability-roots-of-simple-graphs-are-dense)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+3. [A Validated Taxonomy on Software Energy Smells](/202604/07/2604.04809v1-a-validated-taxonomy-on-software-energy-smells)  
+   标签：评分：8.1/10
+   evidence：检索回退候选
+4. [The Roaming Bethe Roots: An Effective Bethe Ansatz Beyond Integrability](/202604/07/2604.04627v1-the-roaming-bethe-roots-an-effective-bethe-ansatz-beyond-integrability)  
+   标签：评分：8.0/10
+   evidence：检索回退候选
+5. [Study of the molecular Properties of the $P_c$ and $P_{cs}$ States](/202604/07/2604.04821v1-study-of-the-molecular-properties-of-the-pc-and-pcs-states)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [The radial component of the local Galactic magnetic field in 3D](/202604/06/2604.01093v2-the-radial-component-of-the-local-galactic-magnetic-field-in-3d)  
-   标签：评分：7.6/10
+1. [Occupational Diversity and Stratification in Platform Work: A Longitudinal Study of Online Freelancers](/202604/07/2604.03517v1-occupational-diversity-and-stratification-in-platform-work-a-longitudinal-study-of-online-freelancers)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-2. [The "Intensity" Countoscope: Measuring particle dynamics in real space from microscopy images](/202604/06/2604.02271v1-the-intensity-countoscope-measuring-particle-dynamics-in-real-space-from-microscopy-images)  
-   标签：评分：7.2/10
+2. [Trustless Provenance Trees: A Game-Theoretic Framework for Operator-Gated Blockchain Registries](/202604/07/2604.03434v1-trustless-provenance-trees-a-game-theoretic-framework-for-operator-gated-blockchain-registries)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-3. [A Mollification Approach to Ramified Transport and Tree Shape Optimization](/202604/06/2603.29567v1-a-mollification-approach-to-ramified-transport-and-tree-shape-optimization)  
-   标签：评分：7.1/10
+3. [The Role of Generator Access in Autoregressive Post-Training](/202604/07/2604.04855v1-the-role-of-generator-access-in-autoregressive-post-training)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-4. [Universal $R$-matrix of double parameter quantum affine algebra $U_{q,Q}({\hat {sl_2}})$](/202604/06/2603.27925v1-universal-r-matrix-of-double-parameter-quantum-affine-algebra-uqqhat-sl2)  
-   标签：评分：7.0/10
+4. [The Geometric Alignment Tax: Tokenization vs. Continuous Geometry in Scientific Foundation Models](/202604/07/2604.04155v1-the-geometric-alignment-tax-tokenization-vs-continuous-geometry-in-scientific-foundation-models)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-5. [Learning the Exact Flux: Neural Riemann Solvers with Hard Constraints](/202604/06/2603.30007v1-learning-the-exact-flux-neural-riemann-solvers-with-hard-constraints)  
+5. [ArrowFlow: Hierarchical Machine Learning in the Space of Permutations](/202604/07/2604.04087v1-arrowflow-hierarchical-machine-learning-in-the-space-of-permutations)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+6. [Injective and pseudo-injective polynomial equations: From permutations to dynamical systems](/202604/07/2604.04065v1-injective-and-pseudo-injective-polynomial-equations-from-permutations-to-dynamical-systems)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+7. [Unlocking Positive Transfer in Incrementally Learning Surgical Instruments: A Self-reflection Hierarchical Prompt Framework](/202604/07/2604.02877v1-unlocking-positive-transfer-in-incrementally-learning-surgical-instruments-a-self-reflection-hierarchical-prompt-framework)  
    标签：评分：6.9/10
    evidence：检索回退候选
-6. [Meron Spin Textures Mediated by Acoustic Phase Singularities](/202604/06/2603.29508v1-meron-spin-textures-mediated-by-acoustic-phase-singularities)  
+8. [AXELRAM: Quantize Once, Never Dequantize](/202604/07/2604.02638v1-axelram-quantize-once-never-dequantize)  
    标签：评分：6.8/10
    evidence：检索回退候选
-7. [BayesInsights: Modelling Software Delivery and Developer Experience with Bayesian Networks at Bloomberg](/202604/06/2603.29929v1-bayesinsights-modelling-software-delivery-and-developer-experience-with-bayesian-networks-at-bloomberg)  
+9. [Open Challenges for Secure and Scalable Wi-Fi Connectivity in Rural Areas](/202604/07/2604.02774v1-open-challenges-for-secure-and-scalable-wi-fi-connectivity-in-rural-areas)  
    标签：评分：6.8/10
    evidence：检索回退候选
-8. [An Asynchronous Two-Speed Kalman Filter for Real-Time UUV Cooperative Navigation Under Acoustic Delays](/202604/06/2604.02878v1-an-asynchronous-two-speed-kalman-filter-for-real-time-uuv-cooperative-navigation-under-acoustic-delays)  
+10. [Environment-Aware Channel Prediction for Vehicular Communications: A Multimodal Visual Feature Fusion Framework](/202604/07/2604.02396v1-environment-aware-channel-prediction-for-vehicular-communications-a-multimodal-visual-feature-fusion-framework)  
    标签：评分：6.7/10
    evidence：检索回退候选
-9. [Worse than square-root cancellation in Bateman-Horn's conjecture](/202604/06/2604.02287v1-worse-than-square-root-cancellation-in-bateman-horns-conjecture)  
+11. [Robust Autonomous Control of a Magnetic Millirobot in In Vitro Cardiac Flow](/202604/07/2604.01523v1-robust-autonomous-control-of-a-magnetic-millirobot-in-in-vitro-cardiac-flow)  
    标签：评分：6.6/10
-   evidence：检索回退候选
-10. [Measuring the Representational Alignment of Neural Systems in Superposition](/202604/06/2604.00208v1-measuring-the-representational-alignment-of-neural-systems-in-superposition)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-11. [Safety Guardrails in the Sky: Realizing Control Barrier Functions on the VISTA F-16 Jet](/202604/06/2603.27912v1-safety-guardrails-in-the-sky-realizing-control-barrier-functions-on-the-vista-f-16-jet)  
-   标签：评分：6.5/10
    evidence：检索回退候选
 
 
