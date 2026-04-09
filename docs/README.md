@@ -6,61 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-08
-- 运行时间：2026-04-09 03:59:52 UTC+8
+- 最新运行日期：2026-04-09
+- 运行时间：2026-04-10 04:26:47 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Automatic dental superimposition of 3D intraorals and 2D photographs for human identification》（8.5/10）, 《Wherefore Art Thou? Provenance-Guided Automatic Online Debugging with Lumos》（8.3/10）
-- 速读：《Direct image and pullback of Parabolic vector bundles》（7.9/10）, 《DQA: Diagnostic Question Answering for IT Support》（7.4/10）, 《Realistic Market Impact Modeling for Reinforcement Learning Trading Environments》（7.4/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《On computing the spherical roots for a class of spherical subgroups》（8.3/10）
+- 速读：《Seasonality in Mixed Causal-Noncausal Processes》（7.7/10）, 《Search-Bound Proximity Proofs: Binding Encrypted Geographic Search to Zero-Knowledge Verification》（7.5/10）, 《Reinforcing Consistency in Video MLLMs with Structured Rewards》（7.4/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/08/README](/202604/08/README)
+- 详情：[/202604/09/README](/202604/09/README)
 
 ### 精读区论文标签
-1. [Automatic dental superimposition of 3D intraorals and 2D photographs for human identification](/202604/08/2604.05877v1-automatic-dental-superimposition-of-3d-intraorals-and-2d-photographs-for-human-identification)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [Wherefore Art Thou? Provenance-Guided Automatic Online Debugging with Lumos](/202604/08/2603.29013v2-wherefore-art-thou-provenance-guided-automatic-online-debugging-with-lumos)  
+1. [On computing the spherical roots for a class of spherical subgroups](/202604/09/2604.07056v1-on-computing-the-spherical-roots-for-a-class-of-spherical-subgroups)  
    标签：评分：8.3/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Direct image and pullback of Parabolic vector bundles](/202604/08/2604.05411v1-direct-image-and-pullback-of-parabolic-vector-bundles)  
-   标签：评分：7.9/10
+1. [Seasonality in Mixed Causal-Noncausal Processes](/202604/09/2604.07040v1-seasonality-in-mixed-causal-noncausal-processes)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-2. [DQA: Diagnostic Question Answering for IT Support](/202604/08/2604.05350v1-dqa-diagnostic-question-answering-for-it-support)  
+2. [Search-Bound Proximity Proofs: Binding Encrypted Geographic Search to Zero-Knowledge Verification](/202604/09/2604.03902v1-search-bound-proximity-proofs-binding-encrypted-geographic-search-to-zero-knowledge-verification)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+3. [Reinforcing Consistency in Video MLLMs with Structured Rewards](/202604/09/2604.01460v1-reinforcing-consistency-in-video-mllms-with-structured-rewards)  
    标签：评分：7.4/10
    evidence：检索回退候选
-3. [Realistic Market Impact Modeling for Reinforcement Learning Trading Environments](/202604/08/2603.29086v2-realistic-market-impact-modeling-for-reinforcement-learning-trading-environments)  
-   标签：评分：7.4/10
+4. [AeroTherm-GPT: A Verification-Centered LLM Framework for Thermal Protection System Engineering Workflows](/202604/09/2604.01738v1-aerotherm-gpt-a-verification-centered-llm-framework-for-thermal-protection-system-engineering-workflows)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-4. [CommonMorph: Participatory Morphological Documentation Platform](/202604/08/2604.04515v1-commonmorph-participatory-morphological-documentation-platform)  
-   标签：评分：7.1/10
+5. [Eigencone Constellations on Ranked Spheres](/202604/09/2604.03554v2-eigencone-constellations-on-ranked-spheres)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-5. [Heterogeneous Mean Field Game Framework for LEO Satellite-Assisted V2X Networks](/202604/08/2604.00621v1-heterogeneous-mean-field-game-framework-for-leo-satellite-assisted-v2x-networks)  
-   标签：评分：7.1/10
+6. [Bridging Structured Knowledge and Data: A Unified Framework with Finance Applications](/202604/09/2604.00987v1-bridging-structured-knowledge-and-data-a-unified-framework-with-finance-applications)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-6. [CIDER: Boosting Memory-Disaggregated Key-Value Stores with Pessimistic Synchronization](/202604/08/2604.03007v1-cider-boosting-memory-disaggregated-key-value-stores-with-pessimistic-synchronization)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-7. [Quasiperiodicity-Engineered Re-entrant Localization-Delocalization aspects in a Diamond Lattice](/202604/08/2603.29173v1-quasiperiodicity-engineered-re-entrant-localization-delocalization-aspects-in-a-diamond-lattice)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-8. [CRAB: Codebook Rebalancing for Bias Mitigation in Generative Recommendation](/202604/08/2604.05113v1-crab-codebook-rebalancing-for-bias-mitigation-in-generative-recommendation)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-9. [Asymptotic self-similar blow-up for the regularized Saint-Venant equations](/202604/08/2604.03188v1-asymptotic-self-similar-blow-up-for-the-regularized-saint-venant-equations)  
+7. [A flatness proof of the exponential turnpike phenomenon for linear-quadratic optimal control problems](/202604/09/2604.05511v1-a-flatness-proof-of-the-exponential-turnpike-phenomenon-for-linear-quadratic-optimal-control-problems)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Large values of $L(σ,χ)$ for subgroups of characters](/202604/08/2604.02960v1-large-values-of-l-for-subgroups-of-characters)  
-   标签：评分：6.8/10
+8. [Sample entropy for graph signals: An approach to nonlinear dynamic analysis of data on networks](/202604/09/2604.05086v1-sample-entropy-for-graph-signals-an-approach-to-nonlinear-dynamic-analysis-of-data-on-networks)  
+   标签：评分：6.7/10
    evidence：检索回退候选
-11. [Modified Mosseri-Sadoc tiles from $D_6$](/202604/08/2604.03988v1-modified-mosseri-sadoc-tiles-from-d6)  
-   标签：评分：6.8/10
+9. [Settled Elements in Arboreal Galois Groups of Quadratic PCF Polynomials](/202604/09/2604.04524v1-settled-elements-in-arboreal-galois-groups-of-quadratic-pcf-polynomials)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+10. [Tensor invariants for multipartite entanglement classification](/202604/09/2604.02269v1-tensor-invariants-for-multipartite-entanglement-classification)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+11. [Stable Hermite transforms via the Golub-Welsch algorithm](/202604/09/2604.02041v1-stable-hermite-transforms-via-the-golub-welsch-algorithm)  
+   标签：评分：6.4/10
    evidence：检索回退候选
 
 
