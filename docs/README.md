@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-11
-- 运行时间：2026-04-12 03:59:14 UTC+8
+- 最新运行日期：2026-04-12
+- 运行时间：2026-04-13 03:44:45 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《SALLIE: Safeguarding Against Latent Language & Image Exploits》（7.7/10）, 《Partial Number Theoretic Transform Masking in Post Quantum Cryptography Hardware: A Security Margin Analysis》（7.3/10）, 《The Statistical Profitability of Social Media Sports Betting Influencers: Evidence from the Nigerian Market》（7.2/10）
+- 速读：《Croissant Charts: Modulating the Performance of Normal Distribution Visualizations with Affordances》（7.6/10）, 《Structural Impossibility of Antichain-Lattice Partial Information Decomposition》（7.4/10）, 《When Does Multimodal AI Help? Diagnostic Complementarity of Vision-Language Models and CNNs for Spectrum Management in Satellite-Terrestrial Networks》（7.3/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/11/README](/202604/11/README)
+- 详情：[/202604/12/README](/202604/12/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [SALLIE: Safeguarding Against Latent Language & Image Exploits](/202604/11/2604.06247v1-sallie-safeguarding-against-latent-language--image-exploits)  
-   标签：评分：7.7/10
+1. [Croissant Charts: Modulating the Performance of Normal Distribution Visualizations with Affordances](/202604/12/2604.04432v1-croissant-charts-modulating-the-performance-of-normal-distribution-visualizations-with-affordances)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-2. [Partial Number Theoretic Transform Masking in Post Quantum Cryptography Hardware: A Security Margin Analysis](/202604/11/2604.03813v1-partial-number-theoretic-transform-masking-in-post-quantum-cryptography-hardware-a-security-margin-analysis)  
+2. [Structural Impossibility of Antichain-Lattice Partial Information Decomposition](/202604/12/2604.03869v1-structural-impossibility-of-antichain-lattice-partial-information-decomposition)  
+   标签：评分：7.4/10
+   evidence：检索回退候选
+3. [When Does Multimodal AI Help? Diagnostic Complementarity of Vision-Language Models and CNNs for Spectrum Management in Satellite-Terrestrial Networks](/202604/12/2604.03774v1-when-does-multimodal-ai-help-diagnostic-complementarity-of-vision-language-models-and-cnns-for-spectrum-management-in-satellite-terrestrial-networks)  
    标签：评分：7.3/10
    evidence：检索回退候选
-3. [The Statistical Profitability of Social Media Sports Betting Influencers: Evidence from the Nigerian Market](/202604/11/2604.08251v1-the-statistical-profitability-of-social-media-sports-betting-influencers-evidence-from-the-nigerian-market)  
+4. [DebugHarness: Emulating Human Dynamic Debugging for Autonomous Program Repair](/202604/12/2604.03610v1-debugharness-emulating-human-dynamic-debugging-for-autonomous-program-repair)  
    标签：评分：7.2/10
    evidence：检索回退候选
-4. [SIM1: Physics-Aligned Simulator as Zero-Shot Data Scaler in Deformable Worlds](/202604/11/2604.08544v1-sim1-physics-aligned-simulator-as-zero-shot-data-scaler-in-deformable-worlds)  
-   标签：评分：7.1/10
-   evidence：检索回退候选
-5. [Modeling Patient Care Trajectories with Transformer Hawkes Processes](/202604/11/2604.05844v1-modeling-patient-care-trajectories-with-transformer-hawkes-processes)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-6. [Minimaxity and Admissibility of Bayesian Neural Networks](/202604/11/2604.04673v1-minimaxity-and-admissibility-of-bayesian-neural-networks)  
+5. [Semiparametric Estimation of Average Treatment Effects under Structured Outcome Models with Unknown Error Distributions](/202604/12/2604.07770v1-semiparametric-estimation-of-average-treatment-effects-under-structured-outcome-models-with-unknown-error-distributions)  
    标签：评分：6.9/10
    evidence：检索回退候选
-7. [Making MLLMs Blind: Adversarial Smuggling Attacks in MLLM Content Moderation](/202604/11/2604.06950v1-making-mllms-blind-adversarial-smuggling-attacks-in-mllm-content-moderation)  
+6. [ospEDA: Orthogonal Subspace Projection for Electrodermal Activity Decomposition](/202604/12/2604.07521v1-ospeda-orthogonal-subspace-projection-for-electrodermal-activity-decomposition)  
    标签：评分：6.8/10
    evidence：检索回退候选
-8. [Modeling and Analysis of Air-to-Ground Cellular KPIs in a 5G Testbed using Android Smartphones](/202604/11/2604.04452v2-modeling-and-analysis-of-air-to-ground-cellular-kpis-in-a-5g-testbed-using-android-smartphones)  
+7. [Ecohydrological Controls on Moist Convection and Long-Term Rainfall Feedback](/202604/12/2604.08442v1-ecohydrological-controls-on-moist-convection-and-long-term-rainfall-feedback)  
    标签：评分：6.7/10
    evidence：检索回退候选
-9. [PoC-Adapt: Semantic-Aware Automated Vulnerability Reproduction with LLM Multi-Agents and Reinforcement Learning-Driven Adaptive Policy](/202604/11/2604.06618v1-poc-adapt-semantic-aware-automated-vulnerability-reproduction-with-llm-multi-agents-and-reinforcement-learning-driven-adaptive-policy)  
+8. [Asset allocation using a Markov process of clustered efficient frontier coefficients states](/202604/12/2604.03946v1-asset-allocation-using-a-markov-process-of-clustered-efficient-frontier-coefficients-states)  
    标签：评分：6.6/10
    evidence：检索回退候选
-10. [Semiparametric Causal Mediation Analysis for Linear Models with Non-Gaussian Errors: Applications to Drug Treatment and Social Program Evaluation](/202604/11/2604.08346v1-semiparametric-causal-mediation-analysis-for-linear-models-with-non-gaussian-errors-applications-to-drug-treatment-and-social-program-evaluation)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-11. [Sample-split REGression SREG: A robust estimator for high-dimensional survey data](/202604/11/2604.07636v1-sample-split-regression-sreg-a-robust-estimator-for-high-dimensional-survey-data)  
+9. [The Weaponization of Computer Vision: Tracing Military-Surveillance Ties through Conference Sponsorship](/202604/12/2604.07803v1-the-weaponization-of-computer-vision-tracing-military-surveillance-ties-through-conference-sponsorship)  
    标签：评分：6.4/10
+   evidence：检索回退候选
+10. [Confidence Sets under Weak Identification: Theory and Practice](/202604/12/2604.04279v1-confidence-sets-under-weak-identification-theory-and-practice)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+11. [PECKER: A Precisely Efficient Critical Knowledge Erasure Recipe For Machine Unlearning in Diffusion Models](/202604/12/2604.05634v1-pecker-a-precisely-efficient-critical-knowledge-erasure-recipe-for-machine-unlearning-in-diffusion-models)  
+   标签：评分：6.2/10
    evidence：检索回退候选
 
 
