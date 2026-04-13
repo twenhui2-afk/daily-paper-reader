@@ -6,55 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-12
-- 运行时间：2026-04-13 03:44:45 UTC+8
+- 最新运行日期：2026-04-13
+- 运行时间：2026-04-14 04:43:19 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Croissant Charts: Modulating the Performance of Normal Distribution Visualizations with Affordances》（7.6/10）, 《Structural Impossibility of Antichain-Lattice Partial Information Decomposition》（7.4/10）, 《When Does Multimodal AI Help? Diagnostic Complementarity of Vision-Language Models and CNNs for Spectrum Management in Satellite-Terrestrial Networks》（7.3/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《Text-Conditioned Multi-Expert Regression Framework for Fully Automated Multi-Abutment Design》（8.5/10）, 《Root geometry of domination polynomials for friendship and book graphs》（8.5/10）
+- 速读：《RieIF: Knowledge-Driven Riemannian Information Flow for Robust Spatio-Temporal Graph Signal Prediction in 6G Wireless Networks》（7.7/10）, 《Regularized Nonstationary Phase Estimation via Proximal Maximization of Skewness and Kurtosis》（7.5/10）, 《Semantic Trimming and Auxiliary Multi-step Prediction for Generative Recommendation》（6.7/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/12/README](/202604/12/README)
+- 详情：[/202604/13/README](/202604/13/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Text-Conditioned Multi-Expert Regression Framework for Fully Automated Multi-Abutment Design](/202604/13/2604.09047v1-text-conditioned-multi-expert-regression-framework-for-fully-automated-multi-abutment-design)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+2. [Root geometry of domination polynomials for friendship and book graphs](/202604/13/2604.08998v1-root-geometry-of-domination-polynomials-for-friendship-and-book-graphs)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Croissant Charts: Modulating the Performance of Normal Distribution Visualizations with Affordances](/202604/12/2604.04432v1-croissant-charts-modulating-the-performance-of-normal-distribution-visualizations-with-affordances)  
-   标签：评分：7.6/10
+1. [RieIF: Knowledge-Driven Riemannian Information Flow for Robust Spatio-Temporal Graph Signal Prediction in 6G Wireless Networks](/202604/13/2604.06971v1-rieif-knowledge-driven-riemannian-information-flow-for-robust-spatio-temporal-graph-signal-prediction-in-6g-wireless-networks)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-2. [Structural Impossibility of Antichain-Lattice Partial Information Decomposition](/202604/12/2604.03869v1-structural-impossibility-of-antichain-lattice-partial-information-decomposition)  
-   标签：评分：7.4/10
+2. [Regularized Nonstationary Phase Estimation via Proximal Maximization of Skewness and Kurtosis](/202604/13/2604.06948v1-regularized-nonstationary-phase-estimation-via-proximal-maximization-of-skewness-and-kurtosis)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-3. [When Does Multimodal AI Help? Diagnostic Complementarity of Vision-Language Models and CNNs for Spectrum Management in Satellite-Terrestrial Networks](/202604/12/2604.03774v1-when-does-multimodal-ai-help-diagnostic-complementarity-of-vision-language-models-and-cnns-for-spectrum-management-in-satellite-terrestrial-networks)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-4. [DebugHarness: Emulating Human Dynamic Debugging for Autonomous Program Repair](/202604/12/2604.03610v1-debugharness-emulating-human-dynamic-debugging-for-autonomous-program-repair)  
-   标签：评分：7.2/10
-   evidence：检索回退候选
-5. [Semiparametric Estimation of Average Treatment Effects under Structured Outcome Models with Unknown Error Distributions](/202604/12/2604.07770v1-semiparametric-estimation-of-average-treatment-effects-under-structured-outcome-models-with-unknown-error-distributions)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-6. [ospEDA: Orthogonal Subspace Projection for Electrodermal Activity Decomposition](/202604/12/2604.07521v1-ospeda-orthogonal-subspace-projection-for-electrodermal-activity-decomposition)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-7. [Ecohydrological Controls on Moist Convection and Long-Term Rainfall Feedback](/202604/12/2604.08442v1-ecohydrological-controls-on-moist-convection-and-long-term-rainfall-feedback)  
+3. [Semantic Trimming and Auxiliary Multi-step Prediction for Generative Recommendation](/202604/13/2604.05329v1-semantic-trimming-and-auxiliary-multi-step-prediction-for-generative-recommendation)  
    标签：评分：6.7/10
    evidence：检索回退候选
-8. [Asset allocation using a Markov process of clustered efficient frontier coefficients states](/202604/12/2604.03946v1-asset-allocation-using-a-markov-process-of-clustered-efficient-frontier-coefficients-states)  
+4. [WebCVTree4: A Newly Designed Phylogenetic and Taxonomic Study Platform for Prokaryotes Using Composition Vectors and Whole Genomes](/202604/13/2604.06835v1-webcvtree4-a-newly-designed-phylogenetic-and-taxonomic-study-platform-for-prokaryotes-using-composition-vectors-and-whole-genomes)  
    标签：评分：6.6/10
    evidence：检索回退候选
-9. [The Weaponization of Computer Vision: Tracing Military-Surveillance Ties through Conference Sponsorship](/202604/12/2604.07803v1-the-weaponization-of-computer-vision-tracing-military-surveillance-ties-through-conference-sponsorship)  
+5. [Convergence rate of $H$-property for step-graphons](/202604/13/2604.05138v1-convergence-rate-of-h-property-for-step-graphons)  
    标签：评分：6.4/10
    evidence：检索回退候选
-10. [Confidence Sets under Weak Identification: Theory and Practice](/202604/12/2604.04279v1-confidence-sets-under-weak-identification-theory-and-practice)  
+6. [Immanantal polynomials of the linear combination matrices of graphs](/202604/13/2604.04489v1-immanantal-polynomials-of-the-linear-combination-matrices-of-graphs)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+7. [OASIC: Occlusion-Agnostic and Severity-Informed Classification](/202604/13/2604.04012v1-oasic-occlusion-agnostic-and-severity-informed-classification)  
    标签：评分：6.3/10
    evidence：检索回退候选
-11. [PECKER: A Precisely Efficient Critical Knowledge Erasure Recipe For Machine Unlearning in Diffusion Models](/202604/12/2604.05634v1-pecker-a-precisely-efficient-critical-knowledge-erasure-recipe-for-machine-unlearning-in-diffusion-models)  
+8. [Approximation Models for Shared Mobility Rebalancing Under Structured Spatial Imbalance](/202604/13/2604.04412v1-approximation-models-for-shared-mobility-rebalancing-under-structured-spatial-imbalance)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+9. [Decision Trace Schema for Governance Evidence in Real-Time Risk Systems](/202604/13/2604.09296v1-decision-trace-schema-for-governance-evidence-in-real-time-risk-systems)  
    标签：评分：6.2/10
+   evidence：检索回退候选
+10. [Structuring versus Problematizing: How LLM-based Agents Scaffold Learning in Diagnostic Reasoning](/202604/13/2604.09158v1-structuring-versus-problematizing-how-llm-based-agents-scaffold-learning-in-diagnostic-reasoning)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+11. [The spatio-temporal statistical structure of the turbulent dissipation field and its stochastic representation as a Gaussian Multiplicative Chaos](/202604/13/2604.05736v1-the-spatio-temporal-statistical-structure-of-the-turbulent-dissipation-field-and-its-stochastic-representation-as-a-gaussian-multiplicative-chaos)  
+   标签：评分：6.1/10
    evidence：检索回退候选
 
 
