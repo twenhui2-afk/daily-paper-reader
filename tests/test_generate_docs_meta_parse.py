@@ -129,6 +129,24 @@ class GenerateDocsMetaParseTest(unittest.TestCase):
         self.assertIn("达到当前最优水平", text)
         self.assertNotIn("建议结合摘要与原文阅读", text)
 
+    def test_heuristic_summary_translates_title_and_splits_sections(self):
+        data = self.mod.summarize_abstract_heuristically(
+            "Tiles from projections of the root and weight lattices of $A_n$",
+            (
+                "Main purpose of this work is to introduce a general technique of projection of the "
+                "Voronoi tessellation of the weight lattice $A_n^\\ast$ and apply it for the lattice "
+                "$A_4^\\ast$. The projection of the Voronoi tessellation of the weight lattice "
+                "$A_4^\\ast$ produces a totally different tiling scheme than the tiling obtained from "
+                "the Voronoi cell projection of the lattice $A_4$. A convenient set of linearly "
+                "dependent and non-orthogonal vectors $k_i$ is introduced."
+            ),
+        )
+        self.assertIn("铺砌", data["title_zh"])
+        self.assertIn("权格", data["title_zh"])
+        self.assertNotEqual(data["motivation"], data["method"])
+        self.assertNotIn("目标任务", data["motivation"])
+        self.assertNotIn("作者提出一个新方法", data["method"])
+
     def test_build_markdown_content_writes_bilingual_fields(self):
         paper = {
             "title": "Dental Segmentation",

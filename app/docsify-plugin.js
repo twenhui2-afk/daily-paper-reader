@@ -2637,25 +2637,21 @@ window.$docsify = {
           }
         }
 
-        // 兜底：若只有英文标题（缺少 title_zh），将英文挪到左侧显示，
-        // 避免 dpr-title-single 样式把右侧英文区域隐藏后出现“无标题”。
-        if (!cnTitle && enTitle) {
-          cnTitle = enTitle;
-          enTitle = '';
-        }
-
         // 隐藏原始 h1，但保留在 DOM 里供复制/SEO/元信息提取兜底
         h1s.forEach((h) => h.classList.add('dpr-title-hidden'));
 
         const bar = document.createElement('div');
         bar.className = 'dpr-title-bar';
-        bar.innerHTML = `
-          <div class="dpr-title-cn">${escapeHtml(cnTitle || '')}</div>
-          <div class="dpr-title-sep" aria-hidden="true"></div>
-          <div class="dpr-title-en">${escapeHtml(enTitle || '')}</div>
-        `;
-        if (!cnTitle) {
+        if (enTitle && cnTitle) {
+          bar.innerHTML = `
+            <div class="dpr-title-en">${escapeHtml(enTitle)}</div>
+            <div class="dpr-title-sep" aria-hidden="true"></div>
+            <div class="dpr-title-cn">${escapeHtml(cnTitle)}</div>
+          `;
+        } else {
+          const singleTitle = enTitle || cnTitle || '';
           bar.classList.add('dpr-title-single');
+          bar.innerHTML = `<div class="dpr-title-solo">${escapeHtml(singleTitle)}</div>`;
         }
 
         root.insertBefore(bar, root.firstChild);
@@ -2664,8 +2660,10 @@ window.$docsify = {
         requestAnimationFrame(() => {
           const cnEl = bar.querySelector('.dpr-title-cn');
           const enEl = bar.querySelector('.dpr-title-en');
+          const singleEl = bar.querySelector('.dpr-title-solo');
           if (cnEl && cnTitle) fitTextToBox(cnEl, 14, 22);
           if (enEl && enTitle) fitTextToBox(enEl, 13, 20);
+          if (singleEl && (enTitle || cnTitle)) fitTextToBox(singleEl, 14, 22);
         });
       };
 

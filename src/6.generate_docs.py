@@ -72,6 +72,12 @@ GENERIC_GLANCE_MARKERS = (
     "这篇工作围绕《",
     "总体来看，这项工作提供了可复用的方法思路",
 )
+GENERIC_FALLBACK_MARKERS = GENERIC_GLANCE_MARKERS + (
+    "论文关注目标任务",
+    "作者提出一个新方法",
+    "摘要没有给出明确数字",
+    "如果你关注",
+)
 TASK_KEYWORD_HINTS = [
     ("segmentation", "分割"),
     ("detection", "检测"),
@@ -97,6 +103,97 @@ MODULE_HINTS = [
     ("prompt", "提示引导"),
     ("graph", "图结构建模"),
     ("adapter", "适配器模块"),
+]
+TITLE_TRANSLATION_HINTS = [
+    ("root and weight lattices", "根格与权格"),
+    ("root and weight lattice", "根格与权格"),
+    ("voronoi tessellation", "Voronoi 剖分"),
+    ("voronoi cell", "Voronoi 单胞"),
+    ("weight lattices", "权格"),
+    ("weight lattice", "权格"),
+    ("root lattices", "根格"),
+    ("root lattice", "根格"),
+    ("tiling scheme", "铺砌方案"),
+    ("tiles", "铺砌"),
+    ("tilings", "铺砌"),
+    ("projections", "投影"),
+    ("projection", "投影"),
+    ("framework", "框架"),
+    ("architecture", "架构"),
+    ("method", "方法"),
+    ("model", "模型"),
+    ("design", "设计"),
+    ("benchmark", "基准"),
+    ("dataset", "数据集"),
+]
+MIXED_CN_HINTS = [
+    ("main purpose of this work is to introduce", "这篇工作的核心目标是提出"),
+    ("main purpose of this work is to", "这篇工作的核心目标是"),
+    ("the main purpose of this work is to", "这篇工作的核心目标是"),
+    ("this work introduces", "这篇工作提出"),
+    ("this paper introduces", "这篇论文提出"),
+    ("we propose", "作者提出"),
+    ("we present", "作者提出"),
+    ("we introduce", "作者引入"),
+    ("we develop", "作者构建"),
+    ("we design", "作者设计"),
+    ("we study", "这篇论文研究"),
+    ("general technique", "通用方法"),
+    ("totally different", "完全不同的"),
+    ("obtained from", "由...得到的"),
+    ("mathematical technique employed", "文中采用的数学方法"),
+    ("is also useful for", "也可用于"),
+    ("is useful for", "可用于"),
+    ("can be used for", "可用于"),
+    ("apply it for", "并应用到"),
+    ("applied to", "应用到"),
+    ("extensive experiments show that", "大量实验表明"),
+    ("experiments show that", "实验表明"),
+    ("experiments show", "实验表明"),
+    ("demonstrates", "表明"),
+    ("demonstrate", "表明"),
+    ("state-of-the-art performance", "当前最优水平"),
+    ("achieves", "达到"),
+    ("achieve", "达到"),
+    ("outperforms", "优于"),
+    ("outperform", "优于"),
+    ("state-of-the-art", "当前最优"),
+    ("performance", "性能"),
+    ("rely heavily on", "高度依赖"),
+    ("time-consuming", "耗时"),
+    ("produces", "得到"),
+    ("lattice", "格"),
+    ("introduced", "被引入"),
+    ("convenient set of", "一组便于处理的"),
+    ("linearly dependent", "线性相关的"),
+    ("non-orthogonal", "非正交的"),
+    ("projection of the voronoi tessellation of the weight lattice", "对权格的 Voronoi 剖分做投影"),
+    ("projection of the voronoi tessellation", "对 Voronoi 剖分做投影"),
+    ("voronoi tessellation", "Voronoi 剖分"),
+    ("voronoi cell", "Voronoi 单胞"),
+    ("weight lattices", "权格"),
+    ("weight lattice", "权格"),
+    ("root lattices", "根格"),
+    ("root lattice", "根格"),
+    ("tiling scheme", "铺砌方案"),
+    ("tilings", "铺砌"),
+    ("tiles", "铺砌"),
+    ("regular hexagons", "正六边形"),
+    ("rhombuses", "菱形"),
+    ("squares", "正方形"),
+    ("golden ratio", "黄金比例"),
+    ("coxeter plane", "Coxeter 平面"),
+    ("projection", "投影"),
+    ("projections", "投影"),
+    ("framework", "框架"),
+    ("architecture", "架构"),
+    ("network", "网络"),
+    ("module", "模块"),
+    ("model", "模型"),
+    ("method", "方法"),
+    ("technique", "技术"),
+    ("vectors", "向量"),
+    ("vector", "向量"),
 ]
 
 
@@ -467,6 +564,181 @@ def split_sentences_loose(text: str) -> List[str]:
     return [part.strip() for part in parts if part.strip()]
 
 
+def normalize_scientific_text(text: str) -> str:
+    cleaned = str(text or "")
+    replacements = {
+        r"\left": "",
+        r"\right": "",
+        r"\ldots": "...",
+        r"\ast": "*",
+        "$": "",
+    }
+    for src, dst in replacements.items():
+        cleaned = cleaned.replace(src, dst)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
+def apply_case_insensitive_replacements(text: str, hints: List[Tuple[str, str]]) -> str:
+    out = str(text or "")
+    for source, target in sorted(hints, key=lambda item: len(item[0]), reverse=True):
+        out = re.sub(re.escape(source), target, out, flags=re.I)
+    return out
+
+
+def tidy_mixed_cn_text(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "").strip())
+    if not cleaned:
+        return ""
+    cleaned = cleaned.replace(" ,", "，").replace(", ", "，")
+    cleaned = cleaned.replace(" ;", "；").replace("; ", "；")
+    cleaned = cleaned.replace(" :", "：").replace(": ", "：")
+    cleaned = cleaned.replace(" .", ".")
+    cleaned = re.sub(r"\b(the|a|an)\b", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s*([，。；：])\s*", r"\1", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", cleaned)
+    cleaned = re.sub(r"([A-Za-z0-9])([（(])", r"\1 \2", cleaned)
+    cleaned = re.sub(r"([)）])([A-Za-z0-9])", r"\1 \2", cleaned)
+    return cleaned.strip(" ，；：")
+
+
+def translate_phrase_cn(text: str, hints: List[Tuple[str, str]] | None = None) -> str:
+    cleaned = normalize_scientific_text(text)
+    if not cleaned:
+        return ""
+    cleaned = re.sub(r"\b(the|a|an)\b", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    chosen_hints = hints or TITLE_TRANSLATION_HINTS
+    cleaned = apply_case_insensitive_replacements(cleaned, chosen_hints)
+
+    of_match = re.match(r"^(?P<head>.+?)\s+of\s+(?P<tail>.+)$", cleaned, flags=re.I)
+    if of_match:
+        head = translate_phrase_cn(of_match.group("head"), chosen_hints)
+        tail = translate_phrase_cn(of_match.group("tail"), chosen_hints)
+        if head and tail:
+            return tidy_mixed_cn_text(f"{tail}的{head}")
+
+    if re.search(r"\band\b", cleaned, flags=re.I):
+        parts = [translate_phrase_cn(part, chosen_hints) for part in re.split(r"\band\b", cleaned, flags=re.I)]
+        parts = [part for part in parts if part]
+        if parts:
+            return tidy_mixed_cn_text("与".join(parts))
+
+    cleaned = re.sub(r"\bfor\b", "用于", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bwith\b", "结合", cleaned, flags=re.I)
+    cleaned = re.sub(r"\busing\b", "使用", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bvia\b", "通过", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bfrom\b", "由", cleaned, flags=re.I)
+    return tidy_mixed_cn_text(cleaned)
+
+
+def translate_title_heuristically(title: str) -> str:
+    cleaned = normalize_scientific_text(title)
+    if not cleaned:
+        return ""
+    patterns = [
+        (r"^(?P<lemma>.+?)\s+from\s+(?P<rest>.+)$", "由{rest}得到的{lemma}"),
+        (r"^(?P<lemma>.+?)\s+for\s+(?P<rest>.+)$", "用于{rest}的{lemma}"),
+        (r"^(?P<lemma>.+?)\s+with\s+(?P<rest>.+)$", "结合{rest}的{lemma}"),
+        (r"^(?P<lemma>.+?)\s+based on\s+(?P<rest>.+)$", "基于{rest}的{lemma}"),
+        (r"^(?P<lemma>.+?)\s+via\s+(?P<rest>.+)$", "通过{rest}实现的{lemma}"),
+    ]
+    for pattern, template in patterns:
+        match = re.match(pattern, cleaned, flags=re.I)
+        if not match:
+            continue
+        lemma = translate_phrase_cn(match.group("lemma"))
+        rest = translate_phrase_cn(match.group("rest"))
+        if lemma and rest:
+            return tidy_mixed_cn_text(template.format(lemma=lemma, rest=rest))
+    return translate_phrase_cn(cleaned)
+
+
+def shorten_cn_clause(text: str, max_chars: int = 72) -> str:
+    cleaned = tidy_mixed_cn_text(text)
+    if not cleaned:
+        return ""
+    if len(cleaned) <= max_chars:
+        return cleaned
+    clipped = cleaned[:max_chars].rstrip("，；： ")
+    return clipped + "..."
+
+
+def translate_sentence_fragment_cn(text: str, max_words: int = 38, max_chars: int = 100) -> str:
+    cleaned = normalize_scientific_text(text)
+    if not cleaned:
+        return ""
+    cleaned = shorten_english_sentence(cleaned, max_words=max_words)
+    cleaned = re.sub(
+        r"main purpose of this work is to introduce a general technique of projection",
+        "这篇工作的核心目标是提出一套投影通用方法",
+        cleaned,
+        flags=re.I,
+    )
+    cleaned = re.sub(
+        r"produces a totally different tiling scheme than",
+        "得到一种不同于...的铺砌方案，相比",
+        cleaned,
+        flags=re.I,
+    )
+    cleaned = re.sub(
+        r"a convenient set of linearly dependent and non-orthogonal vectors\s+([A-Za-z0-9_]+)\s+is introduced",
+        r"引入一组线性相关且非正交的向量 \1",
+        cleaned,
+        flags=re.I,
+    )
+    cleaned = apply_case_insensitive_replacements(cleaned, MIXED_CN_HINTS)
+    cleaned = re.sub(r"\band\b", " 与 ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bfor\b", " 用于 ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bof\b", " 的 ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bwith\b", " 结合 ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\busing\b", " 使用 ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bvia\b", " 通过 ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\binto\b", " 为 ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bthan\b", " 相比 ", cleaned, flags=re.I)
+    cleaned = tidy_mixed_cn_text(cleaned)
+    if not cleaned:
+        return ""
+    if len(cleaned) > max_chars:
+        cleaned = cleaned[:max_chars].rstrip("，；： ")
+        cleaned += "..."
+    return cleaned
+
+
+def pick_distinct_sentence(
+    sentences: List[str],
+    used_indices: set[int],
+    patterns: List[str],
+    fallback_order: List[int] | None = None,
+) -> str:
+    for idx, sentence in enumerate(sentences):
+        if idx in used_indices:
+            continue
+        lowered = sentence.lower()
+        if any(re.search(pattern, lowered, re.I) for pattern in patterns):
+            used_indices.add(idx)
+            return sentence.strip()
+    for idx in fallback_order or []:
+        if 0 <= idx < len(sentences) and idx not in used_indices:
+            used_indices.add(idx)
+            return sentences[idx].strip()
+    for idx, sentence in enumerate(sentences):
+        if idx not in used_indices:
+            used_indices.add(idx)
+            return sentence.strip()
+    return ""
+
+
+def build_sentence_line(prefix: str, sentence: str, fallback: str = "", max_words: int = 38) -> str:
+    body = translate_sentence_fragment_cn(sentence, max_words=max_words) or shorten_cn_clause(fallback)
+    if not body:
+        return ""
+    if prefix and body.startswith(prefix):
+        return ensure_single_sentence_end(body)
+    return ensure_single_sentence_end(f"{prefix}{body}" if prefix else body)
+
+
 def shorten_english_sentence(text: str, max_words: int = 42) -> str:
     words = str(text or "").strip().split()
     if not words:
@@ -505,46 +777,136 @@ def infer_model_name(title: str, abstract: str) -> str:
 
 
 def summarize_abstract_heuristically(title: str, abstract: str) -> Dict[str, str]:
-    text = str(abstract or "").strip()
+    text = normalize_scientific_text(abstract)
     lowered = text.lower()
     task_cn = infer_task_cn(title, abstract)
     model_name = infer_model_name(title, abstract)
     modules = [zh for key, zh in MODULE_HINTS if key in lowered]
-    module_text = "，".join(modules[:2])
-    if "manual" in lowered or "time-consuming" in lowered:
-        motivation = f"现有{task_cn}流程依赖人工且耗时，自动化和规模化能力不足。"
-    elif "lack" in lowered or "limited" in lowered or "challeng" in lowered:
-        motivation = f"现有{task_cn}方法仍有明显限制，作者希望补上关键短板。"
-    else:
-        motivation = f"论文关注{task_cn}任务，目标是提升效果与可用性。"
+    module_text = "、".join(modules[:2])
+    title_zh = translate_title_heuristically(title)
+    sentences = split_sentences_loose(text)
+    used_indices: set[int] = set()
+    aim_sentence = pick_distinct_sentence(
+        sentences,
+        used_indices,
+        [
+            r"\bmain purpose\b",
+            r"\bobjective\b",
+            r"\baim\b",
+            r"\bgoal\b",
+            r"\bwe study\b",
+            r"\bmanual\b",
+            r"\btime-consuming\b",
+            r"\blimit",
+            r"\bchallenge\b",
+        ],
+        fallback_order=[0],
+    )
+    method_sentence = pick_distinct_sentence(
+        sentences,
+        used_indices,
+        [
+            r"\bwe propose\b",
+            r"\bwe present\b",
+            r"\bwe introduce\b",
+            r"\bwe develop\b",
+            r"\bintroduced\b",
+            r"\bframework\b",
+            r"\barchitecture\b",
+            r"\bmodule\b",
+            r"\bnetwork\b",
+            r"\bvector\b",
+        ],
+        fallback_order=[1, 0],
+    )
+    result_sentence = pick_distinct_sentence(
+        sentences,
+        used_indices,
+        [
+            r"\bexperiments?\b",
+            r"\bshow\b",
+            r"\bdemonstrat",
+            r"\bachiev",
+            r"\boutperform",
+            r"\bstate-of-the-art\b",
+            r"\bproduce",
+            r"\byield",
+            r"\beffective\b",
+        ],
+        fallback_order=[2, len(sentences) - 1],
+    )
+    conclusion_sentence = pick_distinct_sentence(
+        sentences,
+        used_indices,
+        [
+            r"\buseful\b",
+            r"\bcan be used\b",
+            r"\bapplicable\b",
+            r"\bvalue\b",
+            r"\bsupport\b",
+            r"\benable\b",
+            r"\bimplication\b",
+        ],
+        fallback_order=[len(sentences) - 1, 3, 0],
+    )
 
-    method_parts: List[str] = []
+    motivation = build_sentence_line(
+        "",
+        aim_sentence,
+        fallback=f"这篇论文主要关注{task_cn}问题。",
+        max_words=34,
+    )
+    method_fallback = []
     if model_name:
-        method_parts.append(f"作者提出 {model_name}")
+        method_fallback.append(f"作者提出 {model_name}")
     else:
-        method_parts.append("作者提出一个新方法")
+        method_fallback.append("作者提出一个具体方法")
     if task_cn != "目标任务":
-        method_parts.append(f"用于{task_cn}")
+        method_fallback.append(f"用于{task_cn}")
     if module_text:
-        method_parts.append(f"并结合{module_text}")
-    method = "，".join(method_parts) + "。"
-
+        method_fallback.append(f"并结合{module_text}")
+    method = build_sentence_line(
+        "核心做法：",
+        method_sentence,
+        fallback="，".join(method_fallback),
+        max_words=34,
+    )
     if "state-of-the-art" in lowered:
-        result = "实验结果表明，该方法达到当前最优水平。"
+        result_fallback = "达到当前最优水平。"
     elif "outperform" in lowered or "superior" in lowered or "better than" in lowered:
-        result = "实验结果表明，该方法优于现有基线方法。"
+        result_fallback = "优于现有基线方法。"
     elif "effective" in lowered or "validat" in lowered or "demonstrate" in lowered:
-        result = "实验验证了该方法在目标任务上的有效性。"
+        result_fallback = "证明了方法有效。"
     else:
-        result = "摘要没有给出明确数字，但报告了正向实验结果。"
-    if "dataset" in lowered or "benchmark" in lowered:
-        result = result[:-1] + "，并在数据集或基准任务上完成验证。"
+        result_fallback = "摘要给出了正向结果。"
+    result = build_sentence_line(
+        "主要结果：",
+        result_sentence,
+        fallback=result_fallback,
+        max_words=34,
+    )
+    conclusion = build_sentence_line(
+        "值得关注的点在于：",
+        conclusion_sentence,
+        fallback=f"这篇文章的价值在于把《{title_zh or title or task_cn}》这个问题讲清楚。",
+        max_words=34,
+    )
 
-    conclusion = f"如果你关注{task_cn}方向，这篇文章的价值在于把任务做得更自动化、更可落地。"
-    tldr_cn = f"{motivation[:-1]}；{method[:-1]}；{result}"
-    abstract_zh = f"{motivation}\n\n{method}\n\n{result}\n\n{conclusion}"
+    abstract_parts = [motivation, method, result]
+    if conclusion and conclusion not in abstract_parts:
+        abstract_parts.append(conclusion)
+    abstract_zh = "\n\n".join(part for part in abstract_parts if part)
+    tldr_parts = [
+        shorten_cn_clause(translate_sentence_fragment_cn(aim_sentence, max_words=18, max_chars=40)),
+        shorten_cn_clause(translate_sentence_fragment_cn(method_sentence, max_words=18, max_chars=40)),
+        shorten_cn_clause(translate_sentence_fragment_cn(result_sentence, max_words=18, max_chars=40)),
+    ]
+    tldr_parts = [part for part in tldr_parts if part]
+    if not tldr_parts:
+        tldr_parts = [shorten_cn_clause(title_zh or f"{task_cn}方向的一篇论文", max_chars=40)]
+    tldr_cn = "；".join(tldr_parts[:3])
     return {
-        "title_zh": "",
+        "title_zh": title_zh,
         "abstract_zh": abstract_zh,
         "tldr_cn": tldr_cn,
         "motivation": motivation,
@@ -1025,7 +1387,7 @@ def generate_glance_overview(title: str, abstract: str, max_retries: int = 3) ->
 
 
 def build_glance_fallback_data(paper: Dict[str, Any]) -> Dict[str, str]:
-    abstract = str(paper.get("abstract") or "").strip()
+    abstract = normalize_scientific_text(paper.get("abstract") or "")
     title = str(paper.get("title") or "").strip()
     heuristic = summarize_abstract_heuristically(title, abstract)
     tldr_cn = str(paper.get("llm_tldr_cn") or "").strip() or str(heuristic.get("tldr_cn") or "").strip()
@@ -1073,19 +1435,19 @@ def build_glance_fallback_data(paper: Dict[str, Any]) -> Dict[str, str]:
         "tldr_en": shorten_english_sentence(tldr_en or motivation_en or method_en, max_words=60),
         "motivation": ensure_single_sentence_end(
             str(heuristic.get("motivation") or "").strip()
-            or (f"论文要解决的问题是：{motivation_en}" if motivation_en else (f"论文聚焦《{title}》对应的具体任务难点。" if title else "论文聚焦一个具体任务难点。"))
+            or build_sentence_line("", motivation_en, fallback=f"论文聚焦《{title}》对应的具体任务难点。")
         ),
         "method": ensure_single_sentence_end(
             str(heuristic.get("method") or "").strip()
-            or (f"核心方法是：{method_en}" if method_en else "摘要没有给出更细的结构细节，但明确提出了一个新的模型或框架。")
+            or build_sentence_line("核心做法：", method_en, fallback="摘要没有给出更细的结构细节，但明确提出了一个新的模型或框架。")
         ),
         "result": ensure_single_sentence_end(
             str(heuristic.get("result") or "").strip()
-            or (f"摘要里的结果表述是：{result_en}" if result_en else "摘要没有给出具体数字，但明确声称方法在目标任务上有效。")
+            or build_sentence_line("主要结果：", result_en, fallback="摘要没有给出具体数字，但明确声称方法在目标任务上有效。")
         ),
         "conclusion": ensure_single_sentence_end(
             str(heuristic.get("conclusion") or "").strip()
-            or (f"是否值得读，主要看这句：{conclusion_en}" if conclusion_en else "这篇文章的价值主要体现在把任务做成了更自动化、更可落地的方案。")
+            or build_sentence_line("值得关注的点在于：", conclusion_en or result_en, fallback="这篇文章给了一个可以直接复查的结果与结论。")
         ),
     }
 
@@ -1768,7 +2130,7 @@ def should_refresh_existing_markdown(md_text: str) -> bool:
         return True
     if "evidence: 检索回退候选" in md_text:
         return True
-    return any(marker in md_text for marker in GENERIC_GLANCE_MARKERS)
+    return any(marker in md_text for marker in GENERIC_FALLBACK_MARKERS)
 
 
 def process_paper(
