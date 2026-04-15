@@ -42,8 +42,11 @@
 - 已批量回填：
   - `python src/6.generate_docs.py --refresh-existing --refresh-prefix 202604`
   - 实际刷新 181 篇 2026 年 4 月论文页。
+- 已推送远端：
+  - `userrepo/main` 最新提交：`dd2a528`
+  - GitHub Pages 已开始新一轮构建。
 
 ## 下一步
 
-1. 提交并推送到远端 `main`，让 GitHub Pages 重新构建。
-2. 用户刷新站点，验证标题栏和样例页面是否符合预期。
+1. 等 GitHub Pages 构建完成。
+2. 用户强刷站点，验证任意 4 月论文页都已更新，且“一句话总结”和“摘要”不再重复。
