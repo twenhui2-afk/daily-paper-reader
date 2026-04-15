@@ -144,6 +144,8 @@ class GenerateDocsMetaParseTest(unittest.TestCase):
         self.assertIn("铺砌", data["title_zh"])
         self.assertIn("权格", data["title_zh"])
         self.assertNotEqual(data["motivation"], data["method"])
+        self.assertNotEqual(data["tldr_cn"], data["motivation"])
+        self.assertIn("围绕《", data["tldr_cn"])
         self.assertNotIn("目标任务", data["motivation"])
         self.assertNotIn("作者提出一个新方法", data["method"])
 

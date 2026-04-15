@@ -30,13 +30,18 @@
 - 已完成代码修复：
   - `app/docsify-plugin.js` 的标题栏改成“左英文原题、右中文标题”；如果只有一个标题，会直接显示单栏，不再留半边空白。
   - `src/6.generate_docs.py` 的启发式回退不再输出“目标任务 / 新方法 / 正向结果”模板句，而是从摘要里提取不同句子生成 TLDR、摘要、速览。
-  - `should_refresh_existing_markdown()` 现在会识别旧的模板化内容，后续回填时会自动刷新。
+  - 已新增 `--refresh-existing` 批量回填入口，可对已有论文页按新规则重写。
+  - `tldr_cn` 现在按“题目 + 方法 + 结果”压缩生成，和摘要正文区分开，不再只是摘要第一段缩写。
+- `should_refresh_existing_markdown()` 现在会识别旧的模板化内容，后续回填时会自动刷新。
 - 已完成验证：
   - `python -m py_compile src/6.generate_docs.py`
   - `node --check app/docsify-plugin.js`
   - `python -m unittest tests.test_generate_docs_meta_parse`
 - 已回填样例文档：
   - `/Users/nicai/Documents/daily-paper-reader/docs/202604/14/2604.10574v1-tiles-from-projections-of-the-root-and-weight-lattices-of-an.md`
+- 已批量回填：
+  - `python src/6.generate_docs.py --refresh-existing --refresh-prefix 202604`
+  - 实际刷新 181 篇 2026 年 4 月论文页。
 
 ## 下一步
 

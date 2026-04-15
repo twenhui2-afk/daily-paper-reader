@@ -13,3 +13,6 @@
   - 右侧显示中文标题；
   - 若只有一个标题，直接显示单栏，不保留误导性的空白半栏。
 - 对于 GitHub Actions 无法访问本地 LLM 的场景，文档生成必须有可读的启发式回退，而且 TLDR、摘要、速览不能复用同一套模板句。
+- 当前项目已支持离线批量回填已有论文页：
+  - 命令：`python src/6.generate_docs.py --refresh-existing --refresh-prefix <日期前缀>`
+  - 用途：在不重新抓取 arXiv 的情况下，按最新双语/速览规则重写历史 Markdown。

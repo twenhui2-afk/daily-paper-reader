@@ -665,6 +665,14 @@ def shorten_cn_clause(text: str, max_chars: int = 72) -> str:
     return clipped + "..."
 
 
+def strip_cn_prefix(text: str, prefixes: List[str]) -> str:
+    cleaned = str(text or "").strip()
+    for prefix in prefixes:
+        if cleaned.startswith(prefix):
+            return cleaned[len(prefix) :].strip()
+    return cleaned
+
+
 def translate_sentence_fragment_cn(text: str, max_words: int = 38, max_chars: int = 100) -> str:
     cleaned = normalize_scientific_text(text)
     if not cleaned:
@@ -737,6 +745,32 @@ def build_sentence_line(prefix: str, sentence: str, fallback: str = "", max_word
     if prefix and body.startswith(prefix):
         return ensure_single_sentence_end(body)
     return ensure_single_sentence_end(f"{prefix}{body}" if prefix else body)
+
+
+def build_tldr_cn_from_sections(
+    title_zh: str,
+    title_en: str,
+    motivation: str,
+    method: str,
+    result: str,
+) -> str:
+    topic = shorten_cn_clause(title_zh or title_en or strip_cn_prefix(motivation, ["这篇工作的核心目标是", "这篇论文主要关注"]), max_chars=24)
+    method_core = shorten_cn_clause(
+        strip_cn_prefix(method, ["核心做法：", "作者提出", "作者引入", "作者构建", "作者设计"]),
+        max_chars=32,
+    )
+    result_core = shorten_cn_clause(strip_cn_prefix(result, ["主要结果：", "实验表明", "实验结果表明"]), max_chars=36)
+    parts: List[str] = []
+    if topic:
+        parts.append(f"围绕《{topic}》")
+    if method_core:
+        parts.append(method_core)
+    if result_core:
+        parts.append(result_core)
+    parts = [part for part in parts if part]
+    if not parts:
+        return ""
+    return "；".join(parts[:3])
 
 
 def shorten_english_sentence(text: str, max_words: int = 42) -> str:
@@ -896,15 +930,17 @@ def summarize_abstract_heuristically(title: str, abstract: str) -> Dict[str, str
     if conclusion and conclusion not in abstract_parts:
         abstract_parts.append(conclusion)
     abstract_zh = "\n\n".join(part for part in abstract_parts if part)
-    tldr_parts = [
-        shorten_cn_clause(translate_sentence_fragment_cn(aim_sentence, max_words=18, max_chars=40)),
-        shorten_cn_clause(translate_sentence_fragment_cn(method_sentence, max_words=18, max_chars=40)),
-        shorten_cn_clause(translate_sentence_fragment_cn(result_sentence, max_words=18, max_chars=40)),
-    ]
-    tldr_parts = [part for part in tldr_parts if part]
-    if not tldr_parts:
-        tldr_parts = [shorten_cn_clause(title_zh or f"{task_cn}方向的一篇论文", max_chars=40)]
-    tldr_cn = "；".join(tldr_parts[:3])
+    tldr_cn = build_tldr_cn_from_sections(title_zh, title, motivation, method, result)
+    if not tldr_cn:
+        tldr_parts = [
+            shorten_cn_clause(translate_sentence_fragment_cn(aim_sentence, max_words=18, max_chars=40)),
+            shorten_cn_clause(translate_sentence_fragment_cn(method_sentence, max_words=18, max_chars=40)),
+            shorten_cn_clause(translate_sentence_fragment_cn(result_sentence, max_words=18, max_chars=40)),
+        ]
+        tldr_parts = [part for part in tldr_parts if part]
+        if not tldr_parts:
+            tldr_parts = [shorten_cn_clause(title_zh or f"{task_cn}方向的一篇论文", max_chars=40)]
+        tldr_cn = "；".join(tldr_parts[:3])
     return {
         "title_zh": title_zh,
         "abstract_zh": abstract_zh,
@@ -1411,7 +1447,17 @@ def build_glance_fallback_data(paper: Dict[str, Any]) -> Dict[str, str]:
         if evidence:
             tldr_cn = ensure_single_sentence_end(evidence)
         else:
-            tldr_cn = str(heuristic.get("tldr_cn") or "本文的核心信息可以先看下方摘要和关键结果。").strip()
+            tldr_cn = str(heuristic.get("tldr_cn") or "").strip()
+    if not tldr_cn:
+        tldr_cn = build_tldr_cn_from_sections(
+            str(heuristic.get("title_zh") or "").strip(),
+            title,
+            str(heuristic.get("motivation") or "").strip(),
+            str(heuristic.get("method") or "").strip(),
+            str(heuristic.get("result") or "").strip(),
+        ).strip()
+    if not tldr_cn:
+        tldr_cn = "本文的核心信息可以先看下方摘要和关键结果。"
 
     motivation_en = pick_sentence(
         [r"\bhowever\b", r"\bchallenge\b", r"\blimit", r"\bmanual\b", r"\btime-consuming\b", r"\black"],
@@ -2917,6 +2963,87 @@ def _parse_generated_md_to_meta(
     }
 
 
+def normalize_date_key(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if RANGE_DATE_RE.match(raw):
+        return raw
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) >= 8:
+        return digits[:8]
+    return raw
+
+
+def infer_date_key_from_md_path(md_path: str, docs_dir: str) -> str:
+    rel = os.path.relpath(md_path, docs_dir)
+    parts = rel.split(os.sep)
+    if not parts:
+        return ""
+    if RANGE_DATE_RE.match(parts[0]):
+        return parts[0]
+    if len(parts) >= 3 and len(parts[0]) == 6 and parts[0].isdigit() and len(parts[1]) == 2 and parts[1].isdigit():
+        return f"{parts[0]}{parts[1]}"
+    return ""
+
+
+def refresh_existing_markdown_docs(
+    docs_dir: str,
+    path_prefix: str = "",
+    limit: int = 0,
+) -> int:
+    prefix = str(path_prefix or "").strip().strip("/")
+    candidates: List[str] = []
+    for root, _dirs, files in os.walk(docs_dir):
+        for name in files:
+            if not name.endswith(".md"):
+                continue
+            if name in {"README.md", "_sidebar.md", "_home_notice.md", "_home_promo.md"}:
+                continue
+            md_path = os.path.join(root, name)
+            rel = os.path.relpath(md_path, docs_dir).replace(os.sep, "/")
+            if prefix and not rel.startswith(prefix):
+                continue
+            candidates.append(md_path)
+    candidates.sort()
+    refreshed = 0
+    for md_path in candidates:
+        try:
+            date_key = infer_date_key_from_md_path(md_path, docs_dir)
+            item = _parse_generated_md_to_meta(md_path, "", "quick")
+            paper_title = str(item.get("title_en") or "").strip()
+            paper_id = str(item.get("paper_id") or "").strip().split("/")[-1].split("-", 1)[0]
+            if not paper_id:
+                paper_id = os.path.basename(md_path).split("-", 1)[0].replace(".md", "")
+            if not date_key:
+                date_key = normalize_date_key(str(item.get("date") or ""))
+            if not paper_title or not date_key:
+                continue
+            tags = [tag.strip() for tag in str(item.get("tags") or "").split(",") if tag.strip()]
+            paper = {
+                "id": paper_id,
+                "paper_id": paper_id,
+                "title": paper_title,
+                "abstract": str(item.get("abstract_en") or "").strip(),
+                "authors": [a.strip() for a in str(item.get("authors") or "").split(",") if a.strip()],
+                "published": str(item.get("date") or "").strip(),
+                "link": str(item.get("pdf") or "").strip(),
+                "pdf_url": str(item.get("pdf") or "").strip(),
+                "llm_tags": tags,
+                "llm_score": str(item.get("score") or "").strip(),
+                "canonical_evidence": str(item.get("evidence") or "").strip(),
+                "selection_source": str(item.get("selection_source") or "fresh_fetch").strip() or "fresh_fetch",
+                "source": "arxiv",
+            }
+            process_paper(paper, "quick", date_key, docs_dir, force_glance=True)
+            refreshed += 1
+            if limit > 0 and refreshed >= limit:
+                return refreshed
+        except Exception as e:
+            log(f"[WARN] 批量回填失败：{md_path} -> {e}")
+    return refreshed
+
+
 def write_day_meta_index_json(
     docs_dir: str,
     date_str: str,
@@ -3039,6 +3166,23 @@ def main() -> None:
         default=DEFAULT_DOCS_CONCURRENCY,
         help="step6 每篇论文并发生成数量。",
     )
+    parser.add_argument(
+        "--refresh-existing",
+        action="store_true",
+        help="批量刷新已生成的论文 Markdown，按当前规则重写双语标题/摘要/速览。",
+    )
+    parser.add_argument(
+        "--refresh-prefix",
+        type=str,
+        default="",
+        help="批量刷新时限定 docs 下的相对前缀，例如 202604 或 202604/14。",
+    )
+    parser.add_argument(
+        "--refresh-limit",
+        type=int,
+        default=0,
+        help="批量刷新时最多处理多少篇，0 表示不限制。",
+    )
     args = parser.parse_args()
 
     date_str = args.date or TODAY_STR
@@ -3054,6 +3198,17 @@ def main() -> None:
     created_reports = backfill_history_day_reports(docs_dir)
     if created_reports > 0:
         log(f"[INFO] 已补齐历史日报 README：{created_reports} 个")
+
+    if args.refresh_existing:
+        log_substep("6.r", "批量刷新已生成论文页", "START")
+        refreshed = refresh_existing_markdown_docs(
+            docs_dir,
+            path_prefix=args.refresh_prefix,
+            limit=max(0, int(args.refresh_limit or 0)),
+        )
+        log(f"[OK] 批量刷新完成：{refreshed} 篇")
+        log_substep("6.r", "批量刷新已生成论文页", "END")
+        return
 
     if args.paper_id:
         log_substep("6.p", "单篇论文生成", "START")
