@@ -1,0 +1,3748 @@
+Title: Fast Atomicity Monitoring
+
+URL Source: https://arxiv.org/pdf/2604.11369v1
+
+Published Time: Tue, 14 Apr 2026 02:42:57 GMT
+
+Number of Pages: 34
+
+Markdown Content:
+# Fast Atomicity Monitoring 
+
+HÜNKAR CAN TUNÇ ∗, Uber Technologies, Netherlands 
+
+YIFAN DONG ∗, Aarhus University, Denmark 
+
+ANDREAS PAVLOGIANNIS, Aarhus University, Denmark Atomicity is a fundamental abstraction in concurrency, specifying that program behavior can be understood by considering specific code blocks executing atomically. However, atomicity invariants are tricky to maintain while also optimizing for code efficiency, and atomicity violations are a common root cause of many concur-rency bugs. To address this problem, several dynamic techniques have been developed for testing whether a program execution adheres to an atomicity specification, most often instantiated as conflict-serializability . The efficiency of the analysis has been targeted in various papers, with the state-of-the-art algorithms RegionTrack 
+
+and Aerodrome achieving a time complexity 𝑂 (𝑛𝑘 3) and 𝑂 (𝑛𝑘 (𝑘 + 𝑣 + ℓ)) , respectively, for a trace 𝜎 of 𝑛 
+
+events, 𝑘 threads, 𝑣 locations, and ℓ locks. In this paper we introduce AtomSanitizer , a new algorithm for testing conflict-serializability, with time complexity 𝑂 (𝑛𝑘 2). AtomSanitizer operates in an efficient streaming style, is theoretically faster than all existing algorithms, and also has a smaller memory footprint. Moreover, it is the first algorithm designed to use little locking when deployed in a concurrent monitoring setting. Experiments on standard benchmarks indicate that AtomSanitizer is always faster in practice than all existing conflict-serializability testers. Finally, we also implement AtomSanitizer inside the TSAN framework, for monitoring atomicity in real time. Our experiments reveal that AtomSanitizer incurs only a marginal time and space overhead over the data-race detection engine of TSAN , and thus is the first algorithm for conflict-serializability demonstrated to be suitable for a runtime monitoring setting. CCS Concepts: • Software and its engineering → Software verification and validation ; Software testing and debugging .Additional Key Words and Phrases: concurrency, transactions, conflict-serializability, dynamic runtime analysis 
+
+ACM Reference Format: 
+
+Hünkar Can Tunç, Yifan Dong, and Andreas Pavlogiannis. 2026. Fast Atomicity Monitoring. Proc. ACM Program. Lang. 10, PLDI, Article 170 (June 2026), 34 pages. https://doi.org/10.1145/3808248 
+
+1 Introduction 
+
+Writing correct concurrent programs is a notoriously challenging task, as interprocess communica-tion is inherently non-deterministic, encompassing unanticipated scheduling patterns that often 
+
+> ∗
+
+Both authors contributed equally to this work. Authors’ Contact Information: Hünkar Can Tunç, Uber Technologies, Netherlands, tunc@uber.com; Yifan Dong, Aarhus University, Denmark, yvan.dong@cs.au.dk; Andreas Pavlogiannis, Aarhus University, Denmark, pavlogiannis@cs.au.dk. 
+
+This work is licensed under a Creative Commons Attribution 4.0 International License. 
+
+© 2026 Copyright held by the owner/author(s). ACM 2475-1421/2026/6-ART170 https://doi.org/10.1145/3808248 Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026.          
+
+> arXiv:2604.11369v1 [cs.PL] 13 Apr 2026 170:2 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+> // Thread 1 —>Begin Transaction 𝑇 1
+> if (thd->proc_info != NULL) { // S1 fputs(thd->proc_info, ...); // S3 }<—End Transaction 𝑇 1
+> // Thread 2 —>Begin Transaction 𝑇 2
+> thd->proc_info = NULL; // S2 <—End Transaction 𝑇 2
+> 1
+> 2
+> Fig. 1. An atomicity violation bug in MySQL 4.1.2 release, taken from [26].
+
+escape the programmers’ mental model. For the same reason, concurrency bugs are difficult to reproduce during debugging, and are commonly referred to as heisenbugs [35]. One fundamental building block in the mental model of programmers is atomicity , where the whole program consists of individual blocks that can be considered to execute atomically. Although this is not actually the case due to the scheduler, atomicity allows one to reason about programs in terms of atomic blocks, meaning that their interleaving cannot produce new behaviors. However, violations of atomicity are common in practice and are the source of many real-world concurrency bugs [ 26 , 27 , 38 ]. For example, Figure 1 depicts an atomicity violation in MySQL [ 18 ], taken from [ 26 ]. Two threads access concurrently the shared variable thd->proc_info . The developers assumed that S1 and S3 always execute atomically in thread 1 due to synchronization by code not shown in this snippet, thus thd->proc_info in S3 will never be NULL . However, S2 of thread 2 can, in fact, be interleaved with S1 and S3 , breaking this atomicity invariant and leading to a bug that has resurfaced several times [ 3 , 10 ]. We remark that atomicity violations are different from data races; they occur when concurrent accesses from different threads interleave in an unexpected way, even, e.g., if such accesses are synchronizing, and can thus occur even on race-free programs. The programming languages community has responded with techniques for detecting atomicity violations automatically. One standard approach is via dynamic analyses that report warnings based on violations of conflict-serializability . The analysis observes executions 𝜎 of the concurrent program which are annotated with intended atomic blocks, called transactions. Annotations are external to the analysis —they might come explicitly from the programmer [ 17 ], or be inferred automatically [ 27 ]. Although transactions may interleave in 𝜎 , the analysis must decide whether there is an equivalent execution 𝜎 ′, free of transaction interleavings, obtainable from 𝜎 by successive swaps of non-conflicting events. If not, 𝜎 witnesses an atomicity violation. The size of 𝜎 is usually huge, which puts pressure on the analysis to be as fast as possible. In the following, consider that 𝜎 
+
+contains 𝑛 events, 𝑘 threads, 𝑣 locations, and ℓ locks. In high level, conflict-serializability violations can be detected by creating a conflict graph of all transactions, whereby two transactions are ordered 𝑇 1 → 𝑇 2 iff each 𝑇 𝑖 contains an event 𝑒 𝑖 such that 
+
+𝑒 1 and 𝑒 2 conflict (both access the same shared resource and at least one modifies it) and 𝑒 1 executes before 𝑒 2 in 𝜎 . Then, a violation corresponds to a cycle 𝑇 1 → · · · → 𝑇 𝑚 , representing the fact that these 𝑚 transactions cannot execute serially without breaking the conflict order of the events in 
+
+𝜎 (see, e.g., the cycle 𝑇 1 → 𝑇 2 → 𝑇 1 in Figure 1). Constructing the conflict graph and checking for cycles can be easily performed in 𝑂 (𝑛 ) time, but this approach has two notable disadvantages. First, the space usage is Θ(𝑛 ), which can be prohibitive in practice. Second, practical applications pose an online setting, whereby 𝜎 is processed in a streaming style, and a violation is reported as early as it occurs. Consequently, there have been several efforts in designing atomicity-checking algorithms that operate in this online fashion and are as efficient as possible (see Table 1). One of the first techniques for dynamic atomicity testing was developed in [ 2 ]. That algorithm, however, employed aggressive pruning of its data structures in order to keep its memory footprint small, which lead to incorrect results. This was reported in [ 12 ], which proposed an automata-based algorithm (which we refer to as FM ) with running time 𝑂 (𝑛𝑘 (𝑣 + ℓ)) . At the same time,          
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:3
+> Table 1. The complexity of atomicity algorithms on executions of 𝑛 events, 𝑘 threads, 𝑣 locations, and ℓlocks. Some works give more fine-grained complexity bounds, e.g., involving the number of transactions in the trace.
+
+Algorithm Time Space 
+
+FM [12] 𝑂 (𝑛𝑘 (𝑣 + ℓ)) 𝑂 (𝑘 (𝑘 + 𝑣 + ℓ)) 
+
+Velodrome [16] 𝑂 (𝑛 2) 𝑂 (𝑛 )
+
+DoubleChecker [5] 𝑂 (𝑛 2) 𝑂 (𝑛 )
+
+Aerodrome [32] 𝑂 (𝑛𝑘 (𝑘 + 𝑣 + ℓ)) 𝑂 (𝑘 (𝑘 + 𝑣 + ℓ)) 
+
+RegionTrack [28] 𝑂 (𝑛𝑘 3) 𝑂 (𝑘 (𝑘𝑣 + ℓ)) 
+
+AtomSanitizer [This Paper] 𝑂 (𝑛𝑘 2) 𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ)
+
+the graph-based algorithm Velodrome was developed [ 16 ], and has become a standard reference in atomicity testing. Velodrome maintains explicitly a conflict graph that can grow as large as 
+
+Θ(𝑛 ), with cycles representing atomicity violations. It has 𝑂 (𝑛 2) time and 𝑂 (𝑛 ) space complexity, which are prohibitive in theory, but is made performant in practice via graph-pruning heuristics. 
+
+DoubleChecker [ 5] further improved of Velodrome by observing that precise cycle detection is required infrequently. Aerodrome was recently proposed as the first algorithm utilizing vector clocks as its main data structure [ 32 ], which are efficient and common in dynamic concurrency analyses. 
+
+Aerodrome has time and space complexity 𝑂 (𝑛𝑘 (𝑘 + 𝑣 + ℓ)) and 𝑂 (𝑘 (𝑘 + 𝑣 + ℓ)) , respectively. The latest development in this sequence is RegionTrack , which also utilizes vector clocks, towards time and space complexity 𝑂 (𝑛𝑘 3) and 𝑂 (𝑘 (𝑘𝑣 +ℓ)) , respectively [ 28 ]. The running time of RegionTrack 
+
+is incomparable to Aerodrome in general, but it becomes faster for reasonable input parameters (i.e., typically 𝑘 << 𝑣 ). However, RegionTrack has increased space usage by a term 𝑣𝑘 2. Finally, when deployed in a runtime monitoring setting, where various threads access the components of the algorithm concurrently, all existing testers require each thread to acquire a global lock. This incurs congestion and leads to noticeable monitoring overhead, beyond what is considered acceptable in an industrial scale (e.g., TSAN ’s reported 5 ×-15 × time and 5 ×-10 × memory overhead [43]). The long study of atomicity checking, as witnessed by the above sequence of improvements, highlights the need for methods that are as performant as possible. Is there an atomicity checker with even better complexity? Does it also lead to practical improvements? Is atomicity monitorable at overheads acceptable by industrial practice? Is the complexity increase of online monitoring necessary, compared to the 𝑂 (𝑛 ) cost for offline detection? This paper answers these questions in positive, by making the following contributions. 1. AtomSanitizer for conflict-serializability. We develop 
+
+AtomSanitizer , a new algorithm for testing conflict-serializability. For a trace 𝜎 of 𝑛 events, 𝑘 
+
+threads, 𝑣 locations, and ℓ locks, AtomSanitizer uses 𝑂 (𝑛𝑘 2) time and 𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ) space. This is better than all existing algorithms in both time and space (see Table 1), for reasonable input parameters. In particular, AtomSanitizer is faster when 𝑘 << 𝑣 , while its space complexity is smaller by a term 𝑘ℓ .We further remark that the space complexity of AtomSanitizer is also bounded by 𝑂 (𝑛 + 𝑘 2), but the aforementioned space bound is better as long as 𝑘𝑣 < 𝑛 , which is typically the case. Moreover, the term 𝑘𝑣 can be refined to Í𝑥 𝑘 𝑥 , where 𝑘 𝑥 is the number of threads reading on variable 𝑥 .Although Í𝑥 𝑘 𝑥 = 𝑂 (𝑘𝑣 ) in the worst-case, in practice most variables are accessed by only a few threads, reducing the space complexity to 𝑂 (𝑘 2 + 𝑣 + ℓ). In contrast, existing algorithms do not enjoy this property. This makes AtomSanitizer the first algorithm with a memory footprint small enough to be employed in a runtime setting. 
+
+2. AtomSanitizer for increasing-cycle violations. We present a version of AtomSanitizer 
+
+focused on increasing-cycle violations, which are specific conflict-serializability violations in  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:4 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+which the root cause can be localized to a single offending transaction, and has been utilized in prior work [ 5, 16 , 28 ]. AtomSanitizer detects increasing-cycle violations in time 𝑂 (𝑛𝑘 ) and space 𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ). Although this does not improve the time complexity of the state-of-the-art (in particular RegionTrack [ 28 ]), it improves the space complexity by a term 𝑘ℓ , and in practice achieves a memory footprint of 𝑂 (𝑘 2 + 𝑣 + ℓ), by a similar analysis as above. 
+
+3. Lower bounds. We complement our improved upper bounds with two interesting lower bounds that characterize fundamental computational resources required to detect conflict-serializability violations in an streaming fashion. First, recall that, if we relinquish the practical requirement that a violation is reported in an online fashion as soon as it occurs (or shortly after, e.g., when the latest offending transaction completes), the problem can be trivially solved in 𝑂 (𝑛 ) time. Is it possible to achieve linear time also in the online setting? We prove that this is unlikely, in the sense that the online problem must take Ω(𝑛 3/2−𝜖 ) time, for any fixed 𝜖 > 0, under the popular Online Matrix-Vector hypothesis [ 21 ]. Second, note that the space usage of AtomSanitizer is practically sublinear in 𝑛 , but can become linear in 𝑛 when there are 𝑣 = Ω(𝑛 ) locations. Is a sublinear space bound always possible? We prove that this is not the case, in the sense that any streaming algorithm for conflict-serializability (or even increasing-path) violations must use Ω(𝑛 ) space when 𝑣 = Ω(𝑛 ),in the worst case. 
+
+4. Implementation and experiments. We implement AtomSanitizer inside the RAPID frame-work of dynamic analyses [ 29 ]. Our tool processes a trace 𝜎 and reports the first transac-tion which completes a cycle in the underlying conflict graph, as per standard. We compare the performance of our tool to existing algorithms in the literature, on standard benchmarks. 
+
+AtomSanitizer is faster on each benchmark, achieving an average speedup of 2.0×, 4.5×, and 12 ×
+
+over RegionTrack , Aerodrome , and Velodrome , respectively. Moreover, AtomSanitizer is always faster than RegionTrack in detecting increasing-cycle violations (this is the only baseline that makes sound and complete reports of increasing-cycles), with an average speedup of 1.7×.We also implement AtomSanitizer inside the widely used LLVM TSAN framework [ 43 ] for runtime analysis. The core data structure of AtomSanitizer is designed to use little locking in a runtime setting, and our implementation exploits this feature to avoid expensive synchronization between threads most of the time. We perform scalability experiments on a standard set of benchmarks, and our results show that AtomSanitizer incurs only a marginal slowdown and memory cost over the data-race detector engine of TSAN (1.49 × and 1.06 ×, respectively, on average). Relative to the original execution, the average time and memory overhead is 4.63 × and 3.83 ×, respectively, which generally aligns with industrial expectations [ 43 ]. To our knowledge, this is the first case of an atomicity tester that achieves such a small overhead, making it now possible to monitor atomicity at overheads that are industry standard. 
+
+2 Preliminaries 
+
+We begin with general notation on concurrent executions and the atomicity notions we consider. 
+
+2.1 Concurrent Execution Model 
+
+Events and traces. A trace is a sequence of events 𝜎 = 𝑒 1, . . . , 𝑒 𝑛 , encapsulating the execution of a concurrent program. Given an event 𝑒 of 𝜎 , we write 𝜎 [:𝑒 ] to denote the prefix of 𝜎 up to (including) 
+
+𝑒 . In turn, an event is a tuple 𝑒 = ⟨𝑡, 𝑖, 𝑜𝑝 ⟩, where 𝑡 is an identifier of the thread executing 𝑒 , 𝑖 is an incremental id for thread 𝑡 (i.e. it denotes the 𝑖 -th event of 𝑡 ), and 𝑜𝑝 is the operation performed by 
+
+𝑒 , which is one of the following.  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:5
+
+1. begin , denoting that 𝑒 is the beginning of a transaction. 2. end , denoting that 𝑒 is the end of a transaction. 3. r(𝑥 ), denoting that 𝑒 reads global variable 𝑥 .4. w(𝑥 ), denoting that 𝑒 writes to global variable 𝑥 .5. acq (ℓ), denoting that 𝑒 acquires the lock ℓ.6. rel (ℓ), denoting that 𝑒 releases the lock ℓ.We often denote the begin and end events as ⊲ and ⊳, respectively. We use tid (𝑒 ), op (𝑒 ), and id (𝑒 ),to denote the thread identifier, the operation, and identifier of 𝑒 , respectively. If 𝑒 accesses a variable 
+
+𝑣 or a lock ℓ, we let var (𝑒 ) denote 𝑣 or ℓ, respectively. We often denote an event 𝑒 as ⟨𝑡, 𝑜𝑝 ⟩, omitting its identifier. Note that we ignore the values read/written, as these are not important in our setting. We also don’t explicitly consider fork/join events, though these can be handled naturally. Traces have to be well-formed: each acq (ℓ) is paired with a corresponding rel (ℓ) in the same thread, and no lock is held by more than one thread simultaneously. Moreover, for any thread 𝑡 ,the sequence of begin and end events starts with begin , alternates between begin and end , and ends on end 1. We denote by Events 𝜎 the set of events, Variables 𝜎 the global variables, Locks 𝜎 
+
+the set of locks, Reads 𝜎 the set of read events, and Writes 𝜎 the set of write events in 𝜎 .
+
+Transactions. Given a trace 𝜎 , a transaction 𝑇 is a sequence of events in a thread 𝑡 that begins with ⟨𝑡, ⊲⟩ and ends with the matching ⟨𝑡, ⊳⟩, at which point 𝑇 is completed. We use 𝑇 . begin to denote the begin event of 𝑇 . Transaction 𝑇 is assigned a unique, incremental id in thread 𝑡 , accessed as id (𝑇 ). 𝑇 is unary if it contains a single event besides ⊲ and ⊳. 𝑇 is open (or active ) in a prefix 
+
+𝜎 [:𝑒 ] if it has executed its begin but not its end event in 𝜎 [:𝑒 ]. We write 𝑒 ∈ 𝑇 if 𝑒 appears in 𝑇 .We let txn (𝑒 ) be the transaction that 𝑒 appears in. As per standard, we assume that every event belongs to a (possibly unary) transaction. 
+
+Conflicting events. Two events 𝑒 1 and 𝑒 2 conflict , denoted by 𝑒 1 ≍ 𝑒 2, if (i) tid (𝑒 1) = tid (𝑒 2),or (ii) op (𝑒 1), op (𝑒 2) ∈ { acq (ℓ), rel (ℓ)} for some lock ℓ, or (iii) op (𝑒 1), op (𝑒 2) ∈ { w(𝑥 ), r(𝑥 )} for some variable 𝑥 and at least one writes to 𝑥 .
+
+Partial orders. We make frequent use of partial orders over events Events 𝜎 , or subsets thereof. A (strict) partial order 𝑃 , denoted <P 
+
+> 𝜎
+
+is a transitive, antisymmetric and irreflexive relation over 
+
+Events 𝜎 . We let ≤P 
+
+> 𝜎
+
+be the reflexive closure of 𝑃 . Given two events 𝑒 1 and 𝑒 2, we say that 𝑒 1 is a 
+
+<P 
+
+> 𝜎
+
+-immediate predecessor of 𝑒 2 if (i) 𝑒 1 <P 
+
+> 𝜎
+
+𝑒 2 and (ii) there does not exist an event 𝑒 such that 
+
+𝑒 1 <P 
+
+> 𝜎
+
+𝑒 <P 
+
+> 𝜎
+
+𝑒 2. Note that <P 
+
+> 𝜎
+
+-immediate predecessors are not unique in general, unless 𝑃 is total. The trace 𝜎 defines a total order <TR  
+
+> 𝜎
+
+over Events 𝜎 , with 𝑒 1 <TR  
+
+> 𝜎
+
+𝑒 2 iff 𝑒 1 occurs before 𝑒 2 in 𝜎 . The 
+
+thread order <TO  
+
+> 𝜎
+
+is the smallest partial order such that 𝑒 1 <TO  
+
+> 𝜎
+
+𝑒 2 if tid (𝑒 1) = tid (𝑒 2) and 𝑒 1 <TR  
+
+> 𝜎
+
+𝑒 2.
+
+2.2 Atomicity as Serializability 
+
+Serial traces. As a natural consequence of concurrency, different transactions may overlap in a trace 𝜎 . We call 𝜎 serial if there is no such overlap, i.e., for any two transaction begin events 𝑒 1, 𝑒 2
+
+such that 𝑒 1 <TR  
+
+> 𝜎
+
+𝑒 2, we have 𝑒 3 <TR  
+
+> 𝜎
+
+𝑒 2, where 𝑒 3 is the matching end event of 𝑒 1. Serializability 
+
+captures the fact that, although 𝜎 might not be serial, its behavior is equivalent to a serial trace 𝜎 ′
+
+that can be obtained by permuting adjacent non-conflicting events in 𝜎 . If such a transformation exists, 𝜎 is deemed serializable . Otherwise, 𝜎 witnesses an atomicity violation. In the following, we make these concepts formal.  
+
+> 1Wlog, we do not consider nested critical sections/transactions. These are handled straightforwardly in our implementation. Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:6 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+Conflict-serializability. For a trace 𝜎 , conflict-happens-before is the smallest partial order over 
+
+Events 𝜎 such that, for any two events 𝑒 1, 𝑒 2, if 𝑒 1 ≍ 𝑒 2 and 𝑒 1 <TR  
+
+> 𝜎
+
+𝑒 2, then 𝑒 1 <CHB  
+
+> 𝜎
+
+𝑒 2. We say that 
+
+𝜎 is conflict-equivalent to another trace 𝜎 ′ iff (i) Events 𝜎 = Events 𝜎 ′ , and (ii) <CHB  
+
+> 𝜎
+
+=<CHB  
+
+> 𝜎 ′
+
+. We say that 𝜎 is conflict-serializable if there exists a serial trace 𝜎 ′ such that 𝜎 conflict-equivalent to 𝜎 ′.Otherwise, 𝜎 exhibits a conflict-serializability violation. 
+
+𝑡 1 𝑡 2 𝑡 3
+
+14 
+
+13 
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 𝑇 1 : ▷
+
+w(𝑥 )
+
+r(𝑧 )
+
+𝑇 1 : ◁
+
+𝑇 2 : ▷
+
+w(𝑧 )
+
+𝑇 2 : ◁
+
+𝑇 3 : ▷
+
+w(𝑦 )
+
+𝑇 3 : ◁
+
+𝑇 4 : ▷
+
+w(𝑥 )
+
+w(𝑦 )
+
+𝑇 4 : ◁
+
+(a) 𝜎 1 is conflict-serializable. 
+
+𝑡 1 𝑡 2 𝑡 3
+
+14 
+
+13 
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1
+
+𝑇 1 : ▷
+
+w(𝑥 )
+
+r(𝑧 )
+
+𝑇 1 : ◁
+
+𝑇 2 : ▷
+
+w(𝑧 )
+
+𝑇 2 : ◁
+
+𝑇 3 : ▷
+
+w(𝑦 )
+
+𝑇 3 : ◁
+
+𝑇 4 : ▷
+
+w(𝑥 )
+
+w(𝑦 )
+
+𝑇 4 : ◁
+
+(b) 𝜎 2 is a serial permutation of 𝜎 1
+
+Fig. 2. A non-serial trace that is conflict-serializable. 
+
+Examples. Consider the trace 𝜎 1 in Figure 2a. It consists of 14 events executed by three threads 𝑡 1,
+
+𝑡 2 and 𝑡 3. It has three transactions 𝑇 1 = ⊲, 𝑒 6, 𝑒 9, ⊳, 𝑇 2 = ⊲, 𝑒 3, ⊳, 𝑇 3 = ⊲, 𝑒 12 , ⊳ and 𝑇 4 = ⊲, 𝑒 8, 𝑒 10 , ⊳. We use an arrow → to represent <CHB  
+
+> 𝜎
+
+orderings across threads. The trace 𝜎 1 is conflict-serializable, since we can construct a serial trace 𝜎 2, shown in Figure 2b, that is conflict-equivalent to 𝜎 1. In contrast, the trace 𝜎 3 in Figure 3a is not conflict-serializable, since making the transactions atomic would require reversing the order of at least one of the <CHB  
+
+> 𝜎
+
+arrows. 
+
+Increasing-cycle violations. When 𝜎 witnesses an atomicity violation, it is not clear which transactions to blame, and fixing it requires looking closely into the trace and possibly the program source. Increasing-cycle violations constitute a simple yet common class of atomicity violations on which there is a single candidate transaction to be blamed. In particular, 𝜎 exhibits an increasing-cycle violation on a transaction 𝑇 if 𝜎 contains three distinct events 𝑒 1, 𝑒 2, and 𝑒 3 such that (i) 𝑒 1
+
+and 𝑒 2 are the begin and end events of 𝑇 , respectively, (ii) 𝑒 3 ∉ 𝑇 , and (iii) 𝑒 1 <CHB  
+
+> 𝜎
+
+𝑒 3 <CHB  
+
+> 𝜎
+
+𝑒 2.
+
+Examples. The trace 𝜎 4 in Figure 3b witnesses an increasing-cycle violation on 𝑇 1, since (i) 𝑒 1 and 
+
+𝑒 12 are the begin and end events of 𝑇 1, (ii) 𝑒 9 ∉ 𝑇 1, and (iii) 𝑒 1 <CHB  
+
+> 𝜎 4
+
+𝑒 9 <CHB  
+
+> 𝜎 4
+
+𝑒 12 . In contrast, 𝜎 3 does not witness an increasing-cycle violation, although it is also not conflict-serializable. 
+
+3 Detecting Atomicity Violations 
+
+In this section we present AtomSanitizer for detecting conflict-serializability violations. We start with some basic lemmas that capture serializability (Section 3.1), followed by the presentation of 
+
+AtomSanitizer (Section 3.2), and its correctness and complexity (Section 3.3). We conclude with some lower bounds on the time and space complexity of monitoring atomicity (Section 3.4).  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:7
+
+𝑡 1 𝑡 2 𝑡 3
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 𝑇 1 : ▷
+
+w(𝑥 )
+
+r(𝑧 )
+
+𝑇 1 : ◁
+
+𝑇 2 : ▷
+
+w(𝑦 )
+
+r(𝑥 )
+
+𝑇 2 : ◁
+
+𝑇 3 : ▷
+
+r(𝑦 )
+
+w(𝑧 )
+
+𝑇 3 : ◁
+
+(a) 𝜎 3 witnesses a conflict-serializability violation. 
+
+𝑡 1 𝑡 2 𝑡 3
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 𝑇 1 : ▷
+
+w(𝑥 )
+
+r(𝑧 )
+
+𝑇 1 : ◁
+
+𝑇 2 : ▷
+
+r(𝑥 )
+
+w(𝑦 )
+
+𝑇 2 : ◁
+
+𝑇 3 : ▷
+
+r(𝑦 )
+
+w(𝑧 )
+
+𝑇 3 : ◁
+
+(b) 𝜎 4 witnesses an increasing-cycle violation. Fig. 3. Two non-conflict-serializable traces. 
+
+3.1 Serializability Conditions 
+
+Transaction-happens-before. Given a trace 𝜎 , the transaction-happens-before relation <THB  
+
+> 𝜎
+
+is the smallest transitive relation over the transactions of 𝜎 with the property that, for any two distinct transactions 𝑇 1 and 𝑇 2, if there exist 𝑒 1 ∈ 𝑇 1 and 𝑒 2 ∈ 𝑇 2 such that 𝑒 1 <CHB  
+
+> 𝜎
+
+𝑒 2, then 𝑇 1 <THB  
+
+> 𝜎
+
+𝑇 2.Conceptually, if <THB  
+
+> 𝜎
+
+is a partial order, we can arrive at a serial trace 𝜎 ′ witnessing the serializability of 𝜎 by linearizing <THB  
+
+> 𝜎
+
+. This is formally captured in the following lemma. 
+
+Lemma 3.1 ([16]). A trace 𝜎 is conflict-serializable iff <THB  
+
+> 𝜎
+
+is irreflexive. 
+
+For example, the trace 𝜎 3 (Figure 3a) yields a cyclic <THB  
+
+> 𝜎 3
+
+due to the orderings 𝑇 1 → 𝑇 2 → 𝑇 3 → 𝑇 1.It is easy to see that <THB  
+
+> 𝜎
+
+satisfies the following monotonicity property. 
+
+Remark 1. For any event 𝑒 of 𝜎 , we have <THB    
+
+> 𝜎 [:𝑒 ]
+
+⊆<THB  
+
+> 𝜎
+
+.
+
+Monotonicity implies that there is a smallest prefix of 𝜎 when a conflict-serializability violation occurs (i.e., <THB    
+
+> 𝜎 [:𝑒 ]
+
+becomes cyclic). Different atomicity testers employ different techniques for detecting cycles in <THB  
+
+> 𝜎
+
+by performing a single pass (i.e., streaming-style) of 𝜎 and checking whether <THB  
+
+> 𝜎
+
+is irreflexive at each step. AtomSanitizer is based on the notions of latest remote and earliest local transactions, that we develop below. 
+
+Latest remote transactions and earliest local transactions. For a trace 𝜎 and two threads 𝑡 1, 𝑡 2,we define the latest remote transaction of 𝑡 2 known to 𝑡 1, LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2), as follows. 
+
+• If 𝑡 1 is not executed in 𝜎 , then LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) = ⊥. Otherwise, let 𝑇 1 be the latest transaction of 𝑡 1 in 𝜎 .
+
+• If 𝑡 2 has executed a transaction 𝑇 2 such that 𝑇 2 <THB  
+
+> 𝜎
+
+𝑇 1, then LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) is the latest such transaction 
+
+𝑇 2, otherwise LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) = ⊥.If LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) ≠ ⊥, we define the earliest local transaction in 𝑡 1 for 𝑡 2 as ELT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) = 𝑇 ′ 
+
+> 1
+
+, where 𝑇 ′ 
+
+> 1
+
+is the earliest transaction in 𝑡 1 such that LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) <THB  
+
+> 𝜎
+
+𝑇 ′ 
+
+> 1
+
+. Note that such a transaction must exist, being either 𝑇 1 or some earlier transaction. On the other hand, if LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) = ⊥, we simply let 
+
+ELT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) = ⊥. In words, LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) is the latest transaction of thread 𝑡 2 that 𝑡 1 is aware of, while 
+
+ELT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) is the earliest transaction of 𝑡 1 that was made aware of that transaction of 𝑡 2.
+
+Example. Consider the trace 𝜎 5 in Figure 4. At the event 𝑒 6, we have LRT 𝑡 3   
+
+> 𝜎 5[:𝑒 6]
+
+(𝑡 1) = 𝑇 1 and 
+
+ELT 𝑡 3   
+
+> 𝜎 5[:𝑒 6]
+
+(𝑡 1) = 𝑇 2. At the event 𝑒 13 , we have LRT 𝑡 3   
+
+> 𝜎 5[:𝑒 13 ]
+
+(𝑡 2) = 𝑇 3 and ELT 𝑡 3   
+
+> 𝜎 5[:𝑒 13 ]
+
+(𝑡 2) = 𝑇 5. Finally,  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:8 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+at the end of 𝜎 5, we have LRT 𝑡 3 
+
+> 𝜎 5
+
+(𝑡 2) = 𝑇 4 and ELT 𝑡 3 
+
+> 𝜎 5
+
+(𝑡 2) = 𝑇 6, as well as LRT 𝑡 3 
+
+> 𝜎 5
+
+(𝑡 1) = 𝑇 1 and 
+
+ELT 𝑡 3 
+
+> 𝜎 5
+
+(𝑡 1) = 𝑇 2.The operating principle of AtomSanitizer is based on the following lemma, which characterizes atomicity violations in terms of <CHB  
+
+> 𝜎
+
+, LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2), and ELT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2).
+
+Lemma 3.2. A trace 𝜎 is not conflict-serializable iff there exist two distinct events 𝑒 ′ and 𝑒 ′′ such that the following conditions hold, where 𝑡 ′ = tid (𝑒 ′) and 𝑡 ′′ = tid (𝑒 ′′ ): (i) 𝑡 ′ ≠ 𝑡 ′′ and 𝑒 ′ is the <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 ′′ , (ii) LRT 𝑡 ′   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 ′′ ) = txn (𝑒 ′′ ), and (iii) ELT 𝑡 ′   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 ′′ ).begin ≤TO  
+
+> 𝜎
+
+txn (𝑒 ′).begin ,where 𝑒 is a <TR  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 ′′ .
+
+𝑡 1 𝑡 2 𝑡 3
+
+16 
+
+15 
+
+14 
+
+13 
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 𝑇 1 : ▷
+
+w(𝑥 )
+
+𝑇 3 : ▷
+
+w(𝑦 )
+
+w(𝑥 )
+
+𝑇 3 : ◁
+
+𝑇 4 : ▷
+
+w(𝑧 )
+
+𝑇 2 : ▷
+
+r(𝑥 )
+
+𝑇 2 : ◁
+
+𝑇 5 : ▷
+
+r(𝑦 )
+
+𝑇 5 : ◁
+
+𝑇 6 : ▷
+
+r(𝑧 )
+
+Fig. 4. A trace 𝜎 5.
+
+Intuitively, condition (i) captures that txn (𝑒 ′) <THB  
+
+> 𝜎
+
+txn (𝑒 ′′ )
+
+by the definition of <THB  
+
+> 𝜎
+
+, while conditions (ii) and (iii) imply that txn (𝑒 ′′ ) <THB  
+
+> 𝜎
+
+txn (𝑒 ′). This is because (ii) states that 𝑡 ′ has learned the transaction txn (𝑒 ′′ ), and (iii) states that there exists a transaction 𝑇 ′ in 𝑡 ′ such that txn (𝑒 ′′ ) <THB  
+
+> 𝜎
+
+𝑇 ′ ≤THB  
+
+> 𝜎
+
+txn (𝑒 ′).Thus, we have a violation as per Lemma 3.1, since <THB  
+
+> 𝜎
+
+is not irreflexive. 
+
+Example. Consider the trace 𝜎 3 in Figure 3a. At the event 𝑒 11 ,Lemma 3.2, reports a conflict-serializability violation. The events 
+
+𝑒 9 and 𝑒 11 correspond to 𝑒 ′ and 𝑒 ′′ in Lemma 3.2, respectively. Here we have that (i) 𝑒 9 is a <CHB  
+
+> 𝜎 3
+
+-immediate predecessor of 
+
+𝑒 11 , (ii) LRT 𝑡 3   
+
+> 𝜎 3[:𝑒 10 ]
+
+(𝑡 1) = 𝑇 1, and (iii) ELT 𝑡 3   
+
+> 𝜎 3[:𝑒 10 ]
+
+(𝑡 1).begin ≤TO 
+
+> 𝜎 3
+
+𝑇 3.begin . Now consider the trace 𝜎 1 in Figure 2a. At the event 
+
+𝑒 12 , we have that 𝑒 10 is a <CHB  
+
+> 𝜎 1
+
+-immediate predecessor of 𝑒 12 , but 
+
+LRT 𝑡 3   
+
+> 𝜎 1[:𝑒 11 ]
+
+(𝑡 2) = 𝑇 2 ≠ txn (𝑒 12 ), thus Lemma 3.2 does not report a conflict-serializability violation. 
+
+3.2 The AtomSanitizer Algorithm 
+
+We now present AtomSanitizer for detecting conflict-serializability violations based on Lemma 3.2. 
+
+Intuition. AtomSanitizer performs a single pass on the input trace 𝜎 , and produces a warning after processing the smallest prefix of 𝜎 that contains a conflict-serializability violation (recall Remark 1). Similarly to other conflict-serializability algorithms, after processing an event 𝑒 , it maintains the maximal events of <CHB    
+
+> 𝜎 [:𝑒 ]
+
+, in order to derive corresponding <THB    
+
+> 𝜎 [:𝑒 ]
+
+orderings. Its primary (and distinctive from other works) data structure consists of two vector clocks From 𝑡 and 
+
+To 𝑡 , for each thread 𝑡 , of size 𝑘 each. After processing an event 𝑒 , for each thread 𝑡 2, From 𝑡 1 (𝑡 2) and 
+
+To 𝑡 1 (𝑡 2) store identifiers of a transaction 𝑇 2 of 𝑡 2 and a transaction 𝑇 1 of 𝑡 1, respectively, such that 
+
+𝑇 2 <THB    
+
+> 𝜎 [:𝑒 ]
+
+𝑇 1. As a first attempt, in order to report violations based on Lemma 3.2, it is natural to try and maintain at all events 𝑒 the following invariant 
+
+From 𝑡 1 (𝑡 2) = id (LRT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)) and To 𝑡 1 (𝑡 2) = id (ELT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)) (1) as, together with the <CHB    
+
+> 𝜎 [:𝑒 ]
+
+-maximal events, it allows to test for the conditions of Lemma 3.2. Unfortunately, Eq. (1) appears difficult to maintain efficiently at all events 𝑒 . This is because, when processing an event 𝑒 of thread 𝑡 1, a transaction-happens-before path might be formed from  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:9
+
+LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) to 𝑡 1 via some intermediate thread 𝑡 3. If the transaction LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) is not open, 𝑡 3 might be aware of a later transaction of 𝑡 2, and the information about LRT 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) is lost (see Figure 5). 
+
+𝑡 1 𝑡 2 𝑡 3
+
+13 
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 𝑇 1 : ▷
+
+w(𝑥 )
+
+𝑇 1 : ◁
+
+𝑇 2 : ▷
+
+w(𝑦 )
+
+𝑇 3 : ▷
+
+w(𝑧 )
+
+r(𝑥 )
+
+𝑇 3 : ◁
+
+𝑇 4 : ▷
+
+r(𝑦 )
+
+𝑇 5 : ▷
+
+r(𝑧 )
+
+Fig. 5. A trace 𝜎 6. LRT 𝑡 1 
+
+> 𝜎 6
+
+(𝑡 2) = 𝑇 1 via 𝑇 3
+
+of 𝑡 3, but this fact is not recoverable from 
+
+LRT 𝑡 3 
+
+> 𝜎 6
+
+(𝑡 2), as it has progressed to 𝑇 2.
+
+In order to overcome the above obstacle and regain the invariant of Eq. (1), it is natural to attempt to store some additional information in the state of the algorithm, per-haps at the cost of impacting its running time. One key idea behind AtomSanitizer is that this invariant is, in fact, not necessary . In particular, AtomSanitizer guar-antees that Eq. (1) holds if LRT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) is open in 𝜎 [:𝑒 ].This is sufficient since, in Lemma 3.2, 𝑒 ′′ is the currently processed event of 𝑡 ′′ and thus LRT 𝑡 ′   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 ′′ ) = txn (𝑒 ′′ )
+
+must be open in 𝜎 [:𝑒 ]. Moreover, this relaxation makes the From 𝑡 1 and To 𝑡 1 clocks easy to maintain inductively, in terms of the corresponding clocks of the other threads. 
+
+AtomSanitizer. We now describe AtomSanitizer in de-tail. The state of the algorithm is represented in the fol-lowing components. 
+
+• For each thread 𝑡 , we have the vector clocks From 𝑡 and To 𝑡 , as outlined above. 
+
+• For each location 𝑥 , we have (i) a variable lastWrite 𝑥 , storing the most recent write on 𝑥 , (ii) a map lastReads 𝑥 , storing the most recent read of each thread, and (iii) a set lastReadTids 𝑥 ,storing the threads that have performed a read on 𝑥 after the most recent write on 𝑥 .
+
+• For each lock ℓ, we have a variable lastRelease ℓ storing the most recent release on ℓ.
+
+AtomSanitizer is implemented in three parts. 
+
+• Algorithm 1 is the top level, defining a set of handlers for processing each event 𝑒 according to its type. It keeps track of (a superset of) the maximal events of <CHB    
+
+> 𝜎 [:𝑒 ]
+
+, and performs checks on whether 𝜎 [:𝑒 ] witnesses a conflict-serializability violation, by calling Algorithm 2. 
+
+• Algorithm 2 handles the conflict-serializability checks, based on the clocks From 𝑡 1 (𝑡 2) and To 𝑡 1 (𝑡 2)
+
+maintained collectively (for all threads) in a data structure called DS . It also updates these vector clocks by performing the appropriate data structure call in Algorithm 3. 
+
+• Algorithm 3 implements the data structure DS for maintaining the clocks From 𝑡 1 (𝑡 2) and To 𝑡 1 (𝑡 2).
+
+AtomSanitizer event handlers (Algorithm 1). We now describe each handler, referring to Algorithm 1 for details. We do not list handlers for transaction begin and end events, as these are only required to keep track of the id of each transaction, in a straightforward manner. We use 𝑤, 𝑟 
+
+and 𝑟𝑒𝑙 to denote the write, read and release events here. 
+
+Function read( 𝑒 ). When processing a read event 𝑒 = r(𝑥 ), it may case an ordering w(𝑥 ) <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 ,where w(𝑥 ) is the latest write on 𝑥 . The algorithm calls checkAndUpdate (Line 1) to check whether this ordering creates a cycle in <THB    
+
+> 𝜎 [:𝑒 ]
+
+, and to update DS accordingly. 
+
+Function write( 𝑒 ). When processing a write event 𝑒 = w(𝑥 ), this can result in 𝑘 orderings 
+
+r(𝑥 ) <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 , one for the last read r(𝑥 ) of each thread 𝑡 ′, as well as one additional ordering 
+
+w′ (𝑥 ) <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 , where w′ (𝑥 ) is the latest write on 𝑥 . For each of these events, the algorithm calls 
+
+checkAndUpdate (Line 1 and 30), as in the case of read( 𝑒 ). 
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:10 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+Algorithm 1: AtomSanitizer event handlers.  
+
+> 1
+
+function initialize()  
+
+> 2
+
+foreach 𝑥 ∈ Variables 𝜎 do  
+
+> 3
+
+lastWrite 𝑥 ← ⊥  
+
+> 4
+
+lastReads 𝑥 ← ⊥  
+
+> 5
+
+lastReadTids 𝑥 ← ∅  
+
+> 6
+
+foreach ℓ ∈ Locks 𝜎 do  
+
+> 7
+
+lastRelease ℓ ← ⊥  
+
+> 8
+
+function release( 𝑒 ) 
+
+> 9
+
+ℓ ← var (𝑒 ) 
+
+> 10
+
+lastRelease ℓ ← 𝑒  
+
+> 11
+
+function read( 𝑒 ) 
+
+> 12
+
+⟨𝑥, 𝑡 ⟩ ← ⟨ 𝑣𝑎𝑟 (𝑒 ), tid (𝑒 )⟩  
+
+> 13
+
+𝑤 ← lastWrite 𝑥  
+
+> 14
+
+lastReads 𝑥 [𝑡 ] ← 𝑒  
+
+> 15
+
+lastReadTids 𝑥 ←
+
+lastReadTids 𝑥 ∪ { 𝑡 } 
+
+> 16
+
+checkAndUpdate (𝑤, 𝑒 ) 
+
+> 17
+
+function acquire( 𝑒 ) 
+
+> 18
+
+ℓ ← var (𝑒 ) 
+
+> 19
+
+𝑟𝑒𝑙 ← lastRelease ℓ 
+
+> 20
+
+checkAndUpdate (𝑟𝑒𝑙, 𝑒 ) 
+
+> 21
+
+function write( 𝑒 ) 
+
+> 22
+
+𝑥 ← 𝑣𝑎𝑟 (𝑒 ) 
+
+> 23
+
+𝑡𝑖𝑑𝑠 ← lastReadTids 𝑥  
+
+> 24
+
+foreach 𝑡 ∈ 𝑡𝑖𝑑𝑠 do  
+
+> 25
+
+𝑟 ← lastReads 𝑥 [𝑡 ] 
+
+> 26
+
+checkAndUpdate (𝑟, 𝑒 ) 
+
+> 27
+
+𝑤 ← lastWrite 𝑥  
+
+> 28
+
+lastWrite 𝑥 ← 𝑒  
+
+> 29
+
+lastReadTids 𝑥 ← ∅  
+
+> 30
+
+checkAndUpdate (𝑤, 𝑒 )
+
+Function acquire( 𝑒 ). When processing an acquire event 𝑒 = acq (ℓ), this can result in one ordering 
+
+rel (ℓ) <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 , where rel (ℓ) is the latest release on ℓ. This is handled as previously (Line 1). 
+
+Function release( 𝑒 ). When processing a release event 𝑒 = rel (ℓ), the relation <CHB    
+
+> 𝜎 [:𝑒 ]
+
+is only updated trivially, since all events that are <CHB    
+
+> 𝜎 [:𝑒 ]
+
+-ordered before 𝑒 are also <CHB    
+
+> 𝜎 [:𝑒 ′]
+
+before 𝑒 ′, where 
+
+𝑒 ′ is the <TO  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 . Therefore conflict-serializability checks can be avoided here, and the function only performs simple bookkeeping. 
+
+Algorithm 2: Checking conflict serializability.  
+
+> 1
+
+function checkAndUpdate( 𝑣 , 𝑒 ) 
+
+> 2
+
+if tid (𝑣 ) ≠ tid (𝑒 ) then  
+
+> 3
+
+𝑛 1 ← ⟨ tid (𝑣 ), id (txn (𝑣 ))⟩  
+
+> 4
+
+𝑛 2 ← ⟨ tid (𝑒 ), id (txn (𝑒 ))⟩  
+
+> 5
+
+if DS .reachable (𝑛 2, 𝑛 1) then  
+
+> 6
+
+declare Conflict serializability violation  
+
+> 7
+
+insertEdge (𝑛 1, 𝑛 2) 
+
+> 8
+
+function insertEdge( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩) 
+
+> 9
+
+foreach 𝑡 ′ 
+
+> 1
+
+∈ Thr 𝜎 do  
+
+> 10
+
+foreach 𝑡 ′ 
+
+> 2
+
+∈ Thr 𝜎 \ { 𝑡 ′ 
+
+> 1
+
+} do  
+
+> 11
+
+if 𝑡 ′ 
+
+> 1
+
+= 𝑡 1 then 𝑗 ′ 
+
+> 1
+
+←− 𝑗 1 
+
+> 12
+
+else 𝑗 ′ 
+
+> 1
+
+←− DS .predecessor (⟨ 𝑡 1, 𝑗 1⟩, 𝑡 ′
+
+> 1
+
+) 
+
+> 13
+
+if 𝑡 ′ 
+
+> 2
+
+= 𝑡 2 then 𝑗 ′ 
+
+> 2
+
+←− 𝑗 2 
+
+> 14
+
+else 𝑗 ′ 
+
+> 2
+
+←− DS .successor (⟨ 𝑡 2, 𝑗 2⟩, 𝑡 ′
+
+> 2
+
+) 
+
+> 15
+
+DS .addSuccessor (⟨ 𝑡 ′
+
+> 1
+
+, 𝑗 ′
+
+> 1
+
+⟩, ⟨𝑡 ′
+
+> 2
+
+, 𝑗 ′
+
+> 2
+
+⟩) 
+
+Conflict-serializability checking (Algorithm 2). This part of the algorithm handles new <CHB 
+
+> 𝜎
+
+orderings passed by the handlers of Algorithm 1, so as to check for violations and update the conflict graph. 
+
+Function checkAndUpdate( 𝑣, 𝑒 ). When a handler of Algorithm 1 discovers a new ordering 𝑣 <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 ,it invokes checkAndUpdate( v, e ). This function first queries DS to check whether Lemma 3.2 applies, yielding a conflict-serializability violation (Line 2). Otherwise, it proceeds to record the new edge 
+
+txn (𝑣 ) <THB    
+
+> 𝜎 [:𝑒 ]
+
+txn (𝑒 ) in DS (Line 2). 
+
+Function insertEdge( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩). This function handles an edge insertion recording the or-dering txn (𝑣 ) <THB    
+
+> 𝜎 [:𝑒 ]
+
+txn (𝑒 ) in DS . Each transaction 𝑇 is represented as a pair ⟨𝑡, 𝑗 ⟩, where 𝑡 is the thread of 𝑇 and 𝑗 is the id of the begin event of 𝑇 . Since <THB    
+
+> 𝜎 [:𝑒 ]
+
+is transitively closed, this function  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:11
+
+inserts in DS all transitive orderings implied through this edge, which can be discovered by making appropriate calls to DS (Line 2 and Line 2). 
+
+Algorithm 3: Data structure.  
+
+> 1
+
+function initialize()  
+
+> 2
+
+foreach 𝑡 ∈ Thr 𝜎 do  
+
+> 3
+
+foreach 𝑡 ′ ∈ Thr 𝜎 do  
+
+> 4
+
+From 𝑡 (𝑡 ′) ← ⊥ ; To 𝑡 (𝑡 ′) ← ⊥  
+
+> 5
+
+function reachable( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩) 
+
+> 6
+
+if 𝑡 1 = 𝑡 2 then return 𝑗 1 ≤ 𝑗 2 
+
+> 7
+
+if successor (⟨ 𝑡 1, 𝑗 1⟩, 𝑡 2) ≤ 𝑗 2 then  
+
+> 8
+
+return True  
+
+> 9
+
+else return False  
+
+> 10
+
+function successor( ⟨𝑡 1, 𝑗 1⟩, 𝑡 2) 
+
+> 11
+
+if From 𝑡 2 (𝑡 1) ≥ 𝑗 1 then return To 𝑡 2 (𝑡 1)
+
+else return ⊥ 
+
+> 12
+
+function predecessor( ⟨𝑡 1, 𝑗 1⟩, 𝑡 2) 
+
+> 13
+
+if To 𝑡 1 (𝑡 2) ≤ 𝑗 1 then return From 𝑡 1 (𝑡 2)
+
+else return ⊥ 
+
+> 14
+
+function addSuccessor( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩) 
+
+> 15
+
+if From 𝑡 2 (𝑡 1) < 𝑗 1 then  
+
+> 16
+
+From 𝑡 2 (𝑡 1) ← 𝑗 1; To 𝑡 2 (𝑡 1) ← 𝑗 2 
+
+> 17
+
+else if From 𝑡 2 (𝑡 1) = 𝑗 1 ∧ To 𝑡 2 (𝑡 1) > 𝑗 2 then  
+
+> 18
+
+To 𝑡 2 (𝑡 1) ← 𝑗 2
+
+Data Structure (Algorithm 3). The data structure DS succinctly maintains a conflict graph by manipulating the vector clocks From 𝑡 1 (𝑡 2) and To 𝑡 1 (𝑡 2), for every pair of threads 𝑡 1 and 𝑡 2, initially set to ⊥ (Line 3). It provides the following interface, which is used by Algorithm 2. 
+
+Function successor( ⟨𝑡 1, 𝑗 1⟩, 𝑡 2). This function returns the earliest transaction 𝑇 2 in thread 𝑡 2 such that 𝑇 1 <THB    
+
+> 𝜎 [:𝑒 ]
+
+𝑇 2, where 𝑇 1 is the 𝑗 1-th transaction of thread 𝑡 1. It first checks whether 𝑡 2 is aware of 𝑇 1
+
+(i.e., whether 𝑇 1 <THB    
+
+> 𝜎 [:𝑒 ]
+
+𝑇 ′ 
+
+> 2
+
+, where 𝑇 ′ 
+
+> 2
+
+is the latest transaction of 𝑡 2) by using From 𝑡 2 (𝑡 1), which stores the id of the latest transaction in 𝑡 1 that 𝑡 2 knows of (thus, 𝑡 2 knows of all the earlier transactions of 𝑡 1). If not, then no such transaction 𝑇 2 exists, and the function returns ⊥. Otherwise, id (𝑇 2) is guaranteed to be stored in To 𝑡 2 (𝑡 1), which is returned. 
+
+Function predecessor( ⟨𝑡 1, 𝑗 1⟩, 𝑡 2). This function is symmetric to successor , and returns the id of the latest transaction 𝑇 2 of 𝑡 2 such that 𝑇 2 <THB    
+
+> 𝜎 [:𝑒 ]
+
+𝑇 1, where 𝑇 1 is the 𝑗 1-th transaction of 𝑡 1.
+
+Function reachable( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩). This function returns True iff 𝑇 1 <THB    
+
+> 𝜎 [:𝑒 ]
+
+𝑇 2, where each 𝑇 𝑖 is the 𝑗 𝑖 -th transaction of thread 𝑡 𝑖 . It is implemented via a simple successor query. 
+
+Function addSuccessor( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩). This function records a new ordering 𝑇 1 <THB    
+
+> 𝜎 [:𝑒 ]
+
+𝑇 2, where each 𝑇 𝑖 is the 𝑗 𝑖 -th transaction of thread 𝑡 𝑖 . It starts by checking if 𝑇 1 is a later transaction of 𝑡 1
+
+known to 𝑡 2 than the one 𝑡 2 is currently aware of, and if so, it updates From 𝑡 2 (𝑡 1) and To 𝑡 2 (𝑡 1)
+
+accordingly (Line 3). Otherwise, it checks if 𝑇 1 is the latest transaction of 𝑡 1 known to 𝑡 2, but 𝑇 2 is a later transaction of 𝑡 2 that becomes aware of 𝑇 1 than the current transaction of 𝑡 2. If so, it updates 
+
+To 𝑡 2 (𝑡 1), accordingly. If none of the above holds, it is guaranteed that the ordering 𝑇 1 <THB    
+
+> 𝜎 [:𝑒 ]
+
+𝑇 2 is already present in the data structure, and is ignored. 
+
+Example. For brevity, we write From 𝑖 ( 𝑗 ) = 𝑇 and To 𝑖 ( 𝑗 ) = 𝑇 to mean that they store 
+
+id (𝑇 ). Consider the trace 𝜎 7 in Figure 6. Edge numbers depict the order in which <CHB  
+
+> 𝜎 7
+
+re-lations are processed. The data structure DS is updated as follows. First, executing 𝑒 7 up-dates DS to From 𝑡 4 (𝑡 3) = 𝑇 2 and To 𝑡 4 (𝑡 3) = 𝑇 3, capturing that 𝑇 2 <THB    
+
+> 𝜎 7[:𝑒 7]
+
+𝑇 3. Second, exe-cuting 𝑒 11 updates DS to From 𝑡 2 (𝑡 1) = 𝑇 1 and To 𝑡 2 (𝑡 1) = 𝑇 4, capturing that 𝑇 1 <THB    
+
+> 𝜎 7[:𝑒 11 ]
+
+𝑇 4.                                 
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:12 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+> 𝑡 1𝑡 2𝑡 3𝑡 4
+> 24
+> 23
+> 22
+> 21
+> 20
+> 19
+> 18
+> 17
+> 16
+> 15
+> 14
+> 13
+> 12
+> 11
+> 10
+> 9
+> 8
+> 7
+> 6
+> 5
+> 4
+> 3
+> 2
+> 1𝑇 1:▷
+> w(𝑣 )
+> 𝑇 1:◁
+> 𝑇 5:▷
+> w(𝑦 )
+> r(𝑥 )
+> 𝑇 5:◁
+> 𝑇 4:▷
+> w(𝑧 )
+> w(𝑣 )
+> 𝑇 4:◁
+> 𝑇 7:▷
+> w(𝑦 )
+> 𝑇 7:◁
+> 𝑇 2:▷
+> w(𝑥 )
+> w(𝑦 )
+> 𝑇 2:◁
+> 𝑇 3:▷
+> w(𝑥 )
+> 𝑇 3:◁
+> 𝑇 6:▷
+> r(𝑧 )
+> 𝑇 6:◁
+> 1
+> 2
+> 4
+> 3
+> 5
+> 6
+
+Fig. 6. A trace 𝜎 7 processed by AtomSanitizer . Num-bers indicate the sequence of <CHB  
+
+> 𝜎 7
+
+edges processed by 
+
+AtomSanitizer . Edge 5 leads to a violation report. 
+
+Third, executing 𝑒 17 updates DS to 
+
+From 𝑡 2 (𝑡 1) = 𝑇 5 and To 𝑡 2 (𝑡 1) = 𝑇 7, cap-turing that 𝑇 5 <THB    
+
+> 𝜎 7[:𝑒 17 ]
+
+𝑇 7. Fourth, executing 
+
+𝑒 18 updates DS to From 𝑡 4 (𝑡 2) = 𝑇 4 and 
+
+To 𝑡 4 (𝑡 2) = 𝑇 6, capturing that 𝑇 4 <THB    
+
+> 𝜎 7[:𝑒 18 ]
+
+𝑇 6.Note that From 𝑡 4 (𝑡 1) is still ⊥, missing the ordering 𝑇 1 <THB    
+
+> 𝜎 7[:𝑒 18 ]
+
+𝑇 6. This is be-cause 𝑇 1 <THB    
+
+> 𝜎 7[:𝑒 18 ]
+
+𝑇 6 is formed transitively, through 𝑇 4, but 𝑡 2 is aware of the later transaction 𝑇 5 of 𝑡 1 at this point (due to edge 3). Fifth, executing 𝑒 19 updates DS to 
+
+From 𝑡 3 (𝑡 2) = 𝑇 7 and To 𝑡 3 (𝑡 2) = 𝑇 2, capturing that 𝑇 7 <THB    
+
+> 𝜎 7[:𝑒 19 ]
+
+𝑇 2. In addition, DS also up-dates From 𝑡 3 (𝑡 1) = 𝑇 5 and To 𝑡 3 (𝑡 1) = 𝑇 2,
+
+From 𝑡 4 (𝑡 2) = 𝑇 7 and To 𝑡 4 (𝑡 2) = 𝑇 3,
+
+From 𝑡 4 (𝑡 1) = 𝑇 5 and To 𝑡 4 (𝑡 1) = 𝑇 3 by computing the transitive closure, capturing respectively 𝑇 5 <THB    
+
+> 𝜎 7[:𝑒 19 ]
+
+𝑇 2, 𝑇 7 <THB    
+
+> 𝜎 7[:𝑒 19 ]
+
+𝑇 3, and 
+
+𝑇 5 <THB    
+
+> 𝜎 7[:𝑒 19 ]
+
+𝑇 3. Finally, when executing 𝑒 20 , we have From 𝑡 4 (𝑡 1) = 𝑇 5 and To 𝑡 4 (𝑡 1) = 𝑇 3. Since 
+
+𝑇 3.begin ≤TO  
+
+> 𝜎 7
+
+txn (𝑒 7).begin (in fact txn (𝑒 7) = 𝑇 3), AtomSanitizer reports a conflict-serializability violation. 
+
+3.3 Correctness and Complexity 
+
+We now state the correctness and complexity of AtomSanitizer . The principle of operation of 
+
+AtomSanitizer is by keeping track of the latest (open) remote transactions and earliest local transactions, as described in Section 3.1. Formally, it maintains the following invariant. 
+
+Lemma 3.3. After AtomSanitizer has processed an event 𝑒 , for all threads 𝑡 1, 𝑡 2, if LRT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) is open in 𝜎 [:𝑒 ], we have From 𝑡 1 (𝑡 2) = id (LRT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)) and To 𝑡 1 (𝑡 2) = id (ELT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)) .
+
+In turn, the invariant of Lemma 3.3 combines with Lemma 3.2 to yield the correctness of 
+
+AtomSanitizer , as stated below. 
+
+Lemma 3.4. AtomSanitizer reports a conflict-serializability violation iff 𝜎 is not conflict-serializable. Moreover, if 𝜎 is not conflict-serializable, then AtomSanitizer reports the first event 𝑒 of 𝜎 such that 
+
+<THB    
+
+> 𝜎 [:𝑒 ]
+
+is cyclic. 
+
+Next, we turn our attention to the complexity of AtomSanitizer . At a high level, each event 𝑒 that is not a write event results in a single call to checkAndUpdate , which takes 𝑂 (𝑘 2) time, determined by the two nested loops in Algorithm 2 (Line 2 and Line 2) for performing a transitive closure operation after inserting a single edge in Line 2. On the other hand, when 𝑒 is a write event, 
+
+checkAndUpdate may be called 𝑂 (𝑘 ) times, due to the loop in Line 1 of Algorithm 1, resulting in 𝑂 (𝑘 3) time. Owing to the use of the sets lastReadTids 𝑥 , however, an amortization argument shows that across all events of 𝜎 , the total number of calls to checkAndUpdate is 𝑂 (𝑛 ), leading to 
+
+𝑂 (𝑘 2) time per event of 𝜎 , on average. In particular, this holds because lastReadTids 𝑥 is reset after each write on 𝑥 (Line 1), and thus the iterations of that loop can be amortized to the read events that were executed after the last write on 𝑥 . 
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:13
+
+Lemma 3.5. Given a trace 𝜎 of 𝑛 events, 𝑘 threads, 𝑣 variables and ℓ locks, AtomSanitizer runs in 
+
+𝑂 (𝑛𝑘 2) time and 𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ) space. 
+
+We remark that the number of locks contribute to the space complexity by a term 𝑂 (ℓ), as opposed to 𝑂 (𝑘ℓ ) in existing algorithms. Moreover, although AtomSanitizer uses 𝑂 (𝑘 ) space for each location 𝑥 in the worst case, a more precise bound is 𝑂 (𝑘 𝑥 ), where 𝑘 𝑥 is the number of threads reading from 𝑥 . In practice, most variables are accessed/read by a few threads, decreasing the space complexity to 𝑂 (𝑘 2 + 𝑣 + ℓ). The following theorem concludes the guarantees of AtomSanitizer .
+
+Theorem 3.6. Let 𝜎 be an input trace of 𝑛 events, 𝑘 threads, 𝑣 variables and ℓ locks. AtomSanitizer 
+
+reports a violation iff 𝜎 is not conflict-serializable, and uses 𝑂 (𝑛𝑘 2) time and 𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ) space. If 
+
+𝜎 is not conflict-serializable, AtomSanitizer reports the first event 𝑒 of 𝜎 such that <THB    
+
+> 𝜎 [:𝑒 ]
+
+is cyclic. 
+
+We further remark that the space usage of AtomSanitizer is also bounded by 𝑂 (𝑛 + 𝑘 2), but the space bound of Theorem 3.6 is preferred as long as 𝑘𝑣 < 𝑛 (which is typically the case). 
+
+3.4 Lower Bounds 
+
+Finally, in this section we establish two fundamental lower bounds on the time and space complexity of monitoring conflict-serializability. 
+
+A super-linear online time lower bound. Recall that, if we relinquish the practical requirement that a violation is reported in an online fashion as soon as it occurs, conflict-serializability violations can be detected in 𝑂 (𝑛 ) time, by simply recording the direct <THB  
+
+> 𝜎
+
+orderings and checking for the existence of a cycle. AtomSanitizer operates in an online setting, and although it also achieves linear running time when 𝑘 = 𝑂 (1), its complexity is generally superlinear. Here we prove that such an overhead for the online problem is likely unavoidable, using techniques from fine-grained complexity theory. In particular, the Online Matrix-Vector multiplication (OMv) problem is stated as follows. Given a 𝑚 × 𝑚 matrix 𝑀 and an online sequence of vectors 𝑣 1, . . . , 𝑣 𝑚 , after a possibly polynomial-time preprocessing of 𝑀 , the task is to compute each product 𝑀𝑣 𝑖 before 𝑣 𝑖 +1 is revealed. The corresponding OMv hypothesis [ 21 ] states that any algorithm for OMv requires Ω(𝑚 3−𝜖 ) time, for any fixed 𝜖 > 0. We establish the following super-linear lower bound based on OMv, which states that the detection on conflict-serializability violations in an online manner is a fundamentally more difficult problem. 
+
+Lemma 3.7. Any algorithm for conflict-serializability violations over traces 𝜎 that reports a violation when it occurs (in particular, at the first event 𝑒 for which <THB    
+
+> 𝜎 [:𝑒 ]
+
+is cyclic, or even when txn (𝑒 ) closes) must take Ω(𝑛 3/2−𝜖 ) time, for any fixed 𝜖 > 0, under the OMv hypothesis. 
+
+We further remark that the lower bound of Lemma 3.7 holds for a “reasonable” number of threads, in particular, for 𝑘 = Θ(√𝑛 ) (as opposed to, e.g., 𝑘 = Θ(𝑛 )). In this case, AtomSanitizer runs in 
+
+𝑂 (𝑛 2) time, as per Theorem 3.6, and is thus within a √𝑛 factor (i.e., sublinear) from optimal. 
+
+A linear space lower bound. Note that the space usage of AtomSanitizer can become linear in 
+
+𝑛 when there are many locations, e.g., 𝑣 = Ω(𝑛 ). Can we detect atomicity violations using always sublinear space (i.e., not only when 𝑣 = 𝑜 (𝑛 ))? The following lemma states that this is impossible. 
+
+Lemma 3.8. Any streaming algorithm for conflict-serializability/increasing-path violations even over traces 𝜎 with only two threads and two transactions must use Ω(𝑛 ) space.  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:14 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+4 Detecting Increasing-Cycle Violations 
+
+In this section we turn our attention to increasing-cycle violations. Towards this, we adapt the conditions of Lemma 3.2 to work for the increasing-cycle setting. This will allow us to tune 
+
+AtomSanitizer to report increasing-cycle violations by making slight changes to Algorithm 2. 
+
+Latest remote begins and earliest local events. For a trace 𝜎 and two threads 𝑡 1, 𝑡 2, we define the latest remote begin of 𝑡 2 known to 𝑡 1 LRB 𝑡 1 
+
+> 𝜎
+
+(𝑡 2), as follows. 
+
+• If 𝑡 1 is not executed in 𝜎 , then LRB 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) = ⊥. Otherwise, let 𝑒 1 be the latest event of 𝑡 1 in 𝜎 .
+
+• If 𝑡 2 has a transaction begin event begin 2 such that begin 2 <CHB  
+
+> 𝜎
+
+𝑒 1, then LRB 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) is the latest such begin event begin 2, otherwise LRB 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) = ⊥.
+
+𝑡 1 𝑡 2 𝑡 3
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 𝑇 1 : ▷
+
+w(𝑣 )
+
+r(𝑧 )
+
+𝑇 2 : ▷
+
+w(𝑥 )
+
+r(𝑣 )
+
+w(𝑦 )
+
+𝑇 3 : ▷
+
+r(𝑥 )
+
+r(𝑦 )
+
+w(𝑧 )
+
+Fig. 7. A trace 𝜎 8.
+
+If LRB 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) ≠ ⊥, we define the earliest local event in 𝑡 1
+
+for 𝑡 2 as ELE 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) = 𝑒 ′
+
+> 1
+
+, where 𝑒 ′ 
+
+> 1
+
+is the earliest event in 
+
+𝑡 1 such that LRB 𝑡 1 
+
+> 𝜎
+
+(𝑡 2) <CHB  
+
+> 𝜎
+
+𝑒 ′
+
+> 1
+
+.
+
+Example. Consider the trace 𝜎 8 in Figure 7. At event 𝑒 7,we have LRT 𝑡 3   
+
+> 𝜎 8[:𝑒 7]
+
+(𝑡 1) = 𝑇 1, while LRB 𝑡 3   
+
+> 𝜎 8[:𝑒 7]
+
+(𝑡 1) = ⊥. At event 𝑒 9, LRB 𝑡 3   
+
+> 𝜎 8[:𝑒 9]
+
+(𝑡 1) = 𝑇 1, and ELE 𝑡 3   
+
+> 𝜎 8[:𝑒 9]
+
+(𝑡 1) = 𝑒 9.The following lemma is analogous to Lemma 3.2, and states the principle of operation of AtomSanitizer for detecting increasing-cycle violations. 
+
+Lemma 4.1. The trace 𝜎 has an increasing-cycle violation iff there exist two distinct events 𝑒 1
+
+and 𝑒 2 with tid (𝑒 1) = 𝑡 1 and tid (𝑒 2) = 𝑡 2 such that the following conditions hold: (i) 𝑡 1 ≠ 𝑡 2
+
+and 𝑒 1 is a <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 2, (ii) LRB 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) is the begin event of txn (𝑒 2), and (iii) ELE 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) ≤ TO  
+
+> 𝜎
+
+𝑒 1, where 𝑒 is a <TR  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 2.
+
+Algorithm 4: Checking increasing-cycle violations with AtomSanitizer . 
+
+> 1
+
+function checkAndUpdate( 𝑣 , 𝑒 ) 
+
+> 2
+
+if tid (𝑣 ) ≠ tid (𝑒 ) then  
+
+> 3
+
+𝑛 1 ← ⟨ tid (𝑣 ), id (𝑣 )⟩  
+
+> 4
+
+𝑛 2 ← ⟨ tid (𝑒 ), id (txn (𝑒 ).begin )⟩  
+
+> 5
+
+if DS .reachable (𝑛 2, 𝑛 1) then  
+
+> 6
+
+declare Increasing-cycle violation  
+
+> 7
+
+insertEdge (𝑣, 𝑒 ) 
+
+> 8
+
+function insertEdge( 𝑢, 𝑣 ) 
+
+> 9
+
+𝑡 1 ← tid (𝑢 ) 
+
+> 10
+
+𝑛 𝑣 ← ⟨ tid (𝑣 ), id (𝑣 )⟩  
+
+> 11
+
+foreach 𝑡 ∈ Thr 𝜎 do  
+
+> 12
+
+if 𝑡 = 𝑡 1 then 𝑗 ←− id (txn (𝑢 ).begin ) 
+
+> 13
+
+else 𝑗 ←− DS .predecessor (⟨ 𝑡 1, id (𝑢 )⟩ , 𝑡 ) 
+
+> 14
+
+DS .addSuccessor (⟨ 𝑡, 𝑗 ⟩, 𝑛 𝑣 )
+
+AtomSanitizer for increasing-cycle violations. We modify AtomSanitizer to detect increasing-cycle violations by maintaining in the data structure DS the latest remote begins LRB 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)
+
+and earliest local events ELE 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2), when processing event 𝑒 of 𝜎 , as opposed to latest remote transactions LRT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) and earliest local transactions ELT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2), respectively. We achieve this by replacing Algorithm 2 with Algorithm 4. Moreover, now the vector clocks From and To store event ids (see Line 4 and Line 4) instead of the transaction ids. The overall AtomSanitizer framework remains the same, in that Algorithm 4 also implements checkAndUpdate and insertEdge , only 
+
+insertEdge is now somewhat simpler.  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:15
+
+Function checkAndUpdate( 𝑣 , 𝑒 ). This function is similar to the corresponding one in Algorithm 2, with the difference that 𝑛 1 in Line 4 represents the event 𝑣 conflicting with 𝑒 , as opposed to the transaction of 𝑣 .
+
+Function insertEdge( 𝑢, 𝑣 ). This function is similar to the corresponding one in Algorithm 2, and is responsible for registering a new ordering 𝑣 <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 captured in checkAndUpdate (Line 4). The main difference is that the transitive closure only requires backward propagation (Line 4), as opposed to both forward and backward done in Algorithm 2. This is because 𝑒 cannot have any 
+
+<CHB    
+
+> 𝜎 [:𝑒 ]
+
+successors. In turn, this reduces the running time for inserting an edge to 𝑂 (𝑘 ), as opposed to 𝑂 (𝑘 2) in the case of Algorithm 2. 𝑡 1 𝑡 2 𝑡 3
+
+14 
+
+13 
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 𝑇 1 : ▷
+
+w(𝑥 )
+
+r(𝑧 )
+
+𝑇 1 : ◁
+
+𝑇 2 : ▷
+
+r(𝑥 )
+
+𝑇 2 : ◁
+
+𝑇 3 : ▷
+
+w(𝑦 )
+
+𝑇 3 : ◁
+
+𝑇 4 : ▷
+
+r(𝑦 )
+
+w(𝑧 )
+
+𝑇 4 : ◁
+
+1
+
+2
+
+3
+
+Fig. 8. A trace 𝜎 9 with an increasing-cycle violation. Numbers indicate the order of <CHB  
+
+> 𝜎 9
+
+edges inferred by 
+
+AtomSanitizer . Edge 3 leads to a violation report. 
+
+Example. For brevity, we write From 𝑖 ( 𝑗 ) = 𝑒 
+
+and To 𝑖 ( 𝑗 ) = 𝑒 to mean that they store id (𝑒 )
+
+. Consider the trace 𝜎 9 in Figure 8. First, ex-ecuting 𝑒 4 updates DS to From 𝑡 2 (𝑡 1) = 𝑒 1 and 
+
+To 𝑡 2 (𝑡 1) = 𝑒 4, capturing that 𝑒 1 <CHB    
+
+> 𝜎 9[:𝑒 4]
+
+𝑒 4. Sec-ond, executing 𝑒 9, updates DS to From 𝑡 3 (𝑡 2) = 𝑒 8
+
+and To 𝑡 3 (𝑡 2) = 𝑒 9, capturing that 𝑒 8 <CHB    
+
+> 𝜎 9[:𝑒 9]
+
+𝑒 9.In addition, DS also updates From 𝑡 3 (𝑡 1) = 𝑒 1
+
+and To 𝑡 3 (𝑡 1) = 𝑒 9, capturing 𝑒 1 <CHB    
+
+> 𝜎 9[:𝑒 9]
+
+𝑒 9, by computing the transitive closure. Finally, when executing 𝑒 12 , we have From 𝑡 3 (𝑡 1) = 𝑒 1 and 
+
+To 𝑡 3 (𝑡 1) = 𝑒 9. Since 𝑒 9 ≤TO  
+
+> 𝜎 9
+
+𝑒 10 , AtomSanitizer 
+
+reports an increasing-cycle violation. 
+
+Correctness and complexity. The correct-ness of AtomSanitizer for increasing-cycle violations follows from Lemma 4.1, while its time complexity is similar to that for conflict-serializability (Lemma 3.5), taking into consideration that each call to insertEdge now takes 𝑂 (𝑘 ) amortized time, as opposed to 𝑂 (𝑘 2). Formally, we have the following theorem. 
+
+Theorem 4.2. Let 𝜎 be an input trace of 𝑛 events, 𝑘 threads, 𝑣 variables and ℓ locks. AtomSanitizer 
+
+(increasing-cycle) reports a violation iff 𝜎 has an increasing-cycle violation , and uses 𝑂 (𝑛𝑘 ) time and 
+
+𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ) space. 
+
+Comparison to existing work. Standard algorithms for the conflict-happens-before order, and thus increasing-cycle violations, operate in 𝑂 (𝑛𝑘 ) time and 𝑂 (𝑘 (𝑘 + 𝑣 + ℓ)) space [ 28 , 30 ]. 
+
+AtomSanitizer has the same time complexity, but uses a factor 𝑘 less per lock in space. Moreover, as already stated in the case of conflict-serializability violations in Section 3.2, AtomSanitizer only uses 𝑂 (1) space for each pair (𝑡, 𝑥 ) such that thread 𝑡 accesses variable 𝑥 , which in practice is less than storing a vector clock per variable, in contrast to [28, 30]. 
+
+5 Concurrent Runtime Setting 
+
+We now turn our attention to the online setting, where atomicity must be monitored during program execution. This poses the challenge of sharing the data structure DS among threads, and accessing/updating it concurrently. To avoid data races (which can lead to wrong results), such accesses must be appropriately locked. Existing atomicity checkers address this challenge by forcing each thread to acquire a global lock at each step, which can cause considerable congestion. Instead,              
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:16 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+> 𝑡 1𝑡 2𝑡 3𝑡 4
+> 11
+> 10
+> 9
+> 8
+> 7
+> 6
+> 5
+> 4
+> 3
+> 2
+> 1𝑇 1:▷
+> w(𝑥 )
+> 𝑇 2:▷
+> w(𝑦 )
+> r(𝑥 )
+> w(𝑧 )
+> 𝑇 3:▷
+> w(𝑎 )
+> r(𝑦 )
+> 𝑇 4:▷
+> w(𝑏 )
+> r(𝑧 )
+
+(a) A trace 𝜎 10 where 𝑇 3̸ <THB  
+
+> 𝜎 10
+
+𝑇 4.            
+
+> 𝑡 1𝑡 2𝑡 3𝑡 4
+> 11
+> 10
+> 9
+> 8
+> 7
+> 6
+> 5
+> 4
+> 3
+> 2
+> 1𝑇 1:▷
+> w(𝑥 )
+> 𝑇 2:▷
+> w(𝑦 )
+> r(𝑥 )
+> w(𝑧 )
+> 𝑇 3:▷
+> w(𝑎 )
+> r(𝑦 )
+> 𝑇 4:▷
+> w(𝑎 )
+> r(𝑧 )
+
+(b) A trace 𝜎 11 where 𝑇 3 <THB  
+
+> 𝜎 11
+
+𝑇 4.Fig. 9. In 𝜎 10 (a), the transactions 𝑇 3 and 𝑇 4 do not have outgoing <THB  
+
+> 𝜎 10
+
+-orderings, and thus Algorithm 5 can process the events 𝑒 10 and 𝑒 11 concurrently, without acquiring a global lock, even though it has to perform a (backwards) transitive-closure to make 𝑡 3 and 𝑡 4 aware of 𝑇 1. In contrast, in 𝜎 11 (b), 𝑇 3 has an outgoing ordering (marked in red), making Algorithm 5 acquire a global lock when processing 𝑒 11 .
+
+the data structure DS of AtomSanitizer optimizes for the case when the transaction of the thread executing the current step is not known to any other thread, which is by far the most common case. In such cases, updates on DS can be performed concurrently via a combination of read and write locks, while completely avoiding the use of a global lock, and therefore reducing congestion. Figure 9 provides an illustration. 
+
+Online AtomSanitizer . Algorithm 5 shows the pseudocode of a wrapper that allows concurrent accesses to DS . For the online setting, AtomSanitizer consists of the same components (Algorithm 1, Algorithm 2, Algorithm 3), but calls to DS .reachable and DS .insertEdge from Algorithm 2 are replaced by calls to the same function in Algorithm 5. Conceptually, DS is shared between threads, so that From 𝑡 and To 𝑡 belong to thread 𝑡 . Concurrent accesses to DS are protected by (i) a pair of read/write locks L𝑡 for each thread 𝑡 , and (ii) a global read/write lock L. We now describe the functions of Algorithm 5 in more detail. 
+
+Function DS .reachable . This function simply wraps the reachability call to DS around read-acquiring the lock L𝑡 2 of the target thread 𝑡 2. The function is called from thread 𝑡 1, and no other thread ever write-acquires L𝑡 1 , thus 𝑡 1 does not need to read-acquire its own lock. 
+
+Function insertEdge . This function operates as follows. First, it calls insertEdgeBackwards , which attempts to insert the edge while making only backwards propagation (Line 5). If it fails, insertEdge 
+
+performs the full transitive closure, by acquiring the global lock L, as well as all locks {L𝑡 𝑖 }𝑖 (Line 5), to avoid racing with any other thread updating DS . Finally, the variable latestTxn 𝑡 stores the id of the latest transaction 𝑇 that thread 𝑡 has executed, and it is appropriately initialized every time 𝑡 starts a new transaction (not explicitly shown in the pseudocode). The flag hasOutEdge 𝑡 
+
+marks whether latestTxn 𝑡 has outgoing edges, helping to avoid locking the whole DS in future updates. It is set to True when inserting an edge (𝑣, 𝑒 ) where 𝑣 belongs to the latest transaction of its thread, and 𝑇 is not unary (Line 5) and is set to False when 𝑇 is closed (not explicitly shown in the pseudocode). 
+
+Function insertEdgeBackwards . Finally, this function attempts to perform a backwards edge propagation from the thread 𝑡 2 = tid (𝑒 ). If successful, this only modifies the clocks From 𝑡 2 and To 𝑡 2
+
+owned by 𝑡 2. In high level, it first read-acquires the global lock L (Line 5) to avoid racing with a thread that might be performing a full transitive closure computation, thereby also modifying the  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:17
+
+clocks From 𝑡 2 and To 𝑡 2 . To perform the backwards propagation, 𝑡 2 also needs to read the clocks 
+
+From 𝑡 1 and To 𝑡 1 . For this, it read-acquires the lock L𝑡 1 . This acquisition is done in a loop ( Line 5) to avoid deadlocks occurring when 𝑡 1 simultaneously read-acquires L𝑡 2 . After 𝑡 2 has read-acquired 
+
+L𝑡 1 , it again checks whether txn (𝑒 ) has an outgoing edge. Note that such an edge might have been added between the call to insertEdgeBackwards made by insertEdge (Line 5) and when 
+
+L was read-acquired in insertEdgeBackwards (Line 5). If txn (𝑒 ) indeed has an outgoing edge at this point, insertEdgeBackwards fails and returns False to insertEdge , forcing the latter to perform a full transitive closure (Line 5). Otherwise, insertEdgeBackwards proceeds to perform the backward propagation (Line 5). Finally, lines 38–40 update the flag hasOutEdge 𝑡 1 to indicate whether latestTxn 𝑡 1 has outgoing edges, similarly to lines 11–13 in insertEdge .
+
+Algorithm 5: Concurrent wrapper around DS . 
+
+> 1
+
+function reachable( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩) 
+
+> 2
+
+Rlock (L𝑡 2 ) 
+
+> 3
+
+𝑟 ← DS .reachable( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩ ) 
+
+> 4
+
+RUnlock (L𝑡 2 ) 
+
+> 5
+
+return r 
+
+> 6
+
+function insertEdge( 𝑣, 𝑒 ) 
+
+> 7
+
+𝑡 1 ← tid (𝑣 ) 
+
+> 8
+
+if insertEdgeBackwards (𝑣, 𝑒 ) then  
+
+> 9
+
+return  
+
+> 10
+
+// executes rarely in practice  
+
+> 11
+
+𝑇 ← atomic _load (latestTxn 𝑡 1 ) 
+
+> 12
+
+if unary (𝑣 ) = False ∧ 𝑇 = txn (𝑣 ) then  
+
+> 13
+
+atomic _store (hasOutEdge 𝑡 1 , True ) 
+
+> 14
+
+WLock (L) 
+
+> 15
+
+foreach 𝑡 ∈ Thr 𝜎 do  
+
+> 16
+
+Rlock (L𝑡 ) 
+
+> 17
+
+full transitive closure as in Algorithm 2  
+
+> 18
+
+foreach 𝑡 ∈ Thr 𝜎 do  
+
+> 19
+
+RUnlock (L𝑡 ) 
+
+> 20
+
+WUnlock (L) 
+
+> 21
+
+function insertEdgeBackwards( 𝑣, 𝑒 ) 
+
+> 22
+
+𝑡 1 ← tid (𝑣 ) ; 𝑡 2 ← tid (𝑒 ) 
+
+> 23
+
+𝑛 𝑒 ← ⟨ 𝑡 2, id (txn (𝑒 ))⟩  
+
+> 24
+
+Rlock (L) 
+
+> 25
+
+while True do  
+
+> 26
+
+Rlock (L𝑡 1 ) 
+
+> 27
+
+if tryWLock (L𝑡 2 ) then break  
+
+> 28
+
+else RUnlock (L𝑡 1 ) 
+
+> 29
+
+if atomic _load (hasOutEdge 𝑡 2 ) = True then  
+
+> 30
+
+// executes rarely in practice  
+
+> 31
+
+WUnlock (L𝑡 2 ); RUnlock (L𝑡 1 ); RUnlock (L); 
+
+> 32
+
+return False  
+
+> 33
+
+foreach 𝑡 ∈ Thr 𝜎 do  
+
+> 34
+
+if 𝑡 = 𝑡 1 then 𝑗 ← id (txn (𝑣 ))  
+
+> 35
+
+else 𝑗 ← DS .predecessor (⟨ 𝑡 1, id (txn (𝑣 ))⟩ , 𝑡 ) 
+
+> 36
+
+DS .addSuccessor (⟨ 𝑡, 𝑗 ⟩, 𝑛 𝑒 ) 
+
+> 37
+
+WUnlock (L𝑡 2 ); RUnlock (L𝑡 1 ); RUnlock (L) 
+
+> 38
+
+𝑇 ← atomic _load (latestTxn 𝑡 1 ) 
+
+> 39
+
+if unary (𝑣 ) = False ∧ 𝑇 = txn (𝑣 ) then  
+
+> 40
+
+atomic _store (hasOutEdge 𝑡 1 , True ) 
+
+> 41
+
+return True 
+
+Correctness. We now outline the correctness for Algorithm 5, by focusing on three key aspects. 
+
+Deadlock-freeness. First, note that the algorithm cannot deadlock: reachable does not have nested locking, whereas in all other cases, acquiring a thread lock of the form L𝑡 𝑖 (in lines 16, 26, 27) is preceded by accessing the global lock L (in lines 14, 24). Note, however, that the hot path is in lines 25 to 28 in insertEdgeBackwards , where L is read-acquired, thus allows the concurrent execution of multiple threads, avoiding congestion. If multiple readers hold L, deadlocks are avoided due to the use of tryWLock (L𝑡 2 ) at line 27. This can cause a livelock, which in practice resolves quickly. 
+
+Mutual exclusion. Second, the algorithm guarantees mutual exclusion: every time a full transitive closure is started by a thread, the data structure is protected by L (line 14) so that no other thread can modify it. Moreover, the locks L𝑡 of all threads 𝑡 have been read-acquired (line 16), which also  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:18 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+avoids write-read races. All other data structure updates are such that thread 𝑡 2 only writes on the From 𝑡 2 and To 𝑡 2 clocks at line 36, which avoids write-write races. Moreover, write-read races are avoided because whenever thread 𝑡 2 accesses the vector clocks From 𝑡 1 and To 𝑡 1 of some other thread 𝑡 1 (line 35), it has first read-locked L𝑡 1 (line 26) and write-locked L𝑡 2 (line 27). 
+
+A benign race condition. Finally, notice a subtlety with regards to the accesses of the flag 
+
+hasOutEdge 𝑡 1 . Here, a race condition may cause some thread 𝑡 executing lines 13 and 40 to set 
+
+hasOutEdge 𝑡 1 , even if thread 𝑡 1 has progressed with a new transaction in the meantime. This does not threaten correctness, but may only cause 𝑡 1 to execute line 29 later and thus may cause congestion. In practice, however, this occurs rarely to warrant the overhead of avoiding this race condition via locking. 
+
+6 Experimental Evaluation 
+
+In this section, we report on an implementation of AtomSanitizer , both as a standalone atomicity checker, and as a runtime monitor inside TSAN . We also report on an experimental evaluation of 
+
+AtomSanitizer in each setting, and compare it to other atomicity checkers. All experiments are run on an Ubuntu 22.04 machine with 2.4GHz CPU and 64GB of memory. 
+
+6.1 Standalone Experiments 
+
+Implementation. We implement AtomSanitizer inside the RAPID framework for dynamic analy-ses [ 29 ] in Java, closely following the pseudocode in Section 3 (for conflict-serializability violations) and Section 4 (for increasing-cycle violations). 
+
+Baselines. We compare the performance of AtomSanitizer to the standard and SOTA atom-icity checkers (i) Velodrome [ 16 ], (ii) Aerodrome [ 32 ], and (iii) RegionTrack [ 28 ]. For this, we port RegionTrack into RAPID , which already implements Velodrome and Aerodrome . Each tool processes the same input trace and reports whether it is conflict-serializable. We also compare 
+
+AtomSanitizer and RegionTrack for increasing cycles, since they are the only tools that report increasing cycles in a sound and complete manner. By default, RegionTrack performs conflict-serializability and increasing-cycle checking simultaneously. For a fair comparison, we have sepa-rated the two components, which reduces its running time for each individual task. 
+
+Benchmarks. Our benchmark traces are derived from the DeCaPo benchmark suite [ 6 ], Java Grande suite [ 44 ], and microbenchmarks [ 49 ], taken from the experimental setup of Aerodrome [32 ] and also used in other works [ 5 , 28 ]. Benchmarks ending in “_ext” are our own variants of existing benchmarks that scale up the number of threads 𝑘 . We report the average running time of each tool over 10 runs, imposing a timeout of 2 hours in each run. 
+
+Results. The results are shown in Table 2, for both conflict-serializability and increasing-cycle viola-tions. For conflict-serializability, we observe that AtomSanitizer is faster than each of the baselines, on each benchmark. The geometric mean of the speedup across all benchmarks is 2.0×, 4.5×, and 
+
+12 × over RegionTrack , Aerodrome , and Velodrome , respectively. Overall, AtomSanitizer and 
+
+RegionTrack stand out as the faster algorithms compared to Aerodrome and Velodrome , with 
+
+AtomSanitizer being decisively the fastest. The comparison on increasing-cycle violations is similar, with AtomSanitizer being faster than RegionTrack on each benchmark. The geometric mean of the speedup over all benchmarks is 1.7×. 
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:19
+
+Table 2. Offline experiments on conflict-serializability and increasing-cycle violations. Entries marked with ∗
+
+witness a violation (both conflict-serializability and increasing-cycle). 
+
+Benchmark 𝑛 𝑘 𝑣 Conflict Serializability (ms) Increasing Cycle (ms) 
+
+> AtomSanitizer
+> RegionTrack
+> Aerodrome
+> Velodrome
+> AtomSanitizer
+> RegionTrack
+
+philo 557 6 24 3 5 5 4 3 3
+
+hedc ∗ 10.9K 7 1.69K 10 14 29 26 9 10 
+
+sunflow_ext ∗ 4.59M 130 612K 94 428 569 1,376 113 389 
+
+sunflow ∗ 16.7M 16 1.26M 1,374 2,431 73 ,710 42 ,910 1,286 2,318 
+
+series ∗ 40.1M 4 20.0K 275 540 822 44 ,767 270 503 
+
+tomcat ∗ 68.3M 48 6.10M 938 4,837 7,889 18 ,930 1,007 4,260 
+
+fop 95.8M 1 5.30M 4,415 4,768 12 ,040 8,299 4,043 4,378 
+
+raytracer_ext 105M 129 634K 22 ,336 40 ,238 371 ,176 TO 20 ,146 39 ,874 
+
+montecarlo_ext ∗ 114M 129 8.13M 96 637 754 2,399 102 424 
+
+crypt ∗ 126M 7 9.00M 4,314 8,311 15 ,949 36 ,019 5,564 6,087 
+
+lufact ∗ 135M 4 252K 316 381 733 385 307 379 
+
+lufact_ext ∗ 149M 129 252K 693 2,647 3,672 3,625 725 2,413 
+
+batik ∗ 189M 6 4.90M 4,871 5,571 16 ,464 48 ,630 4,413 4,822 
+
+moldyn_ext 233M 129 13.3M 48 ,933 202 ,136 411 ,028 TO 62 ,091 148 ,275 
+
+tsp ∗ 312M 9 181.M 240 306 777 435 249 322 
+
+pmd ∗ 367M 13 12.9M 241 379 699 538 234 362 
+
+montecarlo 494M 4 30.5M 36 ,685 45 ,255 146 ,191 TO 37 ,205 45 ,022 
+
+luindex ∗ 570M 3 2.49M 28 ,121 32 ,002 77 ,320 44 ,565 25 ,063 29 ,662 
+
+sor ∗ 608M 4 1.00M 1,409 1,715 3,024 3,740 1,455 1,252 
+
+series_ext 694M 129 347K 8,066 14 ,610 19 ,732 TO 7,927 13 ,929 
+
+sparsematmult ∗ 726M 4 1.59M 66 ,967 131 ,849 241 ,929 540 ,892 85 ,044 106 ,658 
+
+xalan ∗ 1.07B 13 31.3M 2,029 5,622 13 ,466 52 ,534 2,038 4,768 
+
+moldyn 1.75B 4 121K 112 ,041 149 ,492 439 ,822 TO 103 ,337 140 ,665 
+
+Total - - - 344 ,466 654 ,175 1 ,857 ,798 18 ,850 ,074 362 ,630 556 ,772 
+
+6.2 Runtime Experiments 
+
+In this section, our goal is to evaluate the time and memory performance of AtomSanitizer in a concurrent runtime setting, and compare it to the data race detection engine of TSAN , which is an industry standard in concurrent runtime analyses. 
+
+Implementation. We implement AtomSanitizer inside TSAN [43 ] in C++, following the descrip-tion in Section 5. We also enable the default optimizations of TSAN , such as thread pooling and storing only the four latest events per memory address. 
+
+Benchmarks. Our benchmark set consists of 13 popular open-source projects known for high concurrency, also used in related works (e.g., [ 46 ]). Since these programs do not have explicit transactions, we create an atomicity specification for each, following a process used in [ 5], and has been provided the specifications of prior work (e.g., [ 28 , 32 ]). In high level, this process starts with a fine-grained specification which marks each function as atomic. Then, as long as an atomicity violation is reported, it refines the specification by removing the transactions surrounding the function on which the atomicity violation was reported. This creates atomicity specifications for which we expect no atomicity violations, while retaining the atomicity requirement of many  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:20 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+Table 3. Online experiments on conflict-serializability ( AtomSanitizer ) and race detection ( TSAN ) inside the TSAN framework. “Origin” refers to the original, uninstrumented benchmark. “ OvhTsan ” and “ OvhOrig ”denote the ratios of AtomSanitizer over TSAN and Origin respectively. “Total/Max” refers to time/memory measurements, respectively. “Total Overhead” is the ratio of the total running times; “Max Overhead” is the ratio of the maximum memory usages. 
+
+Benchmark Time (s) Memory (MB) 
+
+> Origin
+> AtomSanitizer
+> TSAN
+> OvhOrig
+> OvhTsan
+> Origin
+> AtomSanitizer
+> TSAN
+> OvhOrig
+> OvhTsan
+
+x265 4 19 13 4.66 1.54 127 458 450 3.60 1.02 
+
+x264 55 315 143 5.74 2.21 34 125 121 3.62 1.03 
+
+pbzip2 15 18 18 1.17 1.00 6 38 30 6.81 1.26 
+
+libwebp 14 48 42 3.53 1.16 117 371 362 3.18 1.02 
+
+libvpx 10 33 18 3.16 1.80 21 84 78 4.05 1.08 
+
+lbzip2 6 92 56 14 .69 1.66 45 126 118 2.81 1.06 
+
+pigz 27 56 31 2.05 1.78 2 41 29 21 .64 1.38 
+
+pixz 531 583 588 1.10 0.99 876 1,497 1,489 1.71 1.01 
+
+xz 52 205 183 3.93 1.12 875 2,649 2,640 3.03 1.00 
+
+ImageMagick 21 320 290 15 .06 1.10 681 2,041 2,031 2.99 1.00 
+
+Rocksdb 4 24 23 5.99 1.05 25 69 67 2.76 1.04 
+
+7z 10 198 53 20 .04 3.78 195 609 601 3.12 1.01 
+
+ffmpeg 2 8 5 5.49 1.81 38 156 157 4.06 0.99 
+
+Total/Max 752 1,922 1,462 2.56 1.31 876 2,649 2,640 2.72 1.01 
+
+Geo Mean - - - 4.63 1.49 - - - 3.83 1.06 
+
+functions, so that benchmarking remains informative. The absence of violations is also necessary to meaningfully compare AtomSanitizer and TSAN , as otherwise an atomicity violation would make AtomSanitizer halt early, and appear (unfairly) faster. We report the average running time and memory used by AtomSanitizer and TSAN over 20 runs. 
+
+Results. Our results are shown in Table 3. As a first observation, we see that the overhead of TSAN 
+
+over the uninstrumented program is 3.1× on (geometric) average, and 13 .8× in the worst case (ImageMagic ), in terms of time. This matches the expectations of the developers for an overhead 
+
+≤ 15 × in time [ 43 ]. In terms of memory, TSAN has an overhead of 3.5× on average, and 14 .5× in the worst case ( pigz ). Although the average case is well within the ≤ 10 × bound expected by the developers, the worst case exceeds it. This, however, occurs on a benchmark with a very small memory footprint (2MB), and thus is insignificant in practice. Compared to TSAN , AtomSanitizer incurs a reasonable time overhead, averaging 1.49 × over all benchmarks. The largest overhead occurs on x264 and 7z , reaching 2.21 ×, and 3.78 ×, respectively. For the two benchmarks, we observe that AtomSanitizer performs a fully transitive closure more times, which is the main reason for the slow down, as it requires heavier locking (see Section 5). Finally, we observe that the memory footprint of AtomSanitizer is nearly identical to TSAN , with the geometric mean of the overhead being only 1.06 ×. Compared to the original, uninstrumented executions, the geometric mean of the overheads over time and memory are 4.63 × and 3.83 ×,respectively. The time overhead is always ≤ 15 ×, except for one case that goes up to ≃ 20 × (7z ). The memory overhead is always ≤ 6×, except for one case that goes up to ≃ 21 × (pigz ). Note, however, that TSAN also suffers a high memory overhead on this benchmark ( ≃ 14 ×). Overall, our  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:21
+
+results support the hypothesis that AtomSanitizer can be incorporated in a runtime monitoring setting, incurring acceptable overheads in both time and memory. 
+
+7 Related Work 
+
+Detecting atomicity vulnerabilities automatically has been an active research topic and targeted by a range of methods. Atomizer [ 13 ] was a precursor of Velodrome, based on Lipton’s reduction theory [ 25 ]. Techniques like AtomFuzzer [ 37 ] and PENELOPE [ 45 ] aim at generating schedules that expose atomicity violations, while others focus on synthesizing tests for the same task [ 41 ]. Algorithms like AtomSanitizer can speed up such approaches, by efficiently testing whether the generated execution indeed constitutes an atomicity violation. Since atomicity invariants are not always explicit, several approaches aim at inferring them automatically [ 27 , 38 ]. Finally, atomicity has also been targeted by static analyses, most prominently using types and effects [15, 17, 42]. View serializability is another atomicity notion, which is more general than conflict-serializability. Intuitively, the serial witness trace 𝜎 ∗ can now be obtained from the observed trace 𝜎 by swapping conflicting events, as long every read observes the same write in 𝜎 and 𝜎 ∗. However, testing view serializability is much harder: it is NP-complete in general [ 36 ], and even hard when parameterized by the number of threads [31]. Dynamic analyses are a standard approach to concurrency bugs. Besides atomicity violations, they have been targeting data races [ 14 , 20 , 24 , 39 ], deadlocks [ 47 ], memory vulnerabilities [ 8 ], and linearizability violations [ 1, 11 , 19 , 23 ]. Their efficiency has been an active pursuit in both theory and practice [7, 22, 30, 40, 46]. 
+
+8 Conclusion 
+
+We have introduced AtomSanitizer , a new algorithm for dynamically testing for atomicity viola-tions. AtomSanitizer is theoretically faster than all previous algorithms for the problem, while it also has small space complexity. Our experimental results show that the theoretical advantage of 
+
+AtomSanitizer is also realized in practice, while its lightweight time and memory footprint make it suitable for a runtime monitoring setting. Interesting future directions include transferring the insights of this work towards monitoring transactional consistency in databases, against a range of popular isolation levels [4, 9, 34]. 
+
+Data-Availability Statement 
+
+Data for our experiments and the experimental setup can be found in the accompanying artifact [ 48 ]. 
+
+Acknowledgments 
+
+This work was partially supported by a research grant (VIL42117) from VILLUM FONDEN, and by a research grant from STIBOFONDEN. 
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026.
+
+170:22 H. C. Tunç, Y. Dong, and A. Pavlogiannis 
+
+References 
+
+[1] Parosh Aziz Abdulla, Samuel Grahn, Bengt Jonsson, Shankaranarayanan Krishna, and Om Swostik Mishra. 2025. Efficient Linearizability Monitoring. Proc. ACM Program. Lang. 9, PLDI, Article 225 (June 2025), 24 pages. doi:10.1145/ 3729328 [2] Rajeev Alur, Ken McMillan, and Doron Peled. 2000. Model-Checking of Correctness Conditions for Concurrent Objects. 
+
+Information and Computation 160, 1 (2000), 167–188. doi:10.1006/inco.1999.2847 [3] Shane Bester. 2008. Atomicity violation leading to crash in MySQL 6.0.7 . https://bugs.mysql.com/bug.php?id=38816 [4] Ranadeep Biswas and Constantin Enea. 2019. On the Complexity of Checking Transactional Consistency. Proceedings of the ACM on Programming Languages 3, OOPSLA (Oct. 2019), 165:1–165:28. doi:10.1145/3360591 [5] Swarnendu Biswas, Jipeng Huang, Aritra Sengupta, and Michael D. Bond. 2014. DoubleChecker: Efficient Sound and Precise Atomicity Checking. In Proceedings of the 35th ACM SIGPLAN Conference on Programming Language Design and Implementation (Edinburgh, United Kingdom) (PLDI ’14) . Association for Computing Machinery, New York, NY, USA, 28–39. doi:10.1145/2594291.2594323 [6] Stephen M. Blackburn, Robin Garner, Chris Hoffmann, Asjad M. Khang, Kathryn S. McKinley, Rotem Bentzur, Amer Diwan, Daniel Feinberg, Daniel Frampton, Samuel Z. Guyer, Martin Hirzel, Antony Hosking, Maria Jump, Han Lee, J. Eliot B. Moss, Aashish Phansalkar, Darko Stefanović, Thomas VanDrunen, Daniel von Dincklage, and Ben Wiedermann. 2006. The DaCapo benchmarks: java benchmarking development and analysis. SIGPLAN Not. 41, 10 (Oct. 2006), 169–190. doi:10.1145/1167515.1167488 [7] Michael D. Bond, Milind Kulkarni, Man Cao, Minjia Zhang, Meisam Fathi Salmi, Swarnendu Biswas, Aritra Sengupta, and Jipeng Huang. 2013. OCTET: capturing and controlling cross-thread dependences efficiently. SIGPLAN Not. 48, 10 (Oct. 2013), 693–712. doi:10.1145/2544173.2509519 [8] Michael D. Bond and Kathryn S. McKinley. 2006. Bell: bit-encoding online memory leak detection. SIGPLAN Not. 41, 11 (Oct. 2006), 61–72. doi:10.1145/1168918.1168866 [9] Jack Clark, Alastair F. Donaldson, John Wickerson, and Manuel Rigger. 2024. Validating Database System Isolation Level Implementations with Version Certificate Recovery. In Proceedings of the Nineteenth European Conference on Computer Systems (EuroSys ’24) . Association for Computing Machinery, New York, NY, USA, 754–768. doi:10.1145/ 3627703.3650080 [10] Jeremy Cole. 2008. Atomicity violation leading to crash in MySQL 5.4.3 . https://bugs.mysql.com/bug.php?id=38883 [11] Michael Emmi and Constantin Enea. 2017. Sound, complete, and tractable linearizability monitoring for concurrent collections. Proc. ACM Program. Lang. 2, POPL, Article 25 (Dec. 2017), 27 pages. doi:10.1145/3158113 [12] Azadeh Farzan and P. Madhusudan. 2008. Monitoring Atomicity in Concurrent Programs. In Computer Aided Verification ,Aarti Gupta and Sharad Malik (Eds.). Springer, Berlin, Heidelberg, 52–65. doi:10.1007/978-3-540-70545-1_8 [13] Cormac Flanagan and Stephen N Freund. 2004. Atomizer: a dynamic atomicity checker for multithreaded programs. 
+
+SIGPLAN Not. 39, 1 (Jan. 2004), 256–267. doi:10.1145/982962.964023 [14] Cormac Flanagan and Stephen N. Freund. 2009. FastTrack: Efficient and Precise Dynamic Race Detection. In Proceedings of the 30th ACM SIGPLAN Conference on Programming Language Design and Implementation (Dublin, Ireland) (PLDI ’09) . Association for Computing Machinery, New York, NY, USA, 121–133. doi:10.1145/1542476.1542490 [15] Cormac Flanagan, Stephen N. Freund, Marina Lifshin, and Shaz Qadeer. 2008. Types for atomicity: Static checking and inference for Java. ACM Trans. Program. Lang. Syst. 30, 4, Article 20 (Aug. 2008), 53 pages. doi:10.1145/1377492.1377495 [16] Cormac Flanagan, Stephen N. Freund, and Jaeheon Yi. 2008. Velodrome: A Sound and Complete Dynamic Atomicity Checker for Multithreaded Programs. In Proceedings of the 29th ACM SIGPLAN Conference on Programming Language Design and Implementation (Tucson, AZ, USA) (PLDI ’08) . Association for Computing Machinery, New York, NY, USA, 293–303. doi:10.1145/1375581.1375618 [17] Cormac Flanagan and Shaz Qadeer. 2003. A type and effect system for atomicity. SIGPLAN Not. 38, 5 (May 2003), 338–349. doi:10.1145/780822.781169 [18] Jocelyn Fournier. 2004. Atomicity violation leading to crash in MySQL 4.1.2 . https://bugs.mysql.com/bug.php?id=3596 [19] Phillip B. Gibbons, John L. Bruno, and Steven Phillips. 2002. Black-Box Correctness Tests for Basic Parallel Data Structures. Theory of Computing Systems 35, 4 (Aug. 2002), 391–432. doi:10.1007/s00224-002-1046-6 [20] Hamed Gorjiara, Guoqing Harry Xu, and Brian Demsky. 2022. Yashme: detecting persistency races. In Proceedings of the 27th ACM International Conference on Architectural Support for Programming Languages and Operating Systems 
+
+(Lausanne, Switzerland) (ASPLOS ’22) . Association for Computing Machinery, New York, NY, USA, 830–845. doi:10. 1145/3503222.3507766 [21] Monika Henzinger, Sebastian Krinninger, Danupon Nanongkai, and Thatchaphol Saranurak. 2015. Unifying and Strengthening Hardness for Dynamic Problems via the Online Matrix-Vector Multiplication Conjecture. In Proceedings of the Forty-Seventh Annual ACM Symposium on Theory of Computing (STOC ’15) . Association for Computing Machinery, New York, NY, USA, 21–30. doi:10.1145/2746539.2746609 Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:23 
+
+[22] Rucha Kulkarni, Umang Mathur, and Andreas Pavlogiannis. 2021. Dynamic Data-Race Detection Through the Fine-Grained Lens. In DROPS-IDN/v2/Document/10.4230/LIPIcs.CONCUR.2021.16 . Schloss Dagstuhl – Leibniz-Zentrum für Informatik. doi:10.4230/LIPIcs.CONCUR.2021.16 [23] Zheng Han Lee and Umang Mathur. 2025. Efficient Decrease-and-Conquer Linearizability Monitoring. Proc. ACM Program. Lang. 9, OOPSLA2, Article 345 (Oct. 2025), 28 pages. doi:10.1145/3763123 [24] Christopher Lidbury and Alastair F. Donaldson. 2017. Dynamic race detection for C++11. In Proceedings of the 44th ACM SIGPLAN Symposium on Principles of Programming Languages (Paris, France) (POPL ’17) . Association for Computing Machinery, New York, NY, USA, 443–457. doi:10.1145/3009837.3009857 [25] Richard J. Lipton. 1975. Reduction: a method of proving properties of parallel programs. Commun. ACM 18, 12 (Dec. 1975), 717–721. doi:10.1145/361227.361234 [26] Shan Lu, Soyeon Park, Eunsoo Seo, and Yuanyuan Zhou. 2008. Learning from mistakes: a comprehensive study on real world concurrency bug characteristics. In Proceedings of the 13th International Conference on Architectural Support for Programming Languages and Operating Systems (Seattle, WA, USA) (ASPLOS XIII) . Association for Computing Machinery, New York, NY, USA, 329–339. doi:10.1145/1346281.1346323 [27] Shan Lu, Joseph Tucek, Feng Qin, and Yuanyuan Zhou. 2006. AVIO: detecting atomicity violations via access interleaving invariants. In Proceedings of the 12th International Conference on Architectural Support for Programming Languages and Operating Systems (San Jose, California, USA) (ASPLOS XII) . Association for Computing Machinery, New York, NY, USA, 37–48. doi:10.1145/1168857.1168864 [28] Xiaoxue Ma, Shangru Wu, Ernest Pobee, Xiupei Mei, Hao Zhang, Bo Jiang, and Wing-Kwong Chan. 2021. RegionTrack: A Trace-Based Sound and Complete Checker to Debug Transactional Atomicity Violations and Non-Serializable Traces. 
+
+ACM Transactions on Software Engineering and Methodology 30, 1 (Dec. 2021), 7:1–7:49. doi:10.1145/3412377 [29] Umang Mathur. 2024. Rapid: Dynamic Analysis for Concurrent Programs. https://github.com/focs-lab/rapid. Accessed: 2024-12-03. [30] Umang Mathur, Andreas Pavlogiannis, Hünkar Can Tunç, and Mahesh Viswanathan. 2022. A Tree Clock Data Structure for Causal Orderings in Concurrent Executions. In Proceedings of the 27th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (Lausanne, Switzerland) (ASPLOS ’22) . Association for Computing Machinery, New York, NY, USA, 710–725. doi:10.1145/3503222.3507734 [31] Umang Mathur, Andreas Pavlogiannis, and Mahesh Viswanathan. 2020. The Complexity of Dynamic Data Race Prediction. In Proceedings of the 35th Annual ACM/IEEE Symposium on Logic in Computer Science . ACM, Saarbrücken Germany, 713–727. doi:10.1145/3373718.3394783 [32] Umang Mathur and Mahesh Viswanathan. 2020. Atomicity Checking in Linear Time Using Vector Clocks. In Proceedings of the Twenty-Fifth International Conference on Architectural Support for Programming Languages and Operating Systems (Lausanne, Switzerland) (ASPLOS ’20) . Association for Computing Machinery, New York, NY, USA, 183–199. doi:10.1145/3373376.3378475 [33] Umang Mathur and Mahesh Viswanathan. 2020. Atomicity Checking in Linear Time using Vector Clocks V3. In 
+
+Proceedings of the Twenty-Fifth International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS ’20) . ACM, 183–199. https://arxiv.org/abs/2001.04961 [34] Lasse Møldrup and Andreas Pavlogiannis. 2025. AWDIT: An Optimal Weak Database Isolation Tester. Artifact for "AWDIT: An Optimal Weak Database Isolation Tester" 9, PLDI (June 2025), 209:1540–209:1564. doi:10.1145/3742465 [35] Madanlal Musuvathi, Shaz Qadeer, Thomas Ball, Gerard Basler, Piramanayagam Arumuga Nainar, and Iulian Neamtiu. 2008. Finding and Reproducing Heisenbugs in Concurrent Programs. In Proceedings of the 8th USENIX Conference on Operating Systems Design and Implementation (San Diego, California) (OSDI’08) . USENIX Association, USA, 267–280. doi:10.5555/1855741.1855760 [36] Christos H. Papadimitriou. 1979. The Serializability of Concurrent Database Updates. J. ACM 26, 4 (Oct. 1979), 631–653. doi:10.1145/322154.322158 [37] Chang-Seo Park and Koushik Sen. 2008. Randomized active atomicity violation detection in concurrent programs. In 
+
+Proceedings of the 16th ACM SIGSOFT International Symposium on Foundations of Software Engineering (Atlanta, Georgia) 
+
+(SIGSOFT ’08/FSE-16) . Association for Computing Machinery, New York, NY, USA, 135–145. doi:10.1145/1453101.1453121 [38] Soyeon Park, Shan Lu, and Yuanyuan Zhou. 2009. CTrigger: exposing atomicity violation bugs from their hiding places. In Proceedings of the 14th International Conference on Architectural Support for Programming Languages and Operating Systems (Washington, DC, USA) (ASPLOS XIV) . Association for Computing Machinery, New York, NY, USA, 25–36. doi:10.1145/1508244.1508249 [39] Andreas Pavlogiannis. 2020. Fast, Sound, and Effectively Complete Dynamic Race Prediction. Proc. ACM Program. Lang. 4, POPL, Article 17 (2020), 29 pages. doi:10.1145/3371085 [40] Jake Roemer, Kaan Genç, and Michael D. Bond. 2020. SmartTrack: Efficient Predictive Race Detection. In Proceedings of the 41st ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI 2020) . Association for Computing Machinery, New York, NY, USA, 747–762. doi:10.1145/3385412.3385993 Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:24 H. C. Tunç, Y. Dong, and A. Pavlogiannis 
+
+[41] Malavika Samak and Murali Krishna Ramanathan. 2015. Synthesizing tests for detecting atomicity violations. In 
+
+Proceedings of the 2015 10th Joint Meeting on Foundations of Software Engineering (Bergamo, Italy) (ESEC/FSE 2015) .Association for Computing Machinery, New York, NY, USA, 131–142. doi:10.1145/2786805.2786874 [42] Amit Sasturkar, Rahul Agarwal, Liqiang Wang, and Scott D. Stoller. 2005. Automated type-based analysis of data races and atomicity. In Proceedings of the Tenth ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (Chicago, IL, USA) (PPoPP ’05) . Association for Computing Machinery, New York, NY, USA, 83–94. doi:10.1145/1065944.1065956 [43] Konstantin Serebryany and Timur Iskhodzhanov. 2009. ThreadSanitizer: Data Race Detection in Practice. In Proceedings of the Workshop on Binary Instrumentation and Applications (New York, New York, USA) (WBIA ’09) . Association for Computing Machinery, New York, NY, USA, 62–71. doi:10.1145/1791194.1791203 [44] L. A. Smith, J. M. Bull, and J. Obdrzálek. 2001. A parallel java grande benchmark suite. In Proceedings of the 2001 ACM/IEEE Conference on Supercomputing (Denver, Colorado) (SC ’01) . Association for Computing Machinery, New York, NY, USA, 8. doi:10.1145/582034.582042 [45] Francesco Sorrentino, Azadeh Farzan, and P. Madhusudan. 2010. PENELOPE: weaving threads to expose atomicity violations. In Proceedings of the Eighteenth ACM SIGSOFT International Symposium on Foundations of Software Engi-neering (Santa Fe, New Mexico, USA) (FSE ’10) . Association for Computing Machinery, New York, NY, USA, 37–46. doi:10.1145/1882291.1882300 [46] Hünkar Can Tunç, Ameya Prashant Deshmukh, Berk Cirisci, Constantin Enea, and Andreas Pavlogiannis. 2024. CSSTs: A Dynamic Data Structure for Partial Orders in Concurrent Execution Analysis. In Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 3 (La Jolla, CA, USA) (ASPLOS ’24) . Association for Computing Machinery, New York, NY, USA, 223–238. doi:10.1145/3620666. 3651358 [47] Hünkar Can Tunç, Umang Mathur, Andreas Pavlogiannis, and Mahesh Viswanathan. 2023. Sound Dynamic Deadlock Prediction in Linear Time. Proc. ACM Program. Lang. 7, PLDI, Article 177 (jun 2023), 26 pages. doi:10.1145/3591291 [48] Hünkar Can Tunç, Yifan Dong, and Andreas Pavlogiannis. 2026. Fast Atomicity Monitoring . doi:10.5281/zenodo.19051631 [49] Christoph von Praun and Thomas R. Gross. 2003. Static conflict analysis for multi-threaded object-oriented programs. 
+
+SIGPLAN Not. 38, 5 (May 2003), 115–128. doi:10.1145/780822.781145 Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:25 
+
+A Proofs of Section 3 
+
+Lemma 3.2. A trace 𝜎 is not conflict-serializable iff there exist two distinct events 𝑒 ′ and 𝑒 ′′ such that the following conditions hold, where 𝑡 ′ = tid (𝑒 ′) and 𝑡 ′′ = tid (𝑒 ′′ ): (i) 𝑡 ′ ≠ 𝑡 ′′ and 𝑒 ′ is the <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 ′′ , (ii) LRT 𝑡 ′   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 ′′ ) = txn (𝑒 ′′ ), and (iii) ELT 𝑡 ′   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 ′′ ).begin ≤TO  
+
+> 𝜎
+
+txn (𝑒 ′).begin ,where 𝑒 is a <TR  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 ′′ .
+
+Proof. First, assume that such events 𝑒 ′ and 𝑒 ′′ exist. Due to (i), we have txn (𝑒 ′) <THB  
+
+> 𝜎
+
+txn (𝑒 ′′ ). Due to (ii) and (iii), we have txn (𝑒 ′′ ) <THB    
+
+> 𝜎 [:𝑒 ]
+
+txn (𝑒 ′), and by Remark 1, we have txn (𝑒 ′′ ) <THB  
+
+> 𝜎
+
+txn (𝑒 ′).Thus <THB  
+
+> 𝜎
+
+is cyclic, and by Lemma 3.1, 𝜎 is not conflict-serializable. For the opposite direction, assume that 𝜎 is not conflict-serializable, and by Lemma 3.1, we have that <THB  
+
+> 𝜎
+
+is cyclic. Due to Remark 1, there is a first event 𝑒 ′′ of 𝜎 such that <THB    
+
+> 𝜎 [:𝑒 ′′ ]
+
+is cyclic. Let 𝑒 
+
+be the <TR  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 ′′ , and note that 
+
+<CHB    
+
+> 𝜎 [:𝑒 ′′ ]
+
+=
+
+
+
+<CHB    
+
+> 𝜎 [:𝑒 ]
+
+∪
+
+n
+
+(𝑒 ′, 𝑒 ′′ ) : 𝑒 ′ <CHB    
+
+> 𝜎 [:𝑒 ′′ ]
+
+𝑒 ′′ o 
+
+which is equivalent to 
+
+<CHB    
+
+> 𝜎 [:𝑒 ′′ ]
+
+=
+
+
+
+<CHB    
+
+> 𝜎 [:𝑒 ]
+
+∪{( 𝑒 ′, 𝑒 ′′ ) : 𝑒 ′ is a <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 ′′ }
+
++
+
+where 𝑃 + denotes the transitive closure of relation 𝑃 . The latter equation implies that 
+
+<THB    
+
+> 𝜎 [:𝑒 ′′ ]
+
+=
+
+
+
+<THB    
+
+> 𝜎 [:𝑒 ]
+
+∪{( txn (𝑒 ′), txn (𝑒 ′′ )) : 𝑒 ′ is a <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 ′′ }
+
++
+
+Since <THB    
+
+> 𝜎 [:𝑒 ′′ ]
+
+is cyclic but <THB    
+
+> 𝜎 [:𝑒 ]
+
+is not, we must also have txn (𝑒 ′′ ) <THB    
+
+> 𝜎 [:𝑒 ′′ ]
+
+txn (𝑒 ′), where 𝑒 ′ is a 
+
+<CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 ′′ . Since the set of successors of txn (𝑒 ′′ ) is the same in 𝜎 [:𝑒 ] and 
+
+𝜎 [:𝑒 ′′ ] (i.e., for every transaction 𝑇 , we have txn (𝑒 ′′ ) <THB    
+
+> 𝜎 [:𝑒 ′′ ]
+
+𝑇 iff txn (𝑒 ′′ ) <THB    
+
+> 𝜎 [:𝑒 ]
+
+𝑇 ), we must also have txn (𝑒 ′′ ) <THB    
+
+> 𝜎 [:𝑒 ]
+
+txn (𝑒 ′).The desired result follows. □
+
+Lemma 3.3. After AtomSanitizer has processed an event 𝑒 , for all threads 𝑡 1, 𝑡 2, if LRT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) is open in 𝜎 [:𝑒 ], we have From 𝑡 1 (𝑡 2) = id (LRT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)) and To 𝑡 1 (𝑡 2) = id (ELT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)) .
+
+Proof. It is straightforward to see that whenever AtomSanitizer calls insertEdge (𝑛 1, 𝑛 2) in Line 2 𝑛 1 and 𝑛 2 represent txn (𝑣 ) and txn (𝑒 ), respectively, where 𝑒 is the event currently being processed and 𝑣 is such that 𝑣 <CHB  
+
+> 𝜎
+
+𝑒 . Moreover, it will make such a call at least for every 𝑣 that is a <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 . The invariant then follows by a straightforward induction, observing that all the necessary transitive <THB    
+
+> 𝜎 [:𝑒 ]
+
+orderings required to update LRT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) and 
+
+ELT 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2), for all pairs of threads 𝑡 1 and 𝑡 2, are captured in the two loops of Line 2 and Line 2 in Algorithm 2. The desired result follows. □
+
+Lemma 3.4. AtomSanitizer reports a conflict-serializability violation iff 𝜎 is not conflict-serializable. Moreover, if 𝜎 is not conflict-serializable, then AtomSanitizer reports the first event 𝑒 of 𝜎 such that 
+
+<THB    
+
+> 𝜎 [:𝑒 ]
+
+is cyclic.  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:26 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+Proof. It is straightforward to see that whenever AtomSanitizer (Algorithm 1) calls 
+
+checkAndUpdate (𝑣, 𝑒 ), we have that 𝑣 <CHB  
+
+> 𝜎
+
+𝑒 , and it will make such a call for every event 𝑣 
+
+that is a <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 . Then, a conflict-serializability violation is reported iff 
+
+DS .reachable (𝑛 2, 𝑛 1) = True, which, due to Lemma 3.3, holds iff LRT tid (𝑣 )   
+
+> 𝜎 [:𝑒 ′]
+
+(tid (𝑒 )) = txn (𝑒 ), and 
+
+ELT tid (𝑣 )   
+
+> 𝜎 [:𝑒 ′]
+
+(tid (𝑒 )) .begin <TO  
+
+> 𝜎
+
+txn (𝑒 ).begin , where 𝑒 ′ is the <TR  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 . Thus, Lemma 3.2 applies, leading to the desired result. □
+
+Lemma 3.5. Given a trace 𝜎 of 𝑛 events, 𝑘 threads, 𝑣 variables and ℓ locks, AtomSanitizer runs in 
+
+𝑂 (𝑛𝑘 2) time and 𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ) space. 
+
+Proof. We begin with an analysis of the time complexity of AtomSanitizer . First, observe that the initialization functions of Algorithm 1 and Algorithm 3 take time 𝑂 (𝑣 + ℓ) and 𝑂 (𝑘 2), respectively. Every other function in DS (Algorithm 3) takes trivially 𝑂 (1) time. In Algorithm 2, every call to 
+
+insertEdge( ⟨𝑡 1, 𝑗 1⟩, ⟨𝑡 2, 𝑗 2⟩) takes 𝑂 (𝑘 2) time, which is also the time taken in checkAndUpdate( 𝑣 ,
+
+𝑒 ) (since it calls insertEdge ). Finally, each handler in Algorithm 1 except write( 𝑒 ) takes 𝑂 (𝑘 2)
+
+time, which is determined by a single call to checkAndUpdate . On the other hand, write( 𝑒 )
+
+makes 𝑂 (𝑘 ) calls to checkAndUpdate , one for each thread stored in lastReads 𝑥 . Thus, each call to write( 𝑒 ) takes 𝑂 (𝑘 3) time. Note, however, that this function resets lastReads 𝑥 (Line 1). Thus, between any two successive writes on 𝑥 , this function will iterate over a specific thread 𝑡 (Line 1) only if 𝑡 has executed some read on 𝑥 between them, so as to insert 𝑡 back into lastReads 𝑥 (Line 1). Thus, we can charge each call to checkAndUpdate (Line 1) to the corresponding read of thread 𝑡 ,leading to 𝑂 (𝑛𝑘 2) total running time. We now turn our attention to the space complexity of AtomSanitizer . Each vector clock From 𝑡 
+
+and To 𝑡 takes 𝑂 (𝑘 ) space, thus the total space of DS is 𝑂 (𝑘 2). AtomSanitizer additionally stores 
+
+𝑂 (𝑘 ) events in lastReadTids 𝑥 and lastReads 𝑥 for each location 𝑥 , and one event in lastWrite 𝑥 ,thus using 𝑂 (𝑘𝑣 ) across all locations 𝑥 . Finally, it stores one entry in lastRelease ℓ , for each lock 
+
+ℓ, thus using 𝑂 (ℓ) space across all locks ℓ. Summing up, the space usage of AtomSanitizer is 
+
+𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ).The desired result follows. □
+
+Theorem 3.6. Let 𝜎 be an input trace of 𝑛 events, 𝑘 threads, 𝑣 variables and ℓ locks. AtomSanitizer 
+
+reports a violation iff 𝜎 is not conflict-serializable, and uses 𝑂 (𝑛𝑘 2) time and 𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ) space. If 
+
+𝜎 is not conflict-serializable, AtomSanitizer reports the first event 𝑒 of 𝜎 such that <THB    
+
+> 𝜎 [:𝑒 ]
+
+is cyclic. 
+
+Proof. The theorem follows directly from Lemma 3.4 and Lemma 3.5. □
+
+Lemma 3.7. Any algorithm for conflict-serializability violations over traces 𝜎 that reports a violation when it occurs (in particular, at the first event 𝑒 for which <THB    
+
+> 𝜎 [:𝑒 ]
+
+is cyclic, or even when txn (𝑒 ) closes) must take Ω(𝑛 3/2−𝜖 ) time, for any fixed 𝜖 > 0, under the OMv hypothesis. 
+
+Proof. We establish a reduction from the Online Vector-Matrix-Vector Multiplication (OuMv) problem [ 21 ] to conflict-serializability. In OuMv, we are given an 𝑚 × 𝑚 boolean matrix 𝑀 , and an online sequence of vector pairs (𝑢 1, 𝑣 1), . . . , (𝑢 𝑚 , 𝑣 𝑚 ). The task is to output each product (𝑢 𝑖 )⊺𝑀𝑣 𝑖 
+
+before we see (𝑢 𝑖 +1, 𝑣 𝑖 +1). The OMv hypothesis implies that, if we allow only polynomial-time preprocessing on 𝑀 , the online computation of vector-matrix-vector products takes Ω(𝑚 3−𝜖 ) time, for any 𝜖 > 0 [21]. We cast OuMv as a conflict-serializability problem on a trace 𝜎 , as follows.  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:27
+
+1. The matrix 𝑀 is simulated by 2𝑚 threads t11, . . . , t1 
+
+> 𝑚
+
+and t21, . . . , t2 
+
+> 𝑚
+
+, where thread t𝑗 𝑖 executes a transaction 𝑇 𝑗 𝑖 . Each 𝑇 1 
+
+> 𝑖
+
+starts with a write w(𝑥 𝑖 ), while each 𝑇 2 
+
+> 𝑖
+
+starts with a sequence of reads 
+
+r(𝑥 𝑗 ) for all 𝑗 such that 𝑀 [𝑖, 𝑗 ] = 1. Note that this implies that 𝑇 1 
+
+> 𝑗
+
+<CHB  
+
+> 𝜎
+
+𝑇 2 
+
+> 𝑖
+
+. These events execute in the beginning of 𝜎 , so that all writes execute before all reads. All transactions 𝑇 𝑖 remain open until the end of 𝜎 .2. For each pair of vectors (𝑢 𝑖 , 𝑣 𝑖 ), we start two threads t𝑢 𝑖 and t𝑣 𝑖 , executing the transactions 𝑇 𝑢 𝑖 and 
+
+𝑇 𝑣 𝑖 , respectively. 𝑇 𝑢 𝑖 executes a single write event w(𝑦 𝑖 ), after which each transaction 𝑇 1 
+
+> 𝑗
+
+executes a read event r(𝑦 𝑖 ) iff 𝑢 𝑖 [ 𝑗 ] = 1. Note that this implies 𝑇 𝑢 𝑖 <THB  
+
+> 𝜎
+
+𝑇 1 
+
+> 𝑗
+
+iff 𝑢 𝑖 [ 𝑗 ] = 1. Afterwards, each transaction 𝑇 2 
+
+> 𝑗
+
+executes a read event r(𝑧 𝑖 ) iff 𝑣 𝑖 [ 𝑗 ] = 1, and finally 𝑇 𝑣 𝑖 executes a single write event w(𝑧 𝑖 ). Note that this implies 𝑇 2 
+
+> 𝑗
+
+<THB  
+
+> 𝜎
+
+𝑇 𝑣 𝑖 𝑣 𝑖 [ 𝑗 ] = 1. In total, the imposed transaction orderings are such that 𝑇 𝑢 𝑖 <THB  
+
+> 𝜎
+
+𝑇 𝑣 𝑖 iff (𝑢 𝑖 )⊺𝑀𝑣 𝑖 = 1.Finally, 𝑇 𝑣 𝑖 executes a write event w(𝑠 𝑖 ), followed by 𝑇 𝑢 𝑖 executing a read event r(𝑠 𝑖 ), and then 𝑇 𝑖 𝑖 
+
+and 𝑇 𝑣 𝑖 close. Note that this implies 𝑇 𝑣 𝑖 <THB  
+
+> 𝜎
+
+𝑇 𝑢 𝑖 .It follows that after the vector pair (𝑢 𝑖 , 𝑣 𝑖 ) is revealed, the corresponding prefix of 𝜎 exhibits a conflict-serializability violation iff (𝑢 𝑖 )⊺𝑀𝑣 𝑖 = 1. Note that after the first 𝑚 2 events encoding 𝑀 ,each vector pair (𝑢 𝑖 , 𝑣 𝑖 ) grows 𝜎 by 𝑂 (𝑚 ) events. Thus, after all 𝑚 pairs of vectors have been revealed, 𝜎 has size 𝑛 = 𝑂 (𝑚 2). This implies that any algorithm detecting conflict-seralizability violations on 𝜎 must take Ω(𝑚 3−𝜖 ) time, for any 𝜖 > 0, and thus Ω(𝑛 3/2−𝜖 ) time, for any such 𝜖 . □
+
+Lemma 3.8. Any streaming algorithm for conflict-serializability/increasing-path violations even over traces 𝜎 with only two threads and two transactions must use Ω(𝑛 ) space. 
+
+Proof. Given some set 𝐴 ⊆ { 1, . . . , 𝑛 } and some integer ℓ ∈ { 1, . . . , 𝑛 }, we define the trace 𝜎 𝐴,ℓ 
+
+with two threads t1, t2 and two transactions. Let 𝐴 = {𝑖 1, . . . , 𝑖 𝑚 }, and 𝜎 𝐴,ℓ consists of the following three segments. 1. In the first segment, t1 opens a transaction 𝑇 1, and executes in sequence w(𝑥 𝑖 1 ), w(𝑥 𝑖 2 ), . . . , w(𝑥 𝑖 𝑚 ).2. In the second segment, t2 opens a transaction 𝑇 2 and executes w(𝑥 ℓ ), followed by w(𝑦 ), and ends by closing 𝑇 2.3. In the third segment, t1 executes w(𝑦 ) and ends by closing 𝑇 1.It follows that 𝜎 𝐴,ℓ is conflict serializable iff ℓ ∉ 𝐴 ; if not, it exhibits an increasing-path violation. Moreover, note that 𝜎 𝐴,ℓ has length 𝑂 (𝑛 ).Now assume that there exists a streaming algorithm for detecting conflict-serializability/increasing-path violations that uses < 𝑛 space. Since there are 2𝑛 subsets of {1, . . . , 𝑛 }, and the state space of the algorithm is < 2𝑛 , there exist two distinct sets 𝐴 and 𝐴 ′ such that the algorithm is in the same state after processing the first segment of 𝜎 𝐴,ℓ and 𝜎 𝐴 ′,ℓ , for any ℓ ∈ { 1, . . . , 𝑛 }, since ℓ is revealed in the second segment of the trace. Assume wlog that 𝐴 ⊈ 𝐴 ′, and choose ℓ ∈ 𝐴 \ 𝐴 ′. Observe that 
+
+𝜎 𝐴,ℓ is not conflict-serializable, while 𝜎𝐴 ′, ℓ is. However, the algorithm executes identically on the two traces, since (i) the algorithm is in the same state after processing the first segment of 𝜎 𝐴,ℓ and 
+
+𝜎 𝐴 ′,ℓ , and (ii) the second the third segments of the two traces coincide. Hence the algorithm must give the wrong answer when executed on one of the two traces. The desired result follows. □
+
+B Proofs of Section 4 
+
+Lemma 4.1. The trace 𝜎 has an increasing-cycle violation iff there exist two distinct events 𝑒 1
+
+and 𝑒 2 with tid (𝑒 1) = 𝑡 1 and tid (𝑒 2) = 𝑡 2 such that the following conditions hold: (i) 𝑡 1 ≠ 𝑡 2 
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:28 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+
+and 𝑒 1 is a <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 2, (ii) LRB 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) is the begin event of txn (𝑒 2), and (iii) ELE 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2) ≤ TO  
+
+> 𝜎
+
+𝑒 1, where 𝑒 is a <TR  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 2.
+
+Proof. First, assume that such events 𝑒 1 and 𝑒 2 exist. Due to (ii) and (iii), we have begin <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 1,which, together with (i), implies begin <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 1 <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 2, yielding an increasing-cycle violation. For the opposite direction, assume that 𝜎 has an increasing-cycle violation. Observe that, for any two trances 𝜎 1 and 𝜎 3 such that 𝜎 1 is a prefix of 𝜎 3, we have <CHB  
+
+> 𝜎 1
+
+⊆<CHB  
+
+> 𝜎 3
+
+. Thus, there is an earliest event 𝑒 2 of 𝜎 such that begin <CHB    
+
+> 𝜎 [:𝑒 2]
+
+𝑒 1 <CHB    
+
+> 𝜎 [:𝑒 2]
+
+𝑒 2, where 𝑏𝑔 is the begin event of txn (𝑒 2) and 
+
+tid (𝑒 1) ≠ tid (𝑒 2). Let 𝑒 be the <TR  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 2, and note that 
+
+<CHB    
+
+> 𝜎 [:𝑒 2]
+
+=
+
+
+
+<CHB    
+
+> 𝜎 [:𝑒 ]
+
+∪
+
+n
+
+(𝑒 1, 𝑒 2) : 𝑒 1 <CHB    
+
+> 𝜎 [:𝑒 2]
+
+𝑒 2
+
+o 
+
+The desired result follows by letting 𝑒 1 by any <CHB  
+
+> 𝜎
+
+-immediate predecessor of 𝑒 2 such that 
+
+begin <CHB    
+
+> 𝜎 [:𝑒 ]
+
+𝑒 1. □
+
+Theorem 4.2. Let 𝜎 be an input trace of 𝑛 events, 𝑘 threads, 𝑣 variables and ℓ locks. AtomSanitizer 
+
+(increasing-cycle) reports a violation iff 𝜎 has an increasing-cycle violation , and uses 𝑂 (𝑛𝑘 ) time and 
+
+𝑂 (𝑘 (𝑘 + 𝑣 ) + ℓ) space. 
+
+Proof. The correctness of AtomSanitizer (increasing-cycle) follows straightforwardly from Lemma 4.1 and the following invariant, which is analogous to Lemma 3.3. After AtomSanitizer 
+
+has processed an event 𝑒 , for all threads 𝑡 1, 𝑡 2, we have From 𝑡 1 (𝑡 2) = id (LRB 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)) and 
+
+To 𝑡 1 (𝑡 2) = id (ELE 𝑡 1   
+
+> 𝜎 [:𝑒 ]
+
+(𝑡 2)) .The time complexity follows by an analysis similar to that of Lemma 3.5, accounting for the fact that each call to insertEdge now costs 𝑂 (𝑘 ) as opposed to 𝑂 (𝑘 2), since there is no forward propagation of edges. Finally, the space complexity analysis is identical to that of Lemma 3.5. □
+
+C Experimental Details 
+
+Table 4 provides some additional statistics on the benchmarks we use in Section 6. 
+
+D Controlled Scalability Experiments 
+
+We have conducted some controlled scalability experiments, aiming to clarify the better theoretical complexity of AtomSanitizer for conflict-serializability. In particular, recall that the 𝑂 (𝑛𝑘 2) time bound of AtomSanitizer is better than the time bounds of existing algorithms (Table 1). However, these bounds may be loose, in the sense that the true worst-case complexity of some algorithm might be strictly below its proven bound. Does AtomSanitizer truly achieve a better worst-case complexity than existing algorithms? 
+
+Benchmarks. To address the above question, for each of the baselines of Velodrome , Aerodrome ,and RegionTrack , we construct a sequence of traces (𝜎 𝑗 )𝑗 , shown respectively in Figure 11, Figure 12 Figure 13. Each trace family is constructed so that (i) it is challenging for the respective baseline to process, and (ii) AtomSanitizer suffers its worst case complexity, i.e., Θ(𝑛𝑘 2).If the speedup of AtomSanitizer increases along (𝜎 𝑗 )𝑗 , we obtain strong experimental evidence that the baseline does not have equal (or smaller) complexity compared to AtomSanitizer . 
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:29
+
+Table 4. Benchmark statistics: number of transactions ( ℎ), events ( 𝑛 ), threads ( 𝑘 ), and memory locations ( 𝑣 ). (a) Online experiments 
+
+Benchmark ℎ 𝑛 𝑘 𝑣 
+
+x265 279K 687M 6 6.91M 
+
+x264 22K 325M 4 1.36M 
+
+pbzip2 119K 157M 5 153M 
+
+libwebp 6.03K 367M 4 15.9M 
+
+libvpx 182M 917M 4 2.22M 
+
+lbzip2 35.3M 9.28B 5 37.9M 
+
+pigz 50.2K 212M 4 42.4K 
+
+pixz 25.6K 65.3M 4 38.9M 
+
+xz 64.7K 1.50B 2 114M 
+
+ImageMagic 2.77K 18.2B 22 159M 
+
+Rocksdb 19.6K 36.5M 4 32.1K 
+
+7z 3.67K 742M 3 25.1M 
+
+ffmpeg 15.1M 1.05B 9 2.55M 
+
+(b) Offline experiments 
+
+Benchmark ℎ 𝑛 𝑘 𝑣 
+
+philo 557 557 6 24 
+
+hedc 155K 10.9K 7 1.69K 
+
+sunflow 2.56M 16.7M 16 1.26M 
+
+series 20.0M 40.1M 4 20.0K 
+
+tomcat 9.61M 68.3M 48 6.10M 
+
+fop 25.6M 95.8M 1 5.30M 
+
+crypt 41 126M 7 9.00M 
+
+lufact 642K 135M 4 252K 
+
+batik 15.7M 189M 6 4.90M 
+
+tsp 2.44M 312M 9 181.M 
+
+pmd 81.1M 367M 13 12.9M 
+
+montecarlo 813K 494M 4 30.5M 
+
+luindex 86.7M 570M 3 2.49M 
+
+sor 637K 608M 4 1.00M 
+
+sparsematmult 2 726M 4 1.59M 
+
+xalan 215M 1.07B 13 31.3M 
+
+moldyn 1.38M 1.75B 4 121K 
+
+lufact_ext 113K 149M 129 252K 
+
+mondyn_ext 233M 650M 129 13.3M 
+
+montecarlo_ext 218K 114M 129 8.13M 
+
+raytracer_ext 884K 105M 129 634K 
+
+series_ext 1.37M 694M 129 347K 
+
+sunflow_ext 931K 4.59M 130 612K                        
+
+> 0.511.522.533.5·10 4
+> 10
+> 20
+> 30
+> 40
+> 𝑛
+> Speedup
+> AtomSanitizer vs Aerodrome
+> 23456·10 4
+> 500
+> 1,000
+> 1,500
+> 𝑛
+> Speedup
+> AtomSanitizer vs Velodrome
+> 23456·10 4
+> 15
+> 20
+> 𝑛
+> Speedup
+> AtomSanitizer vs RegionTrack
+
+Fig. 10. Scalability comparison of AtomSanitizer vs Aerodrome , Velodrome and RegionTrack , on families of traces where AtomSanitizer exhibits its worst case complexity of Θ(𝑛𝑘 2).
+
+Results. The results are shown in Figure 10. We indeed observe that the speedup of AtomSanitizer 
+
+over each baseline increases (the precise values of the speedup are not important). This experimen-tally confirms that none of the existing tools achieves a complexity of 𝑂 (𝑛𝑘 2), which is the complex-ity of AtomSanitizer . We remark that this experiment does not conclude that AtomSanitizer is always faster (which is not the case), but rather that the worst-case complexity gap of each baseline compared to the worst-case complexity of AtomSanitizer is super-constant. 
+
+E Experiments on DoubleChecker 
+
+We have also implemented the first phase of DoubleChecker , which performs the Imprecise cycle detection (ICD). In particular, it uses Octet [ 7], a software based concurrency control mechanism, to                                
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:30 H. C. Tunç, Y. Dong, and A. Pavlogiannis
+> 𝑡 1𝑡 2
+> 20
+> 19
+> 18
+> 17
+> 16
+> 15
+> 14
+> 13
+> 12
+> 11
+> 10
+> 9
+> 8
+> 7
+> 6
+> 5
+> 4
+> 3
+> 2
+> 1𝑇 1:▷
+> w(𝑥 1)
+> w(𝑥 2)
+> w(𝑥 3)
+> . . .
+> w(𝑥 𝑗 )
+> 𝑇 1:◁
+> 𝑇 2:▷
+> w(𝑥 1)
+> 𝑇 2:◁
+> 𝑇 3:▷
+> w(𝑥 2)
+> 𝑇 3:◁
+> 𝑇 4:▷
+> w(𝑥 3)
+> 𝑇 4:◁
+> . . .
+> 𝑇 𝑛 :▷
+> w(𝑥 𝑗 )
+> 𝑇 𝑛 :◁
+> Fig. 11. A family of traces (𝜎 𝑗 )𝑗 for the scalability experiment with Velodrome .
+
+maintain the imprecise happens-before relations. With this technique, the ICD phase does not record the last write or read event of each memory location. This allows it to process each event faster, while maintaining a conflict graph that overapproximates <THB  
+
+> 𝜎
+
+. If a cycle is detected in this graph, 
+
+DoubleChecker runs Velodrome from scratch, to try and verify the cycle. Since DoubleChecker 
+
+does not make precise violation reports, we have not used in our main experimental setting. Here we report how the ICD phase DoubleChecker performs in our benchmark set. The results are shown in Table 5. We see that ICD is overall considerably faster than Velodrome .For some benchmarks, DoubleChecker stops earlier than other tools, because it will conservatively insert unnecessary edges into the transactional happens-before graph, which may introduce cycles. Note, however, that ICD reports violations on all benchmarks except two ( philo and fop ), and has a high false positive rate. Rerunning Velodrome on all the positive reports of ICD clearly results in running times that are far larger than AtomSanitizer , as shown in Table 2. 
+
+F Version of Aerodrome in our Experiments 
+
+RAPID implements an optimized version of Aerodrome , following Algorithm 3 in the technical report of [ 33 ]. We found that this optimized algorithm has a correctness issue, failing to detect conflict-serializability violations in some traces (see Figure 14). We reported this issue to the main maintainer of RAPID , who provided a fix. Although the fix does not affect the worst-case complexity of Aerodrome , we observed that it incurs a performance slowdown in practice, compared to the original optimized algorithm.  
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:31
+
+Table 5. Offline experiments of the first phase of DoubleChecker on conflict-serializability. 
+
+Benchmark Conflict Serializability (ms) Violation Reported? True Positive? 
+
+philo 59 ,247 × -
+
+hedc 36 ,332 ✓ ×
+
+sunflow 4,938 ✓ ×
+
+series 92 ✓ ×
+
+tomcat 181 ✓ ×
+
+fop 109 ,433 × -
+
+crypt 79 ,920 ✓ ✓
+
+lufact 70 ✓ ×
+
+batik 14 ✓ ✓
+
+tsp 534 ✓ ×
+
+pmd 11 ✓ ×
+
+montecarlo 6,025 ✓ ✓
+
+luindex 33 ,817 ✓ ×
+
+sor 205 ✓ ×
+
+sparsematmult 4,876 ✓ ✓
+
+xalan 53 ✓ ×
+
+moldyn 2,341 ✓ ✓
+
+Total 338 ,089 - -
+
+> Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026.
+
+170:32 H. C. Tunç, Y. Dong, and A. Pavlogiannis 
+
+𝑡 1 𝑡 2 · · · 𝑡 𝑗 −1 𝑡 𝑗 𝑡 𝑗 +1 𝑡 𝑗 +2 · · · 𝑡 3𝑗 −1
+
+70 
+
+69 
+
+68 
+
+67 
+
+66 
+
+65 
+
+64 
+
+63 
+
+62 
+
+61 
+
+60 
+
+59 
+
+58 
+
+57 
+
+56 
+
+55 
+
+54 
+
+53 
+
+52 
+
+51 
+
+50 
+
+49 
+
+48 
+
+47 
+
+46 
+
+45 
+
+44 
+
+43 
+
+42 
+
+41 
+
+40 
+
+39 
+
+38 
+
+37 
+
+36 
+
+35 
+
+34 
+
+33 
+
+32 
+
+31 
+
+30 
+
+29 
+
+28 
+
+27 
+
+26 
+
+25 
+
+24 
+
+23 
+
+22 
+
+21 
+
+20 
+
+19 
+
+18 
+
+17 
+
+16 
+
+15 
+
+14 
+
+13 
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 w(𝑧 1)
+
+. . . 
+
+w(𝑧 𝑗 )
+
+▷
+
+w(𝑦 𝑗 +1) w(𝑧 1)
+
+. . . 
+
+w(𝑧 𝑗 )
+
+▷
+
+w(𝑦 𝑗 +2) w(𝑧 1)
+
+. . . 
+
+w(𝑧 𝑗 )
+
+▷
+
+w(𝑦 3𝑗 −1)
+
+w(𝑧 1)
+
+. . . 
+
+w(𝑧 𝑗 )
+
+▷
+
+w(𝑦 𝑗 +1)
+
+. . . 
+
+w(𝑦 3𝑗 −1)
+
+w(𝑥 1,1,1) w(𝑧 1)
+
+. . . 
+
+w(𝑧 𝑗 )
+
+▷
+
+w(𝑦 𝑗 +1)
+
+. . . 
+
+w(𝑦 3𝑗 −1)
+
+w(𝑥 1,1,2) w(𝑧 1)
+
+. . . 
+
+w(𝑧 𝑗 )
+
+▷
+
+w(𝑦 𝑗 +1)
+
+. . . 
+
+w(𝑦 3𝑗 −1)
+
+w(𝑥 1,1,( 𝑗 -1) )
+
+▷
+
+w(𝑥 1,1,1)
+
+. . . 
+
+w(𝑥 1,1,( 𝑗 -1) )
+
+◁
+
+◁
+
+▷
+
+w(𝑥 1,2,1)
+
+◁ ◁
+
+▷
+
+w(𝑥 1,2,2)
+
+◁
+
+w(𝑥 1,2,1)
+
+. . . 
+
+w(𝑥 1,2,( 𝑗 -2) )
+
+▷
+
+. . . 
+
+▷
+
+w(𝑥 2,( 𝑗 -1),2)
+
+. . . 
+
+▷
+
+w(𝑥 2,𝑗, 1)
+
+◁ w(𝑥 2,𝑗, 1)
+
+◁ ◁ ◁ ◁
+
+Fig. 12. A family of traces (𝜎 𝑗 )𝑗 for the scalability experiment with Velodrome .
+
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. Fast Atomicity Monitoring 170:33 
+
+𝑡 1 𝑡 2 ... 𝑡 𝑗 −1 𝑡 𝑘 𝑡 𝑗 +1 𝑡 𝑗 +2 ... 𝑡 4𝑘 −1
+
+54 
+
+53 
+
+52 
+
+51 
+
+50 
+
+49 
+
+48 
+
+47 
+
+46 
+
+45 
+
+44 
+
+43 
+
+42 
+
+41 
+
+40 
+
+39 
+
+38 
+
+37 
+
+36 
+
+35 
+
+34 
+
+33 
+
+32 
+
+31 
+
+30 
+
+29 
+
+28 
+
+27 
+
+26 
+
+25 
+
+24 
+
+23 
+
+22 
+
+21 
+
+20 
+
+19 
+
+18 
+
+17 
+
+16 
+
+15 
+
+14 
+
+13 
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 ▷
+
+w(𝑥 1) ▷
+
+w(𝑥 2) ▷
+
+w(𝑥 𝑗 −1)
+
+▷
+
+w(𝑥 1)
+
+. . . 
+
+w(𝑥 𝑘 )
+
+w(𝑥 1,1,1) ▷
+
+w(𝑥 1)
+
+. . . 
+
+w(𝑥 𝑘 )
+
+w(𝑥 1,1,2) ▷
+
+w(𝑥 1)
+
+. . . 
+
+w(𝑥 𝑘 )
+
+w(𝑥 1,1,( 𝑗 -1) )
+
+▷
+
+w(𝑥 1,1,1)
+
+. . . 
+
+w(𝑥 1,1,( 𝑗 -1) )
+
+◁
+
+◁
+
+▷
+
+w(𝑥 1,2,1) ◁
+
+▷
+
+w(𝑥 1,2,2) w(𝑥 1,2,1)
+
+. . . 
+
+w(𝑥 1,2,( 𝑗 -2) )
+
+◁
+
+◁
+
+▷
+
+. . . 
+
+◁
+
+▷
+
+. . . 
+
+◁
+
+▷
+
+w(𝑥 2,( 𝑗 -1),2)
+
+◁
+
+▷
+
+w(𝑥 2,𝑗, 1)
+
+◁ w(𝑥 2,𝑗, 1)
+
+◁ ◁ ◁ ◁
+
+Fig. 13. A family of traces (𝜎 𝑗 )𝑗 for the scalability experiment with Velodrome .
+
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026. 170:34 H. C. Tunç, Y. Dong, and A. Pavlogiannis 
+
+𝑡 1 𝑡 2 𝑡 3
+
+12 
+
+11 
+
+10 
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+1 𝑇 1 : ▷
+
+w(𝑥 )
+
+w(𝑦 )
+
+𝑇 1 : ◁
+
+𝑇 2 : ▷
+
+w(𝑦 )
+
+w(𝑧 )
+
+𝑇 2 : ◁
+
+𝑇 3 : ▷
+
+w(𝑧 )
+
+w(𝑥 )
+
+𝑇 3 : ◁
+
+1
+
+2
+
+3
+
+Fig. 14. A conflict-serializability violation missed by the original optimized version of Aerodrome in RAPID .
+
+Proc. ACM Program. Lang., Vol. 10, No. PLDI, Article 170. Publication date: June 2026.

@@ -6,61 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-14
-- 运行时间：2026-04-15 14:17:36 UTC+8
+- 最新运行日期：2026-04-15
+- 运行时间：2026-04-16 04:04:22 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Tiles from projections of the root and weight lattices of $A_n$》（8.3/10）, 《CPD $n$th roots of subnormal operators are subnormal》（8.0/10）
-- 速读：《Tracing the Roots: A Multi-Agent Framework for Uncovering Data Lineage in Post-Training LLMs》（7.7/10）, 《Classification of irreducible real modules of real Lie superalgebras》（7.6/10）, 《The Long-Only Minimum Variance Portfolio in a One-Factor Market: Theory and Asymptotics》（7.1/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《FlowBoost Reveals Phase Transitions and Spectral Structure in Finite Free Information Inequalities》（8.2/10）
+- 速读：《On Higher-Order Geometric Refinements of Classical Covariance Asymptotics: An Approach via Intrinsic and Extrinsic Information Geometry》（7.8/10）, 《LLM-Based Automated Diagnosis Of Integration Test Failures At Google》（7.8/10）, 《Fast Atomicity Monitoring》（7.4/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/14/README](/202604/14/README)
+- 详情：[/202604/15/README](/202604/15/README)
 
 ### 精读区论文标签
-1. [Tiles from projections of the root and weight lattices of $A_n$](/202604/14/2604.10574v1-tiles-from-projections-of-the-root-and-weight-lattices-of-an)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-2. [CPD $n$th roots of subnormal operators are subnormal](/202604/14/2604.10810v1-cpd-nth-roots-of-subnormal-operators-are-subnormal)  
-   标签：评分：8.0/10
+1. [FlowBoost Reveals Phase Transitions and Spectral Structure in Finite Free Information Inequalities](/202604/15/2604.11922v1-flowboost-reveals-phase-transitions-and-spectral-structure-in-finite-free-information-inequalities)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Tracing the Roots: A Multi-Agent Framework for Uncovering Data Lineage in Post-Training LLMs](/202604/14/2604.10480v1-tracing-the-roots-a-multi-agent-framework-for-uncovering-data-lineage-in-post-training-llms)  
-   标签：评分：7.7/10
+1. [On Higher-Order Geometric Refinements of Classical Covariance Asymptotics: An Approach via Intrinsic and Extrinsic Information Geometry](/202604/15/2604.12725v1-on-higher-order-geometric-refinements-of-classical-covariance-asymptotics-an-approach-via-intrinsic-and-extrinsic-information-geometry)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-2. [Classification of irreducible real modules of real Lie superalgebras](/202604/14/2604.09404v1-classification-of-irreducible-real-modules-of-real-lie-superalgebras)  
-   标签：评分：7.6/10
+2. [LLM-Based Automated Diagnosis Of Integration Test Failures At Google](/202604/15/2604.12108v1-llm-based-automated-diagnosis-of-integration-test-failures-at-google)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-3. [The Long-Only Minimum Variance Portfolio in a One-Factor Market: Theory and Asymptotics](/202604/14/2604.09986v1-the-long-only-minimum-variance-portfolio-in-a-one-factor-market-theory-and-asymptotics)  
-   标签：评分：7.1/10
+3. [Fast Atomicity Monitoring](/202604/15/2604.11369v1-fast-atomicity-monitoring)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-4. [Natural Gradient Gaussian Approximation Filter with Positive Definiteness Guarantee](/202604/14/2604.10053v1-natural-gradient-gaussian-approximation-filter-with-positive-definiteness-guarantee)  
-   标签：评分：7.0/10
+4. [BridgeSim: Unveiling the OL-CL Gap in End-to-End Autonomous Driving](/202604/15/2604.10856v1-bridgesim-unveiling-the-ol-cl-gap-in-end-to-end-autonomous-driving)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-5. [Modeling and Analysis of Air-to-Ground Cellular KPIs in a 5G Testbed using Android Smartphones](/202604/14/2604.04452v1-modeling-and-analysis-of-air-to-ground-cellular-kpis-in-a-5g-testbed-using-android-smartphones)  
-   标签：评分：6.5/10
+5. [Schema-Adaptive Tabular Representation Learning with LLMs for Generalizable Multimodal Clinical Reasoning](/202604/15/2604.11835v1-schema-adaptive-tabular-representation-learning-with-llms-for-generalizable-multimodal-clinical-reasoning)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-6. [K-STEMIT: Knowledge-Informed Spatio-Temporal Efficient Multi-Branch Graph Neural Network for Subsurface Stratigraphy Thickness Estimation from Radar Data](/202604/14/2604.09922v1-k-stemit-knowledge-informed-spatio-temporal-efficient-multi-branch-graph-neural-network-for-subsurface-stratigraphy-thickness-estimation-from-radar-data)  
+6. [Building an Internal Coding Agent at Zup: Lessons and Open Questions](/202604/15/2604.09805v1-building-an-internal-coding-agent-at-zup-lessons-and-open-questions)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+7. [Dual-Pool Token-Budget Routing for Cost-Efficient and Reliable LLM Serving](/202604/15/2604.08075v1-dual-pool-token-budget-routing-for-cost-efficient-and-reliable-llm-serving)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+8. [SIM1: Physics-Aligned Simulator as Zero-Shot Data Scaler in Deformable Worlds](/202604/15/2604.08544v2-sim1-physics-aligned-simulator-as-zero-shot-data-scaler-in-deformable-worlds)  
    标签：评分：6.4/10
    evidence：检索回退候选
-7. [Intrinsic perturbation scale for certified oracle objectives with epigraphic information](/202604/14/2604.05678v1-intrinsic-perturbation-scale-for-certified-oracle-objectives-with-epigraphic-information)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-8. [See Fair, Speak Truth: Equitable Attention Improves Grounding and Reduces Hallucination in Vision-Language Alignment](/202604/14/2604.09749v1-see-fair-speak-truth-equitable-attention-improves-grounding-and-reduces-hallucination-in-vision-language-alignment)  
+9. [Any 3D Scene is Worth 1K Tokens: 3D-Grounded Representation for Scene Generation at Scale](/202604/15/2604.11331v1-any-3d-scene-is-worth-1k-tokens-3d-grounded-representation-for-scene-generation-at-scale)  
    标签：评分：6.3/10
    evidence：检索回退候选
-9. [TAIHRI: Task-Aware 3D Human Keypoints Localization for Close-Range Human-Robot Interaction](/202604/14/2604.08921v1-taihri-task-aware-3d-human-keypoints-localization-for-close-range-human-robot-interaction)  
-   标签：评分：6.1/10
+10. [Beyond LLMs, Sparse Distributed Memory, and Neuromorphics <A Hyper-Dimensional SRAM-CAM "VaCoAl" for Ultra-High Speed, Ultra-Low Power, and Low Cost>](/202604/15/2604.11665v1-beyond-llms-sparse-distributed-memory-and-neuromorphics-a-hyper-dimensional-sram-cam-vacoal-for-ultra-high-speed-ultra-low-power-and-low-cost)  
+   标签：评分：6.2/10
    evidence：检索回退候选
-10. [Dissecting Bug Triggers and Failure Modes in Modern Agentic Frameworks: An Empirical Study](/202604/14/2604.08906v1-dissecting-bug-triggers-and-failure-modes-in-modern-agentic-frameworks-an-empirical-study)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [Making MLLMs Blind: Adversarial Smuggling Attacks in MLLM Content Moderation](/202604/14/2604.06950v2-making-mllms-blind-adversarial-smuggling-attacks-in-mllm-content-moderation)  
-   标签：评分：6.0/10
+11. [A particular solution of a higher-order non-homogeneous Cauchy-Euler equation](/202604/15/2604.09778v1-a-particular-solution-of-a-higher-order-non-homogeneous-cauchy-euler-equation)  
+   标签：评分：6.2/10
    evidence：检索回退候选
 
 
