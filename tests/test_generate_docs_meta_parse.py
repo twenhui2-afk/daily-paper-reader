@@ -113,6 +113,54 @@ class GenerateDocsMetaParseTest(unittest.TestCase):
         self.assertNotIn("检索回退候选", text)
         self.assertIn("**Motivation**", text)
 
+    def test_build_glance_fallback_prefers_real_abstract_sentences(self):
+        text = self.mod.build_glance_fallback(
+            {
+                "title": "TEMAD",
+                "abstract": (
+                    "Dental implant abutments rely heavily on manual design and are time-consuming. "
+                    "We propose TEMAD, a text-conditioned multi-expert architecture for multi-abutment design. "
+                    "Extensive experiments show that TEMAD achieves state-of-the-art performance."
+                ),
+                "canonical_evidence": "",
+            }
+        )
+        self.assertIn("TEMAD", text)
+        self.assertIn("达到当前最优水平", text)
+        self.assertNotIn("建议结合摘要与原文阅读", text)
+
+    def test_build_markdown_content_writes_bilingual_fields(self):
+        paper = {
+            "title": "Dental Segmentation",
+            "abstract": "We propose a segmentation model for oral imaging.",
+            "authors": ["A", "B"],
+            "published": "2026-04-10T00:00:00+00:00",
+            "link": "https://example.com/paper.pdf",
+            "llm_tldr_cn": "本文提出一个用于口腔影像分割的模型。",
+            "llm_tldr_en": "We propose a segmentation model for oral imaging.",
+            "_glance_data": {
+                "tldr_cn": "本文提出一个用于口腔影像分割的模型。",
+                "tldr_en": "We propose a segmentation model for oral imaging.",
+                "motivation": "解决口腔影像分割效率低的问题。",
+                "method": "提出一个分割模型。",
+                "result": "在目标任务上优于基线。",
+                "conclusion": "适合做口腔影像自动分析。",
+            },
+        }
+        content = self.mod.build_markdown_content(
+            paper,
+            "quick",
+            "口腔影像分割",
+            "本文研究口腔影像分割。",
+            ["query:segmentation"],
+        )
+        self.assertIn("abstract_zh:", content)
+        self.assertIn("abstract_en:", content)
+        self.assertIn("tldr_cn:", content)
+        self.assertIn("tldr_en:", content)
+        self.assertIn("## 摘要", content)
+        self.assertIn("## Abstract", content)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3595,6 +3595,26 @@ window.$docsify = {
           if (!s) return '';
           return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         };
+        const hasCjk = (s) => /[\u4e00-\u9fff]/.test(String(s || ''));
+        const renderBilingualSection = (title, primary, secondary, primaryLabel = '中文', secondaryLabel = 'English') => {
+          if (!primary && !secondary) return '';
+          const blocks = ['<div class="paper-bilingual-section">', `<h2 class="paper-bilingual-title">${escapeHtml(title)}</h2>`, '<div class="paper-bilingual-grid">'];
+          if (primary) {
+            blocks.push('<div class="paper-bilingual-card paper-bilingual-card-primary">');
+            blocks.push(`<div class="paper-bilingual-label">${escapeHtml(primaryLabel)}</div>`);
+            blocks.push(`<div class="paper-bilingual-content">${escapeHtml(primary)}</div>`);
+            blocks.push('</div>');
+          }
+          if (secondary) {
+            blocks.push('<div class="paper-bilingual-card">');
+            blocks.push(`<div class="paper-bilingual-label">${escapeHtml(secondaryLabel)}</div>`);
+            blocks.push(`<div class="paper-bilingual-content">${escapeHtml(secondary)}</div>`);
+            blocks.push('</div>');
+          }
+          blocks.push('</div>');
+          blocks.push('</div>');
+          return blocks.join('');
+        };
 
         // 解析标签，生成带颜色的 HTML
         const renderTags = (tags) => {
@@ -3639,14 +3659,21 @@ window.$docsify = {
 
         // 中间区域
         lines.push('<div class="paper-meta-row">');
+        const evidenceText = String(meta.evidence || '').trim();
+        const safeEvidence = evidenceText === '检索回退候选' ? '' : evidenceText;
+        const tldrCn = String(
+          meta.tldr_cn || (hasCjk(meta.tldr) ? meta.tldr : ''),
+        ).trim();
+        const tldrEn = String(
+          meta.tldr_en || (!hasCjk(meta.tldr) ? meta.tldr : ''),
+        ).trim();
+        const abstractZh = String(meta.abstract_zh || '').trim();
+        const abstractEn = String(meta.abstract_en || '').trim();
 
         // 左侧：Evidence 和 TLDR
         lines.push('<div class="paper-meta-left">');
-        if (meta.evidence) {
-          lines.push(`<p><strong>推荐依据</strong>：${escapeHtml(meta.evidence)}</p>`);
-        }
-        if (meta.tldr) {
-          lines.push(`<p><strong>一句话总结</strong>：${escapeHtml(meta.tldr)}</p>`);
+        if (safeEvidence) {
+          lines.push(`<p><strong>推荐依据</strong>：${escapeHtml(safeEvidence)}</p>`);
         }
         lines.push('</div>');
 
@@ -3667,6 +3694,17 @@ window.$docsify = {
 
         lines.push('</div>');
         lines.push('');
+
+        const summarySection = renderBilingualSection('一句话总结', tldrCn, tldrEn);
+        if (summarySection) {
+          lines.push(summarySection);
+          lines.push('');
+        }
+        const abstractSection = renderBilingualSection('摘要', abstractZh, abstractEn);
+        if (abstractSection) {
+          lines.push(abstractSection);
+          lines.push('');
+        }
 
         // 速览区域
         if (meta.motivation || meta.method || meta.result || meta.conclusion) {
@@ -3732,6 +3770,28 @@ window.$docsify = {
         const { meta, body } = parseFrontMatter(content);
         if (!meta) {
           return content;
+        }
+        const abstractZhFromBody = trimBeforeMarkers(
+          extractSectionByTitle(body, (title) => {
+            const normalized = String(title || '').trim().toLowerCase();
+            return normalized === '摘要';
+          }),
+          [],
+        ).trim();
+        const abstractEnFromBody = trimBeforeMarkers(
+          extractSectionByTitle(body, (title) => {
+            const normalized = String(title || '').trim().toLowerCase();
+            return normalized === 'abstract' || normalized === 'original abstract';
+          }),
+          [],
+        ).trim();
+        if (!meta.abstract_zh && abstractZhFromBody) meta.abstract_zh = abstractZhFromBody;
+        if (!meta.abstract_en && abstractEnFromBody) meta.abstract_en = abstractEnFromBody;
+        if (!meta.tldr_cn && meta.tldr && /[\u4e00-\u9fff]/.test(String(meta.tldr || ''))) {
+          meta.tldr_cn = meta.tldr;
+        }
+        if (!meta.tldr_en && meta.tldr && !/[\u4e00-\u9fff]/.test(String(meta.tldr || ''))) {
+          meta.tldr_en = meta.tldr;
         }
 
         // 生成论文页面 HTML + 正文

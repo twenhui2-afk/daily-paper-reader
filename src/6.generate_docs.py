@@ -66,6 +66,38 @@ ACADEMIC_VOCAB = [
     ("discriminative", "判别式的", "IELTS"),
     ("alignment", "对齐", "CET6"),
 ]
+GENERIC_GLANCE_MARKERS = (
+    "方法部分建议结合摘要与原文阅读",
+    "结果部分建议重点查看",
+    "这篇工作围绕《",
+    "总体来看，这项工作提供了可复用的方法思路",
+)
+TASK_KEYWORD_HINTS = [
+    ("segmentation", "分割"),
+    ("detection", "检测"),
+    ("classification", "分类"),
+    ("generation", "生成"),
+    ("synthesis", "合成"),
+    ("reconstruction", "重建"),
+    ("planning", "规划"),
+    ("design", "设计"),
+    ("regression", "回归"),
+    ("tracking", "跟踪"),
+    ("localization", "定位"),
+    ("diagnosis", "诊断"),
+    ("prediction", "预测"),
+]
+MODULE_HINTS = [
+    ("transformer", "Transformer"),
+    ("diffusion", "扩散模型"),
+    ("multi-expert", "多专家机制"),
+    ("mixture-of-experts", "混合专家机制"),
+    ("text-conditioned", "文本条件建模"),
+    ("multimodal", "多模态建模"),
+    ("prompt", "提示引导"),
+    ("graph", "图结构建模"),
+    ("adapter", "适配器模块"),
+]
 
 
 def remote_llm_disabled() -> bool:
@@ -423,24 +455,125 @@ def fetch_arxiv_paper_meta(arxiv_id: str) -> Dict[str, Any]:
     return parse_arxiv_xml_feed(resp.text)
 
 
-def translate_title_and_abstract_to_zh(title: str, abstract: str) -> Tuple[str, str]:
+def contains_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", str(text or "")))
+
+
+def split_sentences_loose(text: str) -> List[str]:
+    cleaned = re.sub(r"\s+", " ", str(text or "").strip())
+    if not cleaned:
+        return []
+    parts = re.split(r"(?<=[。！？.!?])\s+", cleaned)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def shorten_english_sentence(text: str, max_words: int = 42) -> str:
+    words = str(text or "").strip().split()
+    if not words:
+        return ""
+    clipped = " ".join(words[:max_words]).strip()
+    if len(words) > max_words:
+        clipped = clipped.rstrip(",;:") + "..."
+    if clipped and clipped[-1] not in ".!?":
+        clipped += "."
+    return clipped
+
+
+def infer_task_cn(title: str, abstract: str) -> str:
+    text = f"{title or ''}\n{abstract or ''}".lower()
+    hits: List[str] = []
+    for key, zh in TASK_KEYWORD_HINTS:
+        if key in text and zh not in hits:
+            hits.append(zh)
+    if not hits:
+        return "目标任务"
+    return "、".join(hits[:3])
+
+
+def infer_model_name(title: str, abstract: str) -> str:
+    patterns = [
+        r"\bwe (?:propose|present|introduce|develop)\s+([A-Z][A-Za-z0-9\-]{1,})\b",
+        r"\bcalled\s+([A-Z][A-Za-z0-9\-]{1,})\b",
+    ]
+    source = f"{abstract or ''} {title or ''}"
+    for pattern in patterns:
+        m = re.search(pattern, source, re.I)
+        if m:
+            return m.group(1).strip()
+    acronyms = re.findall(r"\b[A-Z][A-Z0-9\-]{2,}\b", source)
+    return acronyms[0].strip() if acronyms else ""
+
+
+def summarize_abstract_heuristically(title: str, abstract: str) -> Dict[str, str]:
+    text = str(abstract or "").strip()
+    lowered = text.lower()
+    task_cn = infer_task_cn(title, abstract)
+    model_name = infer_model_name(title, abstract)
+    modules = [zh for key, zh in MODULE_HINTS if key in lowered]
+    module_text = "，".join(modules[:2])
+    if "manual" in lowered or "time-consuming" in lowered:
+        motivation = f"现有{task_cn}流程依赖人工且耗时，自动化和规模化能力不足。"
+    elif "lack" in lowered or "limited" in lowered or "challeng" in lowered:
+        motivation = f"现有{task_cn}方法仍有明显限制，作者希望补上关键短板。"
+    else:
+        motivation = f"论文关注{task_cn}任务，目标是提升效果与可用性。"
+
+    method_parts: List[str] = []
+    if model_name:
+        method_parts.append(f"作者提出 {model_name}")
+    else:
+        method_parts.append("作者提出一个新方法")
+    if task_cn != "目标任务":
+        method_parts.append(f"用于{task_cn}")
+    if module_text:
+        method_parts.append(f"并结合{module_text}")
+    method = "，".join(method_parts) + "。"
+
+    if "state-of-the-art" in lowered:
+        result = "实验结果表明，该方法达到当前最优水平。"
+    elif "outperform" in lowered or "superior" in lowered or "better than" in lowered:
+        result = "实验结果表明，该方法优于现有基线方法。"
+    elif "effective" in lowered or "validat" in lowered or "demonstrate" in lowered:
+        result = "实验验证了该方法在目标任务上的有效性。"
+    else:
+        result = "摘要没有给出明确数字，但报告了正向实验结果。"
+    if "dataset" in lowered or "benchmark" in lowered:
+        result = result[:-1] + "，并在数据集或基准任务上完成验证。"
+
+    conclusion = f"如果你关注{task_cn}方向，这篇文章的价值在于把任务做得更自动化、更可落地。"
+    tldr_cn = f"{motivation[:-1]}；{method[:-1]}；{result}"
+    abstract_zh = f"{motivation}\n\n{method}\n\n{result}\n\n{conclusion}"
+    return {
+        "title_zh": "",
+        "abstract_zh": abstract_zh,
+        "tldr_cn": tldr_cn,
+        "motivation": motivation,
+        "method": method,
+        "result": result,
+        "conclusion": conclusion,
+    }
+
+
+def translate_paper_fields_to_zh(title: str, abstract: str, tldr_en: str = "") -> Tuple[str, str, str]:
     if LLM_CLIENT is None:
-        return "", ""
+        return "", "", ""
     title = title.strip() if title else ""
     abstract = abstract.strip() if abstract else ""
-    if not title and not abstract:
-        return "", ""
+    tldr_en = tldr_en.strip() if tldr_en else ""
+    if not title and not abstract and not tldr_en:
+        return "", "", ""
 
     system_prompt = (
-        "你是一名熟悉机器学习与自然科学论文的专业翻译，请将英文标题和摘要翻译为自然、准确的中文。"
+        "你是一名熟悉机器学习与自然科学论文的专业翻译与学术编辑。"
+        "请将英文标题、摘要和一句话总结翻译为自然、准确、适合中文读者快速理解的中文。"
         "保持学术风格，尽量保留专有名词，不要额外添加评论。"
     )
-    payload = {"title": title, "abstract": abstract}
+    payload = {"title": title, "abstract": abstract, "tldr_en": tldr_en}
     user_text = json.dumps(payload, ensure_ascii=False)
 
     user_prompt = (
-        "请将上面的 JSON 中的 title 与 abstract 翻译成中文，并严格输出 JSON：\n"
-        "{\"title_zh\": \"...\", \"abstract_zh\": \"...\"}\n"
+        "请将上面的 JSON 中的 title、abstract、tldr_en 翻译成中文，并严格输出 JSON：\n"
+        "{\"title_zh\": \"...\", \"abstract_zh\": \"...\", \"tldr_zh\": \"...\"}\n"
         "要求：只输出 JSON，不要输出任何其它说明文字。\n"
         "Output must be strict JSON only, no markdown, no fences, no extra text."
     )
@@ -455,8 +588,9 @@ def translate_title_and_abstract_to_zh(title: str, abstract: str) -> Tuple[str, 
             "properties": {
                 "title_zh": {"type": "string"},
                 "abstract_zh": {"type": "string"},
+                "tldr_zh": {"type": "string"},
             },
-            "required": ["title_zh", "abstract_zh"],
+            "required": ["title_zh", "abstract_zh", "tldr_zh"],
             "additionalProperties": False,
         }
         use_json_object = "gemini" in (getattr(LLM_CLIENT, "model", "") or "").lower()
@@ -476,19 +610,25 @@ def translate_title_and_abstract_to_zh(title: str, abstract: str) -> Tuple[str, 
             response_format=response_format,
         )
     except Exception:
-        return "", ""
+        return "", "", ""
 
     try:
         parsed = parse_llm_json(content)
         if not isinstance(parsed, dict):
-            return "", ""
+            return "", "", ""
         obj = parsed
         if not isinstance(obj, dict):
-            return "", ""
+            return "", "", ""
         zh_title = str(obj.get("title_zh") or "").strip()
         zh_abstract = str(obj.get("abstract_zh") or "").strip()
+        zh_tldr = str(obj.get("tldr_zh") or "").strip()
     except Exception:
-        return "", ""
+        return "", "", ""
+    return zh_title, zh_abstract, zh_tldr
+
+
+def translate_title_and_abstract_to_zh(title: str, abstract: str) -> Tuple[str, str]:
+    zh_title, zh_abstract, _ = translate_paper_fields_to_zh(title, abstract, "")
     return zh_title, zh_abstract
 
 
@@ -741,37 +881,87 @@ def generate_deep_summary(md_file_path: str, txt_file_path: str, max_retries: in
     return last or None
 
 
-def generate_glance_overview(title: str, abstract: str, max_retries: int = 3) -> str | None:
-    """
-    生成论文速览（包含 TLDR、Motivation、Method、Result、Conclusion）。
-    使用 JSON 结构化输出，确保返回完整的五个字段。
-    """
+def format_glance_data(glance: Dict[str, str]) -> str:
+    return "\n".join(
+        [
+            f"**TLDR**：{ensure_single_sentence_end(glance.get('tldr_cn') or glance.get('tldr_en') or '')} \\",
+            f"**Motivation**：{ensure_single_sentence_end(glance.get('motivation') or '')} \\",
+            f"**Method**：{ensure_single_sentence_end(glance.get('method') or '')} \\",
+            f"**Result**：{ensure_single_sentence_end(glance.get('result') or '')} \\",
+            f"**Conclusion**：{ensure_single_sentence_end(glance.get('conclusion') or '')}",
+        ]
+    )
+
+
+def parse_glance_overview(glance_text: str) -> Dict[str, str]:
+    data = {
+        "tldr_cn": "",
+        "tldr_en": "",
+        "motivation": "",
+        "method": "",
+        "result": "",
+        "conclusion": "",
+    }
+    for line in str(glance_text or "").splitlines():
+        raw = line.strip().rstrip("\\").strip()
+        if raw.startswith("**TLDR**：") or raw.startswith("**TLDR**:"):
+            data["tldr_cn"] = raw.split("：", 1)[-1].split(":", 1)[-1].strip()
+        elif raw.startswith("**Motivation**：") or raw.startswith("**Motivation**:"):
+            data["motivation"] = raw.split("：", 1)[-1].split(":", 1)[-1].strip()
+        elif raw.startswith("**Method**：") or raw.startswith("**Method**:"):
+            data["method"] = raw.split("：", 1)[-1].split(":", 1)[-1].strip()
+        elif raw.startswith("**Result**：") or raw.startswith("**Result**:"):
+            data["result"] = raw.split("：", 1)[-1].split(":", 1)[-1].strip()
+        elif raw.startswith("**Conclusion**：") or raw.startswith("**Conclusion**:"):
+            data["conclusion"] = raw.split("：", 1)[-1].split(":", 1)[-1].strip()
+    return data
+
+
+def build_tldr_en_fallback(abstract: str) -> str:
+    sentences = split_sentences_loose(abstract)
+    if not sentences:
+        return ""
+    if len(sentences) == 1:
+        return shorten_english_sentence(sentences[0])
+    return shorten_english_sentence(f"{sentences[0]} {sentences[1]}", max_words=55)
+
+
+def generate_glance_data(title: str, abstract: str, max_retries: int = 3) -> Dict[str, str] | None:
     if LLM_CLIENT is None:
         log("[WARN] 未配置 LLM_CLIENT，跳过速览生成。")
         return None
 
-    system_prompt = "你是论文速览助手，请用中文简洁地总结论文的关键信息。"
+    system_prompt = (
+        "你是论文速览助手，负责把论文摘要变成适合中文读者快速判断是否值得读的速览。"
+        "输出必须具体、可核对，不能写空话。"
+    )
     payload = {"title": title, "abstract": abstract}
     user_text = json.dumps(payload, ensure_ascii=False)
     user_prompt = (
-        "请基于上面的 JSON 中的 title 和 abstract，输出一个中文速览摘要，严格返回 JSON（不要输出任何其它文字）：\n"
-        "{\"tldr\":\"...\",\"motivation\":\"...\",\"method\":\"...\",\"result\":\"...\",\"conclusion\":\"...\"}\n"
+        "请基于上面的 JSON 中的 title 和 abstract，严格返回 JSON（不要输出任何其它文字）：\n"
+        "{\"tldr_cn\":\"...\",\"tldr_en\":\"...\",\"motivation\":\"...\",\"method\":\"...\",\"result\":\"...\",\"conclusion\":\"...\"}\n"
         "要求：\n"
-        "- tldr：100字左右的完整概述，涵盖研究背景、方法和主要贡献\n"
-        "- motivation/method/result/conclusion：每个字段一句话概括，简洁明了\n"
+        "- tldr_cn：80~120字中文，直接说论文做了什么、怎么做、结果怎样。\n"
+        "- tldr_en：1~2句英文，保留原文关键术语，长度控制在 60 词内。\n"
+        "- motivation：中文，明确任务痛点或临床/技术难点。\n"
+        "- method：中文，点名模型/框架/关键模块，不要写“建议查看原文”。\n"
+        "- result：中文，优先写具体指标、对比对象、数据集或任务；如果摘要没有数字，也要明确写出真实结论。\n"
+        "- conclusion：中文，说明这篇文章为什么值得读，避免“提供思路”“可进一步判断”这类空话。\n"
+        "- 禁止输出泛化套话，如“建议重点阅读”“请参考摘要与正文”“提供了可复用思路”。\n"
         "Output must be strict JSON only, no markdown, no fences, no extra text."
     )
 
     schema = {
         "type": "object",
         "properties": {
-            "tldr": {"type": "string"},
+            "tldr_cn": {"type": "string"},
+            "tldr_en": {"type": "string"},
             "motivation": {"type": "string"},
             "method": {"type": "string"},
             "result": {"type": "string"},
             "conclusion": {"type": "string"},
         },
-        "required": ["tldr", "motivation", "method", "result", "conclusion"],
+        "required": ["tldr_cn", "tldr_en", "motivation", "method", "result", "conclusion"],
         "additionalProperties": False,
     }
     use_json_object = "gemini" in (getattr(LLM_CLIENT, "model", "") or "").lower()
@@ -801,25 +991,20 @@ def generate_glance_overview(title: str, abstract: str, max_retries: int = 3) ->
             parsed = parse_llm_json(content)
             if not isinstance(parsed, dict):
                 continue
-            obj = parsed
-            tldr = str(obj.get("tldr") or "").strip()
-            motivation = str(obj.get("motivation") or "").strip()
-            method = str(obj.get("method") or "").strip()
-            result = str(obj.get("result") or "").strip()
-            conclusion = str(obj.get("conclusion") or "").strip()
-            if not (tldr and motivation and method and result and conclusion):
+            data = {
+                "tldr_cn": ensure_single_sentence_end(str(parsed.get("tldr_cn") or "").strip()),
+                "tldr_en": shorten_english_sentence(str(parsed.get("tldr_en") or "").strip(), max_words=60),
+                "motivation": ensure_single_sentence_end(str(parsed.get("motivation") or "").strip()),
+                "method": ensure_single_sentence_end(str(parsed.get("method") or "").strip()),
+                "result": ensure_single_sentence_end(str(parsed.get("result") or "").strip()),
+                "conclusion": ensure_single_sentence_end(str(parsed.get("conclusion") or "").strip()),
+            }
+            if not all(data.values()):
                 continue
-            return "\n".join(
-                [
-                    f"**TLDR**：{ensure_single_sentence_end(tldr)} \\",
-                    f"**Motivation**：{ensure_single_sentence_end(motivation)} \\",
-                    f"**Method**：{ensure_single_sentence_end(method)} \\",
-                    f"**Result**：{ensure_single_sentence_end(result)} \\",
-                    f"**Conclusion**：{ensure_single_sentence_end(conclusion)}",
-                ]
-            )
+            if any(marker in data["method"] or marker in data["result"] or marker in data["conclusion"] for marker in GENERIC_GLANCE_MARKERS):
+                continue
+            return data
         except Exception as e:
-            # 额度不足等“硬失败”不必重试，直接降级
             msg = str(e)
             if (
                 "insufficient_user_quota" in msg
@@ -834,72 +1019,79 @@ def generate_glance_overview(title: str, abstract: str, max_retries: int = 3) ->
     return None
 
 
-def build_glance_fallback(paper: Dict[str, Any]) -> str:
-    """
-    当 LLM 额度不足/不可用时的降级速览：
-    - TLDR 优先用 llm_tldr_cn/llm_tldr；否则用摘要首句；
-    - 其余字段用“基于摘要的启发式”生成，保证 5 段齐全。
-    """
+def generate_glance_overview(title: str, abstract: str, max_retries: int = 3) -> str | None:
+    glance = generate_glance_data(title, abstract, max_retries=max_retries)
+    return format_glance_data(glance) if glance else None
+
+
+def build_glance_fallback_data(paper: Dict[str, Any]) -> Dict[str, str]:
     abstract = str(paper.get("abstract") or "").strip()
-    tldr = (
-        str(paper.get("llm_tldr_cn") or paper.get("llm_tldr") or paper.get("llm_tldr_en") or "").strip()
-    )
+    title = str(paper.get("title") or "").strip()
+    heuristic = summarize_abstract_heuristically(title, abstract)
+    tldr_cn = str(paper.get("llm_tldr_cn") or "").strip() or str(heuristic.get("tldr_cn") or "").strip()
+    tldr_en = str(paper.get("llm_tldr_en") or paper.get("llm_tldr") or "").strip()
     evidence = str(paper.get("canonical_evidence") or "").strip()
     if evidence in {"检索回退候选", "retrieval fallback candidate"}:
         evidence = ""
 
-    def first_sentence(text: str) -> str:
-        s = (text or "").strip()
-        if not s:
-            return ""
-        parts = re.split(r"(?<=[。！？.!?])\\s+", s)
-        return (parts[0] if parts else s).strip()
+    sentences = split_sentences_loose(abstract)
 
-    if not tldr:
-        tldr = first_sentence(abstract)
-    if not tldr and evidence:
-        tldr = evidence
-    tldr = ensure_single_sentence_end(tldr or "基于摘要生成的速览信息。")
+    def pick_sentence(patterns: List[str], fallback: str = "") -> str:
+        for sentence in sentences:
+            lowered = sentence.lower()
+            if any(re.search(pattern, lowered, re.I) for pattern in patterns):
+                return sentence.strip()
+        return fallback.strip()
 
-    title = str(paper.get("title") or "").strip()
-    normalized_evidence = evidence.strip()
+    if not tldr_en:
+        tldr_en = build_tldr_en_fallback(abstract)
+    if not tldr_cn:
+        if evidence:
+            tldr_cn = ensure_single_sentence_end(evidence)
+        else:
+            tldr_cn = str(heuristic.get("tldr_cn") or "本文的核心信息可以先看下方摘要和关键结果。").strip()
 
-    motivation = ensure_single_sentence_end(
-        first_sentence(normalized_evidence)
-        or (f"这篇工作围绕《{title}》对应的问题展开，重点关注任务中的核心挑战。" if title else "这篇工作围绕一个具体研究问题展开，重点关注任务中的核心挑战。")
+    motivation_en = pick_sentence(
+        [r"\bhowever\b", r"\bchallenge\b", r"\blimit", r"\bmanual\b", r"\btime-consuming\b", r"\black"],
+        fallback=sentences[0] if sentences else "",
+    )
+    method_en = pick_sentence(
+        [r"\bwe propose\b", r"\bwe present\b", r"\bwe introduce\b", r"\bframework\b", r"\bnetwork\b", r"\bmodule\b"],
+        fallback=sentences[1] if len(sentences) > 1 else (sentences[0] if sentences else ""),
+    )
+    result_en = pick_sentence(
+        [r"\bexperiments?\b", r"\bachiev", r"\boutperform", r"\bstate-of-the-art\b", r"\bvalidate", r"\beffective"],
+        fallback=sentences[-1] if sentences else "",
+    )
+    conclusion_en = pick_sentence(
+        [r"\bvalidat", r"\beffective", r"\bdemonstrat", r"\bshow", r"\bstate-of-the-art\b"],
+        fallback=result_en or method_en,
     )
 
-    method_hint = ""
-    if abstract:
-        m = re.search(r"(we (?:propose|present|introduce|develop)[^\\.]{0,200})\\.", abstract, re.I)
-        if m:
-            method_hint = m.group(1).strip()
-    method = ensure_single_sentence_end(
-        method_hint or "方法部分建议结合摘要与原文阅读，重点关注模型设计、训练流程与实验设置。"
-    )
+    return {
+        "tldr_cn": ensure_single_sentence_end(tldr_cn),
+        "tldr_en": shorten_english_sentence(tldr_en or motivation_en or method_en, max_words=60),
+        "motivation": ensure_single_sentence_end(
+            str(heuristic.get("motivation") or "").strip()
+            or (f"论文要解决的问题是：{motivation_en}" if motivation_en else (f"论文聚焦《{title}》对应的具体任务难点。" if title else "论文聚焦一个具体任务难点。"))
+        ),
+        "method": ensure_single_sentence_end(
+            str(heuristic.get("method") or "").strip()
+            or (f"核心方法是：{method_en}" if method_en else "摘要没有给出更细的结构细节，但明确提出了一个新的模型或框架。")
+        ),
+        "result": ensure_single_sentence_end(
+            str(heuristic.get("result") or "").strip()
+            or (f"摘要里的结果表述是：{result_en}" if result_en else "摘要没有给出具体数字，但明确声称方法在目标任务上有效。")
+        ),
+        "conclusion": ensure_single_sentence_end(
+            str(heuristic.get("conclusion") or "").strip()
+            or (f"是否值得读，主要看这句：{conclusion_en}" if conclusion_en else "这篇文章的价值主要体现在把任务做成了更自动化、更可落地的方案。")
+        ),
+    }
 
-    result_hint = ""
-    if abstract:
-        m = re.search(r"(experiments? (?:show|demonstrate)[^\\.]{0,200})\\.", abstract, re.I)
-        if m:
-            result_hint = m.group(1).strip()
-    result = ensure_single_sentence_end(
-        result_hint or "结果部分建议重点查看与基线方法的对比、消融实验以及泛化表现。"
-    )
 
-    conclusion = ensure_single_sentence_end(
-        "总体来看，这项工作提供了可复用的方法思路，是否值得重点阅读可结合实验结果与任务相关性进一步判断。"
-    )
-
-    return "\n".join(
-        [
-            f"**TLDR**：{tldr} \\",
-            f"**Motivation**：{motivation} \\",
-            f"**Method**：{method} \\",
-            f"**Result**：{result} \\",
-            f"**Conclusion**：{conclusion}",
-        ]
-    )
+def build_glance_fallback(paper: Dict[str, Any]) -> str:
+    return format_glance_data(build_glance_fallback_data(paper))
 
 
 def build_tags_html(section: str, llm_tags: List[str]) -> str:
@@ -1397,12 +1589,8 @@ def build_markdown_content(
     pdf_url = str(paper.get("link") or paper.get("pdf_url") or "").strip()
     score = paper.get("llm_score")
     evidence = str(paper.get("canonical_evidence") or "").strip()
-    tldr = (
-        paper.get("llm_tldr_cn")
-        or paper.get("llm_tldr")
-        or paper.get("llm_tldr_en")
-        or ""
-    ).strip()
+    if evidence in {"检索回退候选", "retrieval fallback candidate"}:
+        evidence = ""
     abstract_en = (paper.get("abstract") or "").strip()
     if not abstract_en:
         abstract_en = "The source did not provide an abstract for this paper."
@@ -1414,30 +1602,31 @@ def build_markdown_content(
     external_link = resolve_external_paper_link(paper)
     vocabulary_items = extract_study_vocabulary(title, abstract_en)
 
-    # 解析速览内容
-    glance = paper.get("_glance_overview", "").strip()
-    glance_tldr = ""
-    glance_motivation = ""
-    glance_method = ""
-    glance_result = ""
-    glance_conclusion = ""
+    glance_data = dict(paper.get("_glance_data") or {})
+    if not glance_data:
+        glance_data = parse_glance_overview(str(paper.get("_glance_overview") or "").strip())
 
-    if glance:
-        for line in glance.split("\n"):
-            line = line.strip().rstrip("\\").strip()
-            if line.startswith("**TLDR**：") or line.startswith("**TLDR**:"):
-                glance_tldr = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-            elif line.startswith("**Motivation**：") or line.startswith("**Motivation**:"):
-                glance_motivation = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-            elif line.startswith("**Method**：") or line.startswith("**Method**:"):
-                glance_method = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-            elif line.startswith("**Result**：") or line.startswith("**Result**:"):
-                glance_result = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-            elif line.startswith("**Conclusion**：") or line.startswith("**Conclusion**:"):
-                glance_conclusion = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-
-    # 优先使用速览生成的 TLDR（100字左右），否则使用原来的 TLDR
-    display_tldr = glance_tldr if glance_tldr else tldr
+    tldr_cn = (
+        str(paper.get("llm_tldr_cn") or "").strip()
+        or str(glance_data.get("tldr_cn") or "").strip()
+    )
+    tldr_en = (
+        str(paper.get("llm_tldr_en") or "").strip()
+        or (
+            str(paper.get("llm_tldr") or "").strip()
+            if not contains_cjk(str(paper.get("llm_tldr") or "").strip())
+            else ""
+        )
+        or str(glance_data.get("tldr_en") or "").strip()
+        or build_tldr_en_fallback(abstract_en)
+    )
+    if not tldr_cn and contains_cjk(str(paper.get("llm_tldr") or "").strip()):
+        tldr_cn = str(paper.get("llm_tldr") or "").strip()
+    display_tldr = tldr_cn or tldr_en
+    glance_motivation = str(glance_data.get("motivation") or "").strip()
+    glance_method = str(glance_data.get("method") or "").strip()
+    glance_result = str(glance_data.get("result") or "").strip()
+    glance_conclusion = str(glance_data.get("conclusion") or "").strip()
 
     # 辅助函数：转义 YAML 字符串中的特殊字符
     def yaml_escape(s: str) -> str:
@@ -1454,6 +1643,10 @@ def build_markdown_content(
     lines.append(f"source: {yaml_escape(source)}")
     if zh_title:
         lines.append(f"title_zh: {yaml_escape(zh_title)}")
+    if zh_abstract:
+        lines.append(f"abstract_zh: {yaml_escape(zh_abstract)}")
+    if abstract_en:
+        lines.append(f"abstract_en: {yaml_escape(abstract_en)}")
     lines.append(f"authors: {yaml_escape(', '.join(authors) if authors else 'Unknown')}")
     lines.append(f"date: {yaml_escape(published or 'Unknown')}")
     if journal:
@@ -1475,6 +1668,10 @@ def build_markdown_content(
         lines.append(f"evidence: {yaml_escape(evidence)}")
     if display_tldr:
         lines.append(f"tldr: {yaml_escape(display_tldr)}")
+    if tldr_cn:
+        lines.append(f"tldr_cn: {yaml_escape(tldr_cn)}")
+    if tldr_en:
+        lines.append(f"tldr_en: {yaml_escape(tldr_en)}")
     if selection_source:
         lines.append(f"selection_source: {yaml_escape(selection_source)}")
     if vocabulary_items:
@@ -1536,6 +1733,44 @@ def build_tags_list(section: str, llm_tags: List[str]) -> List[str]:
     return tags
 
 
+def prepare_bilingual_fields(paper: Dict[str, Any], title: str, abstract_en: str) -> Tuple[str, str]:
+    tldr_cn = str(paper.get("llm_tldr_cn") or "").strip()
+    tldr_en = (
+        str(paper.get("llm_tldr_en") or "").strip()
+        or (
+            str(paper.get("llm_tldr") or "").strip()
+            if not contains_cjk(str(paper.get("llm_tldr") or "").strip())
+            else ""
+        )
+        or build_tldr_en_fallback(abstract_en)
+    )
+    heuristic = summarize_abstract_heuristically(title, abstract_en)
+    zh_title, zh_abstract, zh_tldr = translate_paper_fields_to_zh(title, abstract_en, tldr_en)
+    if not zh_title:
+        zh_title = str(heuristic.get("title_zh") or "").strip()
+    if not zh_abstract:
+        zh_abstract = str(heuristic.get("abstract_zh") or "").strip()
+    if tldr_en and not str(paper.get("llm_tldr_en") or "").strip():
+        paper["llm_tldr_en"] = tldr_en
+    if zh_tldr and not tldr_cn:
+        paper["llm_tldr_cn"] = zh_tldr
+    if not str(paper.get("llm_tldr_cn") or "").strip():
+        paper["llm_tldr_cn"] = str(heuristic.get("tldr_cn") or "").strip()
+    return zh_title, zh_abstract
+
+
+def should_refresh_existing_markdown(md_text: str) -> bool:
+    if not md_text:
+        return True
+    lower = md_text.lower()
+    required_meta = ("tldr_cn:", "tldr_en:", "abstract_zh:", "abstract_en:")
+    if any(token not in lower for token in required_meta):
+        return True
+    if "evidence: 检索回退候选" in md_text:
+        return True
+    return any(marker in md_text for marker in GENERIC_GLANCE_MARKERS)
+
+
 def process_paper(
     paper: Dict[str, Any],
     section: str,
@@ -1549,196 +1784,94 @@ def process_paper(
     md_path, txt_path, paper_id = prepare_paper_paths(docs_dir, date_str, title, arxiv_id)
     abstract_en = (paper.get("abstract") or "").strip()
     pdf_url = str(paper.get("link") or paper.get("pdf_url") or "").strip()
-
-    glance = ""
+    tags_list = build_tags_list(section, paper.get("llm_tags") or [])
+    deep_summary_tail = ""
 
     if os.path.exists(md_path):
-        # 即使是 glance-only，也要确保生成/补齐 .txt（用于前端聊天上下文等）
-        if glance_only and pdf_url:
-            try:
-                ensure_text_content(pdf_url, txt_path, paper)
-            except Exception:
-                # 不阻塞文档生成流程：txt 拉取失败时继续（避免因为网络/源站问题导致整批中断）
-                pass
-
-        # 修复模式：若自动总结/速览存在“被截断”的迹象，则仅重生成该段落，不改动前面正文
         try:
             with open(md_path, "r", encoding="utf-8") as f:
                 existing = f.read()
         except Exception:
             existing = ""
-
-        # 若已存在 Markdown，但缺少中文标题/中文摘要，则在“重新跑 Step6”时自动补齐
-        # （历史上 --glance-only 或部分修复流程不会写入中文标题/摘要）
-        if not glance_only and existing:
-            try:
-                lines = existing.splitlines()
-                # 判断顶部是否已有两行 H1（英文+中文）
-                h1_count = 0
-                for line in lines[:6]:
-                    if line.startswith("# "):
-                        h1_count += 1
-                    elif line.strip() == "":
-                        # 允许空行，但一旦遇到非 H1 非空行就停止
-                        continue
-                    else:
-                        break
-
-                has_zh_title = h1_count >= 2
-                has_zh_abstract = "## 摘要" in existing
-                need_zh = (not has_zh_title) or (not has_zh_abstract)
-
-                if need_zh:
-                    zh_title, zh_abstract = translate_title_and_abstract_to_zh(
-                        title, abstract_en
-                    )
-                    updated = existing
-
-                    if (not has_zh_title) and zh_title:
-                        # 插入到第一行英文标题之后
-                        out_lines: List[str] = []
-                        inserted = False
-                        for i, line in enumerate(lines):
-                            out_lines.append(line)
-                            if i == 0 and line.startswith("# "):
-                                out_lines.append(f"# {zh_title}")
-                                inserted = True
-                        if inserted:
-                            updated = "\n".join(out_lines)
-
-                    if (not has_zh_abstract) and zh_abstract:
-                        # 插入到 `## Abstract` 之前（若不存在则追加在末尾）
-                        if "## Abstract" in updated:
-                            updated = updated.replace(
-                                "## Abstract",
-                                "## 摘要\n" + zh_abstract.strip() + "\n\n## Abstract",
-                                1,
-                            )
-                        else:
-                            updated = (
-                                updated.rstrip()
-                                + "\n\n## 摘要\n"
-                                + zh_abstract.strip()
-                                + "\n"
-                            )
-
-                    if updated != existing:
-                        with open(md_path, "w", encoding="utf-8") as f:
-                            f.write(updated + ("\n" if not updated.endswith("\n") else ""))
-                        existing = updated
-            except Exception:
-                # 补齐中文标题/摘要失败时不影响其它生成逻辑
-                pass
-
-        # 已存在速览则默认不重复生成（避免重复 LLM 调用），除非 force_glance=true
-        has_glance = "## 速览" in existing
-        if force_glance or not has_glance:
-            glance = generate_glance_overview(title, abstract_en) or build_glance_fallback(paper)
-            if glance:
-                paper["_glance_overview"] = glance
-
-        # 修复历史格式：TLDR 行末尾不应带反斜杠
-        fixed, changed = normalize_meta_tldr_line(existing)
-        if changed:
-            with open(md_path, "w", encoding="utf-8") as f:
-                f.write(fixed + ("\n" if not fixed.endswith("\n") else ""))
-            existing = fixed
-            if os.getenv("DPR_DEBUG_STEP6") == "1":
-                log(f"[DEBUG][STEP6] fixed TLDR trailing slash: {os.path.basename(md_path)}")
-
-        # 修复历史格式：文章页 Tags 不再显示“精读区/速读区”
-        fixed, changed = normalize_meta_tags_line(existing)
-        if changed:
-            with open(md_path, "w", encoding="utf-8") as f:
-                f.write(fixed + ("\n" if not fixed.endswith("\n") else ""))
-            existing = fixed
-            if os.getenv("DPR_DEBUG_STEP6") == "1":
-                log(f"[DEBUG][STEP6] removed section tag from Tags: {os.path.basename(md_path)}")
-
-        # 同步 Tags 行（例如 keyword:SR 与 query:SR 同名时也要都展示）
-        tags_html = build_tags_html(section, paper.get("llm_tags") or [])
-        if tags_html:
-            updated, changed = replace_meta_line(existing, "Tags", tags_html, add_slash=True)
-            if changed:
-                with open(md_path, "w", encoding="utf-8") as f:
-                    f.write(updated + ("\n" if not updated.endswith("\n") else ""))
-                existing = updated
-
-        # 规范速览块格式：TLDR/Motivation/Method/Result 末尾应带 `\\`
-        updated, changed = normalize_glance_block_format(existing)
-        if changed:
-            with open(md_path, "w", encoding="utf-8") as f:
-                f.write(updated + ("\n" if not updated.endswith("\n") else ""))
-            existing = updated
-
-        # 插入/替换速览内容
-        if glance and (force_glance or "## 速览" not in existing):
-            updated = upsert_glance_block_in_text(existing, glance)
-            if updated != existing:
-                with open(md_path, "w", encoding="utf-8") as f:
-                    f.write(updated)
-                existing = updated
+        if section == "deep" and existing:
+            deep_summary_tail = extract_section_tail(existing, "论文详细总结（自动生成）")
 
         if glance_only:
-            # 只生成速览：不拉取 PDF、不做精读总结
+            if pdf_url:
+                try:
+                    ensure_text_content(pdf_url, txt_path, paper)
+                except Exception:
+                    pass
+            glance_data = generate_glance_data(title, abstract_en) or build_glance_fallback_data(paper)
+            paper["_glance_data"] = glance_data
+            paper["_glance_overview"] = format_glance_data(glance_data)
+            updated = upsert_glance_block_in_text(existing, paper["_glance_overview"])
+            if updated != existing:
+                with open(md_path, "w", encoding="utf-8") as f:
+                    f.write(updated if updated.endswith("\n") else updated + "\n")
             return paper_id, title
 
+        refresh_existing = should_refresh_existing_markdown(existing) or force_glance
+        if refresh_existing:
+            zh_title, zh_abstract = prepare_bilingual_fields(paper, title, abstract_en)
+            glance_data = generate_glance_data(title, abstract_en) or build_glance_fallback_data(paper)
+            paper["_glance_data"] = glance_data
+            paper["_glance_overview"] = format_glance_data(glance_data)
+            content = build_markdown_content(paper, section, zh_title, zh_abstract, tags_list)
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write(content if content.endswith("\n") else content + "\n")
+            if section == "deep" and deep_summary_tail:
+                upsert_auto_block(md_path, "论文详细总结（自动生成）", deep_summary_tail)
+            try:
+                with open(md_path, "r", encoding="utf-8") as f:
+                    existing = f.read()
+            except Exception:
+                pass
+
         if section == "deep":
-            # 精读区：检查是否已有详细总结
-            tail = extract_section_tail(existing, "论文详细总结（自动生成）")
-            if tail:
+            if deep_summary_tail:
                 return paper_id, title
 
-            # 生成详细总结
-            pdf_url = str(paper.get("link") or paper.get("pdf_url") or "").strip()
             ensure_text_content(pdf_url, txt_path, paper)
             summary = generate_deep_summary(md_path, txt_path)
             if summary:
                 upsert_auto_block(md_path, "论文详细总结（自动生成）", summary)
             return paper_id, title
-        else:
-            # 速读区：不生成详细总结，只保留速览和摘要
-            return paper_id, title
+
+        return paper_id, title
 
     # 新文件：如果只需要速览，则不拉取 PDF/Jina 文本，直接用元数据生成页面
     if glance_only:
-        # 速览模式也需要生成/补齐全文 txt（优先 jina，失败则 pymupdf 兜底）
         if pdf_url:
             try:
                 ensure_text_content(pdf_url, txt_path, paper)
             except Exception:
                 pass
-        glance = generate_glance_overview(title, abstract_en) or build_glance_fallback(paper)
-        if glance:
-            paper["_glance_overview"] = glance
-        tags_list = build_tags_list(section, paper.get("llm_tags") or [])
+        glance_data = generate_glance_data(title, abstract_en) or build_glance_fallback_data(paper)
+        paper["_glance_data"] = glance_data
+        paper["_glance_overview"] = format_glance_data(glance_data)
         content = build_markdown_content(paper, section, "", "", tags_list)
         os.makedirs(os.path.dirname(md_path), exist_ok=True)
         with open(md_path, "w", encoding="utf-8") as f:
-            f.write(content)
+            f.write(content if content.endswith("\n") else content + "\n")
         return paper_id, title
 
-    # 新文件：生成完整内容
-    pdf_url = str(paper.get("link") or paper.get("pdf_url") or "").strip()
     ensure_text_content(pdf_url, txt_path, paper)
 
-    zh_title, zh_abstract = translate_title_and_abstract_to_zh(title, abstract_en)
-    tags_list = build_tags_list(section, paper.get("llm_tags") or [])
-    glance = generate_glance_overview(title, abstract_en) or build_glance_fallback(paper)
-    if glance:
-        paper["_glance_overview"] = glance
+    zh_title, zh_abstract = prepare_bilingual_fields(paper, title, abstract_en)
+    glance_data = generate_glance_data(title, abstract_en) or build_glance_fallback_data(paper)
+    paper["_glance_data"] = glance_data
+    paper["_glance_overview"] = format_glance_data(glance_data)
     content = build_markdown_content(paper, section, zh_title, zh_abstract, tags_list)
 
     os.makedirs(os.path.dirname(md_path), exist_ok=True)
     with open(md_path, "w", encoding="utf-8") as f:
-        f.write(content)
+        f.write(content if content.endswith("\n") else content + "\n")
 
-    # 精读区：生成详细总结
     if section == "deep":
         summary = generate_deep_summary(md_path, txt_path)
         if summary:
             upsert_auto_block(md_path, "论文详细总结（自动生成）", summary)
-    # 速读区：不生成额外的总结，只保留速览和摘要
 
     return paper_id, title
 
@@ -2348,8 +2481,14 @@ def _parse_generated_md_to_meta(
                 kind = "query"
             tags_typed.append({"kind": kind, "label": label})
 
+    parsed_abstract_zh = _extract_md_section(text, "摘要")
     parsed_abstract_en = _extract_md_section(text, "Abstract")
+    abstract_zh = str(fm_meta.get("abstract_zh") or "").strip()
+    if not abstract_zh:
+        abstract_zh = parsed_abstract_zh
     abstract_en = str(paper_abstract or "").strip()
+    if not abstract_en:
+        abstract_en = str(fm_meta.get("abstract_en") or "").strip()
     if not abstract_en:
         abstract_en = parsed_abstract_en
     if not abstract_en and "## Abstract" in text:
@@ -2382,6 +2521,8 @@ def _parse_generated_md_to_meta(
     score_value = _fallback_meta("score", "Score")
     evidence_value = _fallback_meta("evidence", "Evidence")
     tldr_value = _fallback_meta("tldr", "TLDR")
+    tldr_cn_value = _fallback_meta("tldr_cn")
+    tldr_en_value = _fallback_meta("tldr_en")
     src_value = str(selection_source or "").strip()
     if not src_value and "selection_source" in fm_meta:
         src_value = str(fm_meta.get("selection_source") or "").strip()
@@ -2405,7 +2546,10 @@ def _parse_generated_md_to_meta(
         "score": str(score_value or "").strip(),
         "evidence": str(evidence_value or "").strip(),
         "tldr": str(tldr_value or "").strip(),
+        "tldr_cn": str(tldr_cn_value or "").strip(),
+        "tldr_en": str(tldr_en_value or "").strip(),
         "tags": ", ".join(tags_compact),
+        "abstract_zh": abstract_zh,
         "abstract_en": abstract_en,
         "selection_source": src_value,
     }
