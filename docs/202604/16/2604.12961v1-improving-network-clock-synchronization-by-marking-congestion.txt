@@ -1,0 +1,1423 @@
+Title: Improving Network Clock Synchronization by Marking Congestion
+
+URL Source: https://arxiv.org/pdf/2604.12961v1
+
+Published Time: Wed, 15 Apr 2026 01:38:22 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# Improving Network Clock Synchronization by Marking Congestion 
+
+Yash Deshpande ∗, Quirin Vogel †, Laura Becker ∗, Kaan Aykurt ∗, Wolfgang Kellerer ∗∗ Chair of Communication Networks, Technical University of Munich, Germany.  
+
+> †
+
+Department of Statistics, University of Klagenfurt, Austria. 
+
+Abstract —Achieving consistent time across devices in dis-tributed systems often involves exchanging timestamped messages over a network. Precise time synchronization is crucial for applications such as cellular networks, industrial automation, and transactional databases. However, delay variation in synchro-nization packets—often caused by congestion from competing traffic—degrades synchronization accuracy. Detecting whether a packet experienced congestion can help improve synchronization through filtering and statistical methods. We propose an in-network congestion indication and filtering mechanism for synchronization messages used in protocols such as the Network Time Protocol (NTP) and Precision Time Protocol (PTP). Network devices mark packets that experienced queuing, allowing clocks to correct errors caused by varying delays. Our approach requires only simple changes at switches or routers, avoiding deep packet inspection or protocol modifications. The method is backward compatible, using standard but currently unused fields in IP, PTP, or NTP headers. We im-plement our method on a Tofino P4 target and demonstrate an improvement of over 80% in synchronization performance over a single hop. Moreover, we show that the performance of traditional statistical filters, such as min-RTT and median-delay, is improved by 90% over the one-hop hardware setup. We further demonstrate the effectiveness of our proposed method across mul-tiple hops, both analytically and through simulation. Congestion marking improves the root-mean-squared clock offset estimation error by 30% to 80%, depending on network conditions and filtering techniques. 
+
+I. I NTRODUCTION 
+
+Precise time synchronization is a cornerstone of modern distributed systems, enabling coordinated operations across various applications. In cellular networks [1], accurate timing ensures seamless handovers and efficient spectrum utilization. Industrial automation systems rely on synchronized clocks for coordinated control and monitoring [2], while transactional databases [3] require precise timestamps to maintain data consistency and integrity. Two primary protocols facilitate network-based time syn-chronization: the Network Time Protocol (NTP) [4] and the Precision Time Protocol (PTP) [5]. NTP is widely used across the internet, providing millisecond-level accuracy suitable for general-purpose applications. PTP, standardized as IEEE 1588, offers sub-microsecond precision, making it ideal for time-sensitive environments such as power grids and manufacturing systems. PTP leverages hardware support from switches and end-hosts and is intended to be deployed in local area networks (LAN)s where the operator controls the network and knows the topology. PTP can operate at both the Ethernet and IP layers, while NTP operates only at the IP layer. Both PTP and NTP work on the principle of sending time-stamped packets over the network [6]. However, the accuracy of these protocols can be compro-mised by variable network delays, particularly those caused by queuing congestion in routers and switches [6]. Both PTP and NTP assume that packet delays in both directions, from the client to the server and vice versa, are similar and that time-stamped packets take half of the Round trip time (RTT) to reach their peer. When synchronization packets experience packet delay variation (PDV), the resulting time estimates at the peer end can be significantly skewed, leading to errors in the application’s operation. Various filtering and advanced estimating techniques have been explored to mitigate these issues [7], [8], [9]. However, relying on filtering to estimate an unknown link delay has fundamental limitations [10]. A large proportion of the PDV is caused by queuing delays in switches and routers due to congestion from other network traffic [11], which can be highly dynamic. Therefore, hardware implementations of a Transparent Clock (TC) or a Boundary Clock (BC) for PTP switches have been proposed and standardized. A TC adds the resident time of the Precision Time Protocol (PTP) packet in the switches to the PTP header. A BC synchronizes its clock to a source clock and then acts as a source to other downstream devices. However, implementing a TC or a BC in switches and routers is difficult and expensive [12], [13]. Moreover, NTP does not support such intermediary correction mechanisms. Explicit Congestion Notification (ECN) [14] is a network feature that allows switches and routers to signal congestion to endpoints without dropping packets, enabling more efficient and reliable congestion control in TCP-like algorithms. Its success lies in its easy implementation [15], [16]: the switch flips a single bit in the IP header to indicate whether the packet experienced congestion. Inspired by ECN’s success, we explore the utility of similar congestion marking in PTP and NTP protocols to improve synchronization performance. Since ECN marking also indicates a congested packet, this information can be used to filter PDV in clock synchronization packets. Specifically, our novel contributions in this paper are: 1) We propose and evaluate a novel clock offset estimation method for networked clock synchronization mecha-nisms such as PTP and NTP using congestion-markings in packet headers. The method is backward-compatible 
+
+with current versions of NTP and PTP and suitable with modern methods like Firefly [17]. 
+
+> arXiv:2604.12961v1 [cs.NI] 14 Apr 2026
+
+2) We propose a new switch mechanism called Congestion Marking Clock (CMC), which can mark congestion in the PTP or NTP header with more granularity than ECN and mark packets over many hops .3) We implement the CMC and ECN marking on a P4 target (Tofino), and demonstrate that the congestion-marking indicates delay within 5% accuracy. Moreover, we show, via an analysis of compiler outputs, that the CMC requires fewer pipeline stages, uses less SRAM, and performs fewer ALU operations than the traditional TC. 4) We analytically determine the conditions under which our proposed method improves the average Mean Square Error (MSE) and empirically show that these conditions for improvement are slack , allowing for the users to select from a large parameter set without degrading the system performance. 5) We propose a Markovian Model and an Algorithm to obtain the theoretical MSE after applying our method. The theoretical MSE can be used to determine the optimal system parameters. 6) We show that our proposed method also improves the performance of statistical clock synchronization low-pass filters or eliminates their need altogether. 7) Hardware measurements and OMNET++ packet-based simulations demonstrate an improvement of up to 80% 
+
+but at least 30% over the current standard offset esti-mation and correction methods. The rest of the paper is organized as follows: Sec. II provides the necessary background and the current state of the art in networked clock synchronization and congestion marking. Then Sec. III introduces the main concept of the paper and shows how offset estimation accuracy and PDV filtering relate to the estimation of the queuing delay of a synchronization packet. In Sec. V, we propose the Markovian queuing model and Algorithm 1 to obtain expressions for the expected MSE of offset estimation error and the improvement achieved by our proposed method. Sec. IV provides insights into the implementation of our method and proposes header fields in existing IP, PTP, and NTP packets for implementing the marking counter. We also implement our switch in P4 [18] and demonstrate its lower complexity as compared to a TC. Moreover, we show an increase in consumed resources at the switch as we improve congestion marking capability. Finally, we demonstrate the improvement of our scheme through OMNET++-based packet simulations in Sec. VI before con-cluding the paper. II. B ACKGROUND AND RELATED WORK 
+
+A. Fundamentals of Network Clock Synchronization 
+
+The fundamental operation of NTP and PTP is illustrated in Fig. 1a and 1b, respectively. Both use a modified form of Cristian‘s algorithm [19], where a client estimates its clock offset ˆθ from a server. In NTP, the client sends a request message and records the time T 1 at which it was sent. The server records the time at which this request message was  
+
+> (a) (b)
+
+Fig. 1: Mechanism of (a) NTP: The client periodically initiates the synchronization procedure, exchanging two messages. (b) PTP has a very similar mechanism, but the source (server) periodically initiates the synchronization procedure, and three messages are exchanged. In both protocols, the client uses 4 time values to calculate its offset from the source. 
+
+received as T 2, then it prepares the response message. The server puts the time when this response is sent back to the client, T 3, and T 2, in the response message. The client records the time this response message is received as T 4.Two equations represent the real offset θ, assuming the devices make no timestamping errors. 
+
+T 2 = T 1 + θ + δReq , (1) and 
+
+T 4 = T 3 − θ + δResp . (2) Here, δReq and δResp are the unknown network delays of the request and response messages, respectively. Since the devices’ clocks are not accurately synchronized, there is no real way of knowing the exact value of this delay. Hence, Cristians’ algorithm makes a probabilistic assumption to simplify the two equations with three unknowns: that the forward delay is the same as the reverse delay δReq ≈ δResp . Solving for ˆθ we get, 
+
+ˆθ = (T 2 − T 1) + ( T 3 − T 4) 2 (3) The above equations also hold for PTP, albeit for different message names. The source starts the synchronization proce-dure, so three messages must be exchanged for the sink to acquire all four timestamps. Devices that support PTP achieve higher timestamp accuracy through hardware support, enabling significantly improved synchronization performance. The pre-cision of the devices mainly causes the timestamping error, and for commercial off-the-shelf (COTS) Network Interface Card (NIC) devices, it was found to be maximum 8 ns [20], which is negligible compared to the PDV in the network [21]. Chrony [22] is an implementation of NTP that can also utilize hardware timestamping to improve performance. 
+
+B. Correcting Estimation Errors 
+
+Assuming perfect timestamping, the primary source of error from PDV comes when the forward and reverse paths of the synchronization messages experience different delays. From Equations 1, 2 and 3 we get the offset estimation error ϵ,
+
+θ − ˆθ = ϵ = (δResp − δReq )2 . (4) The clock adjustment process can be viewed as a closed-loop control system in which a control signal is applied to the clock based on noisy offset measurements. Thus, a two-step control process is usually applied: a low-pass filter to reduce the effect of packets that experienced significant delays, and a Proportional Integral (PI) filter to incrementally apply the control signal in small steps. The ptp4l [23] is an IEEE 1588 Precision Time Protocol implementation from the Linux PTP project. Here, during the low-pass filtering, the offset estimation process is decoupled from the delay estimation process. The delay measurement is a RTT value. The delay of the sync packet is then assumed to be the median of the last M measurements. The filter length 
+
+M is configurable. Huygens [8] suggests using coded probes and Support vector machine (SVM)-like learning over coded probes to find packets that were not congested. However, this requires a large number of packets, which take up to 5 Mbps of the link bandwidth. This can be negligible for data centers with high-capacity links, but is difficult to deploy for industrial networks with low-capacity links. Similar coded probing methods have been proposed [24], [25], [26]. How-ever, they not only require twice the bandwidth of standard PTP, but also a change in the standard. NTP uses a Huff-and-Puff filter [4] to pick packets that faced less delays while Chrony [22] and Firefly [17] use min-RTT filtering for the same purpose. Clock drifts show a strong dependence on the temperature of the crystal oscillator driving the clock, which changes slowly. Hence, Kalman Filtering [27], [7], [28] or Linear programming [29] is used to track these dependencies. Graham [30] uses temperature sensors on the motherboard and Machine Learning (ML) to compensate for the oscilla-tor drift. These techniques treat PDV as random Gaussian noise. However, competing network traffic is transient, and the distribution of link delay is not Gaussian [31]. These techniques do not meet the tight synchronization guarantees needed for many applications under heavy network traffic [10]. The methods proposed in our work are backward compatible, and current network equipment will not be affected by the proposed changes. Moreover, the performance of all the low-pass filters improves with our proposed method. RTT based filtering techniques are inherently limited in filtering the delay asymmetry as they must use statistical methods on the joint distribution of the forward and reverse delay. To achieve better clock synchronization performance, PTP provides hardware support in intermediate switches via TC, allowing delay asymmetry to be compensated individually in the forward and reverse paths. The TC adds the residence time of the packet in the switch to a correction field. Then the above calculations for filtered delay and ˆθ (Eq. 4) remain the same with T 1 being replaced by T 1 + δReqCorr and T 4 by 
+
+T 4−δRespCorr . Here δReqCorr and δRespCorr are the total residence times of the respective packets in all the intermediate switches. However, this operation at the switch is complex [12], as it requires two timestamping operations: extracting the correc-tion field value from the PTP header, subtracting the ingress timestamp from the egress timestamp, and adding the result to     
+
+> 3.6
+> 3.8
+> 4.0
+> 4.2.10 3
+> LS TC
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> .10 6
+> (a)
+> 050 100
+> 0
+> 10
+> 20
+> Time (sec)
+> CPU Util. (%)
+> (b)
+
+Fig. 2: Complexity of Transparent Clocks: (a) Measurements of the packet residence time show an increase by 3 orders of magnitude when the switch is running in TC mode. (b) The inherent complexity of TC requires involving the CPU of the switch, limiting its scalability in larger networks. 
+
+the correction field. This difficult implementation hinders the adoption of TC on generic mass-manufactured switch chipsets. While some architectures for a full-hardware implementation of TC have been proposed [32], the implementation remains complex and is supported on fewer ASICs [33]. Fig. 2a shows the difference between the processing time of a PTP packet in the 1G Kontron D10 switch. The residence time of the packet in the switch increases by 3 orders of magnitude when using the TC mode instead of the Legacy Switch (LS) mode. Moreover, we monitor the switch’s CPU utilization while handling 1 source and 3 sinks simultaneously. Fig. 2b shows that as soon as the test starts, the utilization in the TC mode shoots up, reaching nearly 20%. The switch was not loaded with any other tasks during this test. Thus, the complex pipeline increases the processing delay of PTP packets [34], [35], and some vendors have demonstrated significant errors in the accuracy of TC residence time under network load [34]. In Sec. IV-D, we illustrate the required resources of a TC implemented on P4 [18] by analyzing the compiler output and comparing it with our approach. Finally, to mitigate the impact of an erroneous offset es-timation and the finite delay in clock adjustment, the client applies a PI filter that incrementally adjusts its clock over time. The PI filter is useful for stabilizing the clock synchronization control loop. The P and I coefficients can be finely tuned using Bayesian optimization methods [9]. However, the PI filter takes the offset estimation as an input, and a large error in the estimation procedure can only be partially corrected by such a filter. In this paper, we propose a scheme where the offset esti-mation error is improved by congestion marking - a scheme much simpler than a TC. The proposed method is backward-compatible with widely used versions of PTP, NTP, and Chrony. It requires only a few changes at the endpoints and in the network switches for its basic adoption. Such marking methods are already used in congestion control mechanisms; in the next section, we provide some background on this topic. 
+
+C. Congestion Marking 
+
+The first proposal to mark congested packets was suggested in [14] in the form of ECN to improve congestion control. It suggested that two bits, called the ECN field in the IP (a)     
+
+> 02468
+> 10
+> 20
+> Seq # ( 10 3)
+> Delay ( μs)
+> (b)
+
+Fig. 3: ECN Marking at Egress Port: (a) The match-action pipeline, which puts the packets in different priority queues, also takes care of congestion marking. Before placing them in their respective queues, it sets the ECN flag to CE(11) if the queue length exceeds a threshold K. Thus, marked packets also indicate delayed packets due to queuing. (b) A delay measurement of roughly 9000 packets. The red line shows the inferred time threshold from K. We see that most packets above the red line are orange (marked) and those below it are blue (unmarked), indicating ECN marking’s ability to signal delay. 
+
+header, be used by switches and routers to mark packets that are queued behind a threshold number of bytes, K. This enables congestion control algorithms to adjust their flows before a packet is dropped. The two bits allow for four code points, which indicate whether a packet is ECN-capable and whether congestion is experienced. This leaves one code point (10) free for future experimental use, according to the latest standard [36]. The match-action pipeline that places packets in the respective egress queues also marks congested packets if they are already marked as ECN-capable and if the queue is filled above a threshold of K bytes. Thus, congestion-marked packets also indicate delayed packets, with the delay amount dependent on the threshold K. The congestion marking mech-anism at the egress port of a switch is illustrated in Fig. 3a. To determine the extent to which the congestion marking scheme of a commodity switch can indicate delay, we measure delay across the EdgeCore AS7726 switch at 10 Gbps. For ECN, we set K = 3600 bytes and congest the switch’s egress port with 1500-byte (MTU) packets from different sources at a combined rate of 4 Gbps. The results are shown in Fig. 3b. The red line is obtained from 8( K + MTU )/10 10 , i.e. the total bits before the threshold divided by the line rate of the egress port. We then send probe PTP packets. We observe that the mechanism correctly classifies packets below and above the threshold, with most misclassifications near the threshold line due to queue transience. The success of ECN stems from its simple operation -setting a single bit. It proposed using two bits in the IP header, and hence switches or routers do not have to inspect the packet any further than they would in the match-action pipeline before the introduction of ECN. It is backward-compatible, as the addition of ECN does not interfere with the network’s operation; ECN bits are simply ignored by devices that do not support it. Choosing the right threshold K and marking strategy de-pends on the demand, capacity, topology, and TCP variants        
+
+> (a)
+> 0246810
+> −20
+> 0
+> 20
+> 40
+> t(s)
+> ϵ (μ s)
+> Raw: 14 .3μsFiltered: 14 .1μsMarked: 4.5μs
+> (b)
+
+Fig. 4: Motivating Example: (a) A simulation setup of PTP on OM-NET++ where a short-lived moderate UDP flow causes asymmetric queing delay leading to an offset estimation error. (b) The raw offset estimation error (blue) can only be partially corrected by a median delay filter (red), but further improved (70%) by marking packets (green). 
+
+and is still actively investigated [16], [37]. In this work, we evaluate the threshold as a function of the mean packet queuing time and provide an Algorithm to find the optimal threshold given an empirical per-hop queuing distribution. 
+
+D. Motivating Example 
+
+Fig. 4a shows a simulation setup where a short-lived UDP flow fB causes delay asymmetry in the PTP synchronization procedure, leading to offset estimation error; in this case, fA
+
+is absent. The simulation is set up in OMNET++ using the INET framework, with modifications to the gPTP application. In such a case, the offset estimation error during the duration of flow increases dramatically as seen in Fig. 4b. Such a flow can only be partially corrected by a median-delay filter, as most packets experience some queuing delay, resulting in asymmetry between the forward and reverse paths of PTP packets. However, if the packets that experience queuing delay are marked by the switch, the asymmetry can be partially compensated by the sink, thereby greatly reducing the offset estimation error. The values in the legend are the Root Mean square (RMS) errors between the two clocks in μs, and we can see that our approach reduces them by ≈ 70% .Our approach compensates for part of the queuing delay, reduces PDV, and offers lower implementation complexity than TC. In the next section, we demonstrate how the offset estimation error ϵ is related to queuing estimation and intro-duce our congestion marking approach. III. O FFSET ESTIMATION WITH CONGESTION MARKING 
+
+A. Generic Expressions for Queuing Delay Correction 
+
+The delays in the forward and reverse directions of the network are usually very similar when packets do not experience congestion [21], hence Cristian’s algorithm assumes that the statistical properties of the forward and reverse delays are the same. Usually, the forward and reverse paths of a packet are the same, as networks use a loop-free spanning tree to establish a unique path from the source to the destination and back. In cases where they are not the same, a static compensation for the delay asymmetry can be made [24]. Thus, we split the delay of message m into a base delay and an additional queueing delay, 
+
+δm = δbase m + δqm, for m ∈ { Resp , Req }. (5) Putting these in equations 1 and 2 and assuming that δbase Req =
+
+δbase Resp , we get that the offset estimation error is due to different queuing delays in the forward and reverse paths, 
+
+ϵ = (δqResp − δqReq )2 . (6) If one estimates the queuing delay, it can be compensated for in equations 1 and 2. These compensations percolate to the offset estimation error in the form of correction terms, 
+
+ϵcomp = δqResp − δqReq − ˆδqResp + ˆδqReq 
+
+2 . (7) If δEm = δqm − ˆδqm is the error in the estimation of the queing delay, then the compensated offset estimation error is a function of only the error in the estimation of the queing delays, 
+
+ϵcomp = δEResp − δEReq 
+
+2 . (8) Taking the absolute value on both sides of the equation, as long as the difference between the queuing delay estimation error and the actual queuing delay is smaller, we can reduce the offset estimation error. Note that a TC does exactly that but at a much higher implementation cost. It aims to minimize the offset estimation error by accounting for packet queuing and processing delays. 
+
+B. Correction of Marked Packets 
+
+As explained in Sec. II-C, a marked packet is an indication of a delayed packet. Similar to ECN, we assume that the congestion marking indication is done in the header of the packet. Depending on the level of congestion and the number of available bits in the header, the indication can take an integer value up to N ; hence, we call this header value a marking counter. We discuss different available bits in the PTP, NTP, and IP headers for the marking counter in Sec. IV-C and the implementation of the marking counter itself in Sec. IV-A. In the following Subsec., we discuss the correction method based on the counter value and its effect on the delay estimation error. Each time a switch places a packet in an egress queue with a queue length greater than a threshold K, the marking counter is incremented. We also present the general case, where at each hop, R thresholds are available at the switch, each a multiple of K. The counter can have a maximum value of N , depending on the number of bits available in the header and the marking strategy. Let Lm = (L0
+
+> m
+
+, L 1
+
+> m
+
+, ..., L sm) be an ordered set of links traversed by message m and δqm,l for l ∈ L m, the queuing delay experienced per hop such that the total queuing delay is the sum of individual queueing delays across all hops. For  
+
+> (a) (b)
+
+Fig. 5: Measurement of Marking Accuracy: (a) A two-port NIC where the clocks are driven by the same oscillator is used to accurately measure the delay of packets. Separate sources of traf-fic congest the switch’s outgoing port buffers, causing delays. (b) Example of marking results for one run of Tofino, where packets are colored according to the value of the marking counter. 
+
+the ease of notation, when concerning only one message m,we enumerate a hop only with its number, i.e., we write Lam
+
+as simply a. We assume δ*K as the estimate of the minimum queuing delay that a marked packet experienced when the threshold was set to K. At each hop, the switch compares the current queue length against R thresholds and increments the marking counter accordingly. The client or the server of the synchronization protocol then checks the number of congestion marks n and corrects the delay by nδ *K, assuming that a mark corresponds to the packet facing a delay of at least δ*K. Thus, an increment in the counter corresponds to a 
+
+decrement in the delay estimation error by δ*K. Since only N
+
+bits are available, we have a constraint that n, R ≤ N . The delay estimation error at each hop l conditioned on it facing any queuing delay is, 
+
+δEm,l =
+
+
+
+δqm,l − Rδ *K if δqm,l > Rδ *K
+
+δqm,l − (R − 1) δ*K if Rδ *K ≥ δqm,l > (R − 1) δ*K
+
+... ...
+
+δqm,l − δ*K if 2δ*K ≥ δqm,l > δ *K
+
+δqm,l otherwise ..
+
+(9) 
+
+δqm,l = δEm,l = 0 if there is no queuing delay at hop l. The total delay estimation error is the sum of the delay estimation errors at each hop. 
+
+δEm = X
+
+> j∈L m
+
+δEm,l (10) 
+
+C. Measurement of Marking Accuracy 
+
+An ECN-marked packet indicates congestion. We wish to use it to obtain information about the packet’s delay. Thus, the question arises: to what extent are congestion signals an indication of delay, and how effectively can we map a set congestion threshold K-bytes to some delay δ*K. A simple way to map K to δ*K is to estimate the total delay for K bits according to the line-rate of the egress port. We will consider more complex mappings between K and δ*K under multiple queues and egress schedulers in future work. In this work, we use the simple equation that δ*K = (K · 8) /LR. Where LR is the Line Rate in bits per second. This corresponds to the time required to serialize K bytes up to the threshold. To validate this assumption, we use a loopback testbed similar to [21], as TABLE I: Worst-Case Marking Accuracy                   
+
+> ECN CMC
+> % Misclassified Max Error Max Error % % Misclassified Max Error Max Error %
+> Tofino 2.6 1497 2.2 9.8 11952 5.2
+> EdgeCore 8.5 3951 5.8 ---
+
+illustrated in Fig. 5a. The two ports on the Intel X520 NIC are driven by the same crystal oscillator; therefore, their relative drift is zero. Then we modify the ptp4l program to report the one-way delay (T2-T1) and the marking counter value in either the ECN field or the currently unused Reserved3 PTP field. The program uses hardware timestamping and, therefore, any jitter caused by CPU scheduling, interrupt handling, context switching, or operating system latency is effectively eliminated from the measurement process. Such a setup provides one-way delay values with an accuracy of ±8 ns . We then generate TCP and UDP traffic from four other sources at different rates using 
+
+iperf or nuttcp to saturate the switch’s outgoing port. For the CMC, we use the Intel Tofino, and for the ECN measurements, we use the EdgeCore AS7726-32X (EC) in addition to the Tofino to demonstrate the ability of COTS ECN marking. The exemplary results for ECN and CMC are shown in Fig. 3b and 5b respectively, where different colors represent packets with a different value of ECN or marking counter, and the dashed horizontal line represents the theoretical threshold based on the line rate. Each run covers around 46,500 measurements, and for each traffic type and rate, we conduct 10 such runs. The misclassification rate increases much more as the rate of interfering traffic increases because the queues can fill up beyond the threshold very quickly. The worst-case results were obtained with a total aggregated rate of 9.4 Gbps on a link with a capacity of 10 Gbps. Classical ECN tests for both switches were conducted only with UDP traffic, as TCP cross-traffic adjusts its congestion window after receiving a CE-marked packet. The worst-case CMC results are obtained with TCP traffic, which performs worse due to its inherent burstiness from the congestion window. All the accuracy results are shown in Table I. Between the two switches, the Tofino shows much better results than EC, with a maximum misclassification rate of 2.6% compared to 8.5% for EC. The maximum error for the Tofino is just 2.2% of the threshold value compared to 5.8% for the EC. In the case of CMC, the percentage of misclassified packets is much higher, with 32 thresholds. The worst-case classification error was 11952 ns away from the threshold. While this absolute error may seem large, the threshold was set to 918589 ns , so the error is quite low as a percentage. The worst-case percentage error occurred at the first few thresholds, at 5.3% of the threshold, corresponding to 32768 ns in this case. The overall results indicate that ECN-capable switches and the Tofino implementation of the CMC can accurately classify marked packets based on their experienced queuing delay. IV. M ETHODS OF IMPLEMENTATION 
+
+A. Marking Counter 
+
+A counter that can take a maximum value of N somewhere in the packet header is available to the CMC for manipulation. Its resource limitations, depending on the PTP, NTP, or IP header, 
+
+Fig. 6: Example working of the Marking Counter: The left side indicates the number r thresholds crossed by the current buffer utilization at the switch egress. The right-hand side indicates the congestion marking operation and the resulting value of counter Y .
+
+are discussed in Sec. IV-C. In this Subsec., we concentrate on its functionality and manipulation by the CMC. The counter is incremented by r ∈ { 0, 1, 2, ..., R }) if the current queue at the egress port has between K ·r and K ·(r +1) bits. If the current queue at the egress port has more than K · R bits, then the counter is increased by R. This process is illustrated in Fig. 6, where, depending on the number of thresholds crossed by the current buffer, a value of r is chosen. If X and Y are the values of the marking counter before and after passing the congestion marking step, respectively, then the marking equation can be expressed by the equation Y = X + min( r, N − X).This is done at every switch (hop) in the switch until the counter reaches its maximum value or the packet reaches its destination. At the end-points, this count is multiplied by a fixed known delay, δ*K. This value is then subtracted from the receiving timestamps of that packet as explained in Sec III-B. A switch can implement this counter in two ways: as a bit shift or an integer counter. The former requires much fewer resources than the latter in classical ASIC designs and P4, as seen in Sec. IV-D. For b bits available in the packet header, the bit shift allows for N = b, while the counter operation allows for N = 2 b−1 markings in total. Generally, available bits in the header are difficult to find, especially to maintain backward compatibility. Different proposals to advance the protocol compete for the precious bits in packet headers. Thus, the community might need to balance using all available bits for congestion marking or allocating header resources to other purposes. We briefly discuss the available headers in Sec. IV-C without explicitly claiming that all of them must be used for our purpose. 
+
+B. Compensation at Client and Server 
+
+The server sends T 2 − nδ *K instead of T 2 in the Response 
+
+packet in case the Request packet congestion marking counter is n congestions, and the client subtracts nδ *K from T 4 if the Response packet comes with n congestions in the header. Thus, the client has no information about the congestion in the Request packet as the server already sends a compen-sated timestamp in the Response packet. However, packet timestamps are usually very large (64-80 bits) integer values. Checking a congestion marking and then subtracting a value from the receiving timestamp can be expensive for the server, especially if it must serve a large number of clients simultane-ously. This is also why the TC requires more CPU resources in Fig. 2b. Hence, we propose a secondary Forward-Reverse (FR) marking. Here, the b bits in the marking counter can be split between the forward and reverse paths, i.e, the Request and Response message. Thus, the server responds with T 2
+
+without compensation, and the CMC includes both the forward and reverse path marks in the response packet. The client then performs the compensation from both the forward and reverse paths. The implementation requires the switch to additionally identify the packet type to decide which part of the header to mark. Hence, we get N = b/ 2 for the bit-shift methods and N = 2 b−1/2 for the integer counter method. Note that, in most cases (PTP header or ECN), b is a multiple of 2; hence, both paths should have equal allocation for the size of the marking counter. 
+
+C. Available Packet Headers 1) ECN 
+
+When using NTP over the internet, one does not have access to the network switches between the client and the server. Moreover, one cannot change the underlying ECN protocol, and the remaining experimental bit of ECN is not usable; thus, we have to use classical ECN . Thus, the first change that must be implemented in the client and server is that they must send all synchronization packets as ECN-capable (01). This scenario corresponds to the special case of b = 1, N = 1. In networks where the experimental ECN bit is available for use, we can use modified ECN . Here, the network operator must ensure that other entities do not use the experimental bit for special applications [36]. Then, we have the case of b = 2
+
+where both types of marking counters and FR marking can be used. 
+
+2) PTP Header 
+
+Due to its widespread use, there is no space left in the IP header for anything other than the ECN bits. An advantage of using the IP header for the marking counter is that the switch does not need to inspect the PTP/NTP header. However, our solution improves with increasing N (See result R1 in Sec.V-B), and hence more bits can be made available from the PTP header. Moreover, PTP can operate at Layer 2 without an IP header; hence, a solution that uses the PTP header will be more universal. We propose a backward-compatible 
+
+method for congestion marking so that currently deployed solutions can be gradually replaced, and until then, switches and endpoints can simply ignore the marking counter. Here, the Reserved 3 field of 4 Bytes, which immediately follows the CorrectionField in the PTPv2 header, can be used for our purpose. Two of the 32 bits encode the marking config-uration: whether the marking counter is enabled, whether FR marking is applied, and whether the counter is implemented as a bit-shift or integer counter. The remaining b = 30 bits are used for the marking counter itself. Note that our solution can work in conjunction with a TC as the correction field remains unchanged, and both the marking compensation and the TC correction can be applied simultaneously. 
+
+3) NTP Header 
+
+The NTP header allows for a custom extension field(s) aligned to 4-byte boundaries. This allows extensions to the NTP protocol to be applied to a self-managed network, unlike Sec. IV-C1. In theory, the field can be of an arbitrarily TABLE II: Comparison of resource utilization for different imple-mentation approaches on Tofino.       
+
+> Approach Pipeline Stages SRAM Usage ALU Operations
+> TC High (3-5 stages) Moderate–High (to store ingress timestamps) High (64-bit arithmetic) CMC (Integer) Low–Moderate (1-2 per marking) Moderate (count registers) Moderate (8-bit arithmetic) CMC (Bit Shift) Low (1 stage per shift) Negligible (in-header) Very Low (bitmask and shift)
+
+large length, but a realistic constraint is set by an Maximum Transmission Unit (MTU) of 1500 Bytes for the whole NTP packet. This leaves up to 500 Bytes for the marking counter. To have any meaningful help by increasing the size of N ,we either need many more hops, or to reduce the granularity of marking by decreasing the threshold δ*K size. As seen in Sec. III-C, marking-delay mapping has a precision limita-tion. Thus, especially used as an integer counter, we believe 
+
+b = 30 , such as the one with PTP, is sufficient. 
+
+D. Implementation Complexity 
+
+To evaluate practical deployment feasibility, we implement two approaches using P4 on Tofino switches: a classical TC and our proposed CMC, which can be realized either via bit shifts or integer counters in the PTP header. The insights from the compiler output are summarized in Table II. The TC implementation requires ingress and egress timestamping, parsing and updating the correction field, and performing arithmetic operations on 64-bit timestamps across the pipeline stages. This results in increased pipeline depth, higher ALU utilization, and limited scalability in multi-hop topologies. In contrast, the marking approach introduces minimal overhead and scales more efficiently. While the bit-shift version provides fewer congestion levels, it is easier to implement on pipeline-constrained targets like Tofino and incurs negligible resource consumption. Our eval-uation shows that increasing the number of thresholds R from 
+
+2 to 64 only requires a few additional match-action stages or register operations. Ultimately, CMC requires fewer pipeline stages, less SRAM usage, and fewer ALU operations than TC, offering an efficient and low-complexity alternative to TCs. To determine which congestion level a packet experiences, the Tofino exposes a metadata field called enq qdepth , which is the egress queue depth in 80-byte cells when the packet is enqueued. The most ASIC-friendly way to compare this across different levels is to restrict K to the cell size times a power of 2, i.e., K ∈ { 80 · 2n | n ∈ Z }. Thus, one can obtain the congestion levels by simply right-shifting the enq qdepth 
+
+of every packet by 2n and extracting the significant bits that would make R.V. A NALYSIS 
+
+To analyze the performance of the proposed method, we must assume a probability distribution of the end-to-end packet delay in the network. The network topology and the spread, size, and duration of traffic are not a priori known. Hence, we build a general model for the end-to-end queuing delay of packet m. This model can be applied to any queuing distribution and is more general than the often used M/M/ 1
+
+models with exponential waiting times. Such an analytical model is necessary to rigorously demonstrate performance improvements and to identify the conditions and parameter regimes under which they occur. We assume that the request and response packets take the same path in the network in opposite directions, hence La 
+
+> Req
+
+=
+
+Ls−a 
+
+> Resp
+
+, where s is the number of hops. Let Qm,l , Dm,l ∈ [0 , ∞)
+
+be the distributions of the queing delay at hop l of message m
+
+and its corrected counterpart after applying congestion mark-ing, respectively. We do not restrict ourselves to continuous distributions, coming from a PDF. In practice, there is a non-zero 1 − ρl probability that the delay is equal to zero, and a continuous part (a PDF) for the case that there is a non-zero delay, where ρl is the utilization of link l. Since our framework is completely general, we do not subdivide the probability distribution into these two parts. The total queuing delay 1 δqm ∼ Q m = P 
+
+> l∈L m
+
+Qm,l and its estimation error 
+
+δEm ∼ D m = P 
+
+> l∈L m
+
+Dm,l are therefore RVs sampled from the sum of per-hop delay distributions. We consider the MSE of the offset estimation error ϵ or 
+
+ϵcomp as our metric of interest in line with other works evaluating PTP and NTP [24], [25], [26]. The expected MSE of ϵcomp is, 
+
+Ecomp = E
+
+ (DReq − D Resp )2
+
+4
+
+
+
+. (11) The same can be applied to the distribution of total queuing delay to obtain the MSE without correction for any given value, 
+
+E = E
+
+ (QReq − Q Resp )2
+
+4
+
+
+
+. (12) Since the forward and reverse delays are independent, the MSE can be decomposed into, 
+
+E = 14
+
+Var( QReq ) + Var( QResp )
+
+| {z }
+
+> sum of variance
+
++ ( E[QReq − Q Resp ]) 2
+
+| {z }
+
+> bias
+
+ .
+
+(13) The first term indicates that even if the mean queuing delay in the forward and reverse paths is the same (under equal load), their individual variances still contribute to the MSE. The second term (bias) indicates that the MSE is higher under an asymmetric load in the network, i.e., when the total mean queuing delay in one direction exceeds that in the other. As mentioned in Sec. III-A, Cristian’s algorithm and all subse-quent filtering algorithms presented in the literature assume that the forward and reverse delays have the same statistics, therefore reducing the bias term to zero. Consequently, the filtering techniques presented so far demonstrate a reduction in the variance [7], [27], [28], [8], [38]. Throughout the rest of the paper, we demonstrate conditions and proofs with and without the assumption of equal means, which we refer to as Assumption 1 ( A1 ). In the next subsection, we show that congestion marking improves both the variance and the bias term for any general queuing distribution.   
+
+> 1Slighlty abusing the notation where the Σhere is the convolution operator as PDFs cannot be summed.
+
+A. Conditions for Threshold Selection 
+
+The queuing distribution of a packet at a given switch depends on several factors, including the load, packet size, and the burstiness of the interfering traffic. Generally, the per-hop and the end-to-end delay distributions show a long tail [39], [40], [41], [42]. These long tails also contribute largely to the MSE due to the squaring factor. Such long-tailed distributions make it relatively easy to select a threshold that improves the MSE. 
+
+Proposition 1 (Conditions for MSE Improvement over one hop) . Consider the per-hop queuing distributions QReq ,l and 
+
+QResp ,l and a threshold δ*K and number of thresholds R. The MSE over a hop is improved if all of the following conditions hold: 
+
+1) Variance Improvement Region (C1): The threshold lies in the region 
+
+δ*K > 2E[Qm,l ]1 + (2 R − 1) P(δqm,l > Rδ *K) ,
+
+referred to as the Improvement Region (IR). 
+
+2) Stochastic Dominance (C2): The distribution with the larger mean also has a larger CCDF within the IR. If 
+
+E[QReq ,l ] > E[QResp ,l ],
+
+then 
+
+P(δqReq ,l ≥ rδ *K) > P(δqResp ,l ≥ rδ *K), ∀r ∈ { 1, 2, . . . , R }.
+
+3) Upper Bound on the Threshold (C3): The threshold satisfies 
+
+δ*K < 2 · E[QReq ,l ] − E[QResp ,l ]
+
+PRr=1 
+
+
+
+P(δqReq ,l ≥ rδ *K) − P(δqResp ,l ≥ rδ *K)
+
+ .
+
+Proof. The proofs are presented in Appendix A. Note that, C1 is enough to prove improvment under A1 , i.e, it improves the variance. C2 and C3 are needed without A1 ,to improve the bias terms. While it may seem that the conditions on the threshold and distribution are restrictive, in practice, a user has considerable freedom in selecting the threshold δ*K. The queuing distribu-tions observed in practice for any given hop in a network exhibit very large IRs and always show stochastic dominance. Moreover, as we increase R, the IR also increases, allowing for more room to select the threshold. It can also be seen that the IR for variance reduction begins from 2 times the mean for any distribution, but much earlier for some distributions. Furthermore, analytical distributions are commonly used to model queuing time (e.g., exponential). It can be analytically proven that the IR of an exponential distribution is its entire range. We use datasets collected from the measurement setup described in Sec. III-C to demonstrate the compatibility of congestion marking for general queuing distributions. The CCDFs from four datasets with the aggregated cross-link traffic of 1G, 4G, 4.4G, and 9.2G are shown in Fig. 7a. The dotted lines represent the RHS of C1 for R = 1 , i.e, the most 0.0 0.25 0.5 0.75 
+
+·10 5
+
+0
+
+0.25 
+
+0.5 
+
+0.75 
+
+1.0  
+
+> x(ns)
+> P(δqm,l  > x ) 1
+> 4
+> 4.4
+> 9.2
+> (a)
+
+2 4 6 8
+
+0
+
+20 
+
+40  
+
+> δ*K/EQReq ,l
+> 
+> UB /  δ*K
+> Distant
+> Close
+> (b)
+
+Fig. 7: (a) The CCDF of the queuing distribution for four different cross-traffic rates on a 10G Link. The queuing distributions exhibit a long tail, extending from where the dotted line crosses the solid one. (b) The headroom from the upper bound to the selected threshold for two pairs of distributions from Fig.(a). The UB is at least 3 times the selected threshold and usually much larger. 
+
+restrictive case; therefore, the IR can be assumed to extend to the right from the intersection of the solid and dotted lines. The IR size as a ratio of the total data range is 95, 81, 78, and 65%, respectively. With variance reduction as the main goal due to 
+
+A1 , it is prudent to target reducing the variance of the higher queuing delays caused by higher link utilization. Visually, one can see stochastic dominance C2 even when comparing the 4G and 4.4G datasets. We confirmed this condition across all the datasets captured with the measurement setup. Fig. 7b plots the ratio of the RHS of C3 and δ*K, comparing 4G and 4.4G datasets as ‘Close’ distributions and 1G and 9.2G datasets as ‘Distant’ for 8 different values of δ*K as a multiple of the mean of the distribution with the higher mean. For the UB to be violated, this ratio must be below 1, which is never the case. The minimum value of this ratio is 2.7 and increases further as the threshold value increases. To further demonstrate the validity of our assumptions, we generate per-hop queuing delay from the Sim2HW [43] dataset. The dataset was originally produced to predict end-to-end delay distributions using Graph Neural Networks (GNN). We rerun the OMNET++ simulations for this dataset while recording per-hop delay distributions, as it provides a wide variety of network topologies and flow distributions. It has 100 networks, with an average network size of 11.78 nodes. The average node degree is 2.38, and the maximum node degree is 9. On average, each network has roughly 8 switches. The distribution of flows in the network also exhibits the same variety, resulting in an average link utilization of 54%, with a maximum utilization of 99.5% on certain links. The per-hop delay distributions are collected by running a 60-second simulation. We check stochastic dominance C1 by ranking all distributions in a network with at least 100,000 packets by their mean. 503 such distributions emerged, with an average of 408,000 packets per distribution recorded. Thus, we checked stochastic dominance for 990 pairwise relationships, and only one did not show it. Moreover, for a single switch, all pairwise relationships analyzed showed stochastic dominance. Finally, we use the data to analyze the tail size as a fraction of the total range of queuing delays. For all 503 distributions, the fraction of the IR ranged from 66% 9999%, with an average of 95%, indicating that the IR accounts for most of the distribution and 
+
+2 4 6
+
+70 80 90 100 
+
+> R
+> Tail Size (%)
+> 1
+> 4
+> 4.4
+> 9.2
+> (a)
+
+2 4 6 8
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> R
+> Variance Reduction (%)
+> (b)
+
+Fig. 8: Improvement with R: (a) The proportion of the IR as a percentage of the total range of data increases with R, allowing more space for the user to select the threshold. (b) The reduction in variance with increasing R. We can achieve up to 60% reduction with just one threshold and more than 90% with R = 8 , even without optimally selecting the thresholds. 
+
+Fig. 9: Sum of individual per-hop queuing distributions between source and sink leads to the overall end-to-end delay distribution. 
+
+that a threshold that improves performance is readily available to the user. Fig. 8a plots the percentage of the range of data where C1 
+
+is satisfied for different values of R on the hardware-collected dataset. Here, we also see that increasing R increases the IR, allowing the user greater flexibility in choosing the threshold without degrading performance. 
+
+B. Improvement in MSE 
+
+First, we state general results on improving the MSE via congestion marking for any distribution. As a synchronization packet traverses many switches in a network, it may encounter congestion at multiple points. Fig. 9 shows how the delay distribution accumulates over hops. As seen in Eq. 13, for the end-to-end MSE to improve, the sum of variances and the biases should decrease across the overall end-to-end delay distributions. 
+
+Corollary 1 (MSE Improvement Results) . Assume that the conditions in Proposition 1 are satisfied and that the per-hop delay distributions are independent ( A2 ). Then, the following results hold: 
+
+1) Improvement with R (R1): For a single hop, increasing the number of thresholds R reduces the variance. 
+
+2) One of Many (R2): In most cases, congestion marking at even a single hop improves the end-to-end MSE. 
+
+3) Improvement with Hops (R3): Assuming that all R bits are always available, increasing the number of hops performing congestion marking improves the overall end-to-end MSE. Proof. The proofs are presented in Appendix B. While result R1 shows the utility of CMC and multiple bits, the other two results ( R2 and R3 ) demonstrate that having more switches capable of congestion marking improves clock synchronization performance more. However, the isolatory and additive nature of the MSE improvement over many hops, along with the backward-compatible design, show that one can also swap or upgrade to CMC-compatible switches over time. As more CMCs are added, the overall clock synchronization performance will improve further. Fig. 8b shows the reduction in variance across the four datasets and the real-world marking on a Tofino with most of the ASIC-friendly P4 program from Sec. IV-D. Hence, it includes the accuracy error in mapping the delay to the threshold specified in Sec. III-C. Moreover, the threshold is simply set to R divided by the range of delays in the particular dataset. We see that even with R = 1 , we have a significant reduction in variance (from 18 to 62%), and increasing R to 8 can achieve reductions of 80%-95%. Thus, the Fig. 8b quantifies the improvement of R1 in a real-world testbed. We see that even a simple threshold-selection strategy improves the variance of delay over one hop. However, for an optimal improvement of MSE, one needs information about all the queuing delays and the available number of bits and thresholds R. For example, looking at Fig. 9, if the threshold is set too small, then all the available bits could be exhausted in the first hop. Thus, to address per-hop dependencies and model the marking counter’s state, we use a Markov chain. 
+
+C. Markovian Model 
+
+We can model the counter value Tm,l ∈ { 0, . . . , N } and the Probability Density Function (PDF) of delay estimation error at each hop as Dm,l ∈ [0 , ∞) after applying the congestion marking method as a time-inhomogenous Markov Chain [44] 
+
+(Dm,l , T m,l )l, where the probability of Dm,l +1 , T m,l +1 de-pends on Tm,l and l. The state transition probability density at the next hop is given by two equations, A random queuing delay x ∼ Q m,l occurs. Let fm,l +1 (x −
+
+rδ *K, n + r|n) be the PDF of observing the compensated delay estimation error of x − rδ *K, a counter value of n + r in hop 
+
+l + 1 , conditional on a counter of n, i.e., 
+
+fm,l +1 (x − rδ *K, n + r|n) = 
+
+P  (Dm,l +1 , T m,l +1 ) = (d x − rδ *K, n + r)|(Tm,l ) = n .
+
+(14) We then have 
+
+fm,l +1 (x − rδ *K, n + r|n) = 
+
+fl+1 (x)χ x ∈ δ*K · [r, r + 1] , n + r < N, r ≤ R
+
++ fl+1 (x)χ x > δ *K · (N − n), n + r = N, r ≤ R ),
+
+(15) where fl+1 (x) is the delay-distribution at hop l + 1 (un-modified) and χ (a) is an indicator function that returns 1 if the condition a is satisfied and 0 otherwise. We have three scenarios encompassed by Eq: 15:  
+
+> •
+
+Counter not saturated (n + r < N ): then the counter is incremented, and the delay is compensated Tm,l +1 =
+
+n + r, Dm,l +1 = x − rδ *K. 
+
+> •
+
+Counter saturates (n+r = N ): then the counter becomes 
+
+N and delay is compensated only to the the extent to which the counter could be incremented Tm,l +1 =
+
+N, Dm,l +1 = x − (N − n)δ*K. 
+
+> •
+
+Counter already saturated (n = N ): we have r = 0 with probability 1. We cannot make any further corrections, and the PDF of the delay estimation error will simply be the PDF of the queuing delay. Given a family of weights {Q m,l }l∈L m , i.e., the PDF of the queuing at every hop, we can numerically compute the resultant PDF of each hop. Summing the PDFs from each hop using the stochastic version of Equation 10, then gives us the distribuion of the total end-to-end delay Dm = P 
+
+> l∈L m
+
+Dm,l .Algorithm 1 performs a forward probability propagation on the finite-state, time-inhomogeneous Markov Chain and returns the PDF of the delay estimation error {D i}Li=1 after applying the correction. 
+
+Algorithm 1 Calculation of the distribution of Dm 
+
+> 1:
+
+Input : Number of thresholds R, maximum counter value 
+
+N , threshold δ*K, delay distributions along the path 
+
+{Q m,l }l∈L m . 
+
+> 2:
+
+Output : Probability distribution of Dm after applying correction.  
+
+> 3:
+
+Initialize tree T with root labelled 0, generation 0 
+
+> 4:
+
+function IND (x, r, n, M ) 
+
+> 5:
+
+if r + n < N then  
+
+> 6:
+
+return χ x ∈ δ*K[r, r + 1]  
+
+> 7:
+
+else  
+
+> 8:
+
+return χ x > M δ *K 
+
+> 9:
+
+end if  
+
+> 10:
+
+end function  
+
+> 11:
+
+for l in Lm do  
+
+> 12:
+
+for all leaves p in generation l − 1 with label n do  
+
+> 13:
+
+M ← min {R, N − n} 
+
+> 14:
+
+for r = 0 to M do  
+
+> 15:
+
+Create leaf l with label r 
+
+> 16:
+
+wp,l ← P IND (xl, r, n, M ) = 1  
+
+> 17:
+
+Assign weight wp,l to the edge p, l  
+
+> 18:
+
+end for  
+
+> 19:
+
+end for  
+
+> 20:
+
+end for  
+
+> 21:
+
+B ← leaves in T 
+
+> 22:
+
+return P
+
+> l∈B
+
+Q|L m| 
+
+> i=1
+
+wli−1,l i , where l0 = l and li+1 is the parent of li
+
+Algorithm 1 constructs a weighted tree T to compute the distribution of the delay estimation error Dm along path 
+
+Lm. The tree depth corresponds to | Lm |, where each generation corresponds to one hop. Some important steps of the Algorithm are:  
+
+> •
+
+Step 13 :At hop l, for every leaf p from generation 
+
+l − 1 with counter value n, the number of admissible increments is M = min {R, N − n}. 
+
+> •
+
+Step 15 : For each admissible increment r ∈ { 0, ..., M },a new leaf is created. • Step 16 : Each leaf is then assigned a weight wp,l , which is the probability of that distribution being in that range. The indicator function IND makes sure the correct r is applied.  
+
+> •
+
+Step 22 : Each root-to-leaf path in T corresponds to one feasible realization of counter increments along the path. Thus, the final output distribution is obtained by summing over each generation, the product of weights within each generation. In short, the tree is the unfolded representation of the Markov chain over all the hops, and the final sum marginalizes over all feasible counter trajectories. 
+
+D. Remarks on Choosing the Optimal parameters 
+
+Based on the design choices mentioned in Sec. IV, one obtains 
+
+N and some candidate values on R and δ*K, the two tunable parameters in our proposed scheme. If the per-hop queuing delays in the entire network (we denote it by set Z) are known, one can compute the MSE for all client-server pairs using Algorithm 1 and then search over the feasible space of R and δ*K to obtain the optimal parameters. The selection may be done to satisfy different system objectives, such as minimizing the average MSE or reducing the maximum MSE in the network. Alternatively, the selection may also be used to protect the MSE from traffic surges or to maintain a Time Uncertainty Bound (TUB) [45], [21], [3]. Secondly, knowledge of Z may not always be readily available to operators across all networks. Some switches expose the queuing metrics via counters, which can be used to approximate these values. In other scenarios, analytical models (e.g., exponential or gamma distributions) or simulations can be used to generate Z. GNNs are shown to predict delay distributions in a network with good accuracy [43]. Once Z is known, there is no single universal method to map individual links to the paths of packets between all synchronizing participants. While tradi-tional PTP and NTP run over a spanning-tree structure, some implementations support multiple routes and multipath [46], [47], or replace the client-server architecture with a consensus-based, decentralized one [8], [17]. Considering the variety of tactics emerging from: (1) con-straints from the design choices, (2) application level objective of the system, (3) methods to obtain the input parameters, and (4) mappings between Z and {Q m,l }l∈L m , we refrain from suggesting a singlular approach in this paper. The analysis in this work shows that the method is robust to parameter choices: selecting them within a broad range does not degrade performance. The framework we present in Algorithm 1 is intentionally flexible, allowing different approaches to pa-rameter determination and opening avenues for future work. Indeed, even 25 years after the introduction of ECN [14], there is still active research on the selection of the threshold value [48]. Determining the optimal parameters could be done using either (or both) of the two approaches observed in the progress of ECN threshold determination: the first is a planned deployment. Here, the entire network is planned, and the delays are either simulated or modeled, after which the optimal thresholds are identified based on the given objective [49], [50]. Methods can also provide a rule of thumb for certain types of networks, saving operators from the modeling and simulation tasks [37], [51], [52]. The rule-of-thumb approach also aligns well with the IEEE 1588 (PTP) standard for providing profiles . The profiles, e.g., telecom, power utility, industrial automation, video broadcast, etc., tailor the PTP parameters to different requirements and network conditions. The organizations proposing these profiles have the resources and technical know-how to perform extensive modeling and simulation across different scenarios within the profiles and to suggest rule-of-thumb settings. In Sec. VI-B and VI-C, we use a simulation approach to obtain the empirical delay distribution for a small network with just one client-server pair. We show in Sec. VI-A the accuracy of the M/M/ 1
+
+model compared to OMNET++ simulations and the empirical approach. The results here show that although the expected improvement is not optimal, the parameters can still yield good results, especially for moderate link utilization. Recent works for ECN threshold adjustment have shown the effectiveness of online adjustment based on some posterior estimation method of the link characteristics [48], sometimes employing machine learning [53], [54], [55], [56]. A point of departure for our use case from these works is that TCP packets are sent at a much higher rate than synchronization packets, and therefore, the parameters can be adjusted rel-atively quickly. We note the promise of this approach and explore it in future work. VI. E VALUATION 
+
+A. Accuracy of the Model-Based Method 
+
+In this Section, we evaluate the effects of obtaining the threshold δ*K for a 1-hop network represented in Figure 4a using the model-based approach. The simulation setup is built in OMNET++ using the INET library. Another advantage of using OMNET++ simulations is that they allow us to collect statistics, such as per-packet queuing delay, which is much more difficult in a real setup. We model the two egress queues at the switch connected to the source and sink as an M/M/ 1
+
+queue. We consider four different flow patterns that span different utilization ranges of the link, as described in Table III. We call them Short-Fast (SF), Long-Medium (LM), Short-Medium (SM) and Short-Slow (SS) respectively. Each flow is defined by the exponentially arriving packets with a mean interarrival time of λ μs. The packet sizes are exponentially distributed with mean μ Bytes. These parameters are selected to approximate the behavior of the switch egress queue using an M/M/ 1 queueing model. All links have a line rate of 1 Gbps. Transforming these values to the M/M/ 1 model, we assume that the service time of a packet with size B Bytes is (B × 8)ns , which then gives us the mean utilization ρ and waiting time λ∗. For an M/M/ 1 queue, the distribution of the queuing delay is also exponentially distributed, and hence we have Q and ρ for the single hop. Putting these values in Algorithm 1, we search in the interval (λ∗, 3λ∗) and find the optimal value of δ*K. To measure the value of ϵ and calculate Flow μ λ ρ λ∗ ρo λo                        
+
+> SF 850 80.85 38.5 0.86 26.7 LM 1000 12 0.66 16 0.70 20.4 SM 750 12 0.50 60.54 12.5 SS 600 14 0.34 2.50 0.37 8.6
+
+TABLE III: Four types of flows are considered in the evaluation of the model-based approach, illustrating different levels of utilization of the link. We choose the M/M/ 1 mode for comparison with the simulations. The last four columns compare the expected vs. observed utilization and mean queuing time. 
+
+the RMS, we assign an Ideal Oscillator to both the source and the sink, i.e., the clocks do not drift from each other at all. Then we let the PTP algorithm run except for the step where the clocks are actually adjusted. Then the calculated offset from the estimation procedure is simply the offset estimation error ϵ, since the real error between the two ideal clocks must be zero. We collect roughly 800 samples for every test and repeat the test with a different seed 8 times. 
+
+1) Observed Queuing Behaviour 
+
+First, we observe the mean queuing delay λo and utilization 
+
+ρo reported by the switch at its egress port, and compare them with the M/M/ 1 model in Table III. We see slightly higher utilization across all four flow types. The mean waiting time is also much higher except for the SF flow. This is because of the padding added to small packets to make all packets at least 46 Bytes, the Ethernet and PHY headers of 54 Bytes added to all data packets, and the interpacket gap of 12 Bytes enforced at endpoints and switches. The lower waiting time for the SF flow than expected is due to the transient behavior of the queue when ρ momentarily exceeds 1; even when the queue size is set to a very large value, some packets are dropped. Fig.10 shows the Kolmogorov–Smirnov (KS) statistic from the goodness-of-fit test on the collected samples of queuing delay across all the tests. This value is compared against an analytical exponential distribution with the sample mean 
+
+λo and the theoretical mean λ∗ from the M/M/ 1 model. While the former shows the extent to which the distribution is exponential, the latter shows the extent to which it re-sembles the expected model-based distribution. Interestingly, when compared to the sample mean, the distribution with lower utilization performs better, whereas when compared to the theoretical mean, the distribution with higher utilization performs better. Not surprisingly, the sample-mean results are far better; however, no test provided a result where the KS-statistic was below 0.05, the usually considered threshold for acceptance. 
+
+2) MSE Improvement 
+
+We now see the effect of selecting the threshold using the model-based approach in comparison to the empirical-based approach on actual MSE performance. The application runs with a modified gPTP client and server. We use the same free-running logic as for the real hardware measurement in Sec. III-C, i.e, the clients just stop short of adjusting their clocks and report the calculated offset. Then, the oscillators for the gPTP client and server devices are set to ideal so they do not drift. The timestamping is accurate, and hence the offset   
+
+> SF
+> LM
+> SM
+> SS
+> 0.2
+> 0.4
+> KS statistic
+> λoλ∗Threshold = 0.05
+
+Fig. 10: KS-statistic for the empirical queing delay distribution using the sample mean and the theoretical mean from the M/M/ 1 model. This value should be below the threshold of 0.05, but none of the tests meet that criterion.   
+
+> SF
+> LM
+> SM
+> SS
+> 0.3
+> 0.4
+> I
+> Empirical Model Model-Expected
+
+Fig. 11: The model-based approach for threshold selection shows worse results for all the flows compared to the empirical approach. However, this difference is smaller for medium utilization (LM and SM). Even in the worst-case, the model-based approach demonstrates a 20% improvement. 
+
+reported by the error is the offset estimation error occurring due to congestion. We introduce a new metric, the Expected Improvement in the Root MSE, which is then given by I = 1 −
+
+q Ecomp  
+
+> E
+
+. Using the RMSE scales the error ratios linearly instead of quadratically in MSE. Fig. 11 shows the observed results, where the red markers show the maximum observed improvement when the threshold is set from the empirically collected queuing delay distri-butions. The green triangular markers show the improve-ment when the threshold δ*K is set optimally according to the M/M/ 1 model, and the blue lines show the theoretical improvement for that threshold obtained from Algorithm 1. Interestingly, the best observed improvement were all obtained for 1.1λo < δ *K < 1.2λo from Table III. However, in the two extreme cases of ρ, we observe a lower value of improvement than the expected one when the threshold is set according to the M/M/ 1 model. The reasons are different - in the SF case, packet drops cause the optimal threshold to be lower than the expected one. The optimal threshold of roughly 33μ s is far lower than the theoretical optimum of 53.7μ s. Many packets are simply dropped before they experience such high delays. For the SS case, the improvement from the model-based method is lower because the empirical distribution is much farther from the theoretical distribution, as seen in Fig. 10 (red markers). Nonetheless, the improvement exceeds 20% in all cases, showing one can still achieve significant improvement with the model-based approach. We will explore other model-based methods in future work. B. Improved Filter Performance 
+
+So far, we have considered the distributions Qm arising from unfiltered delay measurements. Clock synchronization meth-ods use statistical filtering methods to reduce the variance of these distributions and, therefore, the MSE. The most common are RTT filtering methods using median delay [23], [5], min-RTT [4], [22], [17], or moving average [5]. We define a filter operator SM (A, B ) which takes M samples of the forward and reverse delay distributions A and B and outputs a new delay value distribuion S based on the corresponding RTT samples ai +bi  
+
+> 2
+
+where ai and bi are the i-th forward and reverse delay estimation measurements from A and B. Note that the client performs, S : R2 → R, a reduction in dimensionality that cannot differentiate between an excess in the forward or reverse path. Thus, we propose using Dm rather than Qm as the filter input, since our method applies the correction to the forward and reverse paths individually. While the use of a filter reduces variance by eliminating packets that experienced queuing delay, it also entails a fundamental trade-off: reduced reactivity. As we increase the filter length M , we increase the likelihood of selecting samples that did not experience queuing delay. However, we also increase the temporal inertia - the system reacts more slowly or requires more frequent messaging when there is a shift in the distribution itself. Thus, the performance of an applied filter has two opposing aspects: the filter length and the reduction in variance. For evaluation of congestion marking with filters, we use the same ‘Close’ and ‘Distant’ datasets from Sec. V-A. For a given R, we determine the optimal threshold for each dataset using Algorithm 1. Then we find the nearest possible threshold value given the Tofino constraint of 80-byte cells, apply R
+
+and K to the P4 program, and re-run the modified ptp4l tests. We then proceed to collect the forward T 2 − T 1 and reverse delays T 4 − T 3 using the measurement setup illustrated in Fig. 5a as well as the corresponding value of the marking counter received in the packet header. We cyclically turn the interfering background traffic on and off to mimic a shift in the distribution with 60-second on and 20-second off cycles. We investigate the effects of applying two filters, median delay and minRTT, which span popular and upcoming clock synchronization deployments (NTP, Chrony, PTP, and Firefly). The results are presented in Fig. 12 using the same color scheme as Fig. 7b. Fig. 12a shows the variance reduction in the output for a filter length M = 8 with an increasing R.The curves show a similar reduction in variance as Fig. 8b. In the best case, for R = 7 , we observed a 99% reduction in variance compared to the same filter without packet-marking compensation. The minRTT filter always performs better than the median delay. Fig. 12b shows the variance of the filter output with increas-ing M for baseline (without correction) and R = 1 and 2. Ob-viously, as the filter length M increases, the variance reduces for all the curves. We observe a much more drastic reduction in congestion marking with each increase in R. Most notably, the corrected variance for M = 1 (no filtering) is lower than that of the uncorrected variance with M = 12 . Thus, one 
+
+2 4 6
+
+80 
+
+90 
+
+100 
+
+> R
+> Variance Reduction (%)
+> Median
+> MinRTT
+> (a)
+
+5 10 
+
+10 9
+
+10 10     
+
+> M
+> Variance (ns)
+> Baseline R= 1 R= 2
+> (b)
+
+Fig. 12: Improved Filter Performance: (a) The reduction of variance by congestion marking for the same filter size as we increase R. (b) The variance of the filter output as we increase the filter size for no correction and with R = 1 and 2. The color scheme is the same as for Fig. 7b, orange for Close and blue for Distant. 
+
+can achieve better performance while removing the need for filtering altogether, allowing the clock synchronization to be more reactive to network changes. 
+
+C. Multihop Topology 
+
+To simulate a more realistic scenario, we extend the OM-NET++ simulation from Sec. VI-A to three hops (switches) and independent traffic sources and sinks for each hop. and We consider the same 4 four traffic patterns from Table III. In addition, MI refers to a mixed traffic scenario in which each switch has SS, SM, and LM flows, respectively. Thus, the Request packet experiences increasing queuing delay, while the Response packet experiences decreasing queuing delay along its path. 
+
+1) Optimal Threshold and MSE 
+
+We collect the per-packet queuing delay for all 6 links (3 forward and 3 reverse) for a 10s simulation repeated 8 times. Each per-link dataset has at least 570,000 samples. Fig. 13 shows the obtained values for the optimal δ*K and the corre-sponding MSE. Here, we apply Algorithm 1 with N = 16 on the per-hop distributions for the forward and reverse paths. The MSE is then calculated using both the resultant distributions. We sweep over all possible threshold values to find the setting with the least MSE for each value of R. In general, as R increases, the MSE improves, and we need a smaller corresponding threshold. This is expected, as increasing R and decreasing the threshold is akin to increasing the granularity of the congestion correction mechanism. However, the marginal improvement in the MSE decreases as R increases. Especially for R > 8, the improvement is minimal, showing that for three hop network ( L = 3 ), there is no gain for R > 8. However, this does not mean that there is a fundamental limit to the MSE improvement from our algorithm; a further improvement can be achieved by increasing N , as can be seen from Fig. 13c. The SS and SF curves for the two values of N coincide until 
+
+R = 8 . This is expected as the 16 bits of N will only start saturating at R > 5. The MSE for N = 32 continues to improve and only saturates at a much higher R. Thus, we see that increasing granularity and allowing congestion to be expressed in more bits can significantly reduce the MSE across all traffic types. As seen in Sec. IV-D, the marginal increase LM MI SF SM SS 
+
+5 10 15 
+
+10 
+
+20 
+
+> R
+> Optimal  δ*K(μs )
+
+(a) 
+
+0 5 10 15 
+
+10 1
+
+10 2
+
+> R
+> Optimal MSE (μs )
+
+(b) 
+
+0 10 20 
+
+10 0
+
+10 1
+
+10 2  
+
+> R
+> Optimal MSE (μs ) N= 16
+> N= 32
+
+(c) 
+
+0 5 10 15 
+
+0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+> R
+> I
+
+(d) 
+
+Fig. 13: Algorithm 1 over multiple hops: The (a) optimal threshold 
+
+δ*K and (b) the best MSE obtained at that δ*K decrease with an increase in R slowly saturating for R > 8. (c) A further decrease in MSE can be achieved by increasing N . (d) The improvement from baseline is similar for all the flows for a given R.
+
+in implementation complexity for N and R is relatively low. Thus, the only fundamental limit to our method is the number of bits in a typical PTP or NTP header, or the classification error of the CMC described in Sec. III-C. An improvement in congestion marking must also be noted relative to its baseline. Fig. 13d shows the improvement in the root MSE I with R
+
+for each of the flow patterns. While we can achieve over 80% improvement, it is also notable that the shapes of the curves are similar across all flow patterns, meaning that the optimal relative improvement with R is consistent. 
+
+2) MSE Improvement 
+
+Now we turn to the OMNET++ simulation with the modified gPTP (Sec. II-D,VI-A2) for different values of N, R and δ*K.We run 60s simulations with PTP messages running 4 times a second. Each simulation for each setting is repeated 8 times with a different random seed. In general, we observed that the simulation results closely matched (within 5%) the expected values of I from Algorithm 1. Hence, we proceed to evaluate performance under different pragmatic parameter settings, and the results are presented in Fig. 14. First, we show that the improvement with just a median delay filter ( M = 5 ) is the poorest among all approaches utilizing CMC, confirming our results from Sec.VI-B. For N = 1 , R = 1 - i.e, for classical ECN, we evaluate at δ*K ∈ { 12 , 24 }, the two best settings for the SS and SF flows from Fig. 13a for R = 1 respectively. Here, we see that when δ*K = 12 , the flow with higher queueing delay (SF) suffers, and when δ*K = 24 , the flow with lower queueing delay (SS) shows little improvement. However, this might be useful, as we see in Fig. 13d, since SS has a lower baseline RMS to begin with. For example, looking at the results of δ*K = 24 , a 40% improvement in the RMSE of the SF flow from the baseline gives an MSE of 63, while a 20%       
+
+> SF
+> LM
+> SM
+> SS
+> 0
+> 0.2
+> 0.4
+> 0.6
+> I
+> M5δ*K12 δ*K24 Ro1Ro2R55
+
+Fig. 14: Observed Improvement for the multihop topology for different pragmatic parameter settings. 
+
+improvement for the SS flow still gives a lower MSE of 48. If one doesn’t know the network’s flows but wishes to minimize the maximum possible MSE, protecting against heavier traffic by setting a higher threshold could be a pragmatic approach. Finally, the improvement with increasing R and N = 32 can be seen for the remaining 3 curves, where Ro1, 2 are when the threshold is set according to the optimum o from Fig. 13a. Here, the results closely match our expected improvement from Fig. 13d. An interesting case arises with R = 5 and 
+
+δ*K set statically to 5. As we increase R, the improvement is less sensitive to changes in the threshold value. One can also compensate for both the lower queuing delays of the SS flow and the higher queuing delays of the SF flows with greater granularity. Here, we obtain a maximum improvement of 70%, but SS flow does not seem to suffer as drastically as in the case of δ*K = 24 . Note that a 70% improvement in the RMSE is a 10 times reduction in the MSE. VII. C ONCLUSION 
+
+In this paper, we propose a novel, backward-compatible con-gestion marking method to improve clock synchronization performance, requiring a simpler implementation in switches than the current state of the art. The method corrects for PDV caused by congestion, effectively reducing offset estimation errors for legacy clock synchronization methods PTP and NTP as well as more modern networked clock synchronization algorithms like Firefly. We show that the method is relatively easy to implement in switches and endpoints and demonstrate several practical methods for selecting threshold-related pa-rameters. Analytical and experimental results demonstrate the achieved improvement and provide insights into the optimal settings for different traffic conditions to achieve the best results with our method. REFERENCES [1] “Packet over Transport aspects – Synchronization, quality and availabil-ity targets,” ITU-T G.8271, International Telecommunications Union ,2020. [2] R. N. Gore, E. Lisova, J. Akerberg, and M. Bjorkman, “Clock Synchronization in Future Industrial Networks: Applications, Challenges, and Directions,” in 12th AEIT International Annual Conference, AEIT 2020 . Institute of Electrical and Electronics Engineers Inc., sep 2020. [Online]. Available: https://ieeexplore.ieee.org/document/9241154 [3] J. C. Corbett, J. Dean, M. Epstein, A. Fikes, C. Frost, J. J. Furman, S. Ghemawat, A. Gubarev, C. Heiser, P. Hochschild, W. Hsieh, S. Kan-thak, E. Kogan, H. Li, A. Lloyd, S. Melnik, D. Mwaura, D. Nagle, S. Quinlan, R. Rao, L. Rolig, Y. Saito, M. Szymaniak, C. Taylor, R. Wang, and D. Woodford, “Spanner: Google’s globally distributed database,” ACM Trans. Comput. Syst. , 2013. [4] D. L. Mills, “Rfc 1305: Network time protocol (version 3) specification,” 
+
+Implementation and Analysis , 1992. [5] J. C. Eidson, M. Fischer, and J. White, “Ieee-1588™ standard for a precision clock synchronization protocol for networked measurement and control systems,” in Proceedings of the 34th Annual Precise Time and Time Interval Systems and Applications Meeting , 2002, pp. 243– 254. [6] P. Banerjee and D. Matsakis, Network Time Protocol (NTP) and Precise Time Protocol (PTP) . Cham: Springer Nature Switzerland, 2023, pp. 141–152. [Online]. Available: https://doi.org/10.1007/978-3-031-30780-5 7 [7] C. Novaes, I. Freire, A. Klautau, I. Almeida, and E. Medeiros, “Analysis of kalman filtering for clock synchronization in ptp-unaware networks,” in 2021 IEEE Latin-American Conference on Communications (LATIN-COM) , 2021, pp. 1–6. [8] Y. Geng, S. Liu, Z. Yin, A. Naik, B. Prabhakar, M. Rosenblum, and A. Vahdat, “Exploiting a natural network effect for scalable, fine-grained clock synchronization,” in 15th USENIX Symposium on Networked Systems Design and Implementation (NSDI 18) . Renton, WA: USENIX Association, Apr. 2018, pp. 81–94. [Online]. Available: https://www.usenix.org/conference/nsdi18/presentation/geng [9] T. Kernen, M. Machnikowski, G. Shabat, and H. Shteingart, “Opti-mizing the ptp control loop,” in 2024 IEEE International Symposium on Precision Clock Synchronization for Measurement, Control, and Communication (ISPCS) , 2024, pp. 1–7. [10] N. M. Freris, S. R. Graham, and P. R. Kumar, “Fundamental limits on synchronizing clocks over networks,” IEEE Transactions on Automatic Control , vol. 56, no. 6, pp. 1352–1364, 2011. [11] N. Zilberman, M. Grosvenor, D. A. Popescu, N. Manihatty-Bojan, G. Antichi, M. W´ ojcik, and A. W. Moore, “Where has my time gone?” in 
+
+Passive and Active Measurement , M. A. Kaafar, S. Uhlig, and J. Amann, Eds. Cham: Springer International Publishing, 2017, pp. 201–214. [12] N. Moreira, A. Astarloa, J. Lazaro, A. Garcia, and E. Ormaetxea, “Ieee 1588 transparent clock architecture for fpga-based network devices,” in 
+
+2013 IEEE International Symposium on Industrial Electronics , 2013, pp. 1–6. [13] R. Ratzel and R. Greenstreet, “Toward higher precision: An introduction to ptp and its significance to ntp practitioners,” 
+
+Queue , vol. 10, no. 8, p. 40–53, Aug. 2012. [Online]. Available: https://doi.org/10.1145/2346916.2354406 [14] K. Ramakrishnan, S. Floyd, and D. Black, “The addition of explicit congestion notification (ecn) to ip,” Tech. Rep., 2001. [15] S. Bauer, R. Beverly, and A. Berger, “Measuring the state of ecn readiness in servers, clients,and routers,” in Proceedings of the 2011 ACM SIGCOMM Conference on Internet Measurement Conference , ser. IMC ’11. New York, NY, USA: Association for Computing Machinery, 2011, p. 171–180. [Online]. Available: https://doi.org/10.1145/2068816.2068833 [16] H. Wu, J. Ju, G. Lu, C. Guo, Y. Xiong, and Y. Zhang, “Tuning ecn for data center networks,” in Proceedings of the 8th International Conference on Emerging Networking Experiments and Technologies , ser. CoNEXT ’12. New York, NY, USA: Association for Computing Machinery, 2012, p. 25–36. [Online]. Available: https://doi.org/10.1145/2413176.2413181 [17] P. Namyar, Y. Li, W. Wang, N. Dukkipati, K. Yap, J. Gong, C. Chen, P. Gao, D. Ray, G. Kumar, Y. Ma, R. Govindan, and A. Vahdat, “Firefly: Scalable, ultra-accurate clock synchronization for datacenters,” in Proceedings of the ACM SIGCOMM 2025 Conference , ser. SIGCOMM ’25. New York, NY, USA: Association for Computing Machinery, 2025, p. 434–452. [Online]. Available: https://doi.org/10.1145/3718958.3750502 [18] P. Bosshart, D. Daly, G. Gibb, M. Izzard, N. McKeown, J. Rexford, C. Schlesinger, D. Talayco, A. Vahdat, G. Varghese, and D. Walker, “P4: programming protocol-independent packet processors,” SIGCOMM Comput. Commun. Rev. , vol. 44, no. 3, p. 87–95, Jul. 2014. [Online]. Available: https://doi.org/10.1145/2656877.2656890 [19] F. Cristian, “Probabilistic clock synchronization,” Distributed computing ,vol. 3, no. 3, pp. 146–158, 1989. [20] P. Emmerich, S. Gallenm¨ uller, D. Raumer, F. Wohlfart, and G. Carle, “Moongen: A scriptable high-speed packet generator,” in Proceedings of the 2015 Internet Measurement Conference , 2015. [21] Y. Deshpande, P. Diederich, and W. Kellerer, “Towards a network aware model of the time uncertainty bound in precision time protocol,” in IEEE INFOCOM 2023 - IEEE Conference on Computer Communications Workshops (INFOCOM WKSHPS) , 2023, pp. 1–2. [22] R. P. Curnow and M. Lichvar, “Chrony: Versatile implementation of the network time protocol,” 2003, open-source NTP client and server implementation. [Online]. Available: https://chrony.tuxfamily.org/ [23] R. Cochran, “Linux ptp,” https://github.com/richardcochran/linuxptp, 2025, version X.Y. [24] M. L´ evesque and D. Tipper, “Improving the ptp synchronization accu-racy under asymmetric delay conditions,” in 2015 IEEE International Symposium on Precision Clock Synchronization for Measurement, Con-trol, and Communication (ISPCS) , 2015, pp. 88–93. [25] T. Murakami and Y. Horiuchi, “Improvement of synchronization accu-racy in ieee 1588 using a queuing estimation method,” in 2009 Interna-tional Symposium on Precision Clock Synchronization for Measurement, Control and Communication , 2009, pp. 1–5. [26] S. Lee, “An enhanced ieee 1588 time synchronization algorithm for asymmetric communication link using block burst transmission,” IEEE Communications Letters , vol. 12, no. 9, pp. 687–689, 2008, funding Information: Manuscript received May 30, 2008. The associate editor coordinating the review of this letter and approving it for publication was Y.-C. Wu. This research was supported by the Kyung Hee University Research Fund in 2008. (KHU-20080692). [27] A. Bletsas, “Evaluation of kalman filtering for network time keeping,” 
+
+IEEE Transactions on Ultrasonics, Ferroelectrics, and Frequency Con-trol , vol. 52, no. 9, pp. 1452–1460, 2005. [28] Z. Chaloupka, N. Alsindi, and J. Aweya, “Clock skew estimation using kalman filter and ieee 1588v2 ptp for telecom networks,” IEEE Communications Letters , vol. 19, no. 7, pp. 1181–1184, 2015. [29] H. Puttnies, E. Schweissguth, D. Timmermann, and J. Schacht, “Clock synchronization using linear programming, multicasts, and tempera-ture compensation,” in 2019 IEEE Global Communications Conference (GLOBECOM) , 2019, pp. 1–6. [30] A. Najafi and M. Wei, “Graham: Synchronizing clocks by leveraging local clock properties,” in 19th USENIX Symposium on Networked Systems Design and Implementation (NSDI 22) . Renton, WA: USENIX Association, Apr. 2022, pp. 453–466. [Online]. Available: https://www.usenix.org/conference/nsdi22/presentation/najafi [31] R. Mittal, V. T. Lam, N. Dukkipati, E. Blem, H. Wassel, M. Ghobadi, A. Vahdat, Y. Wang, D. Wetherall, and D. Zats, “Timely: Rtt-based congestion control for the datacenter,” in Proceedings of the 2015 ACM Conference on Special Interest Group on Data Communication , ser. SIGCOMM ’15. New York, NY, USA: Association for Computing Machinery, 2015, p. 537–550. [Online]. Available: https://doi.org/10.1145/2785956.2787510 [32] H. Kirrmann, C. Honegger, D. Ilie, and I. Sotiropoulos, “Performance of a full-hardware ptp implementation for an iec 62439-3 redundant iec 61850 substation automation network,” in 2012 IEEE International Sym-posium on Precision Clock Synchronization for Measurement, Control and Communication Proceedings , 2012, pp. 1–6. [33] NetTimeLogic GmbH, “PTP Transparent Clock,” https: //www.nettimelogic.com/ptp-transparent-clock.php, n.d., accessed: 2025-12-18. [34] J. Burch, K. Green, J. Nakulski, and D. Vook, “Verifying the perfor-mance of transparent clocks in ptp systems,” in 2009 International Sym-posium on Precision Clock Synchronization for Measurement, Control and Communication , 2009, pp. 1–6. [35] H. Liu, J. Liu, T. Bi, J. Li, W. Yang, and D. Zhang, “Performance analysis of time synchronization precision of ptp in smart substations,” in 
+
+2015 IEEE International Symposium on Precision Clock Synchronization for Measurement, Control, and Communication (ISPCS) , 2015, pp. 37– 42. [36] D. L. Black, “Relaxing Restrictions on Explicit Congestion Notification (ECN) Experimentation,” RFC 8311, Jan. 2018. [Online]. Available: https://www.rfc-editor.org/info/rfc8311 [37] K. Aykurt, J. Zerwas, A. Blenk, and W. Kellerer, “When tcp meets recon-figurations: A comprehensive measurement study,” IEEE Transactions on Network and Service Management , vol. 21, no. 2, pp. 1372–1386, 2024. [38] T. Jones and G. A. Koenig, “A clock synchronization strategy for mini-mizing clock variance at runtime in high-end computing environments,” in 2010 22nd International Symposium on Computer Architecture and High Performance Computing , 2010, pp. 207–214. [39] W. Whitt, “The performance impact of heavy-tailed distributions,” Queueing Systems survey and references, 1990s, discusses long tail delays in networking queue systems. [40] M. Garetto, “Modeling, simulation and measurements of queuing delay under long-tail internet traffic,” Ph.D. dissertation, Universit` a di Torino, 2003. [41] J. Liebeherr, A. Burchard, and F. Ciucu, “Delay bounds for networks with heavy-tailed and self-similar traffic,” arXiv , 2009. [Online]. Available: https://arxiv.org/pdf/0911.3856 [42] P. Wang et al. , “Delay distribution of packet delay under heavy-tailed traffic,” in Simulation Demonstrations , 2020, tail distribution analysis showing heavy tail behavior. [43] J. Sp¨ ath, M. Helm, B. Jaeger, and G. Carle, “Sim2hw: Modeling latency offset between network simulations and hardware measurements,” in 
+
+Proceedings of the 3rd GNNet Workshop on Graph Neural Networking Workshop , ser. GNNet ’24. New York, NY, USA: Association for Computing Machinery, 2024, p. 20–26. [Online]. Available: https://doi.org/10.1145/3694811.3697820 [44] J. R. Norris, Markov chains . Cambridge university press, 1998, no. 2. [45] Y. Li, G. Kumar, H. Hariharan, H. Wassel, P. Hochschild, D. Platt, S. Sabato, M. Yu, N. Dukkipati, P. Chandra, and A. Vahdat, “Sundial: Fault-tolerant clock synchronization for datacenters,” in 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI 20) , 2020. [46] A. Shpiner, Y. Revah, and T. Mizrahi, “Multi-path time protocols,” in 
+
+2013 IEEE International Symposium on Precision Clock Synchronization for Measurement, Control and Communication (ISPCS) Proceedings ,2013, pp. 1–6. [47] A. Finkenzeller, O. Butowski, E. Regnath, M. Hamad, and S. Steinhorst, “Ptpsec: Securing the precision time protocol against time delay attacks using cyclic path asymmetry analysis,” in IEEE INFOCOM 2024 - IEEE Conference on Computer Communications , 2024, pp. 461–470. [48] J. Zhuge, Z. Gao, Y. Tian, J. Wang, S. Yun, and X. Gong, “Dscc : Dynamic synergistic congestion control for lossless rdma datacenter networks,” Computer Networks , vol. 280, p. 112151, 2026. [Online]. Available: https://www.sciencedirect.com/science/article/pii/ S1389128626001635 [49] T. Ziegler, C. Brandauer, and S. Fdida, “A quantitative model for the parameter setting of red with tcp traffic,” in International Workshop on Quality of Service . Springer, 2001, pp. 202–216. [50] C. Hollot, V. Misra, D. Towsley, and W.-B. Gong, “On designing improved controllers for aqm routers supporting tcp flows,” in Proceed-ings IEEE INFOCOM 2001. Conference on Computer Communications. Twentieth Annual Joint Conference of the IEEE Computer and Commu-nications Society (Cat. No.01CH37213) , vol. 3, 2001, pp. 1726–1734 vol.3. [51] B. Cronkite-Ratcliff, A. Bergman, S. Vargaftik, M. Ravi, N. McKeown, I. Abraham, and I. Keslassy, “Virtualized congestion control,” in 
+
+Proceedings of the 2016 ACM SIGCOMM Conference , ser. SIGCOMM ’16. New York, NY, USA: Association for Computing Machinery, 2016, p. 230–243. [Online]. Available: https://doi.org/10.1145/2934872. 2934889 [52] M. Alizadeh, A. Greenberg, D. A. Maltz, J. Padhye, P. Patel, B. Prabhakar, S. Sengupta, and M. Sridharan, “Data center tcp (dctcp),” 
+
+SIGCOMM Comput. Commun. Rev. , vol. 40, no. 4, p. 63–74, Aug. 2010. [Online]. Available: https://doi.org/10.1145/1851275.1851192 [53] K. Cheng, T. Wang, X. Du, S. Du, and H. Cai, “Pet: Multi-agent independent ppo-based automatic ecn tuning for high-speed data center networks,” arXiv preprint arXiv:2405.11956 , 2024. [54] E.-S. Jung, H. S. Kim et al. , “Rlecn—a learning based dynamic threshold control of ecn,” ICT Express , vol. 9, no. 6, pp. 1007–1012, 2023. [55] S. Yan, X. Wang, X. Zheng, Y. Xia, D. Liu, and W. Deng, “Acc: Au-tomatic ecn tuning for high-speed datacenter networks,” in Proceedings of the 2021 ACM SIGCOMM 2021 Conference , 2021, pp. 384–397. [56] J. Hu, Y. Wang, Z. Zhou, S. Rao, R. Xin, J. Wang, and S. He, “Haecn: Hierarchical automatic ecn tuning with ultra-low overhead in datacenter networks,” in Algorithms and Architectures for Parallel Processing ,Z. Tari, K. Li, and H. Wu, Eds. Singapore: Springer Nature Singapore, 2024, pp. 324–343. APPENDIX ACONDITIONS FOR IMPROVEMENT 
+
+A. Condition for Variance Reduction 
+
+We derive the general condition for variance reduction with 
+
+R thresholds. We need to find the condition for which 
+
+Var( Qm,l ) > Var( Dm,l ). For ease of notation, we write Qm,l 
+
+as X, Dm,l for a given R as XR and the threshold δ*K as x.Hence, 
+
+XR = X − x
+
+> R
+
+X
+
+> i=1
+
+1{X>ix }.
+
+Let, 
+
+μ = E[X], pix = P(X > ix ) and mix = E[X | X > ix ].
+
+Furthermore, note the identity, 
+
+Var( A − B) = Var( A) − 2 Cov( A, B ) + Var( B) (16) For a given x and R, if XR exists, then so does XR−1 and has the relation 
+
+XR = XR−1 − x1{X>Rx }.
+
+Using the identitiy from Equation 16 we obtain, 
+
+Var( XR) = Var( XR−1) − 2x Cov  XR−1, 1{X>Rx }
+
+
+
++ x2pRx (1 − pRx ), (17) and therefore the necessary condition for the variance to be reduced, 
+
+2x Cov  XR−1, 1{X>Rx }
+
+ ≥ x2pRx (1 − pRx ). (18) Now using 
+
+XR−1 = X − x
+
+> R−1
+
+X
+
+> i=1
+
+1{X>ix },
+
+and by the linearity property of covariance, 
+
+Cov( A − B, C ) = Cov( A, C ) − Cov( B, C ),
+
+we simplify the LHS from Equation 18, 
+
+Cov  XR−1, 1{X>Rx }
+
+ = Cov  X, 1{X>Rx }
+
+
+
+− Cov 
+
+
+
+x
+
+> R−1
+
+X
+
+> i=1
+
+1{X>ix }, 1{X>Rx }
+
+
+
+.
+
+Factoring out x from the second term yields 
+
+Cov  XR−1, 1{X>Rx }
+
+ = Cov  X, 1{X>Rx }
+
+
+
+− x
+
+> R−1
+
+X
+
+> i=1
+
+Cov  1{X>ix }, 1{X>Rx }
+
+. (19) By the definition of covariance, 
+
+Cov  X, 1{X>Rx }
+
+ = EX 1{X>Rx }
+
+ − E[X]E1{X>Rx }
+
+
+
+= pRx mRx − μp Rx = pRx (mRx − μ), (20) and for i < R ,
+
+Cov  1{X>ix }, 1{X>Rx }
+
+ = pRx −pix pRx = pRx (1 −pix ).
+
+(21) By plugging 21 and 20 in 19, we obtain a simplified condition of Equation 18, 
+
+2( mRx − μ) − 2x
+
+> R−1
+
+X
+
+> i=1
+
+(1 − pix ) ≥ x(1 − px) (22) From monotonicity of any Complementary Cumulative Density Function (CCDF), we have pix ≥ pRx for i < R 
+
+and hence R−1X
+
+> i=1
+
+(1 − pix ) ≤ (R − 1) pRx .
+
+Plugging the RHS instead of the sum in the necessary condition in 22, and from the fact that mRx ≥ Rx yields the sufficient condition C1 for variance reduction: 
+
+x ≥ 2μ
+
+1 + (2 R − 1) pRx 
+
+.
+
+B. Condition for Difference of Means Reduction 
+
+For the ease of notation, we write the distributions of the for-ward and reverse delay as A and B. Assume that E[A] > E[B]
+
+without loss of generality. Let, 
+
+pAix = P(A > ix ) and pBix = P(B > ix ),
+
+and let, C = A − B and well as C′ = PRi=1 x(1 {A > ix } − 
+
+1 {B > ix }). Thus, 
+
+E[DReq − D Resp ]2 = ( E[C] − E[C′]) 2 .
+
+Note that the function c′ 7 → (c − c′)2 decreases if and only if 
+
+c′ ∈ (0 , 2c). This then translates to 
+
+0 < E [C′] < 2E[C] ,
+
+and hence we have a reduction in the mean term if and only if 
+
+0 < x PRi=1 
+
+ pAix − pBix 
+
+
+
+E [A] − E [B] < 2 (23) by writing E [C′] in the numerator. The term is greater than 0 if C2 is satisfied, while C3 takes care of the upper bound on the RHS. We remark that under tail dominance, we can bound pAix −pAix using Markov’s inequality in terms of x and hence get a tighter lower bound on x for Eq. (23) to be satisfied. We leave this to the reader. APPENDIX BIMPROVEMENT RESULTS 
+
+A. Improvement with R 
+
+Every addition of a new threshold step R will have a variance reduction defined as: 
+
+∆R = Var( XR−1) − Var( XR).
+
+Using Equation 17, we get, 
+
+∆R = 2 x Cov  XR−1, 1{X>Rx }
+
+ − x2pRx (1 − pRx ).If the sufficient condition C1 holds, then every ∆R ≥ 0.Which implies a non-increase with R, i.e., Var( XR) ≤
+
+Var( XR−1) ≤ ... ≤ Var( X). Now examining the proof of 
+
+C1 at the end of Sec. A-A, equality holds if and only of both 
+
+pix = pRx and mRx = Rx , that is no probability mass existis between the interval (ix, Rx ] for i < R , and all probability mass above Rx is concentrated at Rx . This is impossible for any queuing distribution as they are all non-degenerate. Thus, with loss of equality, the non-increasing becomes strictly increasing with R, proving the result R1 as long as C2 and C3 
+
+hold. A special case in which equality holds occurs when there is no mass above the threshold ix ; however, we consider this trivial, since the variance can only be reduced if the threshold is placed somewhere within the distribution. 
+
+B. Multihop Marking 
+
+Let the forward and reverse delays be defined as a sum of s
+
+individual delay distributions, 
+
+A =
+
+> s
+
+X
+
+> i=1
+
+Ai, B =
+
+> s
+
+X
+
+> i=1
+
+Bi,
+
+where all random variables Ai, B j are mutually independent. The mean-squared error (MSE) is therefore 
+
+MSE = 14 E(A − B)2 .
+
+Expanding the square 
+
+(A − B)2 =
+
+
+
+> s
+
+X
+
+> i=1
+
+Ai −
+
+> s
+
+X
+
+> j=1
+
+Bj
+
+
+
+> 2
+
+.
+
+=
+
+> s
+
+X
+
+> i=1
+
+A2 
+
+> i
+
++
+
+> s
+
+X
+
+> j=1
+
+B2 
+
+> j
+
++ 2 X
+
+> 1≤i<k ≤s
+
+AiAk
+
++2 X
+
+> 1≤j<ℓ ≤s
+
+Bj Bℓ − 2
+
+> s
+
+X
+
+> i=1
+> s
+
+X
+
+> j=1
+
+AiBj .
+
+Using independence assumption A2 ,
+
+E[AiAk] = E[Ai]E[Ak], E[AiBj ] = E[Ai]E[Bj ].
+
+Also, 
+
+E[A2 
+
+> i
+
+] = Var( Ai) + E[Ai]2, E[B2 
+
+> j
+
+] = Var( Bj ) + E[Bj ]2.
+
+Thus, 
+
+E[( A − B)2] = 
+
+> s
+
+X
+
+> i=1
+
+Var( Ai) + 
+
+> s
+
+X
+
+> j=1
+
+Var( Bj )+
+
+> s
+
+X
+
+> i=1
+
+E[Ai] −
+
+> s
+
+X
+
+> j=1
+
+E[Bj ]
+
+!2
+
+.
+
+We pair forward and reverse hops as 
+
+(A1, B s), (A2, B s−1), . . . , (As, B 1).
+
+And for simplicity, define the paired mean differences as the bias term, 
+
+∆i ≜ E[Ai] − E[Bs+1 −i].
+
+Then sX
+
+> i=1
+
+E[Ai] −
+
+> s
+
+X
+
+> j=1
+
+E[Bj ] = 
+
+> s
+
+X
+
+> i=1
+
+∆i.
+
+Expanding the bias-square term, 
+
+> s
+
+X
+
+> i=1
+
+∆i
+
+!2
+
+=
+
+> s
+
+X
+
+> i=1
+
+∆2 
+
+> i
+
++ 2 X
+
+> 1≤i<k ≤s
+
+∆i∆k.
+
+For each paired hop (Ai, B s+1 −i), define 
+
+MSE Ai,B s+1 −i ≜ 14
+
+"
+
+Var( Ai) + Var( Bs+1 −i) + ∆ i)2
+
+#
+
+.
+
+Combining all terms, the overall MSE is 
+
+MSE = 
+
+> s
+
+X
+
+> i=1
+
+MSE Ai,B s+1 −i + 12
+
+X
+
+> 1≤i<k ≤s
+
+∆i∆k.
+
+The second term indicates that the MSE depends on how coherently the bias terms sum, increasing or decreasing it depending on their signs. Now, suppose a hop g performs packet marking to reduce the MSE at g by reducing its variance and bias terms. The MSE terms are positive, so the first term strictly decreases. For the second term, we factor out the bias terms involving 
+
+g-th hop, 
+
+12
+
+X
+
+> 1≤i<k ≤s
+
+∆i∆k = 12
+
+∆g
+
+X 
+
+> k̸=g
+
+∆k + X 
+
+> 1≤i<k ≤si,k ̸=g
+
+∆i∆k
+
+ .
+
+Here, the second term inside the brackets is unchanged. A reduction in the difference of means terms corresponds to a reduction in the magnitude of ∆g while keeping its sign the same. Thus, reducing the MSE at one hop pushes the first term inside the brackets towards 0, decreasing the effect of coherence. Under assumption A1 , E[P  
+
+> k̸=g
+
+∆k] = 0 and only the variance terms remain, which are additive, proving the results R2 and R3 without exception. For a random unbiased network E[P  
+
+> k̸=g
+
+∆k] ≈ 0. For a biased network, the likelihood of ∆g and P  
+
+> k̸=g
+
+∆k having different signs is low. Moreover, the addition to the MSE due to this non-coherence is linear and, in most cases, not greater than the reduction in the per-hop MSE, which is quadratic. The more hops capable of reducing the per-hop MSE due to congestion marking, the more quadratic MSE reduction terms will outbalance the bias case if ∆g and P  
+
+> k̸=g
+
+∆k have different signs, showing R2 
+
+and R3 in most cases. APPENDIX CEFFICIENT IMPLEMENTATION OF THE COUNTER 
+
+PROPAGATION ALGORITHM 
+
+This Section discusses the practical implementation of the counter propagation Algorithm 1, its computational complex-ity, and the structural properties of the resulting stochastic process. A. Markov Chain Representation 
+
+The evolution of the correction counter along a path can be represented as a finite-state time-inhomogeneous Markov chain . Let ( Tl) denote the value of the counter after processing the ( l)-th hop along the path. The counter takes values in the finite state space 
+
+S = 0 , 1, . . . , N , 
+
+where ( N ) denotes the maximum counter value. The transition from state ( Tl−1) to ( Tl) depends on the delay random variable ( Xl) at hop ( l) and the threshold mapping defined by the algorithm. Since the update rule depends only on the current counter value and the delay observed at the current hop, the process satisfies the Markov property. However, because the delay distribution may vary across hops, the transition probabilities depend on the hop index ( l). The resulting process is therefore a time-inhomogeneous Markov chain .Let 
+
+Pl(i, j ) = Pr( Tl = j | Tl−1 = i)
+
+denote the transition probability from state ( i) to state ( j)at hop ( l). The distribution of the counter after hop ( l) is described by the probability vector 
+
+πl = [Pr( Tl = 0) , Pr( Tl = 1) , . . . , Pr( Tl = N )] .
+
+The process is initialized as 
+
+π0 = [1 , 0, . . . , 0] ,
+
+reflecting that the counter initially equals zero. The distri-bution after hop ( l) is then obtained via the forward recursion 
+
+π ∗ l = π ∗ l − 1Pl.
+
+After traversing the entire path consisting of ( L = |Lm|)hops, the final distribution becomes 
+
+πL = π0P1P2 · · · PL,
+
+which directly yields the probability distribution of the final counter value ( Pm). The same applies to the distribution Dm,albeit with a much larger state space, as the per-hop delay distributions are the mixture distributions explained in Sec. V. 
+
+B. Efficient Computation 
+
+A direct implementation of Algorithm 1 corresponds to con-structing a tree of all possible counter-evolutions along the path. In the worst case, each state may generate up to ( R + 1 )successor states, where ( R) denotes the number of thresholds. Consequently, the number of possible paths grows exponen-tially with the number of hops. However, many of these paths correspond to identical counter states. Since future transitions depend only on the current counter value, all paths that reach the same state can be merged without loss of accuracy. The forward propagation described above, therefore, provides an equivalent dynamic programming implementation that tracks only the probability mass associated with each state. In practice, the transition probabilities depend only on the probability that the delay falls within the threshold intervals defined by the algorithm. For hop ( l), the required quantities are 
+
+pl,r = Pr( δ∗ 
+
+> r
+
+≤ Xl < δ ∗
+
+> r+1
+
+),
+
+which can be computed once by discretizing the empirical delay samples in R bins. Once these probabilities of being in each bin are available, each propagation step reduces to updating the probability vector according to the transition structure. The transition matrices ( Pl) exhibit a sparse structure. For any state ( i), the algorithm maps the delay observation to one of at most ( R + 1 ) possible counter updates. Consequently, each row of ( Pl) contains at most ( R + 1 ) non-zero entries. Let (nnz (Pl)) denote the number of non-zero elements in (Pl). The sparsity property implies nnz (Pl) ≤ (N + 1)( R + 1) .
+
+C. Absorbing and Boundary States 
+
+The counter is bounded between ( 0) and ( N ). In particular, once the counter reaches the maximum value ( N ), further increments are not possible. As a result, state ( N ) behaves as an absorbing state for transitions that would otherwise increase the counter beyond this bound. Similarly, the lower bound at zero prevents negative counter values. These boundary conditions guarantee that the state space remains finite and that probability mass cannot leave the set (S). In practice, the presence of the upper absorbing boundary also reduces the effective branching of the process, since probability mass tends to accumulate near this boundary as the number of hops increases. 
+
+D. Computational Complexity 
+
+The forward propagation algorithm maintains a probability vector of size ( N + 1 ) and updates it sequentially for each hop. Because each state has at most ( R+1 ) possible successor states, the computational complexity of the propagation step is 
+
+O(LN R ).
+
+The memory requirement is ( O(N )), since only the current probability vector must be stored. In addition, a preprocessing step is required to compute the discretized interval probabilities from the empirical delay dis-tributions. If each empirical distribution contains ( S) samples, sorting the samples requires ( O(S log S)) time. After sorting, the interval probabilities can be computed efficiently using cumulative counts. For the parameter ranges considered in this work (e.g., (N ≤ 32 ) and (L ≤ 7)), the resulting computation is lightweight and enables repeated evaluations of the algorithm during threshold parameter optimization. APPENDIX DTABLE OF SYMBOLS AND NOTATION 
+
+TABLE IV: Core Notation 
+
+Symbol Description 
+
+T1, T 2, T 3, T 4 Timestamps in synchronization message exchange 
+
+θ True clock offset between client and server 
+
+ˆθ Estimated clock offset 
+
+ϵ Offset estimation error ( θ − ˆθ)
+
+δReq , δ Resp End-to-end delays of request and response messages 
+
+δbase  
+
+> m
+
+Base delay (propagation + transmission) of message mδqm Total queuing delay of message m
+
+ˆδqm Estimated queuing delay 
+
+δ∗ 
+
+> K
+
+Delay corresponding to threshold KK Queue length threshold for congestion marking 
+
+R Number of thresholds per hop 
+
+N Maximum marking counter value 
+
+n Observed marking counter value 
+
+m ∈ { Req , Resp } Message type 
+
+Lm Set of hops traversed by message mδqm,l Queuing delay at hop lLR Link line rate (bits per second) 
+
+TABLE V: Analysis Notation 
+
+Symbol Description 
+
+δEm Queuing delay estimation error of message mδEm,l Delay estimation error at hop lQm,l Distribution of queuing delay at hop lDm,l Distribution of delay estimation error at hop lQm End-to-end queuing delay distribution 
+
+Dm End-to-end delay estimation error distribution 
+
+ρl Utilization of link l
+
+E[·] Expectation operator 
+
+Var( ·) Variance operator 
+
+E Expected MSE without correction 
+
+Ecomp Expected MSE after congestion marking 
+
+Tm,l Marking counter state at hop lfm,l (x) Probability density function at hop lχ(·) Indicator function 
+
+r Number of thresholds used at a hop
