@@ -6,64 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-16
-- 运行时间：2026-04-17 04:36:11 UTC+8
+- 最新运行日期：2026-04-17
+- 运行时间：2026-04-18 04:29:41 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Uncovering the role of ionic doping in hydroxyapatite: The building blocks of tooth enamel and bones》（8.6/10）, 《TORAI: Unsupervised Fine-grained RCA using Multi-Source Telemetry Data》（8.4/10）
-- 速读：《Numerical Instability and Chaos: Quantifying the Unpredictability of Large Language Models》（7.8/10）, 《A Mathematical Theory of Ranking》（7.5/10）, 《Agentic Discovery with Active Hypothesis Exploration for Visual Recognition》（7.1/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《Correlators in $T\bar{T}$ and Root-$T\bar{T}$ Deformed CFTs》（8.2/10）
+- 速读：《Bernstein--Sato Theory for D-modules in Positive Characteristic》（7.8/10）, 《Thermodynamic conditions ensure the stability of third-order extended heat conduction》（7.6/10）, 《Values of algebraic functions at Liouville numbers》（7.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/16/README](/202604/16/README)
+- 详情：[/202604/17/README](/202604/17/README)
 
 ### 精读区论文标签
-1. [Uncovering the role of ionic doping in hydroxyapatite: The building blocks of tooth enamel and bones](/202604/16/2604.13339v1-uncovering-the-role-of-ionic-doping-in-hydroxyapatite-the-building-blocks-of-tooth-enamel-and-bones)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [TORAI: Unsupervised Fine-grained RCA using Multi-Source Telemetry Data](/202604/16/2604.13522v1-torai-unsupervised-fine-grained-rca-using-multi-source-telemetry-data)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-3. [Root-$n$ Asymptotically Normal Maximum Score Estimation](/202604/16/2604.13399v1-root-n-asymptotically-normal-maximum-score-estimation)  
-   标签：评分：8.3/10
+1. [Correlators in $T\bar{T}$ and Root-$T\bar{T}$ Deformed CFTs](/202604/17/2604.14939v1-correlators-in-tbart-and-root-tbart-deformed-cfts)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Numerical Instability and Chaos: Quantifying the Unpredictability of Large Language Models](/202604/16/2604.13206v1-numerical-instability-and-chaos-quantifying-the-unpredictability-of-large-language-models)  
+1. [Bernstein--Sato Theory for D-modules in Positive Characteristic](/202604/17/2604.14584v1-bernstein--sato-theory-for-d-modules-in-positive-characteristic)  
    标签：评分：7.8/10
    evidence：检索回退候选
-2. [A Mathematical Theory of Ranking](/202604/16/2604.09733v1-a-mathematical-theory-of-ranking)  
+2. [Thermodynamic conditions ensure the stability of third-order extended heat conduction](/202604/17/2604.13110v1-thermodynamic-conditions-ensure-the-stability-of-third-order-extended-heat-conduction)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+3. [Values of algebraic functions at Liouville numbers](/202604/17/2604.08818v1-values-of-algebraic-functions-at-liouville-numbers)  
    标签：评分：7.5/10
    evidence：检索回退候选
-3. [Agentic Discovery with Active Hypothesis Exploration for Visual Recognition](/202604/16/2604.12999v1-agentic-discovery-with-active-hypothesis-exploration-for-visual-recognition)  
-   标签：评分：7.1/10
-   evidence：检索回退候选
-4. [Improving Network Clock Synchronization by Marking Congestion](/202604/16/2604.12961v1-improving-network-clock-synchronization-by-marking-congestion)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-5. [Bias-Corrected Adaptive Conformal Inference for Multi-Horizon Time Series Forecasting](/202604/16/2604.13253v1-bias-corrected-adaptive-conformal-inference-for-multi-horizon-time-series-forecasting)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-6. [SemiFA: An Agentic Multi-Modal Framework for Autonomous Semiconductor Failure Analysis Report Generation](/202604/16/2604.13236v1-semifa-an-agentic-multi-modal-framework-for-autonomous-semiconductor-failure-analysis-report-generation)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-7. [Asymptotic Theory for Graphical SLOPE: Precision Estimation and Pattern Convergence](/202604/16/2604.12771v1-asymptotic-theory-for-graphical-slope-precision-estimation-and-pattern-convergence)  
+4. [Gaussian approximation for maximum score and non-smooth M-estimators with multiway dependence](/202604/17/2604.10232v1-gaussian-approximation-for-maximum-score-and-non-smooth-m-estimators-with-multiway-dependence)  
    标签：评分：6.8/10
    evidence：检索回退候选
-8. [Asymptotically faster algorithms for recognizing $(k,\ell)$-sparse graphs](/202604/16/2604.13025v1-asymptotically-faster-algorithms-for-recognizing-kell-sparse-graphs)  
-   标签：评分：6.8/10
+5. [Deferred Cyclotomic Representation for Stable and Exact Evaluation of q-Hypergeometric Series](/202604/17/2604.13196v2-deferred-cyclotomic-representation-for-stable-and-exact-evaluation-of-q-hypergeometric-series)  
+   标签：评分：6.5/10
    evidence：检索回退候选
-9. [Distorted or Fabricated? A Survey on Hallucination in Video LLMs](/202604/16/2604.12944v1-distorted-or-fabricated-a-survey-on-hallucination-in-video-llms)  
-   标签：评分：6.8/10
+6. [Arithmetic turbulence: Algebraic derivation of the Euler ensemble attractor](/202604/17/2604.12207v1-arithmetic-turbulence-algebraic-derivation-of-the-euler-ensemble-attractor)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-10. [Tree Learning: A Multi-Skill Continual Learning Framework for Humanoid Robots](/202604/16/2604.12909v1-tree-learning-a-multi-skill-continual-learning-framework-for-humanoid-robots)  
-   标签：评分：6.7/10
+7. [Affine Springer fiber and the small quantum group](/202604/17/2604.11966v1-affine-springer-fiber-and-the-small-quantum-group)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-11. [Maximizing the Steklov eigenvalues on trees with a diameter constraint](/202604/16/2604.12404v1-maximizing-the-steklov-eigenvalues-on-trees-with-a-diameter-constraint)  
-   标签：评分：6.6/10
+8. [Is There an AI Bubble? Robust Date-Stamping for Periods of Exuberance](/202604/17/2604.12062v1-is-there-an-ai-bubble-robust-date-stamping-for-periods-of-exuberance)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+9. [Optimal multiple testing under family-wise error control: elementary symmetric polynomials and a scalable algorithm](/202604/17/2604.10986v1-optimal-multiple-testing-under-family-wise-error-control-elementary-symmetric-polynomials-and-a-scalable-algorithm)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Optimizing Riesz means of Robin Laplace operators on cuboids in a semiclassical limit](/202604/17/2604.11076v1-optimizing-riesz-means-of-robin-laplace-operators-on-cuboids-in-a-semiclassical-limit)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Beyond LLMs, Sparse Distributed Memory, and Neuromorphics <A Hyper-Dimensional SRAM-CAM "VaCoAl" for Ultra-High Speed, Ultra-Low Power, and Low Cost>](/202604/17/2604.11665v2-beyond-llms-sparse-distributed-memory-and-neuromorphics-a-hyper-dimensional-sram-cam-vacoal-for-ultra-high-speed-ultra-low-power-and-low-cost)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
