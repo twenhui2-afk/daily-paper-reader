@@ -6,69 +6,57 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-21
-- 运行时间：2026-04-22 04:21:30 UTC+8
+- 最新运行日期：2026-04-22
+- 运行时间：2026-04-23 04:23:05 UTC+8
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：5
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
-- 精读：《TORAI: Multi-source Root Cause Analysis for Blind Spots in Microservice Service Call Graph》（8.5/10）, 《Notes on Chevalley Groups and Root Category III: the Region of Total Positivity》（8.3/10）
-- 速读：《On the volume of the elliptope and related metric polytopes》（7.8/10）, 《Causal-Temporal Event Graphs: A Formal Model for Recursive Agent Execution Traces》（7.7/10）, 《Causally-Constrained Probabilistic Forecasting for Time-Series Anomaly Detection》（7.6/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《On Solving the Multiple Variable Gapped Longest Common Subsequence Problem》（8.2/10）
+- 速读：《Beyond the square-root barrier: cubic forms of Perazzo type》（7.6/10）, 《HadAgent: Harness-Aware Decentralized Agentic AI Serving with Proof-of-Inference Blockchain Consensus》（6.0/10）, 《enclawed: A Configurable, Sector-Neutral Hardening Framework for Single-User AI Assistant Gateways》（6.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/21/README](/202604/21/README)
+- 详情：[/202604/22/README](/202604/22/README)
 
 ### 精读区论文标签
-1. [TORAI: Multi-source Root Cause Analysis for Blind Spots in Microservice Service Call Graph](/202604/21/2604.13522v2-torai-multi-source-root-cause-analysis-for-blind-spots-in-microservice-service-call-graph)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [Notes on Chevalley Groups and Root Category III: the Region of Total Positivity](/202604/21/2604.17471v1-notes-on-chevalley-groups-and-root-category-iii-the-region-of-total-positivity)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-3. [Topological Risk Parity](/202604/21/2604.16773v1-topological-risk-parity)  
+1. [On Solving the Multiple Variable Gapped Longest Common Subsequence Problem](/202604/22/2604.18645v1-on-solving-the-multiple-variable-gapped-longest-common-subsequence-problem)  
    标签：评分：8.2/10
-   evidence：检索回退候选
-4. [E2AFS: Energy-Efficient Approximate Floating Point Square Rooter for Error Tolerant Computing](/202604/21/2604.16964v1-e2afs-energy-efficient-approximate-floating-point-square-rooter-for-error-tolerant-computing)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-5. [Conditional Attribution for Root Cause Analysis in Time-Series Anomaly Detection](/202604/21/2604.17616v1-conditional-attribution-for-root-cause-analysis-in-time-series-anomaly-detection)  
-   标签：评分：8.1/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [On the volume of the elliptope and related metric polytopes](/202604/21/2604.16735v1-on-the-volume-of-the-elliptope-and-related-metric-polytopes)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-2. [Causal-Temporal Event Graphs: A Formal Model for Recursive Agent Execution Traces](/202604/21/2604.17557v1-causal-temporal-event-graphs-a-formal-model-for-recursive-agent-execution-traces)  
-   标签：评分：7.7/10
-   evidence：检索回退候选
-3. [Causally-Constrained Probabilistic Forecasting for Time-Series Anomaly Detection](/202604/21/2604.17998v1-causally-constrained-probabilistic-forecasting-for-time-series-anomaly-detection)  
+1. [Beyond the square-root barrier: cubic forms of Perazzo type](/202604/22/2604.19045v1-beyond-the-square-root-barrier-cubic-forms-of-perazzo-type)  
    标签：评分：7.6/10
    evidence：检索回退候选
-4. [Outperforming Self-Attention Mechanisms in Solar Irradiance Forecasting via Physics-Guided Neural Networks](/202604/21/2604.13455v2-outperforming-self-attention-mechanisms-in-solar-irradiance-forecasting-via-physics-guided-neural-networks)  
+2. [HadAgent: Harness-Aware Decentralized Agentic AI Serving with Proof-of-Inference Blockchain Consensus](/202604/22/2604.18614v1-hadagent-harness-aware-decentralized-agentic-ai-serving-with-proof-of-inference-blockchain-consensus)  
    标签：评分：6.0/10
    evidence：检索回退候选
-5. [Asymmetric-Loss-Guided Hybrid CNN-BiLSTM-Attention Model for Industrial RUL Prediction with Interpretable Failure Heatmaps](/202604/21/2604.13459v2-asymmetric-loss-guided-hybrid-cnn-bilstm-attention-model-for-industrial-rul-prediction-with-interpretable-failure-heatmaps)  
+3. [enclawed: A Configurable, Sector-Neutral Hardening Framework for Single-User AI Assistant Gateways](/202604/22/2604.16838v1-enclawed-a-configurable-sector-neutral-hardening-framework-for-single-user-ai-assistant-gateways)  
    标签：评分：6.0/10
    evidence：检索回退候选
-6. [Superstatistical Approach to Turbulent Circulation Fluctuations](/202604/21/2604.15277v2-superstatistical-approach-to-turbulent-circulation-fluctuations)  
+4. [Deciphering the chemical grammar of protein-RNA condensates](/202604/22/2604.16899v1-deciphering-the-chemical-grammar-of-protein-rna-condensates)  
    标签：评分：6.0/10
    evidence：检索回退候选
-7. [Diameter bounds for arbitrary finite groups and applications](/202604/21/2604.15303v2-diameter-bounds-for-arbitrary-finite-groups-and-applications)  
+5. [CaTherine wheels from trees and Liouville quantum gravity](/202604/22/2604.17170v1-catherine-wheels-from-trees-and-liouville-quantum-gravity)  
    标签：评分：6.0/10
    evidence：检索回退候选
-8. [(1D) Ordered Tokens Enable Efficient Test-Time Search](/202604/21/2604.15453v1-1d-ordered-tokens-enable-efficient-test-time-search)  
+6. [Bootstrap consistency for general double/debiased machine learning estimators](/202604/22/2604.17239v1-bootstrap-consistency-for-general-doubledebiased-machine-learning-estimators)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [Parametric Resonance and RF-to-THz Frequency Conversion in Semiconductor Plasmonic Crystals](/202604/21/2604.16510v1-parametric-resonance-and-rf-to-thz-frequency-conversion-in-semiconductor-plasmonic-crystals)  
+7. [SigGate-GT: Taming Over-Smoothing in Graph Transformers via Sigmoid-Gated Attention](/202604/22/2604.17324v1-siggate-gt-taming-over-smoothing-in-graph-transformers-via-sigmoid-gated-attention)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [PoInit-of-View: Poisoning Initialization of Views Transfers Across Multiple 3D Reconstruction Systems](/202604/21/2604.16540v1-poinit-of-view-poisoning-initialization-of-views-transfers-across-multiple-3d-reconstruction-systems)  
+8. [CSI Compression for Massive MIMO-OFDM: Mismatch-Aware Rate-Distortion Trade-offs](/202604/22/2604.17426v1-csi-compression-for-massive-mimo-ofdm-mismatch-aware-rate-distortion-trade-offs)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [Gleaner: A Semantically-Rich and Efficient Online Sampler for Microservice Diagnostics](/202604/21/2604.16810v1-gleaner-a-semantically-rich-and-efficient-online-sampler-for-microservice-diagnostics)  
+9. [WirelessAgent: A Unified Agent Design for General Wireless Resource Allocation Problem without Current Channel State Information](/202604/22/2604.17440v1-wirelessagent-a-unified-agent-design-for-general-wireless-resource-allocation-problem-without-current-channel-state-information)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Adaptive RIS Configuration Design with Environmental Sensing for User Localization in Dynamic Rich Scattering Environment](/202604/22/2604.17485v1-adaptive-ris-configuration-design-with-environmental-sensing-for-user-localization-in-dynamic-rich-scattering-environment)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Achromatic optics using nonlinear plasma lenses for beam-quality preservation between plasma-accelerator stages](/202604/22/2604.17605v1-achromatic-optics-using-nonlinear-plasma-lenses-for-beam-quality-preservation-between-plasma-accelerator-stages)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
