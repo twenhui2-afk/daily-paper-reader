@@ -1,0 +1,631 @@
+Title: LEO: Tracing GPU Stall Root Causes via Cross-Vendor Backward Slicing
+
+URL Source: https://arxiv.org/pdf/2604.20032v1
+
+Published Time: Thu, 23 Apr 2026 00:16:43 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# LEO: Tracing GPU Stall Root Causes via Cross-Vendor Backward Slicing 
+
+Yuning Xia, John Mellor-Crummey 
+
+Rice University, Houston, TX, USA 
+
+{yuning.xia, johnmc }@rice.edu 
+
+Abstract —More than half of the Top 500 supercomputers employ GPUs as accelerators. On GPU-accelerated platforms, developers face a key diagnostic gap: profilers show source lines where stalls occur, but not why they occur. Furthermore, the same kernel may have different stalls and underlying causes on different GPUs. This paper presents LEO, a root-cause analyzer for NVIDIA, AMD, and Intel GPUs that performs backward slicing from stalled instructions, considering dependencies arising from registers as well as vendor-specific synchronization mechanisms. LEO attributes GPU stalls to source instructions with the goal of explaining root causes of these inefficiencies. Across 21 workloads on three GPU platforms, LEO-guided optimizations deliver geometric-mean speedups of 1.73 ×–1.82 ×. Our case studies show that (1) the same kernel may require different optimizations for different GPU architectures, and (2) LEO’s structured diagnostics improve code optimization with large language models relative to code-only and raw-stall-count baselines. 
+
+Index Terms —Backward slicing, GPU performance analysis, instruction-level characterization, program counter sampling, root-cause analysis 
+
+I. I NTRODUCTION 
+
+Today, more than half of the Top 500 supercomputers employ GPUs as accelerators [1]. For example, supercomputers at US DOE laboratories typically employ AMD (Frontier and El Capitan), Intel (Aurora), or NVIDIA (Perlmutter and Polaris) GPUs as their primary compute engines. Understanding GPU performance requires instruction-level visibility into where cycles are spent, which instructions stall, and which earlier instructions cause those stalls. While GPU profiling APIs by AMD, Intel, and NVIDIA now support program counter (PC) sampling, current tools do not adequately address this need. Vendor-provided GPU profilers, such as NVIDIA’s Nsight Compute [2], AMD’s rocprofv3 [3], and Intel’s VTune [4]/u-nitrace [5], can report stall distributions measured using PC sampling per GPU instruction. However, these tools show where 
+
+stalls occur but not why : they present stall breakdowns without identifying which earlier instructions actually caused the observed stalls. Research tools such as GPA (GPU Performance Advisor) [6] pioneered backward slicing for GPUs, but GPA supports only NVIDIA GPUs and cannot trace memory access dependencies through synchronization instructions such as AMD’s s_waitcnt .To date, no tool has provided instruction-level root-cause analysis for GPUs from multiple vendors. Each vendor ex-poses a different PC-sampling interface, stall taxonomy, and API, making instruction-level comparisons across architectures difficult (Section II). As a result, when the same kernel is compute-bound on one platform but memory-bound on another, vendor-specific tools do not make that divergence easy to see. Recent cross-platform studies confirm this gap: Davis et al. [7] find that portable programming models such as RAJA [8] and Kokkos [9] do not guarantee performance portability [10] across GPU vendors, and Kwack et al. [11] report that performance assessment tools on Frontier, Aurora, and Polaris frequently frustrated efforts to diagnose cross-platform bottlenecks. Manually tracing backward from symptoms to root causes is tedious and error-prone. In complex HPC applications, a stalled instruction (the symptom) and its antecedent (the root cause) may reside in different functions or source files. For example, an arithmetic operation in a function may stall while awaiting completion of a load issued by a vector template. Without tool support, developers must manually trace register dependencies through disassembly, a process that is both tedious and error-prone. Moreover, register-based tracing will not work for AMD s_waitcnt instructions, which await the completion of memory accesses, because they do not expose explicit register dependencies. This paper presents LEO, a cross-vendor root-cause ana-lyzer for GPU stalls on AMD, Intel, and NVIDIA GPUs. LEO’s contribution is not simply broader platform coverage. Rather, it combines three capabilities that prior work does not provide together: (1) a unified instruction-level analysis across NVIDIA, AMD, and Intel PC-sampling ecosystems; (2) synchronization-aware tracing through vendor-specific wait mechanisms, including AMD s_waitcnt , NVIDIA hardware barriers, and Intel software scoreboard (SWSB) tokens; and (3) cross-vendor diagnosis that explains why the same source kernel may have different bottlenecks on different GPUs. LEO builds dependency graphs from instruction-level dataflow, applies a four-stage pruning pipeline, and attributes blame with inverse-distance weighting. LEO leverages performance measurements collected by HPCToolkit [12] and builds on its cross-vendor PC-sampling infrastructure. This paper makes the following contributions: 1) Cross-vendor root-cause analysis. We present a method-ology that uses backward slicing to identify root-cause instructions from stalled instructions across AMD, Intel, and NVIDIA GPUs (Section III). 2) Explicit memory dependency tracing. We extend the de-pendency graph with vendor-specific synchronization edges, including AMD s_waitcnt counters, Intel SWSB tokens, and NVIDIA hardware barrier bits (B1–B6) so analysis can       
+
+> arXiv:2604.20032v1 [cs.DC] 21 Apr 2026 HPCToolkit
+> ROCm Runtime
+> librocprofiler-sdk.so
+> llvm-objdump
+> CUDA Runtime
+> libcupti.so
+> nvdisasm
+> oneAPI Runtime
+> libze_loader.so
+> libged.so
+> New Runtime
+> libnew.so
+> AMD GPU NVIDIA GPU Intel GPU New Accelerator
+> HIP API calls CUDA API Calls Level Zero API Calls New API Calls
+> LEO
+> hpcanalysis API Calls
+
+Fig. 1: System architecture. LEO interfaces with HPCToolkit’s 
+
+hpcanalysis API, which leverages vendor-specific APIs for profiling and disassembly. The modular design enables extension to new accelerators. 
+
+identify memory accesses causing synchronization stalls (Section III-E). 3) Cross-vendor evaluation. We evaluate the methodology across three GPU platforms (AMD MI300A, Intel PVC, NVIDIA GH200) on HPC and ML workloads. Even for the same code, root causes of stalls differ across architectures; nevertheless, LEO’s insights enabled us to achieve geometric-mean speedups of 1.73 ×–1.82 × on the kernels we studied. We also evaluate how LEO’s structured diagnostics can support large language model-based automated code tuning (Section V). We evaluate LEO on 15 RAJAPerf [17] kernels, the Quick-Silver [18] and Kripke [19] proxy applications, the llama.cpp inference engine [20], and kernels from HipKittens [21]. Our case studies show that LEO exposes actionable bottlenecks missed by vendor tools and that the same kernel can have different root causes of stalls on different GPU architectures. The rest of the paper presents background (Section II), LEO’s backward slicing (Section III), an evaluation of its utility (Section V), case studies (Section VI), related work (Section VII), and our conclusions (Section VIII). II. B ACKGROUND 
+
+LEO analyzes fine-grained PC-sampling measurements col-lected using vendor-specific profiling APIs. Because stall taxonomies, synchronization mechanisms, and concurrency semantics differ across GPUs from different vendors, their characteristics shape what LEO can infer. This section compares AMD, NVIDIA, and Intel PC sampling along three axes: sampling mechanism, stall classification, and concurrency semantics. 
+
+Terminology. AMD GPUs schedule waves on compute units (CUs) while NVIDIA GPUs schedule warps on streaming multiprocessors (SMs). Intel GPUs schedule hardware threads on Xe Vector Engines. We use “warp/wave” when referring to vendor-specific execution groups and “scheduler” for the unit that selects the next instruction to issue. Vendors use distinct terminology for on-chip scratchpad memory: AMD’s 
+
+Local Data Store (LDS), Intel’s Shared Local Memory (SLM), and NVIDIA’s shared memory (SMEM). On AMD GPUs, vector general-purpose registers are called VGPRs and high register usage reduces occupancy —the number of concurrent waves/warps per CU/SM. 
+
+A. PC Sampling on NVIDIA GPUs 
+
+NVIDIA’s PC sampling periodically selects an active warp on each streaming multiprocessor (SM) and records its instruction address along with the warp scheduler state. Each sample captures whether the warp issued an instruction or was stalled; stalls are classified into 13 categories defined by CUPTI (CUDA Profiling Tools Interface) [22], including instruction fetch, execution dependency, memory dependency, texture, synchronization, constant memory dependency, pipe busy, memory throttle, not selected, and sleeping. For devices with compute capability 6.0+ (P100 and later), NVIDIA additionally distinguishes between latency samples (where a stall prevented issue) and total samples (including cycles where the warp issued an instruction successfully), enabling more precise stall characterization. NVIDIA exposes this capability through two CUPTI inter-faces with different concurrency semantics. The Activity API provides PC sampling on devices with compute capability 5.2+ (GTX 980 and later) but serializes kernel executions on the GPU during collection [22], simplifying sample attribution but distorting measurements for applications that rely on concurrent kernels or streams. NVIDIA GPUs also support a lightweight PC sampling API that samples concurrent kernels without serialization but lacks support for correlating samples to kernel invocations. For root cause tracing, NVIDIA’s per-instruction stall categories provide the starting point: each stalled instruction’s stall reason determines which type of dependency to trace backward. 
+
+B. PC Sampling on AMD GPUs 
+
+AMD exposes PC sampling through the ROCprofiler-SDK API [23]. In stochastic mode, available on MI300 and later, dedicated hardware periodically samples an active wave in each compute unit with no observable skid in our microbenchmarks. Each sample reports the address and class of the sampled instruction, the instruction’s stall reason (if any), an execution mask indicating active lanes in the sampled wave, and whether the wave issued. Stalls are classified as no instruction available, ALU dependency, waiting for memory, internal instruction, barrier wait, not selected, pipeline stall, sleep, and other. Stochastic samples also report the count of active waves for the sampled cycle and per-pipeline arbiter bits, which indicate whether each pipeline issued and possibly stalled in the sampled cycle. This pipeline-state visibility (unavailable on other vendor’s GPUs) enables tools to distinguish an exposed 
+
+instruction stall (when the instruction’s associated pipeline didn’t issue in the sampled cycle) from a hidden stall (when another instruction issued on the pipeline in the sampled cycle). For root cause tracing, AMD’s stochastic mode provides richer input than other vendors: stall reasons guide dependency tracing and pipeline state distinguishes whether identified stalls actually degrade performance or are hidden by wave parallelism. TABLE I. Capability comparison of instruction-level GPU performance-analysis tools. ✓: explicit support. ◦: limited/partial support. –: not reported or outside the tool’s scope. LEO is the only tool implemented across NVIDIA, AMD, and Intel; broader cross-platform profilers such as DeepContext [13] and PASTA [14] are discussed in Section VII.                                     
+
+> Tool Stall Site (src/ISA) Direct Cause Transitive Chain Wait/Barrier Tracing Quantitative Attribution
+> Nsight Compute [2] ✓––––rocprofv3 [3] ✓––––VTune [4]/unitrace [5] ✓✓–◦–GPA [6] ✓✓–✓✓
+> GPUscout [15] ✓––––DrGPU [16] ✓––––
+> LEO (this work) ✓✓✓✓✓
+
+C. PC Sampling on Intel GPUs 
+
+Intel Data Center GPU Max (Ponte Vecchio) provides hardware-assisted periodic EU stall sampling exposed via Level Zero metrics interfaces [4], [24]. Each sample from an Xe Vector Engine (EU) consists of an instruction address and stall reason, if any. Intel defines an execution unit as “stalled” when at least one thread is loaded but no thread can execute in the sampled cycle. Stall categories include control flow stalls, pipeline hazards, memory send operations, scoreboard ID dependencies (SbidStall), synchronization, instruction fetch, distribution stalls, and other stalls [25]. Unlike NVIDIA’s Activity API, Intel’s sampling preserves natural kernel concurrency. Vendor documentation reports approximately 10 % overhead when using the shortest recom-mended sampling period of 100 μs, making hardware sampling practical for production HPC workloads. EU stall sampling is only supported on Intel’s Data Center GPUs. For root cause tracing, Intel’s scoreboard ID (SbidStall) category is particularly informative: it indicates synchronization dependencies between send (memory) instructions and their consumers, directly guiding dependency edge construction. 
+
+D. Summary and Implications 
+
+Three observations from this comparison guided our design. First, stall taxonomies are vendor-specific: NVIDIA reports 13 categories, AMD stochastic mode reports 10+, and Intel reports 8. While the categories overlap conceptually (memory, synchro-nization, dependencies), their definitions differ, requiring LEO to map vendor-specific stall reasons to a common dependency classification during root cause tracing. Second, concurrency semantics vary significantly: NVIDIA’s Activity API serializes kernels, while AMD and Intel preserve concurrency. Third, AMD uniquely exposes hidden latency through pipeline state visibility, enabling distinction between exposed stalls and stalls hidden by wave parallelism. III. B ACKWARD SLICING THROUGH GPU M ACHINE CODE 
+
+While PC sampling reveals where stalls occur, it does not explain why . LEO addresses this gap through backward slicing [26], [27]: starting from a stalled instruction, LEO slices backward over instruction-level register, predicate, and vendor-specific synchronization dependencies, then applies pruning and blame attribution to identify the root cause                                                          
+
+> 1if (m <num m&& g<num g&& z<num z ) {
+> 2for (Index type d=0; d<num d ; ++d) {
+> 3phidat[m+g *num m +z *num m*num g ] +=
+> 4elldat[d+m *num d ] *
+> 5psidat[d+g *num d +z *num d*num g ];
+> 6}
+> 7}
+> Fig. 2: RAJAPerf’s LTIMES NOVIEW kernel: fused multiply-add involving three arrays.
+
+instructions responsible for observed latency. LEO builds on the machine-code backward-slicing approaches of Cifuentes and Fraboulet [26] and Srinivasan and Reps [27], extending them with GPU-specific pruning heuristics and blame attribution for stall diagnosis. This section describes LEO’s analysis workflow, which also builds on the approach pioneered by GPA [6] with cross-vendor support and enhanced synchronization tracing. Figure 2 shows RAJAPerf’s LTIMES NOVIEW kernel, a fused multiply-add involving three arrays. Figure 3 illustrates the LTIMES NOVIEW kernel on AMD, NVIDIA, and Intel GPUs. Although the dependency chains differ across platforms, LEO traces them back to the same underlying cause: strided global-memory accesses to elldat . This example shows why cross-vendor root-cause analysis matters: some kernels require architecture-specific fixes, whereas others expose a shared bottleneck that can only be confirmed through unified analysis. 
+
+A. Workflow Overview 
+
+LEO’s analysis follows a 5-phase workflow: 1) Data collection. Disassembling the GPU binary (nvdisasm for NVIDIA, llvm-objdump for AMD, GED for Intel) and reading the HPCToolkit profile database via the hpcanalysis API [28]. 2) Binary analysis. Parsing binary sections, extracting in-structions with register operands, and building control-flow graphs [29] with DWARF debug info for source mapping. 3) Dependency-graph construction. Building a calling-context-tree (CCT) dependency graph from register dataflow (Section III-B ) and extending it with vendor-specific syn-chronization tracing (Section III-E). 4) Four-stage pruning. Filtering dependencies through op-code, barrier, latency, and execution constraints (Sec-tion III-C). (a) AMD MI300A  
+
+> v_add3_u32
+> amd_hip_runtime.h:258
+> global_load_dwordx2
+> Hip.cpp:56:8
+> s_waitcnt vmcnt(0)
+> Hip.cpp:56:8
+> (b) NVIDIA GH200
+> IMAD.X
+> Cuda.cpp:55
+> LDG.E.64.CONSTANT
+> Cuda.cpp:56
+> DFMA
+> Cuda.cpp:56
+> (c) Intel PVC
+> movi
+> RangeSegment.hpp:139
+> sel
+> spirv_vars.hpp:102
+> add
+> Sycl.cpp:65
+
+Fig. 3: Backward slicing on RAJAPerf’s LTIMES NOVIEW kernel (Figure 2) across AMD, NVIDIA, and Intel GPUs. The same strided memory access bottleneck produces different dependency chains on each architecture, with root cause instructions tracing to different source files on AMD and Intel GPUs. 
+
+5) Blame attribution. Distributing stall cycles to surviving root causes using inverse-distance weighting (Section III-D ). Because blame attribution relies on heuristic weighting rather than formal verification, LEO’s root-cause reports should be understood as actionable attributions supported by dependence analysis and sampled stall evidence. 
+
+B. CCT Dependency Graph 
+
+HPCToolkit attributes per-instruction performance metrics such as stall cycles by category to instruction offsets within each kernel. HPCToolkit organizes information about a kernel’s instructions into a Calling Context Tree (CCT) that may include calls to device functions, inlined functions and templates, loops and statements. LEO constructs a dependency graph between instructions annotated with stall cycle counts that are associated with nodes in this CCT. Edges represent register RAW (read-after-write) hazards and point backward in execution: from a stalled instruction (effect) to the instruction(s) that may have produced its source operand(s) (cause). LEO builds a control-flow graph (CFG) for each device function and computes reaching definitions for machine-register writes using standard forward dataflow fixed-point iteration over GEN/KILL sets. The analysis operates directly on disassembled machine code rather than on an SSA IR; at control-flow joins, it unions reaching-definition sets from each incoming edge. To obtain per-use precision, LEO performs a second, instruction-by-instruction forward walk through each basic block. Reaching definitions for the first instruction in a block are the block’s incoming set. Each definition of a register within a block kills incoming definitions or prior definitions in the block. LEO links each use of a source operand to its set of reaching definitions. LEO then uses a backward liveness pass as a conservative cross-block filter: if a register is not live out of a defining block, LEO removes that candidate dependency. LEO then creates backward edges for each register used by an instruction to other instructions that may produce a reaching register value. When a producer instruction has no profile samples, LEO still retains it as an unsampled dependency source during graph construction so address-generation or predicate-setting instructions can receive blame. The graph tracks dependencies across general-purpose registers (vector and scalar), predicate registers, barrier registers (NVIDIA                                     
+
+> for each basic block B:
+> curr ←reach in [B]
+> for each instruction i∈B:
+> for each source register r:
+> for each d∈curr [r]:add edge (d→i, RAW )
+> if predicated (i):
+> for each d∈curr [pred (i)] :add edge (d→i, GUARD )
+> for each destination w:curr [w]← { i}
+> LDG.E.64
+> DMUL ISETP
+> @P0 DFMA
+> R0 R1
+> R2 P0
+
+Fig. 4: Dependency-graph construction (illustrated with NVIDIA SASS; the same algorithm applies to AMD and Intel). Left: intra-block edge construction from the block-entry reaching-definition set 
+
+reach in [B]. Right: a single-block example. Solid arrows are register RAW dependencies; the dashed arrow is a predicate guard dependency. 
+
+B1–B6), and uniform registers (AMD scalar). For predicated instructions, LEO tracks guard predicates (P0–P6 on NVIDIA) alongside data registers, ensuring that conditional definitions are included in the dependency graph even when only a subset of threads executes the defining instruction. 
+
+C. 4-Stage Pruning Pipeline 
+
+The initial dependency graph is conservative and therefore contains many irrelevant edges. LEO applies four sequential pruning stages to remove false dependencies: 1) Opcode Constraints. Edges are pruned based on com-patibility between the source instruction’s type and the destination’s stall profile. If the destination shows only memory stalls, edges from compute instructions are re-moved; if it shows only execution dependency stalls, edges from global memory loads are removed. Edges constructed by synchronization tracing (Section III-E ) are exempt from this stage, as they represent compiler-verified dependencies. 2) Barrier Constraints. NVIDIA GPUs use numbered hard-ware barriers (B1–B6) encoded in each instruction’s control field. An edge is removed if the source instruction sets a barrier that the destination does not wait on. This stage applies only to NVIDIA; AMD and Intel use different synchronization mechanisms described in Section III-E. 3) Latency Constraints. If enough issue cycles separate a producer from its consumer, the dependency latency is hidden by the pipeline. LEO traverses CFG paths from producer to consumer, accumulating control.stall 
+
+cycles (NVIDIA) or instruction counts (AMD/Intel) at each instruction. An edge is pruned if the accumulated issue cycles exceed the producer’s latency threshold on all CFG paths. Valid (non-hidden) paths are stored on each edge for distance computation during blame attribution. 4) Execution Constraints. Edges from instructions with zero execution count are optionally pruned. 
+
+D. Blame Attribution 
+
+After pruning, LEO distributes stall cycles from each stalled instruction to its surviving dependencies using four-factor weighting: blame i = Sj × Rdist  
+
+> i
+
+× R eff  
+
+> i
+
+× R isu  
+
+> i
+
+× R match 
+
+> i
+
+P 
+
+> k
+
+Rdist  
+
+> k
+
+× R eff  
+
+> k
+
+× R isu  
+
+> k
+
+× R match 
+
+> k
+
+(1) where Sj is the total stall cycles at the stalled instruction j,and the four factors for each incoming dependency i are:  
+
+> •
+
+Rdist  
+
+> i
+
+= dmin /d i: Distance factor. Closer instructions receive more blame, as they have less opportunity to hide latency. 
+
+di is the average instruction count across valid CFG paths from Stage 3.  
+
+> •
+
+Reff  
+
+> i
+
+= emin /e i: Efficiency factor. Less efficient instructions (e.g., uncoalesced memory accesses) receive more blame.  
+
+> •
+
+Risu  
+
+> i
+
+= ni/ P 
+
+> k
+
+nk: Issue factor. Instructions executed more frequently receive proportionally more blame.  
+
+> •
+
+Rmatch  
+
+> i
+
+: Stall-category match factor. Weights each edge by how well its dependency type (memory, execution, synchronization) matches the destination’s hardware-reported stall breakdown. For example, a memory dependency edge receives weight 0.8 if 80 % of the destination’s stall cycles are memory stalls. The first three factors follow GPA’s design [6]; the fourth is a LEO extension that grounds blame in observed hardware metrics rather than purely static analysis. When no dependencies survive pruning, LEO classifies the instruction as self-blame with a diagnostic subcategory (memory latency, compute saturation, synchronization overhead, pipeline contention, instruction fetch, or indirect addressing) based on the dominant stall type in the hardware profile. The proximate cause of a stall is the instruction that is stalled; a root cause is an earlier instruction that caused the stall. In practice, LEO’s chains often traverse framework layers (e.g., RAJA iterators, SYCL accessors), guiding developers from the stalled instruction to the actionable design decision. This definition is consistent with instruction-level diagnosis tools such as GPA [6]. 
+
+E. Cross-Vendor Synchronization Tracing 
+
+Purely register-based tracing breaks at synchronization instructions because they expose no explicit register dependen-cies. LEO avoids these dead ends by adding vendor-specific synchronization edges that bypass opcode and latency pruning: 
+
+AMD: s_waitcnt tracing. AMD’s s_waitcnt instruc-tion waits until counts of in-flight memory operations drain to a specified level. Counts include vmcnt for vector memory operations ( global_load , buffer_load ) and lgkmcnt 
+
+for LDS/constant operations ( ds_read , s_load ). When LEO encounters s_waitcnt vmcnt(N) , it scans backward to find the (M −N ) oldest pending memory operations (where M
+
+is the total count), stopping at epoch boundaries where a prior 
+
+s_waitcnt already drained the counter. These operations are added as mem_waitcnt edges. 
+
+NVIDIA: barrier tracing. NVIDIA encodes hardware barriers (B1–B6) in each instruction’s control field via 
+
+Control.read /Control.write bits. When an instruc-tion waits on a barrier (via Control.wait bitmask or 
+
+DEPBAR operand), LEO scans backward to find instructions that set matching barriers, creating mem_barrier edges. 
+
+Intel: SWSB token tracing. Intel Xe HPC uses SWSB to-kens (SBID 0–31) for dependency synchronization. When an in-struction contains a wait directive ( dst_wait or src_wait 
+
+on SBID T ), LEO scans backward to find the send instruction that set SBID T , creating mem_swsb edges. 
+
+Unified framework. LEO provides a unified interface for tracing memory dependencies. It accommodates differences in GPU synchronization mechanisms that await completion of memory accesses by dispatching to a vendor-specific algorithm that produces typed edges ( mem_waitcnt , mem_barrier ,
+
+mem_swsb ) that are exempt from opcode and latency pruning. This extended tracing exceeds GPA’s capability: GPA traces NVIDIA barriers but lacks support for AMD and Intel GPUs, which employ different mechanisms for awaiting completion of memory accesses. IV. L ARGE LANGUAGE MODEL -B ASED OPTIMIZATION 
+
+Beyond aiding manual optimization, we evaluate whether results from LEO’s root-cause analysis improve large language model (LLM)-based code optimization. Our workflow for LLM-based kernel tuning has five stages: (1) HPCToolkit collects PC samples; (2) LEO performs root-cause analysis; (3) LEO formats the result as a structured stall report with dependency chains and source mappings; (4) a two-stage LLM pipeline uses a strategist to propose optimization strategies and a code generator to implement them; and (5) the generated code is compiled, verified, and benchmarked. 
+
+A. Diagnostic Context for LLMs 
+
+Profiles alone tell an LLM where time is spent, but not why ,so it mainly supports generic optimization heuristics. LEO adds three forms of diagnostic context: root-cause identification (e.g., “line 56 stalls because of strided elldat accesses” rather than “line 56 is slow”), cross-file dependency chains that expose the critical path, and quantified impact via cycle counts that help prioritize high-value changes. 
+
+B. LLM Diagnostic Context Comparison 
+
+To isolate LEO’s contribution, we compare three diagnostic settings: C (code only), C+S (code plus raw per-instruction stall counts), and C+L(S) (code plus LEO’s full root-cause analysis, including dependency chains and blame attribution). Comparing C with C+S tests whether stall profiles help. Comparing C+S with C+L(S) isolates the value of causal analysis. This TABLE II. GPU hardware platforms used for evaluation.                            
+
+> AMD MI300A NVIDIA GH200 Intel GPU Max 1100
+> Architecture CDNA3 APU Hopper (Grace Hopper) Xe-HPC (Ponte Vecchio) Compute Units 228 CUs 132 SMs 56 Xe-cores ( 448 XVEs) Memory 128 GB HBM3 480 GB HBM3e 48 GB HBM2e FP64 Peak 61 .3 TFLOPS 33 .5 TFLOPS 22 .2 TFLOPS
+> Mem BW 5.3 TB /s4.0 TB /s1.23 TB /s
+> Software ROCm 6.3 CUDA 12.8 Level Zero 1.x
+
+TABLE III. HPC and ML workloads used for evaluation.                                     
+
+> Workload Domain Type Prog. Model Developer
+> RAJAPerf [17] Multi-physics Benchmark suite CUDA/HIP/SYCL LLNL XSBench [34] Nuclear physics Proxy app OpenMP offload ANL miniBUDE [35] Drug discovery Mini-app CUDA/HIP/SYCL U. Bristol LULESH [36] Hydrodynamics Proxy app Kokkos LLNL QuickSilver [18] Particle transport Proxy app CUDA/HIP LLNL HipKittens [21] ML kernels Library HIP Stanford llama.cpp [20] LLM inference Production CUDA/HIP Community Kripke [19] Particle transport Proxy app RAJA (CUDA/HIP) LLNL
+
+study complements recent work on LLM-based parallel code generation [30], performance-improving code edits [31], and performance-tool-guided kernel optimization [32], [33] by evaluating whether structured profiler diagnostics can guide such models more effectively. We evaluate Gemini 3.1 Pro on 15 RAJAPerf CUDA kernels with k=5 trials and temperature 0.7 (Section V-D ). Multi-model evaluation and expanded kernel coverage remain future work. V. E VALUATION 
+
+This section evaluates LEO across three GPU platforms, focusing on the quality of root cause analysis, optimization impact, and utility for automated tuning. Our evaluation focuses on whether LEO provides useful and actionable attributions for optimization, rather than on formally verifying the causal correctness of every reported chain. 
+
+A. Experimental Setup a) Hardware Platforms: Table II summarizes the three AMD, NVIDIA, and Intel GPUs used in our evaluation. 
+
+b) HPC Workloads: Table III summarizes the workloads. RAJAPerf contributes 15 kernels extracted from production LLNL codes; for the cross-platform root-cause study, we analyze and optimize the Base_CUDA , Base_HIP , and 
+
+Base_SYCL variants, and report speedup relative to the original version of each variant (Table IV). The remaining applications support the case studies in Section VI. 
+
+c) Profiling and Analysis Overhead: LEO performs post mortem analysis of previously collected profiles and therefore adds no runtime overhead. Any runtime cost comes from HPCToolkit’s hardware-assisted PC-sampling infrastruc-ture. On AMD GPUs, PC sampling at HPCToolkit’s default frequency adds roughly 10% measurement overhead to an execution. LEO’s analysis time is dominated by HPCToolkit’s 
+
+hpcanalysis database reader. After that, dependency-graph construction, pruning, and blame attribution typically finish in 3 s to 10 s per kernel on one CPU core (e.g., 3.6 s for RAJAPerf on AMD and 8.1 s for QuickSilver on NVIDIA), although NVIDIA tensor-core kernels in llama.cpp with more than 8,000 dependency edges and long scheduling chains took about 60 s .
+
+B. Dependency Tracing Effectiveness 
+
+We evaluate LEO at two levels: diagnostic usefulness and optimization outcome. For each RAJAPerf kernel, LEO produces a ranked stall chain through backward slicing. We then applied a minimal source-level modification confined to the code region implicated by the top-ranked chain (e.g., shared-memory tiling, kernel fusion, or pointer reduction) and re-measure performance using the same harness, problem size, and iteration count as the baseline kernel. This protocol is intentionally restrictive: it does not allow unrelated algorithmic changes or broad manual retuning, so the resulting speedups provide a conservative measure of LEO’s usefulness as a diagnostic tool. RAJAPerf includes internal warmup phases and kernel-specific repetition counts. Except for kernel-fusion cases (PRESSURE, ENERGY), we report speedup from per-kernel GPU execution time measured by vendor profilers: Nsight Systems on NVIDIA, rocprofv3 on AMD, and unitrace on Intel. For PRESSURE and ENERGY, per-kernel GPU timings would miss the benefit of eliminating inter-kernel traffic and launch overhead, so we use RAJAPerf’s built-in aggregate timer instead. For case studies, we measured ten independent runs per configuration and report mean speedup. For RAJAPerf kernels, we report the mean GPU kernel time across ten profiler invocations. Run-to-run variability is generally low on NVIDIA and AMD (median CV below 1%), with LULESH and Kripke showing higher variance. Intel PVC exhibits higher variability (median CV 9%) due to platform-specific scheduling behavior. We assessed statistical significance using two-sided paired t-tests on matched baseline/optimized timing samples. For the final measurements reported in Table IV, all speedups greater than 1.05 × were significant at p < 0.01 . Smaller changes near unity were mixed: some were statistically significant because run-to-run variance was very low, whereas others were not distinguishable from the baseline. Table IV presents the results across all three GPU platforms. The results show two main findings. First, LEO exposes 
+
+cross-vendor root-cause divergence : the same kernel can be compute-bound on one platform and memory-bound on another. Across all 21 workloads, geometric-mean speedups are 1.73 ×
+
+on NVIDIA GH200, 1.74 × on AMD MI300A, and 1.82 × on Intel PVC. Three codes (QuickSilver, llama.cpp, Kripke) lack SYCL ports; Intel results are omitted for these workloads. 
+
+Observation 1: The same kernel exhibits fundamentally different bottlenecks across GPU architectures. For example, FIR is compute-bound on NVIDIA (1.00 ×) but memory-bound on AMD (1.86 ×), and llama.cpp requires occupancy tuning on AMD (1.12 ×) but has no dominant bottleneck on NVIDIA. Second, LEO remains useful even when little speedup is available. For DEL DOT VEC 2D (near 1.0 × on all platforms), LEO correctly attributes the bottleneck to reduction stalls with limited optimization headroom, steering developers away from unproductive effort. TABLE IV. Root cause analysis and optimization results across three GPU platforms. Per-kernel speedups measured by vendor GPU profilers (Nsight Systems, rocprofv3, unitrace).                                                                                                                                                                                                                                                         
+
+> NVIDIA GH200 AMD MI300A Intel PVC Application Kernel Root Cause Optimization Speedup Root Cause Optimization Speedup Root Cause Optimization Speedup
+> RAJAPerf Kernels (baseline: Base_ {CUDA,HIP,SYCL })
+> MASS3DEA Mass3DEA FP64 FMA Chain Precompute basis in regs 3.66 ×Register Spilling Precompute basis in regs 2.51 ×SLM Fence Latency Precompute basis in regs 10.32 ×
+> LTIMES NOVIEW ltimes_noview Stride-64 Loads Tile elldat into SMEM 4.41 ×Uncoalesced Loads Tile elldat into LDS 4.89 ×Predication Overhead Tile elldat into SLM 3.06 ×
+> LTIMES ltimes Stride-64 Loads Tile elldat into SMEM 5.02 ×Global Load Latency Tile elldat into LDS 4.00 ×URB Contention Tile elldat into SLM 3.01 ×
+> 3MM poly_3mm {1--3 }Global Load Latency Tile A,B into SMEM 1.91 ×Global Load Latency Tile A,B into LDS 3.38 ×URB Contention Tile A,B into SLM 2.98 ×
+> 2MM poly_2mm {1,2 }Global Load Latency Tile A,B into SMEM 1.69 ×Global Load Latency Tile A,B into LDS 3.37 ×URB Contention Tile A,B into SLM 2.98 ×
+> GEMM poly_gemm Global Load Latency Tile A,B into SMEM 1.55 ×Global Load Latency Tile A,B into LDS 3.26 ×URB Contention Tile A,B into SLM 2.98 ×
+> PRESSURE pressurecalc {1,2 }Inter-Kernel Traffic Fuse 2 kernels (reg bvc) 2.55 ×Inter-Kernel Traffic Fuse 2 kernels (reg bvc) 2.06 ×Transcendental Stall Fuse 2 kernels (reg bvc) 1.84 ×
+> ENERGY energycalc {1--6 }Inter-Kernel Traffic Fuse 6 kernels into 1 1.81 ×Inter-Kernel Traffic Fuse 6 kernels into 1 2.34 ×Control Flow Stall Fuse 6 kernels into 1 3.66 ×
+> FIR fir FP64 FMA Chain Tile coefficients into SMEM 1.00 ×Global Load Stall Tile coefficients into LDS 1.86 ×URB Contention Tile coefficients into SLM 1.00 ×
+> ZONAL ACCUM 3D zonal_accum_3d Constant Load Stall __ldg +__restrict__ 1.07 ×Scalar Load Stall 8 ptrs →base+arith 1.16 ×Memory Dep Stall 8 ptrs →base+stride 1.17 ×
+> VOL3D vol3d Pointer Indirection 24 ptrs →3 base+stride 1.06 ×VGPR Spill 24 ptrs →3 base+stride 1.35 ×Control Flow Stall 24 ptrs →3 base+stride 1.17 ×
+> DEL DOT VEC 2D deldotvec2d Reduction Load Stall 16 ptrs →4 base+stride 1.01 ×Reduction Stall 16 ptrs →4 base+stride 1.03 ×URB Contention 16 ptrs →4 base+stride 1.33 ×
+> DIFFUSION3DPA Diffusion3DPA Stencil Cache Miss Tile basis B,G into SMEM 1.01 ×Stencil LDS Stall Tile basis B,G into LDS 1.07 ×URB Contention Tile basis B,G into SLM 1.00 ×
+> CONVECTION3DPA Convection3DPA Global Load Latency Tile basis into SMEM 1.00 ×Stencil LDS Stall Tile basis into LDS 1.21 ×Predication Overhead Tile basis into SLM 1.00 ×
+> MASS3DPA Mass3DPA Global-SLM Reload Cache B,Bt in SMEM 1.05 ×Low Occupancy (VGPR) Occupancy hint + no unroll 1.02 ×SLM Fence Latency Merge phases (SLM) 1.08 ×
+> Kernels from Applications or Mini-Apps
+> LULESH CalcFBHourglass Scattered Node Access Gather-once AoS →SoA 1.00 ×Scattered Node Access Gather-once AoS →SoA 1.01 ×Scattered Node Access Gather-once AoS →SoA 1.14 ×
+> miniBUDE fasten_main Irregular Loads __ldg float4 + restrict 2.20 ×Irregular Loads restrict + unroll 1.20 ×Control Flow Stall USM + work-group tune 1.03 ×
+> XSBench xs_lookup_kernel Irregular Loads Integer hash + extract 1.08 ×Irregular Loads Integer hash + extract 1.01 ×Irregular Loads Hybrid search + USM 1.18 ×
+> Kripke LTimes Global Load Stall Swap Zone ↔Group (RAJA) 11.67 ×Global Load Stall Swap Zone ↔Group (RAJA) 1.90 ×N/A llama.cpp mul_mat_q Tensor Core Stall Direct store + restrict 1.00 ×VGPR Pressure (0%) Tile 128 →64 + direct store 1.12 ×N/A QuickSilver CycleTracking Cross-File Ptr Chain Inline cross-file call 1.51 ×Flat Load Latency Inline cross-file call 1.27 ×N/A
+> Geomean 1.73 ×1.74 ×1.82 ×
+
+Observation 2: Optimization transferability depends on bottleneck structure. Of 21 workloads, 11 benefit from the same optimization across vendors (e.g., shared-memory tiling for LTIMES, 3MM, GEMM; kernel fusion for PRESSURE, ENERGY), while six require vendor-specific fixes (e.g., miniBUDE, llama.cpp); the remaining four show mixed results or no actionable bottleneck. Regular memory access patterns admit portable optimizations; architecture-specific stall mecha-nisms need customized solutions. 
+
+C. Dependency Graph Quality 
+
+To assess whether LEO produces graphs suitable for un-ambiguous blame attribution, we measure single-dependency coverage [6]: the fraction of nodes whose incoming edges belong to distinct dependency classes (e.g., memory versus execution), so blame can be assigned to one edge without apportionment. Figure 5 shows coverage before and after LEO’s analysis workflow (synchronization tracing + four-stage pruning) across all 21 workloads on three architectures. Without pruning, single dependency coverage is 30 % to 
+
+74 % on NVIDIA GH200. Pruning improves coverage to 64 % 
+
+to 94 % , with 13/21 workloads exceeding 80 % . On AMD MI300A, coverage reaches 80 % to 97 % for most workloads; three kernels (ENERGY, FIR, ZONAL ACCUM 3D) show slight decreases because s_waitcnt tracing adds memory counter edges that increase graph complexity—a necessary cost for tracing through synchronization barriers to reach actual memory operations. On Intel PVC, coverage remains stable at 61 % to 89 % because Intel’s SWSB mechanism produces compiler-verified dependency edges that are already precise, requiring minimal pruning. Single dependency coverage measures the clarity of blame attribution—whether dependencies can be unambiguously classified—not its correctness. We assess effectiveness through case studies where optimization guided by LEO’s top-ranked chains achieves substantial speedup (Section VI). 
+
+TABLE V. Diagnostic context comparison on NVIDIA GH200 using Gemini 3.1 Pro (15 RAJAPerf kernels, k=5 trials, best-of-k speedup). C: source code only. C+S: code plus raw stall counts. C+L(S): code plus LEO’s root-cause analysis of stalls. 
+
+C C+S C+L(S) 
+
+Compilable (%) 37 % 76 % 100 % 
+
+Geomean Speedup 1.13 × 1.08 × 1.29 ×
+
+Regressions ( <1×) 1 5 0
+
+D. LLM Diagnostic Context Comparison 
+
+As described in Section IV-B , we compare three levels of diagnostic context on NVIDIA GH200 using 15 RAJAPerf kernels and Gemini 3.1 Pro ( k=5 trials, best-of-k speedup). Table V presents the results. C+L(S) achieves a 1.29 × geometric-mean speedup with all 15 kernels producing compilable code, compared with 1.13 ×
+
+(37% compilable) for code-only input (C) and 1.08 × (76% compilable) for raw stalls (C+S). Relative to C, LEO raises the fraction of compilable outputs from 37% to 100%. Five kernels that produce no compilable code under C achieve 1.26–1.97 ×
+
+speedup with LEO’s guidance. Notably, raw stall data alone can hurt optimization quality: PRESSURE drops to 0.85 ×
+
+under C+S (versus 1.20 × with LEO), and VOL3D regresses to 0.36 ×. These results suggest that unstructured profiling data can mislead LLMs, whereas causal dependency chains support targeted changes. 
+
+Observation 3: Structured dependency chains guide opti-mization better than raw metrics. Causal chains suppress false positives by linking stalls to actionable code regions: without them, LLMs apply generic transformations that can degrade performance (PRESSURE achieves 0.85 × speedup and VOL3D achieves 0.36 × speedup after transformations guided by raw stalls). MASS3DEA 
+
+> LTIMES NV
+> LTIMES
+> 3MM
+> 2MM
+> GEMM
+> PRESSURE
+> ENERGY
+> FIR
+> ZONAL 3D
+> VOL3D
+> DEL DOT
+> DIFF3DPA
+> CONV3DPA
+> MASS3DPA
+> miniBUDE
+> XSBench
+> LULESH
+> QuickSilv
+> llama.cpp
+> Kripke
+> 0
+> 50
+> 100
+> SDC (%)
+> NVIDIA GH200
+> Before
+> Improvement
+> MASS3DEA
+> LTIMES NV
+> LTIMES
+> 3MM
+> 2MM
+> GEMM
+> PRESSURE
+> ENERGY
+> FIR
+> ZONAL 3D
+> VOL3D
+> DEL DOT
+> DIFF3DPA
+> CONV3DPA
+> MASS3DPA
+> miniBUDE
+> XSBench
+> LULESH
+> QuickSilv
+> llama.cpp
+> Kripke
+> AMD MI300A
+> MASS3DEA
+> LTIMES NV
+> LTIMES
+> 3MM
+> 2MM
+> GEMM
+> PRESSURE
+> ENERGY
+> FIR
+> ZONAL 3D
+> VOL3D
+> DEL DOT
+> DIFF3DPA
+> CONV3DPA
+> MASS3DPA
+> miniBUDE
+> XSBench
+> LULESH
+> QuickSilv
+> llama.cpp
+> Kripke
+> Intel PVC
+
+Fig. 5: Single-dependency coverage before (faded) and after (solid) LEO’s analysis workflow. The dashed line marks 80 % , above which blame is typically unambiguous. Orange bars indicate workloads where synchronization tracing increases graph complexity in exchange for deeper root-cause identification. 
+
+VI. C ASE STUDIES 
+
+We present case studies that highlight LEO’s diagnos-tic range, including cross-vendor root-cause divergence, architecture-specific optimizations, cross-file tracing, machine-learning kernels, and framework abstraction layers. 
+
+A. MASS3DEA: One Optimization, Three Root Causes 
+
+RAJAPerf’s MASS3DEA kernel computes 3D finite-element mass-matrix assembly through basis-function products. LEO shows that the same kernel has very different stall reasons on the three GPU platforms.  
+
+> •
+
+On NVIDIA GH200, FP64 multiply dependency chains (DMUL →DMUL, 52 .3 % of stall cycles) limit instruction-level parallelism.  
+
+> •
+
+On AMD MI300A, severe register pressure ( 189 VGPRs, 
+
+0 % occupancy) shifts 84 % of cycles to s_waitcnt 
+
+synchronization.  
+
+> •
+
+On Intel PVC, SLM-fence latency through SYCL accessor layers ( accessor.hpp ) accounts for 28 % of stalls. Despite these different causes, the same optimization— precomputing basis-function values in registers—addresses all three cases. It breaks the dependency chain on NVIDIA, reduces register pressure on AMD, and removes SLM round trips on Intel. The resulting speedups are 3.66 ×, 2.51 ×, and 10.32 ×,respectively, with Intel benefiting most because the SLM-fence overhead dominates. 
+
+B. miniBUDE: Architecture-Specific Optimizations 
+
+miniBUDE [35] is a molecular-docking mini-app with irregular memory accesses. Although LEO identifies irregular loads as the common symptom on all three architectures, the underlying mechanisms differ, so the effective code changes are vendor-specific.  
+
+> •
+
+On NVIDIA GH200, 20 .8 % of stalls arise at 
+
+LDG.E.U8.CONSTANT , where address computation de-lays load issue. We therefore use __ldg() , float4 co-alescing, and __restrict__ to route accesses through the read-only cache, yielding 2.20 ×. 
+
+> •
+
+On AMD MI300A, 24 .5 % of stalls arise at s_waitcnt vmcnt ; because all 64 lanes redundantly load data for the same protein atoms, we replace vector loads with scalar broadcasts ( s_load_dwordx4 ), yielding 1.20 ×. 
+
+> •
+
+On Intel PVC, 52 .4 % of sampled stalls come from control-flow overhead introduced by SYCL accessor indirection, so we switch to USM pointers and retune work-group sizes, yielding 1.03 ×.  
+
+> 1// mul mat q kernel: store results
+> 2
+
+for (int j = j0; j < ncols; j++) { 
+
+> 3
+
+if ( ids dst [j] < 0) continue ;  
+
+> 4
+
+- dst[ids dst[j]*stride + i] = sum[...];  
+
+> 5
+
++ dst[j*stride + i] = sum[...]; // direct  
+
+> 6}
+
+Fig. 6: llama.cpp mmq.cuh : LEO identifies ids_dst[j] as a serializing LDS read. Replacing the indirect store with direct indexing yields 1.12 × on AMD MI300A. 
+
+These optimizations are architecture-specific: no optimization applies directly across GPUs from different vendors. 
+
+C. QuickSilver: Cross-File Root Cause Tracing 
+
+QuickSilver [18] is a Monte Carlo particle-transport proxy for LLNL’s Mercury code.  
+
+> •
+
+On NVIDIA GH200, LEO traces a three-file dependency chain responsible for 19 .8 % 
+
+of stall cycles: a floating-point multiply in 
+
+CollisionEvent.hh stalls on a global load that passes through MacroscopicCrossSection.hh to 
+
+NuclearData.hh . 
+
+> •
+
+On AMD MI300A, LEO instead points to atomic oper-ations and s_waitcnt fences under extreme register pressure ( 153 VGPRs, 0 % occupancy). Guided by these platform-specific diagnoses, we inline the cross-file call, add __restrict__ , and hoist loop invari-ants on NVIDIA; on AMD, we reduce register pressure along the lookup path. The resulting speedups are 1.51 ×
+
+on GH200 and 1.27 × on MI300A. The key point is that the root cause in NuclearData.hh is not visible from 
+
+CollisionEvent.hh alone; only LEO’s cross-file chain exposes it. 
+
+D. ML Kernel Optimization: llama.cpp and HipKittens a) llama.cpp: Vendor-Specific Optimization: 
+
+llama.cpp [20] is a widely used large language model inference engine. LEO identifies fundamentally different root causes in the same quantized matrix-multiply kernel (mmq.cuh ) on AMD MI300A and NVIDIA GH200.  
+
+> •
+
+On AMD, LEO reports a 70 .9 % stall ratio and 0 % 
+
+occupancy, with 160 to 256 VGPRs per wave.  
+
+> •
+
+On NVIDIA, LEO finds no dominant stall hotspot; stall cycles are distributed across multiple pipeline stages with no single actionable bottleneck. Guided by the AMD-specific diagnosis, we reduce tile width from 128 to 64 to restore occupancy and replace indirect stores with direct addressing (Figure 6), yielding 1.12 × on AMD (Qwen2.5-1.5B, Q4 K M quantization). This case illustrates cross-vendor divergence: the same kernel requires optimization on one platform but is already efficient on another. 
+
+b) HipKittens: Expert-Optimized ML Kernels: HipKit-tens [21] shows that LEO can help even on hand-tuned kernels. Its RMSNorm kernel for AMD MI300A was already optimized by expert developers, yet LEO traces a cross-file chain showing that the compiler lowers BF16 vector loads to scalar global_load_ushort operations, leaving 20 % to 
+
+58 % of stall cycles attributable to memory. Guided by that diagnosis, we implement multi-row software pipelining with split s_waitcnt counters and obtain 1.07 ×–1.24 × speedup on MI300A. This case shows that LEO can uncover additional opportunities even in code written by experts. 
+
+E. Kripke: Tracing Through RAJA Abstraction Layers 
+
+Kripke [19] is an LLNL proxy application for deterministic particle transport implemented using the RAJA template-based programming model. The physics kernel is a single line: 
+
+phi(nm,g,z) += ell(nm,d) * psi(d,g,z) . Noth-ing in the source code suggests a performance problem, yet LEO reports that this line accounts for 96 .7 % of stall cycles on NVIDIA GH200 (Figure 7). LEO’s backward slice reveals why: the stalling DFMA 
+
+instruction waits on a global load whose address com-putation chains through three RAJA framework layers: array indexing in TypedViewBase.hpp , offset arith-metic in Operators.hpp , and strided iteration logic in 
+
+Iterators.hpp . The appearance of RAJA’s strided iterator at the end of the chain is the key diagnostic clue: it tells the developer that the memory access pattern is determined by the RAJA execution policy, not the physics code. Inspecting the RAJA execution policy in LTimes.h explains the strided pattern: mapping Group to cuda_thread_x while keeping 
+
+Zone as a sequential inner loop forces adjacent GPU threads to access memory 32 ,768 B apart. The fix is a two-line change in LTimes.h : swapping the two dimensions aligns adjacent threads with contiguous memory, yielding 11.67 × on NVIDIA GH200 but only 1.90 ×
+
+on AMD MI300A (Table IV), reflecting MI300A’s superior HBM3 bandwidth, which reduces the penalty for not coalescing. On AMD, LEO traces through s_waitcnt vmcnt(0) to the same strided global_load , confirming a shared root cause despite different stall mechanisms. Without LEO’s cross-file dependency chain, this abstraction-layer bottleneck would be invisible in any single source file. 
+
+Observation 4: Framework abstraction layers create bot-tlenecks invisible from source code alone. This pattern recurs across the case studies: QuickSilver’s three-file pointer chain and HipKittens’ compiler-lowered BF16 scalar loads both require cross-file backward tracing to diagnose. LEO’s ability to slice through abstraction boundaries is what makes these root causes actionable.                                             
+
+> 56 RAJA :: kernel <ExecPolicy >(
+> 57 RAJA :: make tuple ( range Moments ,
+> 58 range Directions , range Groups ,
+> 59 range Zones ),
+> 60 [=] ( IMoment nm , IDirection d,
+> 61 IGroup g, IZone z) {
+> 62 phi(nm,g,z) += ell(nm,d)*psi(d,g,z);
+> 63 }
+> 64 );
+> (a) Kernel source code ( Kripke/Kernel/LTimes.cpp ).
+> Kripke Code RAJA Framework
+> DFMA LTimes.cpp:62 96 .7 % stall cycles
+> ↑LDG.E.64 LTimes.cpp:62 global load (stalled)
+> ↑LEA.HI.X TypedViewBase.hpp:216 array index
+> ↑IADD3 Operators.hpp:369 address offset
+> ↑IADD3 Iterators.hpp:291 strided iteration (b) LEO backward dependency slice.
+> Fig. 7: LEO analysis of Kripke LTimes on NVIDIA GH200. (a) The highlighted line accounts for 96 .7 % of stall cycles. (b) LEO traces the stalling DFMA instruction backward through a global load into three RAJA framework files (purple), revealing that address computation passes through RAJA’s strided iterator.
+
+VII. R ELATED WORK 
+
+a) GPU Performance Tools: Prior work covers adjacent pieces of LEO’s design space, but not their combination. Vendor profilers such as Nsight Compute, ROCprofiler, and VTune report per-instruction stalls within a single ecosystem, but they do not trace those stalls backward to source-level causes or support GPUs from multiple vendors. GPA [6] pioneered backward slicing for NVIDIA GPUs, while HPCToolkit’s GPU measurement infrastructure [12], [37], [38] provides LEO’s profiling substrate. Cross-vendor performance studies [7], [11] document that the same application behaves differently across platforms, and DeepContext [13] provides context-aware profiling for deep-learning workloads across platforms, but neither connects those differences to instruction-level root causes. PASTA [14] provides a modular analysis framework for accelerators but does not perform root-cause tracing. LEO occupies this missing intersection: a unified cross-vendor imple-mentation that models vendor-specific PC-sampling semantics and performs backward slicing to actionable root causes. 
+
+b) Precise Event Sampling: On CPUs, Sasongko et al. [39] analyzed Intel PEBS and AMD IBS in terms of accuracy, stability, and overhead. We adopt a similar microbenchmark-driven perspective, but focus on GPU PC sampling facilities. Binary instrumentation frameworks such as SASSI [40], NVBit [41], and Intel GTPin [25], [42] offer another route to fine-grained GPU measurement; however, such instrumentation-based tools are not well suited for measuring performance. 
+
+c) GPU Latency Hiding and Stall Analysis: Volkov [43] established the core theory of GPU latency hiding through mas-sive multithreading and showed how Little’s law distinguishes latency-bound from throughput-bound execution. Recent work on fine-grained stall accounting [44], [45] addresses concurrent stall events that coarse mechanisms miss. GPUscout [15] uses CUPTI PC sampling to localize memory bottlenecks, DrGPUM [46] guides memory optimization for GPU applica-tions, and GhOST [47] proposes out-of-order warp scheduling to reduce stalls. Nayak and Basu [48] analyze unnecessary synchronization in GPU programs. LEO differs in aim: rather than characterizing stall behavior at a high level or redesigning scheduling, it traces stalls backward to the instructions that cause them. 
+
+d) Cross-Vendor Performance Portability: Cross-vendor GPU performance has become increasingly important in the exascale era. Davis et al. [7] evaluate seven programming models across NVIDIA and AMD GPUs, and Kwack et al. [11] benchmark 12 HPC and machine-learning applications across Frontier, Aurora, and Polaris. These studies establish the exis-tence of cross-platform performance gaps. LEO complements such studies by explaining performance gaps at the instruction level. 
+
+e) Top-Down Analysis: Yasin [49] introduced top-down microarchitecture analysis for Intel CPUs, and Nowak et al. [50] proposed hierarchical cycle accounting. For GPUs, Saiz et al. [51] adapted top-down profiling to NVIDIA GPUs, and DrGPU [16] extended the idea into a portable profiler. LEO is complementary rather than competitive: top-down methods classify where cycles go, whereas LEO traces specific stalls back to the instructions that cause them. 
+
+f) Program Slicing: Weiser [52] introduced program slicing as the computation of the program subset that affects a value at a given point. Horwitz et al. [53] extended slicing to interprocedural contexts. Cifuentes and Fraboulet [26] adapted slicing to binary executables, and Srinivasan and Reps [27] improved the precision of machine-code slicing. LEO adapts that line of work to GPU performance diagnosis by slicing backward from stalled instructions through register, predicate, and synchronization dependencies to root causes. 1
+
+VIII. C ONCLUSIONS 
+
+This paper presents LEO, a cross-vendor GPU root-cause analyzer that uses backward slicing to identify the instructions responsible for stalls. LEO leverages HPCToolkit’s cross-vendor PC-sampling infrastructure to support NVIDIA, AMD, and Intel GPUs using a unified analysis layer. Across three platforms and 21 workloads, the evaluation shows that the same kernel can have different bottlenecks on different architectures and that LEO’s diagnoses lead to actionable optimizations, with geometric-mean speedups of 1.73 ×–1.82 ×.LEO builds dependency graphs from register dataflow, prunes them with opcode, barrier, latency, and execution constraints, and attributes blame with inverse-distance weighting. It also traces through vendor-specific synchronization mechanisms— AMD s_waitcnt counters, NVIDIA barrier bits, and Intel SWSB tokens—to reach memory operations that cause stalls. LEO provides a unified tool for tracing instruction-level stalls back to actionable root causes on NVIDIA, AMD, and Intel 
+
+> 1Some wording in this section was refined with assistance from Claude [54] and Gemini [55]; the authors verified all references and the final text.
+
+GPUs. Our study exploring the utility of LEO’s dependency chains to guide optimization using large language models is a secondary contribution. Notably, this study suggests that LEO’s structured root-cause reports also can be useful to guide automated tuning. We therefore view LEO first as a diagnostic tool for developers and performance engineers, and only second as a foundation for automating performance optimization of GPU kernels. In this sense, LEO’s root-cause reports are best viewed as high-value diagnostic attributions that guide optimization, while formal causal validation of individual chains remains future work. 
+
+Limitations. LEO has several limitations.  
+
+> •
+
+It traces register dataflow, not memory dataflow, so pointer-chasing or indirect-memory root causes may be hidden.  
+
+> •
+
+Inverse-distance weighting is a heuristic; because LEO does not model branch probabilities, it can misattribute blame through branching control flow.  
+
+> •
+
+LEO inherits the statistical limits of PC sampling: cold instructions may receive too few samples, and NVIDIA’s CUPTI Activity API can distort concurrency by serializing kernel execution.  
+
+> •
+
+GPU opcode classification depends on vendor-specific ISA tables that must evolve with new extensions.  
+
+> •
+
+Our speedup evaluation uses optimizations designed by domain experts informed by LEO’s analysis results. Future work should include controlled studies comparing optimization with and without LEO, and assessing the utility of LEO’s feedback for novice developers.  
+
+> •
+
+Ground truth for GPU stall causality is unavailable, so LEO does not quantify false positive rates directly. Instead, we assess through (i) case studies where LEO-guided optimizations yield substantial speedup, and (ii) review of selected dependency chains by domain experts. While our studies show that optimizations guided by LEO’s dependency chains improve performance, this paper does not provide intervention-based validation for every reported chain. For that reason, reported root causes should be interpreted as actionable attributions supported by sampling and dependence analysis rather than formal causal proofs. Finally, our study exploring improvements to kernels by LLMs guided by dependency chains from LEO employs only a single model: Gemini 3.1 Pro. A thorough evaluation of how well various large language models tune code when presented with dependency chains from LEO remains future work. In the future, we plan to extend LEO’s analysis with indirect-memory tracking, predicate-aware weighting, and temporal characterization of multi-GPU workloads. ACKNOWLEDGMENT 
+
+Large language model tools were used in a limited way to suggest wording revisions for selected prose passages, including parts of the Related Work section. The authors wrote the initial draft, verified the cited literature, and made all final decisions about wording and content. No AI tool was used to generate the scientific ideas, methodology, experiments, figures, tables, results, or conclusions. REFERENCES [1] TOP500, “TOP500 list – November 2025,” 2025, accessed: 2026-04-02. [Online]. Available: https://www.top500.org/lists/top500/2025/11/ [2] NVIDIA Corporation, NVIDIA Nsight Compute Documentation , 2024. [Online]. Available: https://docs.nvidia.com/nsight-compute/ [3] Advanced Micro Devices, Inc., Using rocprofv3 , 2024. [Online]. Available: https://rocm.docs.amd.com/projects/rocprofiler-sdk/en/latest/ how-to/using-rocprofv3.html [4] Intel Corporation, Intel VTune Profiler User Guide , 2024. [Online]. Available: https://www.intel.com/content/www/us/en/docs/vtune-profiler/ user-guide/ [5] M. Umar and M. Jong, “PTI-GPU: Kernel profiling and assessment on Intel GPUs,” in Workshops of the International Conference for High Performance Computing, Networking, Storage, and Analysis (SC-W) ,2023, pp. 681–684. [Online]. Available: https://doi.org/10.1145/3624062. 3624144 [6] K. Zhou, X. Meng, R. Sai, and J. M. Mellor-Crummey, “GPA: A GPU performance advisor based on instruction sampling,” in 
+
+IEEE/ACM International Symposium on Code Generation and Optimization (CGO) . IEEE, 2021, pp. 115–125. [Online]. Available: https://doi.org/10.1109/CGO51591.2021.9370339 [7] J. H. Davis, P. Sivaraman, J. Kitson, K. Parasyris, H. Menon, I. Minn, G. Georgakoudis, and A. Bhatele, “Taking GPU programming models to task for performance portability,” in Proceedings of the 39th ACM International Conference on Supercomputing , 2025, pp. 776–791. [Online]. Available: https://doi.org/10.1145/3721145.3730423 [8] D. A. Beckingsale, J. Burmark, R. Hornung, H. Jones, W. Killian, A. J. Kunen, O. Pearce, P. Robinson, B. S. Ryujin, and T. R. W. Scogland, “RAJA: Portable performance for large-scale scientific applications,” in 
+
+2019 IEEE/ACM International Workshop on Performance, Portability and Productivity in HPC (P3HPC) , 2019, pp. 71–81. [Online]. Available: https://doi.org/10.1109/P3HPC49587.2019.00012 [9] H. C. Edwards, C. R. Trott, and D. Sunderland, “Kokkos: Enabling manycore performance portability through polymorphic memory access patterns,” Journal of Parallel and Distributed Computing , vol. 74, no. 12, pp. 3202–3216, 2014. [Online]. Available: https://doi.org/10.1016/j.jpdc.2014.07.003 [10] S. J. Pennycook, J. D. Sewall, and V. W. Lee, “Implications of a metric for performance portability,” Future Generation Computer Systems , vol. 92, pp. 947–958, 2019. [Online]. Available: https: //doi.org/10.1016/j.future.2017.08.007 [11] J. Kwack et al. , “AI and HPC applications on leadership computing platforms: Performance and scalability studies,” in 
+
+2025 IEEE International Parallel and Distributed Processing Symposium (IPDPS) . IEEE, 2025, pp. 210–222. [Online]. Available: https://doi.org/10.1109/IPDPS64566.2025.00027 [12] L. Adhianto, J. Anderson, R. M. Barnett, D. Grbic, V. Indic, M. Krentel, Y. Liu, S. Milakovi ´c, W. Phan, and J. Mellor-Crummey, “Refining HPCToolkit for application performance analysis at exascale,” The International Journal of High Performance Computing Applications , vol. 38, no. 6, pp. 612–632, 2024. [Online]. Available: https://doi.org/10.1177/10943420241277839 [13] Q. Zhao, H. Wu, Y. Hao, Z. Ye, J. Li, X. Liu, and K. Zhou, “DeepContext: A context-aware, cross-platform, and cross-framework tool for performance profiling and analysis of deep learning workloads,” in Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 3, 2025, pp. 48–63. [Online]. Available: https: //doi.org/10.1145/3676642.3736127 [14] M. Lin, H. Jeon, and K. Zhou, “PASTA: A modular program analysis tool framework for accelerators,” in 2026 IEEE/ACM International Symposium on Code Generation and Optimization (CGO) . IEEE, 2026, pp. 520–534. [Online]. Available: https://doi.org/10.1109/CGO68049.2026.11395237 [15] S. Sen, S. Vanecek, and M. Schulz, “GPUscout: Locating data movement-related bottlenecks on GPUs,” in Proceedings of the SC’23 Workshops of the International Conference on High Performance Computing, Network, Storage, and Analysis , 2023, pp. 1392–1402. [Online]. Available: https://doi.org/10.1145/3624062.3624208 [16] Y. Hao, N. Jain, R. V. der Wijngaart, N. Saxena, Y. Fan, and X. Liu, “DrGPU: A top-down profiler for GPU applications,” in Proceedings of the 2023 ACM/SPEC International Conference on Performance Engineering, ICPE 2023, Coimbra, Portugal, April 15-19, 2023 . ACM, 2023, pp. 43–53. [Online]. Available: https://doi.org/10.1145/3578244.3583736 [17] R. Hornung, J. Keasler, A. Kunen, and D. Beckingsale, “RAJA per-formance suite,” https://github.com/LLNL/RAJAPerf, 2024, lawrence Livermore National Laboratory, LLNL-CODE-738930, v2024.07.0. [18] D. F. Richards, R. C. Bleile, P. S. Brantley, S. A. Dawson, M. S. McKinley, and M. J. O’Brien, “Quicksilver: A proxy app for the Monte Carlo transport code Mercury,” in 2017 IEEE International Conference on Cluster Computing (CLUSTER) , 2017, pp. 866–873. [Online]. Available: https://doi.org/10.1109/CLUSTER.2017.121 [19] A. J. Kunen, T. S. Bailey, and P. N. Brown, “KRIPKE – a massively parallel transport mini-app,” in ANS Joint International Conference on Mathematics and Computation (M&C) , Nashville, TN, USA, 2015. [Online]. Available: https://github.com/LLNL/Kripke [20] G. Gerganov et al. , “llama.cpp: LLM inference in C/C++,” https://github. com/ggml-org/llama.cpp, 2023. [21] W. Hu, D. Wadsworth, S. Siddens, S. Winata, D. Y. Fu, R. Swann, M. Osama, C. R ´e, and S. Arora, “HipKittens: Fast and furious AMD kernels,” 2025. [Online]. Available: https://arxiv.org/abs/2511.08083 [22] NVIDIA Corporation, CUPTI User’s Guide , 2024. [Online]. Available: https://docs.nvidia.com/cupti/ [23] Advanced Micro Devices, Inc., ROCprofiler-SDK Documentation , 2024. [Online]. Available: https://rocm.docs.amd.com/projects/rocprofiler-sdk/ en/latest/ [24] UXL Foundation, “Level Zero specification: Tools programming guide,” https://oneapi-src.github.io/level-zero-spec/level-zero/latest/tools/ PROG.html, 2024. [25] Intel Corporation, GTPin – A Dynamic Binary Instrumentation Framework , 2024. [Online]. Available: https://www.intel.com/content/ www/us/en/developer/articles/tool/gtpin.html [26] C. Cifuentes and A. Fraboulet, “Intraprocedural static slicing of binary executables,” in 1997 Proceedings International Conference on Software Maintenance . IEEE, 1997, pp. 188–195. [Online]. Available: https://doi.org/10.1109/ICSM.1997.624245 [27] V. Srinivasan and T. Reps, “An improved algorithm for slicing machine code,” ACM SIGPLAN Notices , vol. 51, no. 10, pp. 378–393, 2016. [Online]. Available: https://doi.org/10.1145/2983990.2984003 [28] D. Grbic and J. Mellor-Crummey, “Analyzing the performance of applications at exascale,” in Proceedings of the 39th ACM International Conference on Supercomputing , 2025, pp. 792–806. [Online]. Available: https://doi.org/10.1145/3721145.3730417 [29] X. Meng, J. M. Anderson, J. Mellor-Crummey, M. W. Krentel, B. P. Miller, and S. Milakovi ´c, “Parallel binary code analysis,” in Proceedings of the 26th ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (PPoPP) , 2021, pp. 76–89. [Online]. Available: https://doi.org/10.1145/3437801.3441604 [30] D. Nichols, J. H. Davis, Z. Xie, A. Rajaram, and A. Bhatele, “Can large language models write parallel code?” in Proceedings of the 33rd International Symposium on High-Performance Parallel and Distributed Computing , 2024, pp. 281–294. [Online]. Available: https://doi.org/10.1145/3625549.3658689 [31] A. Shypula, A. Madaan, Y. Zeng, U. Alon, J. Gardner, M. Hashemi, G. Neubig, P. Ranganathan, O. Bastani, and A. Yazdanbakhsh, “Learning performance-improving code edits,” in International Conference on Learning Representations (ICLR) , 2024. [Online]. Available: https://openreview.net/forum?id=ix7rLVHXyY [32] D. Nichols, K. Parasyris, C. Jekel, A. Bhatele, and H. Menon, “Integrating performance tools in model reasoning for GPU kernel optimization,” 2025. [Online]. Available: https://arxiv.org/abs/2510.17158 [33] A. Tschand, M. Awad, R. Swann, K. Ramakrishnan, J. Ma, K. Lowery, G. Dasika, and V. J. Reddi, “SwizzlePerf: Hardware-aware LLMs for GPU kernel performance optimization,” 2025. [Online]. Available: https://arxiv.org/abs/2508.20258 [34] J. R. Tramm, A. R. Siegel, T. Islam, and M. Schulz, “XSBench – the development and verification of a performance abstraction for Monte Carlo reactor analysis,” in PHYSOR 2014: The Role of Reactor Physics toward a Sustainable Future , Kyoto, Japan, 2014. [Online]. Available: https://www.mcs.anl.gov/papers/P5064-0114.pdf [35] A. Poenaru, W.-C. Lin, and S. McIntosh-Smith, “A performance analysis of modern parallel programming models using a compute-bound application,” in ISC High Performance 2021 , ser. Lecture Notes in Computer Science, vol. 12728. Springer, 2021, pp. 332–350. [Online]. Available: https://doi.org/10.1007/978-3-030-78713-4 18 [36] I. Karlin, J. Keasler, and R. Neely, “LULESH 2.0 updates and changes,” Lawrence Livermore National Laboratory, Tech. Rep. LLNL-TR-641973, 2013. [Online]. Available: https://doi.org/10.2172/1090032 [37] K. Zhou, M. W. Krentel, and J. Mellor-Crummey, “Tools for top-down performance analysis of GPU-accelerated applications,” in Proceedings of the 34th ACM International Conference on Supercomputing (ICS) , 2020, pp. 1–12. [Online]. Available: https://doi.org/10.1145/3392717.3392752 [38] K. Zhou, L. Adhianto, J. Anderson, A. Cherian, D. Grubisic, M. Krentel, Y. Liu, X. Meng, and J. Mellor-Crummey, “Measurement and analysis of GPU-accelerated applications with HPCToolkit,” 
+
+Parallel Computing , vol. 108, p. 102837, 2021. [Online]. Available: https://doi.org/10.1016/j.parco.2021.102837 [39] M. A. Sasongko, M. Chabbi, P. H. J. Kelly, and D. Unat, “Precise event sampling on AMD versus intel: Quantitative and qualitative comparison,” 
+
+IEEE Trans. Parallel Distributed Syst. , vol. 34, no. 5, pp. 1594–1608, 2023. [Online]. Available: https://doi.org/10.1109/TPDS.2023.3257105 [40] M. Stephenson, S. K. S. Hari, Y. Lee, E. Ebrahimi, D. R. Johnson, D. Nellans, M. O’Connor, and S. W. Keckler, “Flexible software profiling of GPU architectures,” in Proceedings of the 42nd Annual International Symposium on Computer Architecture (ISCA) , 2015, pp. 185–197. [Online]. Available: https://doi.org/10.1145/2749469.2750375 [41] O. Villa, M. Stephenson, D. W. Nellans, and S. W. Keckler, “NVBit: A dynamic binary instrumentation framework for NVIDIA GPUs,” in 
+
+Proceedings of the 52nd Annual IEEE/ACM International Symposium on Microarchitecture (MICRO) . ACM, 2019, pp. 372–383. [Online]. Available: https://doi.org/10.1145/3352460.3358307 [42] A. V. Gorshkov, M. Berezalsky, J. Fedorova, K. Levit-Gurevich, and N. Itzhaki, “GPU instruction hotspots detection based on binary instrumentation approach,” IEEE Transactions on Computers ,vol. 68, no. 8, pp. 1213–1224, 2019. [Online]. Available: https: //doi.org/10.1109/TC.2019.2896628 [43] V. Volkov, “Understanding latency hiding on GPUs,” Ph.D. dissertation, University of California, Berkeley, 2016. [Online]. Available: https: //www2.eecs.berkeley.edu/Pubs/TechRpts/2016/EECS-2016-143.html [44] H. Cha, S. Lee, Y. Ha, H. Jang, J. Kim, and Y. Kim, “GCStack: A GPU cycle accounting mechanism for providing accurate insight into GPU performance,” IEEE Computer Architecture Letters , vol. 23, no. 2, pp. 235–238, 2024. [Online]. Available: https://doi.org/10.1109/LCA.2024.3476909 [45] H. Cha, S. Lee, J. Lee, Y. Ha, J. Kim, and Y. Kim, “GCStack+GCScaler: Fast and accurate GPU performance analyses using fine-grained stall cycle accounting and interval analysis,” in Proceedings of the 52nd Annual International Symposium on Computer Architecture , 2025, pp. 1509–1523. [Online]. Available: https://doi.org/10.1145/3695053.3731068 [46] M. Lin, K. Zhou, and P. Su, “DrGPUM: Guiding memory optimization for GPU-accelerated applications,” in Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 3 (ASPLOS) , 2023, pp. 164–178. [Online]. Available: https://doi.org/10.1145/3582016.3582044 [47] I. Chaturvedi, B. R. Godala, Y. Wu, Z. Xu, K. Iliakis, P.-E. Eleftherakis, S. Xydis, D. Soudris, T. Sorensen, S. Campanoni et al. , “GhOST: A GPU out-of-order scheduling technique for stall reduction,” in 
+
+2024 ACM/IEEE 51st Annual International Symposium on Computer Architecture (ISCA) . IEEE, 2024, pp. 1–16. [Online]. Available: https://doi.org/10.1109/ISCA59077.2024.00011 [48] A. Nayak and A. Basu, “Over-synchronization in GPU programs,” in Proceedings of the 57th IEEE/ACM International Symposium on Microarchitecture (MICRO) , 2024, pp. 795–809. [Online]. Available: https://doi.org/10.1109/MICRO61859.2024.00064 [49] A. Yasin, “A top-down method for performance analysis and counters architecture,” in 2014 IEEE International Symposium on Performance Analysis of Systems and Software, ISPASS 2014, Monterey, CA, USA, March 23-25, 2014 . IEEE Computer Society, 2014, pp. 35–44. [Online]. Available: https://doi.org/10.1109/ISPASS.2014.6844459 [50] A. Nowak, D. Levinthal, and W. Zwaenepoel, “Hierarchical cycle accounting: A new method for application performance tuning,” in 2015 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) . IEEE, 2015, pp. 112–123. [Online]. Available: https://doi.org/10.1109/ISPASS.2015.7095790 [51] A. Saiz, P. Prieto, P. A. Fidalgo, J. Gregorio, and V. Puente, “Top-down performance profiling on NVIDIA’s GPUs,” in 2022 IEEE International Parallel and Distributed Processing Symposium, IPDPS 2022, Lyon, France, May 30 - June 3, 2022 . IEEE, 2022, pp. 179–189. [Online]. Available: https://doi.org/10.1109/IPDPS53621.2022.00026 [52] M. Weiser, “Program slicing,” IEEE Transactions on Software Engineering , vol. SE-10, no. 4, pp. 352–357, 1984. [Online]. Available: https://doi.org/10.1109/TSE.1984.5010248 [53] S. Horwitz, T. Reps, and D. Binkley, “Interprocedural slicing using dependence graphs,” ACM Transactions on Programming Languages and Systems , vol. 12, no. 1, pp. 26–60, 1990. [Online]. Available: https://doi.org/10.1145/77606.77608 [54] Anthropic, “Claude,” 2026, accessed: 2026-04-06. [Online]. Available: https://www.anthropic.com/claude [55] Google, “Gemini,” 2026, accessed: 2026-04-06. [Online]. Available: https://gemini.google.com

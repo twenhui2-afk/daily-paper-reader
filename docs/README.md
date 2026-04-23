@@ -6,58 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-22
-- 运行时间：2026-04-23 04:23:05 UTC+8
+- 最新运行日期：2026-04-23
+- 运行时间：2026-04-24 04:21:41 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《On Solving the Multiple Variable Gapped Longest Common Subsequence Problem》（8.2/10）
-- 速读：《Beyond the square-root barrier: cubic forms of Perazzo type》（7.6/10）, 《HadAgent: Harness-Aware Decentralized Agentic AI Serving with Proof-of-Inference Blockchain Consensus》（6.0/10）, 《enclawed: A Configurable, Sector-Neutral Hardening Framework for Single-User AI Assistant Gateways》（6.0/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《Weighted Knowledge Distillation for Semi-Supervised Segmentation of Maxillary Sinus in Panoramic X-ray Images》（8.5/10）, 《LEO: Tracing GPU Stall Root Causes via Cross-Vendor Backward Slicing》（8.0/10）
+- 速读：《Root numbers for twisted Fermat quotient curves II》（7.9/10）, 《Linear-wave bound on electromagnetic energy equipartition at sub-electron scales in non-relativistic plasmas》（7.6/10）, 《Tunable Optical Torque by Asymmetry-Induced Spin-Hall Effect in Tightly Focused Spinless Gaussian Beams》（7.4/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/22/README](/202604/22/README)
+- 详情：[/202604/23/README](/202604/23/README)
 
 ### 精读区论文标签
-1. [On Solving the Multiple Variable Gapped Longest Common Subsequence Problem](/202604/22/2604.18645v1-on-solving-the-multiple-variable-gapped-longest-common-subsequence-problem)  
-   标签：评分：8.2/10
+1. [Weighted Knowledge Distillation for Semi-Supervised Segmentation of Maxillary Sinus in Panoramic X-ray Images](/202604/23/2604.20213v1-weighted-knowledge-distillation-for-semi-supervised-segmentation-of-maxillary-sinus-in-panoramic-x-ray-images)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+2. [LEO: Tracing GPU Stall Root Causes via Cross-Vendor Backward Slicing](/202604/23/2604.20032v1-leo-tracing-gpu-stall-root-causes-via-cross-vendor-backward-slicing)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Beyond the square-root barrier: cubic forms of Perazzo type](/202604/22/2604.19045v1-beyond-the-square-root-barrier-cubic-forms-of-perazzo-type)  
+1. [Root numbers for twisted Fermat quotient curves II](/202604/23/2604.20167v1-root-numbers-for-twisted-fermat-quotient-curves-ii)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+2. [Linear-wave bound on electromagnetic energy equipartition at sub-electron scales in non-relativistic plasmas](/202604/23/2604.18472v1-linear-wave-bound-on-electromagnetic-energy-equipartition-at-sub-electron-scales-in-non-relativistic-plasmas)  
    标签：评分：7.6/10
    evidence：检索回退候选
-2. [HadAgent: Harness-Aware Decentralized Agentic AI Serving with Proof-of-Inference Blockchain Consensus](/202604/22/2604.18614v1-hadagent-harness-aware-decentralized-agentic-ai-serving-with-proof-of-inference-blockchain-consensus)  
-   标签：评分：6.0/10
+3. [Tunable Optical Torque by Asymmetry-Induced Spin-Hall Effect in Tightly Focused Spinless Gaussian Beams](/202604/23/2604.18514v1-tunable-optical-torque-by-asymmetry-induced-spin-hall-effect-in-tightly-focused-spinless-gaussian-beams)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-3. [enclawed: A Configurable, Sector-Neutral Hardening Framework for Single-User AI Assistant Gateways](/202604/22/2604.16838v1-enclawed-a-configurable-sector-neutral-hardening-framework-for-single-user-ai-assistant-gateways)  
-   标签：评分：6.0/10
+4. [OmniHuman: A Large-scale Dataset and Benchmark for Human-Centric Video Generation](/202604/23/2604.18326v1-omnihuman-a-large-scale-dataset-and-benchmark-for-human-centric-video-generation)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-4. [Deciphering the chemical grammar of protein-RNA condensates](/202604/22/2604.16899v1-deciphering-the-chemical-grammar-of-protein-rna-condensates)  
-   标签：评分：6.0/10
+5. [The Evans function as a lower bound on the spectral distance function](/202604/23/2604.19938v1-the-evans-function-as-a-lower-bound-on-the-spectral-distance-function)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-5. [CaTherine wheels from trees and Liouville quantum gravity](/202604/22/2604.17170v1-catherine-wheels-from-trees-and-liouville-quantum-gravity)  
-   标签：评分：6.0/10
+6. [Explicit Factorization of $x^{p+1}-1$ over $\mathbb{Z}_{p^e}$: A Structural Approach via Dickson Polynomials](/202604/23/2604.19038v1-explicit-factorization-of-xp1-1-over-mathbbzpe-a-structural-approach-via-dickson-polynomials)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-6. [Bootstrap consistency for general double/debiased machine learning estimators](/202604/22/2604.17239v1-bootstrap-consistency-for-general-doubledebiased-machine-learning-estimators)  
-   标签：评分：6.0/10
+7. [Bridging Metal Additive Manufacturing and RF Accelerator Design: Development of a 704.4 MHz Crossbar H-Mode Linac for Efficient Beam Acceleration](/202604/23/2604.18154v1-bridging-metal-additive-manufacturing-and-rf-accelerator-design-development-of-a-7044-mhz-crossbar-h-mode-linac-for-efficient-beam-acceleration)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-7. [SigGate-GT: Taming Over-Smoothing in Graph Transformers via Sigmoid-Gated Attention](/202604/22/2604.17324v1-siggate-gt-taming-over-smoothing-in-graph-transformers-via-sigmoid-gated-attention)  
-   标签：评分：6.0/10
+8. [Do Agents Dream of Root Shells? Partial-Credit Evaluation of LLM Agents in Capture The Flag Challenges](/202604/23/2604.19354v1-do-agents-dream-of-root-shells-partial-credit-evaluation-of-llm-agents-in-capture-the-flag-challenges)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-8. [CSI Compression for Massive MIMO-OFDM: Mismatch-Aware Rate-Distortion Trade-offs](/202604/22/2604.17426v1-csi-compression-for-massive-mimo-ofdm-mismatch-aware-rate-distortion-trade-offs)  
-   标签：评分：6.0/10
+9. [Translating Ethical Frameworks Into User-Centred Anti-Social Behaviour Interventions](/202604/23/2604.19492v1-translating-ethical-frameworks-into-user-centred-anti-social-behaviour-interventions)  
+   标签：评分：6.7/10
    evidence：检索回退候选
-9. [WirelessAgent: A Unified Agent Design for General Wireless Resource Allocation Problem without Current Channel State Information](/202604/22/2604.17440v1-wirelessagent-a-unified-agent-design-for-general-wireless-resource-allocation-problem-without-current-channel-state-information)  
-   标签：评分：6.0/10
+10. [DebugRepair: Enhancing LLM-Based Automated Program Repair via Self-Directed Debugging](/202604/23/2604.19305v1-debugrepair-enhancing-llm-based-automated-program-repair-via-self-directed-debugging)  
+   标签：评分：6.6/10
    evidence：检索回退候选
-10. [Adaptive RIS Configuration Design with Environmental Sensing for User Localization in Dynamic Rich Scattering Environment](/202604/22/2604.17485v1-adaptive-ris-configuration-design-with-environmental-sensing-for-user-localization-in-dynamic-rich-scattering-environment)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [Achromatic optics using nonlinear plasma lenses for beam-quality preservation between plasma-accelerator stages](/202604/22/2604.17605v1-achromatic-optics-using-nonlinear-plasma-lenses-for-beam-quality-preservation-between-plasma-accelerator-stages)  
-   标签：评分：6.0/10
+11. [A Mechanism and Optimization Study on the Impact of Information Density on User-Generated Content Named Entity Recognition](/202604/23/2604.18944v1-a-mechanism-and-optimization-study-on-the-impact-of-information-density-on-user-generated-content-named-entity-recognition)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
