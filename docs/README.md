@@ -6,60 +6,57 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-23
-- 运行时间：2026-04-24 04:21:41 UTC+8
+- 最新运行日期：2026-04-24
+- 运行时间：2026-04-25 04:07:29 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Weighted Knowledge Distillation for Semi-Supervised Segmentation of Maxillary Sinus in Panoramic X-ray Images》（8.5/10）, 《LEO: Tracing GPU Stall Root Causes via Cross-Vendor Backward Slicing》（8.0/10）
-- 速读：《Root numbers for twisted Fermat quotient curves II》（7.9/10）, 《Linear-wave bound on electromagnetic energy equipartition at sub-electron scales in non-relativistic plasmas》（7.6/10）, 《Tunable Optical Torque by Asymmetry-Induced Spin-Hall Effect in Tightly Focused Spinless Gaussian Beams》（7.4/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《Physically Unclonable Functions for Secure IoT Authentication and Hardware-Anchored AI Model Integrity》（8.4/10）
+- 速读：《Sheaf Neural Networks on SPD Manifolds: Second-Order Geometric Representation Learning》（7.7/10）, 《Overstuffed sandwiches and separation anxiety: finite-sample variance estimation for penalized GEE with near-separated binary data》（7.6/10）, 《Physics-Enhanced Deep Learning for Proactive Thermal Runaway Forecasting in Li-Ion Batteries》（7.6/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/23/README](/202604/23/README)
+- 详情：[/202604/24/README](/202604/24/README)
 
 ### 精读区论文标签
-1. [Weighted Knowledge Distillation for Semi-Supervised Segmentation of Maxillary Sinus in Panoramic X-ray Images](/202604/23/2604.20213v1-weighted-knowledge-distillation-for-semi-supervised-segmentation-of-maxillary-sinus-in-panoramic-x-ray-images)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [LEO: Tracing GPU Stall Root Causes via Cross-Vendor Backward Slicing](/202604/23/2604.20032v1-leo-tracing-gpu-stall-root-causes-via-cross-vendor-backward-slicing)  
-   标签：评分：8.0/10
+1. [Physically Unclonable Functions for Secure IoT Authentication and Hardware-Anchored AI Model Integrity](/202604/24/2604.21188v1-physically-unclonable-functions-for-secure-iot-authentication-and-hardware-anchored-ai-model-integrity)  
+   标签：评分：8.4/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Root numbers for twisted Fermat quotient curves II](/202604/23/2604.20167v1-root-numbers-for-twisted-fermat-quotient-curves-ii)  
-   标签：评分：7.9/10
+1. [Sheaf Neural Networks on SPD Manifolds: Second-Order Geometric Representation Learning](/202604/24/2604.20308v1-sheaf-neural-networks-on-spd-manifolds-second-order-geometric-representation-learning)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-2. [Linear-wave bound on electromagnetic energy equipartition at sub-electron scales in non-relativistic plasmas](/202604/23/2604.18472v1-linear-wave-bound-on-electromagnetic-energy-equipartition-at-sub-electron-scales-in-non-relativistic-plasmas)  
+2. [Overstuffed sandwiches and separation anxiety: finite-sample variance estimation for penalized GEE with near-separated binary data](/202604/24/2604.18863v1-overstuffed-sandwiches-and-separation-anxiety-finite-sample-variance-estimation-for-penalized-gee-with-near-separated-binary-data)  
    标签：评分：7.6/10
    evidence：检索回退候选
-3. [Tunable Optical Torque by Asymmetry-Induced Spin-Hall Effect in Tightly Focused Spinless Gaussian Beams](/202604/23/2604.18514v1-tunable-optical-torque-by-asymmetry-induced-spin-hall-effect-in-tightly-focused-spinless-gaussian-beams)  
+3. [Physics-Enhanced Deep Learning for Proactive Thermal Runaway Forecasting in Li-Ion Batteries](/202604/24/2604.20175v1-physics-enhanced-deep-learning-for-proactive-thermal-runaway-forecasting-in-li-ion-batteries)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+4. [How to quantify direct correlations between variables](/202604/24/2604.18653v1-how-to-quantify-direct-correlations-between-variables)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+5. [Understanding Secret Leakage Risks in Code LLMs: A Tokenization Perspective](/202604/24/2604.17814v1-understanding-secret-leakage-risks-in-code-llms-a-tokenization-perspective)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+6. [Wideband Direct Satellite Uplink Enabled by Pilot-less Sparse Superposition Codes](/202604/24/2604.20702v1-wideband-direct-satellite-uplink-enabled-by-pilot-less-sparse-superposition-codes)  
    标签：评分：7.4/10
    evidence：检索回退候选
-4. [OmniHuman: A Large-scale Dataset and Benchmark for Human-Centric Video Generation](/202604/23/2604.18326v1-omnihuman-a-large-scale-dataset-and-benchmark-for-human-centric-video-generation)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-5. [The Evans function as a lower bound on the spectral distance function](/202604/23/2604.19938v1-the-evans-function-as-a-lower-bound-on-the-spectral-distance-function)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-6. [Explicit Factorization of $x^{p+1}-1$ over $\mathbb{Z}_{p^e}$: A Structural Approach via Dickson Polynomials](/202604/23/2604.19038v1-explicit-factorization-of-xp1-1-over-mathbbzpe-a-structural-approach-via-dickson-polynomials)  
-   标签：评分：7.2/10
-   evidence：检索回退候选
-7. [Bridging Metal Additive Manufacturing and RF Accelerator Design: Development of a 704.4 MHz Crossbar H-Mode Linac for Efficient Beam Acceleration](/202604/23/2604.18154v1-bridging-metal-additive-manufacturing-and-rf-accelerator-design-development-of-a-7044-mhz-crossbar-h-mode-linac-for-efficient-beam-acceleration)  
+7. [Geometric Decoupling: Diagnosing the Structural Instability of Latent](/202604/24/2604.18804v1-geometric-decoupling-diagnosing-the-structural-instability-of-latent)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Do Agents Dream of Root Shells? Partial-Credit Evaluation of LLM Agents in Capture The Flag Challenges](/202604/23/2604.19354v1-do-agents-dream-of-root-shells-partial-credit-evaluation-of-llm-agents-in-capture-the-flag-challenges)  
+8. [Mango: Multi-Agent Web Navigation via Global-View Optimization](/202604/24/2604.18779v1-mango-multi-agent-web-navigation-via-global-view-optimization)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [Translating Ethical Frameworks Into User-Centred Anti-Social Behaviour Interventions](/202604/23/2604.19492v1-translating-ethical-frameworks-into-user-centred-anti-social-behaviour-interventions)  
+9. [RAVEN: Retrieval-Augmented Vulnerability Exploration Network for Memory Corruption Analysis in User Code and Binary Programs](/202604/24/2604.17948v1-raven-retrieval-augmented-vulnerability-exploration-network-for-memory-corruption-analysis-in-user-code-and-binary-programs)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+10. [Weaponizing the Commons: A Taxonomy and Detection Framework of Abuse on GitHub](/202604/24/2604.17909v1-weaponizing-the-commons-a-taxonomy-and-detection-framework-of-abuse-on-github)  
    标签：评分：6.7/10
    evidence：检索回退候选
-10. [DebugRepair: Enhancing LLM-Based Automated Program Repair via Self-Directed Debugging](/202604/23/2604.19305v1-debugrepair-enhancing-llm-based-automated-program-repair-via-self-directed-debugging)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-11. [A Mechanism and Optimization Study on the Impact of Information Density on User-Generated Content Named Entity Recognition](/202604/23/2604.18944v1-a-mechanism-and-optimization-study-on-the-impact-of-information-density-on-user-generated-content-named-entity-recognition)  
+11. [JTPRO: A Joint Tool-Prompt Reflective Optimization Framework for Language Agents](/202604/24/2604.19821v1-jtpro-a-joint-tool-prompt-reflective-optimization-framework-for-language-agents)  
    标签：评分：6.6/10
    evidence：检索回退候选
 
