@@ -1,0 +1,559 @@
+Title: Scaling Worst-Case Optimal Datalog to GPUs
+
+URL Source: https://arxiv.org/pdf/2604.20073v2
+
+Published Time: Fri, 24 Apr 2026 00:22:17 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Scaling Worst-Case Optimal Datalog to GPUs 
+
+## Yihao Sun 
+
+ysun67@syr.edu 
+
+Syracuse University Syracuse, New York, USA 
+
+## Kunting Qi 
+
+kqi@uic.edu 
+
+University of Illinois, Chicago Chicago, Illinois, USA 
+
+## Thomas Gilray 
+
+thomas.gilray@wsu.edu 
+
+Washington State University Pullman, Washington, USA 
+
+## Sidharth Kumar 
+
+sidharth@uic.edu 
+
+University of Illinois, Chicago Chicago, Illinois, USA 
+
+## Kristopher Micinski 
+
+kkmicins@syr.edu 
+
+Syracuse University Syracuse, New York, USA 
+
+## Abstract 
+
+Datalog is a declarative logic-programming language used for complex analytic reasoning workloads such as program analysis and graph analytics. Datalog’s popularity is due to its unique price-point, marrying logic-defined specification with the potential for massive data parallelism. While tradi-tional engines are CPU-based, the memory-bound nature of Datalog has led to increasing interest in leveraging GPUs. These engines beat CPU-based engines by operationalizing iterated relational joins via SIMT-friendly join algorithms. Unfortunately, all existing GPU Datalog engines are built on binary joins, which are inadequate for the complex multi-way queries arising in production systems such as DOOP and ddisasm . For these queries, binary decomposition can incur the AGM bound asymptotic blowup in time and space, leading to OOM failures regardless of join order. Worst-Case Optimal Joins (WCOJ) avoid this blowup, but their attribute-at-a-time intersections map poorly to SIMT hardware under key skew, causing severe load imbalance across Streaming Multiprocessors (SMs). We present SRDatalog, the first GPU Datalog engine based on WCOJ. SRDatalog uses flat colum-nar storage and two-phase deterministic memory allocation to avoid the OOM failures of binary joins and the index-rebuild overheads of static WCOJ systems. To mitigate skew and hide hardware stalls, SRDatalog further employs root-level histogram-guided load balancing, structural helper-relation splitting, and stream-aligned rule multiplexing. On real-world program-analysis workloads, SRDatalog achieves geometric-mean speedups of 21 × to 47 ×. 
+
+> Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference acronym ’XX, Woodstock, NY
+> ©2018 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-1-4503-XXXX-X/2018/06
+> https://doi.org/XXXXXXX.XXXXXXX
+
+CCS Concepts: • Information systems → Query lan-guages ; • Computing methodologies → Parallel pro-gramming languages .
+
+Keywords: Worst-Case Optimal Join, Datalog, GPU 
+
+ACM Reference Format: 
+
+Yihao Sun, Kunting Qi, Thomas Gilray, Sidharth Kumar, and Kristo-pher Micinski. 2018. Scaling Worst-Case Optimal Datalog to GPUs. In Proceedings of Make sure to enter the correct conference title from your rights confirmation email (Conference acronym ’XX). ACM, New York, NY, USA, 13 pages. https://doi.org/XXXXXXX.XXXXXXX 
+
+## 1 Introduction 
+
+Datalog has become a ubiquitous part of analytic reason-ing, with applications in graph mining [ 36 ], program anal-ysis [ 6, 35 , 45 ], binary reverse engineering [ 9 ], and neuro-symbolic reasoning [ 4 , 22 ]. While many state-of-the-art Data-log engines target CPUs (e.g., Soufflé [ 17 ] and FlowLog [ 50 ]), the massive potential data parallelism inherent to many Dat-alog applications has motivated the recent development of GPU-based Datalog engines [4, 39, 41]. Datalog engines work by recursively executing a set of 
+
+rules to a fixed point. Each rule is written as a Horn clause (see §2), which deduces (and “materializes”) a new fact (tu-ple) whenever some conjunction holds. Because fixed-point materialization forms the bulk of Datalog’s runtime, most modern Datalog engines compile these rules to relational algebra kernels [ 17 , 28 , 33 , 50 ]; this approach offers a clean separation between the program’s semantics and the un-derlying implementation of the relational algebra. In prac-tice, the vast bulk of Datalog’s execution time is spent do-ing large relational joins [ 1 ]. Initially, many Datalog en-gines used pipelined binary join, breaking down a multi-way join 𝑅 0 ⊲⊳ 𝑅 1 ⊲⊳ 𝑅 2 ⊲⊳ · · · into a series of binary joins 
+
+(( 𝑅 0 ⊲⊳ 𝑅 1) ⊲⊳ 𝑅 2) ⊲⊳ · · · and then realizing each subexpres-sion via range-indexed nested-loop joins [ 17 ]. However, for cyclic queries ( e.g., triangle counting), the AGM bound en-sures that every binary join is destined to asymptotic failure, in the sense that materializing the results of intermediate sub-queries incurs superlinear work compared to the cardinality of the output [2].  
+
+> arXiv:2604.20073v2 [cs.DB] 23 Apr 2026 Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Sun et al.
+
+To cope with the asymptotic overhead of poor binary join plans, worst-case optimal joins (WCOJs) have emerged as a potential solution [ 29 ]. These join algorithms avoid the intermediate materialization (either temporal or spatial) by doing the join one variable at a time, effectively deduplicating redundant work due to “dangling tuples” which are enumer-ated and then filtered out in operator-at-a-time joins such as pipelined binary join [ 2]. While the asymptotic guarantees of worst-case optimal joins are attractive, conventional wisdom initially dictated that their constant factors and engineer-ing complexity made them unsuitable for Datalog. However, recent graph-analytics engines such as HoneyComb [ 47 ]and cuMatch [ 31 ] have demonstrated the success of WCOJ in practice for massive, multi-way join processing. Along with worst-case optimality, WCOJs also offer a degree of ro-bustness , avoiding the wildly-unstable performance for large programs. For example, the DOOP program analysis con-tains numerous rules which include 6–8 conjoined literals: in Soufflé, such rules tend to be deeply unstable, with their per-formance varying by orders of magnitude depending on the binary plan chosen. By contrast, WCOJs ensure reasonably-good complexity (albeit not instance -optimal) regardless of plan particulars (variable ordering) [43]. We present the first-ever approach to WCOJs on modern SIMT GPUs. Alongside the engineering aspects of putting WCOJ on the GPU, our work contends with a fundamen-tal mechanical vulnerability: WCOJ’s attribute-at-a-time in-tersection model is uniquely susceptible to structural data skew [ 30 ]. For example, in program analysis, when an inner join variable binds to a ubiquitous high-degree hub (e.g., this occurs in the DOOP points-to analysis for Java when dis-patching on java.lang.Object ), the evaluating thread group is trapped processing a massive, localized intersection space. This induces severe macroscopic load imbalance; the ma-jority of the GPU’s thread groups finish their partitions quickly and sit idle, waiting on a single thread group bot-tlenecked by a disproportionately large workload. Existing systems attempt to resolve this load imbalance, but introduce their own structural flaws: static partitioned systems (e.g., cuMatch [ 31 ]) rely on hierarchical indices whose continu-ous reconstruction bottlenecks Datalog’s delta-merge phase, while dynamic systems (e.g., ALFTJ [ 20 ]) manage skew via runtime lock-free queues, introducing SIMT-hostile atomic serialization during write-intensive workloads. We introduce SRDatalog, the first GPU-accelerated WCOJ Datalog engine built to resolve the tension between algo-rithmic robustness and strict physical hardware constraints. Rather than relying on heavyweight hierarchical indices or dynamic work-stealing queues, SRDatalog adapts WCOJ to execute strictly within SIMT-sympathetic boundaries: it uti-lizes flat columnar storage, deterministic two-phase memory allocation, and lightweight launch-time skew scheduling. By refusing to compromise on these core memory pipelines, SR-Datalog delivers a robust, high-performance execution foun-dation for complex, production-grade Datalog programs. In summary, this paper makes four core contributions: 
+
+• We introduce an iterative GPU WCOJ architecture that strictly enforces flat columnar storage and two-phase deterministic memory allocation, avoiding the inter-mediate memory explosion of binary joins and the index-rebuild overhead of static systems. 
+
+• We resolve the inherent load imbalance of large multi-way joins via root-level histogram load balancing that deterministically resolves outermost skew at kernel launch, combined with structural helper-relation split-ting , mitigating imbalance. 
+
+• An approach to stream-parallel rule scheduling, lever-aging the CALM theorem [ 12 ] to overlap independent compute kernels and memory allocation stalls across concurrent CUDA streams, sustaining high SM occu-pancy on fractured Datalog strata. 
+
+• SRDatalog, the fastest and most scalable GPU Data-log engine to date. We comprehensively evaluate SR-Datalog against five state-of-the-art systems on real-world program analysis workloads. SRDatalog demon-strates geometric mean speedups of 21 × to 47 × over cost-equivalent CPU baselines, avoids the intermedi-ate memory exhaustion of binary-join GPU engines, and outperforms static WCOJ accelerators by up to 4.0 ×.
+
+## 2 Background 
+
+Datalog. Datalog is a declarative logic language originally designed for deductive databases [ 1 ] and now widely applied to data-intensive domains including program analysis [ 35 ], binary reverse engineering [ 9 ], and neuro-symbolic reason-ing [ 22 ]. A Datalog program consists of a set of definite Horn-clauses: 
+
+Head (. . . ) ← Body 1 (. . . ), . . . , Body 𝑛 (. . . ).
+
+The head specifies a tuple to be derived, and the body spec-ifies the conjunction of conditions under which the head tuple can be derived. Unlike other database query languages, Datalog is particularly well suited to recursive queries. In a recursive Datalog program, the same relation can appear in both the head and the body of a rule. For example, the clas-sic Transitive Closure (TC) program recursively computes reachability over a graph: 
+
+TC (𝑥, 𝑦 ) ← Edge (𝑥, 𝑦 ),
+
+TC (𝑥, 𝑦 ) ← TC (𝑥, 𝑧 ), Edge (𝑧, 𝑦 ).
+
+This program consists of two rules. The first rule serves as the base case, initializing the TC relation with all explicitly defined edges. The second rule is recursive and is applied Scaling Worst-Case Optimal Datalog to GPUs Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+iteratively to the currently derived facts, monotonically ac-cumulating new tuples until the system reaches a global fixpoint at which no further facts can be generated. Real-world Datalog programs, such as those in the doop 
+
+analysis suite, consist of hundreds of rules with complex inter-dependencies. To schedule these systematically, the compiler constructs a dependency graph of all relations. Rules that are mutually recursive ( i.e., forming cyclic depen-dencies) are grouped into a strongly connected component (SCC). The program is first stratified, and the engine then evaluates it stratum by stratum, which is known as stratifica-tion [1]. Each SCC is evaluated iteratively until it reaches its local fixpoint, at which point its output relations are finalized and subsequently treated as static, read-only inputs for all downstream strata. The standard approach to implementing a Datalog en-gine is to compile logical rules into positive relational al-gebra operations ( RA +) [ 7]. Variables shared across mul-tiple body clauses implicitly act as equi-join constraints. For instance, the recursive rule in the TC example trans-lates into a relational join followed by a union. The iterative semantics are captured by an additional fixpoint operator 
+
+O : TC 𝑛𝑒𝑥𝑡 = O( TC ∪ ( 𝜋 𝑥,𝑦 (TC ⊲⊳ Edge ))) . However, re-evaluating the full TC relation on every iteration redundantly re-discovers previously known paths. To achieve tractable performance, modern engines exclusively use semi-naïve evaluation [8 ], rewriting the fixpoint computation into a dif-ferential form. By isolating the facts ( Δ) derived in previous iteration from the accumulated full facts ( TC 𝑓 𝑢𝑙𝑙 ), a rule only fires if at least one recursive body clause binds to a novel tuple from the immediate prior iteration. The execution is thus transformed into: 
+
+ΔTC 𝑖 +1 = 𝜋 𝑥,𝑦 (ΔTC 𝑖 ⊲⊳ Edge ) \ TC 𝑓 𝑢𝑙𝑙 
+
+This differential equation establishes the core execution pipeline of Datalog: compute the join over the delta, dedupli-cate the results via set difference, and structurally merge the novel tuples back into the full relation for the next iteration. Physically, the semi-naïve evaluation loop alternates be-tween intensive read and write operations. Join processing is dominated by index probes and memory reads, whereas delta generation and index updates at the end of each iteration are fundamentally write-intensive. GPUs have emerged as natu-ral accelerators for these workloads, since their high global memory bandwidth and thread latency hiding. Martinez et al. [ 25 ] built early GPU Datalog prototypes, though they did not yet outperform the long-standing CPU gold stan-dard, Soufflé [ 17 ]. More recently, by tuning data structures and adopting hardware-aware, column-oriented memory layouts, GPU engines like GDlog [ 41 ] and VFLog [ 39 ] have demonstrated speedups of more than 10 × over CPU baselines. Lobster [ 4 ] extends this line of work to richer semantics, in-cluding provenance semirings, and targets neuro-symbolic learning workloads. 
+
+Join Processing and Worst-Case Optimal Join. The join operator is one of the most important components in Datalog engine design, and the choice of how that join is evaluated largely determines whether recursive evaluation is asymptotically efficient or incurs unnecessary work. Ex-isting GPU Datalog engines [ 38 , 40 , 41 ], like earlier CPU sys-tems [ 17 ], evaluate multi-relation rule bodies using chained binary joins. A rule with 𝑘 body atoms is compiled into 𝑘 − 1
+
+pairwise joins, each consuming the intermediate result pro-duced by the previous stage. This is the standard relational evaluation strategy, and it is what makes the column-store machinery and bulk kernel pipelines of GDlog and VFLog directly applicable. However, it also inherits a well-known asymptotic weakness on cyclic queries. 
+
+Triangle (𝑥, 𝑦, 𝑧 ) ← 𝑅 (𝑥, 𝑦 ), 𝑆 (𝑦, 𝑧 ), 𝑇 (𝑧, 𝑥 )
+
+Based on the Triangle query as shown above, a binary plan first computes 𝑅 ⊲⊳ 𝑆 on the shared variable 𝑦 , materializing every two-hop path, and only then probes 𝑇 to discard paths whose closing edge does not exist. When 𝑅 and 𝑆 share a high-degree vertex, the intermediate balloons to Θ(| 𝐸 |2)
+
+even though the AGM bound [ 3 ] guarantees the upper bound size of the final output of 𝑂 (| 𝐸 |3/2).Worst-Case Optimal Joins (WCOJ) [ 29 ] were introduced to address this asymptotic gap. Rather than processing one relation pair at a time, WCOJ fixes a global variable order 
+
+(𝑥 1, . . . , 𝑥 𝑚 ) and proceeds attribute at a time. At level 𝑖 , it intersects the projections of all relations constraining 𝑥 𝑖 
+
+under the current partial binding (𝑥 1, . . . , 𝑥 𝑖 −1), and only recurses into 𝑥 𝑖 +1 along surviving values. For the triangle, the algorithm intersects 𝑅.𝑥 ∩ 𝑇 .𝑥 first, prunes any 𝑥 that cannot participate in a triangle, then for each surviving 𝑥 , we subset 𝑅 based on the survived 𝑥 and intersects 𝑅 [𝑥 ].𝑦 ∩ 𝑆.𝑦 ,and finally intersects 𝑆 [𝑦 ].𝑧 ∩ 𝑇 [𝑥 ].𝑧 . Branches that cannot complete into a full output tuple are discarded before they are materialized, and the total work is provably bounded by the AGM bound on the output size. One classic implementation of WCOJ is Leapfrog Triejoin (LFTJ) [ 42 ]. LFTJ requires relations to be stored in a sorted structure and performs each level as a search-based intersec-tion: every relation mentioning the current variable exposes a sorted unary iterator with a seek operation, and the al-gorithm advances the iterators in lockstep by repeatedly seeking each iterator to at least the maximum key currently held by the others, until all iterators agree on a common key or one iterator is exhausted. Free Join [ 44 ] later unified WCOJ and binary joins within a single plan space. Crucially, LFTJ is defined over an interface —sorted unary iteration with forward seek—not a physical layout. The original LogicBlox implementation uses B-trees, but any structure that supports this interface, including sorted arrays, can serve as the un-derlying storage. A parallel line of work, including Generic Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Sun et al. 
+
+Join [ 29 ] and Free Join [ 44 ], realizes the same attribute-at-a-time evaluation over hash tries. Free Join further unifies WCOJ and binary joins within a single framework. 
+
+## 3 Challenge: Parallel WCOJ for Datalog 
+
+While Worst-Case Optimal Joins theoretically resolve the asymptotic memory blowups of binary joins (§2), translating this attribute-at-a-time execution model to SIMT hardware introduces a fundamental system design tension. Existing systems—spanning modern recursive GPU Datalog and static GPU WCOJ implementation—each compromise on a funda-mental requirement of efficient Datalog evaluation. Con-sequently, they remain structurally incapable of executing complex, multi-way recursive queries end-to-end, failing on the demanding real-world applications. 
+
+The VRAM Wall of Binary Joins. Existing recursive GPU Datalog systems (e.g., GDlog [ 41 ], VFLog [ 39 ]) rely exclusively on chained binary-join evaluation. To maintain balanced SIMT thread scheduling, they fully materialize in-termediate relations in device memory at every body clause, trading memory capacity for skew-tolerance and execution determinism. While effective for simple graph queries (e.g., Transitive Closure), this physical plan mathematically col-lapses on static program analysis workloads. These domains feature hundreds of cyclic, 6-to-8-way join rules. On these topologies, binary evaluation guarantees asymptotic blowups in intermediate relation sizes regardless of the chosen join order. Materializing these intermediates is no longer a per-formance tradeoff but an impossibility, instantly exhausting the VRAM capacity of any modern GPU. 
+
+The WCOJ Load Balancing Crisis. One effective way to bound this intermediate size algorithmically is using WCOJ. However, mapping WCOJ to a GPU exposes a fundamen-tal mechanical vulnerability: it is highly vulnerable to the extreme load skew generated by power-law degree distri-butions. The most straightforward parallelization strategy assigns one outermost join variable to each thread group. In power-law graphs, if an inner variable binds to a ubiquitous high-degree hub, the evaluating thread group is trapped pro-cessing a massive, localized intersection space. This induces severe macroscopic load imbalance, leaving the vast majority of the GPU’s Streaming Multiprocessors (SMs) idle while a few struggle with disproportionate workloads. 
+
+The Index Rebuilding Overhead of Static GPU WCOJ. 
+
+Existing static parallel WCOJ implementations ( e.g., Hon-eyComb [ 47 ], cuMatch [ 31 ]) mitigate this skew by prepro-cessing domains into spatial grids or heavily compressed multi-level prefix trees (e.g., CoCo tries). By structuring the search space hierarchically, these indices naturally fracture massive, skewed root keys into smaller sub-trees at deeper levels by grouping child edges into discrete lexicographical intervals, allowing the static load balancing to distribute a single heavy-hitter’s fan-out across multiple thread groups. Because these structures flatten hierarchical relationships into tightly packed offset arrays to maximize read band-width, they are inherently immutable. While highly effective for one-shot queries over static graphs, this immutability fundamentally clashes with iterative Datalog. Semi-naïve evaluation injects new delta tuples into the working set on every single fixpoint iteration. While a flat column store absorbs these deltas via a lightweight, single-pass merge, the tightly packed hierarchical indices required by static implementations must be continuously reconstructed. As demonstrated in our micro-benchmark, this rebuild phase consumes up to 93% of the total merge time, transforming a theoretically lightweight update into a bottleneck across hundreds of iterations. 
+
+Dynamic WCOJ Under Deep Skew. Conversely, dynamic WCOJ systems (e.g., ALFTJ [ 20 ]) adapt to skew at runtime by pushing heavily skewed sub-ranges into a global, lock-free queue for idle threads to steal. While functional for shallow, 3-way queries (e.g., triangle counting), this reactive para-digm is structurally fragile on the deep, 6-to-8-way query topologies of complex real-world queries like program analy-sis. Work-stealing heuristics fundamentally rely on localized thresholds, but an apparently modest fan-out at an outer join level can unpredictably cascade into a massive exponential explosion deep within the inner relations. This creates an impossible tuning paradox: setting a fine-grained donation threshold floods the global queue, collapsing the GPU un-der catastrophic atomic contention, while a coarse threshold fails to capture deeply buried skew, leaving threads trapped in massive localized workloads that may themselves need to be rebalanced again. Furthermore, even if the compute could be balanced, dynamic execution violates a strict re-quirement of Datalog: final results of join must be physically materialized. Because work-stealing prevents thread groups from determining their output bounds a priori , threads must rely on contested global atomic counters to dynamically allo-cate write offsets. This introduces severe SIMT serialization, destroying the coalesced memory bandwidth required to sustain recursive evaluation. 
+
+Architectural Imperatives. Because all prior approaches relax a constraint that recursive program analysis cannot afford to lose, SRDatalog is designed by refusing to com-promise. A viable engine must satisfy three architectural imperatives : (1) it must employ a two-phase, count-and-materialize pipeline that produces deterministic write off-sets without atomic serialization (§ 4); (2) it must utilize flat, sorted-column storage that admits cheap iterative delta merges without auxiliary index rebuilds (§ 4); and (3) it must utilize a launch-time load-balancer that resolves outermost skew without runtime coordination (§ 5). Scaling Worst-Case Optimal Datalog to GPUs Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Figure 1. Architecture of a single SRDatalog semi-naïve iteration. The AOT compiler lowers Datalog rules (top left) into batched Count and Materialize kernels. 
+
+## 4 SRDatalog: WCOJ on the GPU 
+
+SRDatalog is an iterative, GPU-accelerated Datalog engine explicitly architected to satisfy the three execution impera-tives established in §3. Rather than relying on heavy static index partitioning or dynamic work-stealing queues, SR-Datalog adheres strictly to semi-naïve evaluation semantics by mapping logical Datalog operations directly to physical hardware phases. As illustrated in Figure 1, an Ahead-of-Time (AOT) compiler translates high-level rules into a staged pipeline of CUDA kernels rather than interpreting queries at runtime. Within a single fixpoint iteration, this pipeline executes sequentially: it first employs a Histogram phase to load-balance the outermost join (§5), followed by determinis-tic two-phase WCOJ rule evaluation ( Count and Materialize ). Finally, the engine isolates unique new derivations ( Compute Delta ), enforces flat columnar layout requirements ( Build Index ), and updates the persistent relational state ( Merge ). To bypass the SIMT serialization penalty of dynamic work-stealing queues ( Imperative 1 ), SRDatalog abandons run-time output allocation in favor of a strict two-phase join ex-ecution model. GPU architectures require lock-free memory writes to maximize global memory bandwidth; each thread must deterministically know its output offset before compu-tation begins. Execution therefore begins with a Histogram 
+
+pass to bound the workload. Guided by these bounds, the 
+
+Count Kernel performs multi-way column intersections with-out materializing results, generating a thread-group-level histogram of output sizes. A global prefix sum over these counts dictates a bulk memory allocation for the iteration and computes deterministic write offsets for every thread. With memory pre-allocated and offsets synchronized, the 
+
+Materialize Kernel re-executes the intersection logic, writing the output tuples in a cooperative and coalesced manner. To eliminate the crippling index rebuild tax of static WCOJ implementations ( Imperative 2 ), SRDatalog must support this two-phase pipeline without relying on immutable hier-archical structures (e.g., CoCo tries). Therefore, SRDatalog represents all relations strictly as flat, sorted arrays utilizing a Structure-of-Arrays (SoA) layout. Each relation is sorted lexicographically in radix order according to the column access sequence dictated by the query plan. This ordering ensures that all tuples sharing a common prefix are stored contiguously in memory. By coupling this flat layout with a specialized join algorithm and a collaborative fast-skip mech-anism, SRDatalog emulates trie-like multi-way navigation directly over raw columns, completely bypassing the need to maintain auxiliary metadata. The flat SoA layout is well-suited for the GPU computation and the semi-naïve execution loop. Following the Material-ize Kernel , SRDatalog leverages this layout to execute the final stages of the pipeline (Figure 1). The materialized tu-ples enter the Compute Delta phase, which filters the output against existing full version relations to isolate new tuples. To prepare the delta tuple for subsequent iterations, SRData-log subjects the new tuples to a sorting pass ( Build Index ), a memory-bound operation suited for GPUs [ 34 ]. Sorting or-ganizes the newly generated tuples into the lexicographical SoA format required for contiguous range intersections in future joins. If the deduplicated delta is empty, execution ter-minates. Otherwise, SRDatalog proceeds to the Merge phase. A naive physical implementation of this step would suffer from severe memory bandwidth waste during the rapidly de-caying “long tail” of semi-naïve evaluation, where merging a microscopic delta would force a full structural rewrite of a massive base relation. To resolve this without sacrificing the simplicity of the WCOJ pipeline, SRDatalog physically partitions each relation into a lightweight head buffer and a massive fully-sorted body . During the Merge phase, incom-ing deltas are cheaply integrated strictly into the small head array. SRDatalog only triggers a heavy, single-pass GPU path merge [ 10 ] to flush the head into the body when a capacity threshold is reached. Because the WCOJ intersection itera-tors simply treat the head and body as a logical union during the join phases, this amortized design successfully absorbs long-tail write amplification while completely avoiding the index reconstruction tax of static WCOJ implementations. 
+
+## 5 Work-Balanced WCOJ on the GPU 
+
+To mitigate the load skew of power-law degree distribu-tions without introducing too much runtime cross-thread group coordination (satisfying Imperative 3 ), SRDatalog employs a root-level, histogram-guided WCOJ load balancing .As demonstrated in §3, real Datalog workloads cannot be partitioned naïvely along the outermost joined variable us-ing a one-value-per-thread-group assignment. Rather than structurally reorganizing the relational data or relying on dynamic work-stealing queues, SRDatalog relies on the His-togram pass shown in Figure 1 to compute a prefix-summed degree distribution of the outermost join column. To ensure this scheduling step remains genuinely lightweight across Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Sun et al. 
+
+Figure 2. Histogram-guided partitioning flattens per-key fan-outs into a prefix-summed 1-D work space. 
+
+Algorithm 1 Work-Balanced GPU WCOJ 
+
+Require: Relations 𝑅 1, . . . , 𝑅 ℓ as sorted column arrays; vari-able order (𝑥 1, . . . , 𝑥 𝑚 ); 𝑝 blocks, 𝑤 warps/block 
+
+Phase 1: Histogram (one warp per root key)  
+
+> 1:
+
+𝑈 [0..𝐾 ) ← unique values of 𝑥 1 across sources  
+
+> 2:
+
+for all 𝑖 ∈ [ 0, 𝐾 ) in parallel do  
+
+> 3:
+
+W [ 𝑖 ] ← Degree (𝑈 [𝑖 ]) ⊲ Fan-out under root key 𝑖  
+
+> 4:
+
+end for  
+
+> 5:
+
+C ← PrefixSum (W) ; 𝑇 ← C [ 𝐾 −1]
+
+Phase 2: Count kernel (Alg. 2 with emit → count++ ) 
+
+> 6:
+
+tc [ ... ] ← per-thread output counts  
+
+> 7:
+
+offsets ← PrefixSum (tc ); allocate output to Í tc 
+
+Phase 3: Materialize kernel 
+
+hundreds of fixpoint iterations, SRDatalog does not recom-pute this histogram from scratch over the massive full re-lations. Instead, it maintains the histogram incrementally: the distribution is computed solely over the newly gener-ated delta tuples, and then cheaply merged with the base relation’s existing histogram alongside the data itself during the amortized Merge phase. This incrementally maintained histogram flattens the highly skewed join space into a uni-form 1-D array of work units, allowing the orchestrator to deterministically assign proportionally balanced slices of the root-level search space to thread blocks at kernel launch. The inner intersection levels then proceed as a standard, thread-cooperative Leapfrog Triejoin over the flat columns. To illustrate this flattening mechanism, Figure 2 traces SR-Datalog’s load balancing phase on the outermost joined col-umn of a generic query O(𝑘, 𝑥, 𝑦, . . . ) ← R(𝑘, 𝑥 ), S(𝑘, 𝑦 ), . . . 
+
+with four distinct root values 𝐴 , 𝐵 , 𝐶 , 𝐷 , each generating a total inner search space (fan-out) of 4, 9, 1, and 4 work units respectively. Before the actual join begin, a histogram 
+
+kernel sweeps the participating relation’s outer-most col-umn once and writes the per-key fan-out into a flat array indexed by outer-column rank (top row of the figure). For delta relations, this histogram is computed directly over the 
+
+Algorithm 2 HG-WCOJ Kernel (per block 𝑏 )
+
+Require: Prefix sums C [ 0..𝐾 ), total 𝑇 , root keys 𝑈 
+
+Require: Variable order (𝑥 1, . . . , 𝑥 𝑚 ), sources 𝑆 𝑗 for each variable 𝑥 𝑗  
+
+> 1:
+
+[𝑏 𝑠 , 𝑏 𝑒 ) ← block 𝑏 ’s slice of [0,𝑇 ) ⊲ ⌈𝑇 /𝑝 ⌉ 
+
+> 2:
+
+𝜅 ← BinarySearch (C , 𝑏 𝑠 ) ⊲ Starting root key  
+
+> 3:
+
+for each key 𝜅 overlapping [𝑏 𝑠 , 𝑏 𝑒 ) do  
+
+> 4:
+
+Narrow first-source handle to warp’s share of key 𝜅  
+
+> 5:
+
+Prefix (𝑥 1=𝑈 [𝜅 ]) on all sources ⊲ Cooperative  
+
+> 6:
+
+for each 𝑥 2 in Intersect (𝑆 [𝑥 1→𝑥 2]) across sources 
+
+do  
+
+> 7:
+
+Prefix (𝑥 2); narrow child handles  
+
+> 8:
+
+for each 𝑥 3 in Intersect (𝑆 [𝑥 1,𝑥 2→𝑥 3]) do  
+
+> 9:
+
+· · · ⊲ Recurse through variable order  
+
+> 10:
+
+At leaf: emit (𝑥 1, . . . , 𝑥 𝑚 ) 
+
+> 11:
+
+end for  
+
+> 12:
+
+end for  
+
+> 13:
+
+end for 
+
+outermost column using Thrust primitives. For the full re-lation, it is maintained incrementally by merging the delta histogram with the current histogram of the full relation. A prefix sum over this array (second row) flattens the en-tire join’s work into a 1-D space of total size 𝑇 = 18 , with each key 𝑘 owning the contiguous range [C [ 𝑘 −1], C [ 𝑘 ]) . In this example, there are four thread groups, so 𝑝 = 4. The work-balanced count/materialize kernels then assign each block-group a contiguous slice ⌈𝑇 /𝑝 ⌉ = 5 of this flat space, regardless of how many distinct outer-column values fall inside the slice. Group 0 receives work units [0, 5), which spans key 𝐴 in full and the first work unit of key 𝐵 ; group 1 receives [5, 10 ), entirely inside the heavy key 𝐵 ; group 2 covers the rest of 𝐵 together with 𝐶 ; group 3 covers 𝐷 . The heaviest key 𝐵 , which under a naive one-key-per-group as-signment would have monopolized a single block-group with nine sequential work units, is now split across three groups. To recover the actual tuples to emit, each thread translates its global work-unit index back into a (key , 𝑖 1, 𝑖 2) triple by binary-searching the prefix array C for the owning key, then computing local = global − C [ key −1], 𝑖 1 = local ÷ 𝑑 2 (key ),
+
+𝑖 2 = local mod 𝑑 2 (key ), where 𝑑 2 (key ) is the inner-relation degree under that key (read from the per-key array). The two indices 𝑖 1 and 𝑖 2 are then point lookups directly into the sorted columns of Outer and Inner — no auxiliary index, no per-thread iterator state, no cross-warp coordination. The bottom of Figure 2 shows the resulting traces for groups 0 and 1: every flat work unit maps to exactly one output tuple, and adjacent threads within a warp emit adjacent positions of the inner relation, preserving the coalesced write pattern that the count/materialize pipeline (§4) requires. The same decomposition extends to multi-way joins by treating the inner side as the cross-product of the remaining join levels under the chosen variable order. Scaling Worst-Case Optimal Datalog to GPUs Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+For exceptionally deep join trees, single-level balancing is insufficient. For example, the recursive CallGraphEdge (CGE )rule from micro-doop (Figure 3a) intersects seven logical variables across six body clauses; compiling this directly gen-erates a six-level nested intersection loop. On a binary-join engine like VFLog, evaluating this requires decomposing it into five chained operators and materializing four interme-diate relations, triggering memory blowouts because some clauses generate massive cross-products. While a monolithic WCOJ pipeline prevents this memory explosion, the six-level nesting exhausts the hardware register budget and exposes unmitigated fan-out skew buried in the inner logical layers. To resolve this tension, SRDatalog employs a targeted rewriting strategy known as helper-relation splitting (Fig-ure 3b). Rather than aggressively factoring the rule into a chain of shallow binary joins, SRDatalog surgically iso-lates only the sub-trees responsible for catastrophic inner-level skew. In the original CGE rule, the type resolution vari-ables ( sn , dsc , t) frequently bind to ubiquitous base classes (e.g., java.lang.Object ), generating severe unmitigated fan-out deep in the intersection pipeline. By factoring only these specific clauses into an independent HelpNT relation, the pre-viously buried skew keys ( sn , dsc , h) are exposed as top-level columns in the newly generated rule. This allows them to be aggressively balanced by SRDatalog’s histogram-guided load balancing. Crucially, because the remaining clauses (Reachable , Instruction_Method ) do not induce catastrophic skew, they remain fused in the consumer rule. By strategi-cally materializing a single boundary, SRDatalog strikes a de-liberate balance: it recovers the SIMT load-balancing efficacy lost to deep inner-level skew, while successfully evaluating the rest of the topology as a massive 5-way WCOJ kernel to preserve strict asymptotic memory efficiency. 
+
+## 6 Stream-Order Rule Parallelism 
+
+Datalog is inherently monotonic. According to the CALM theorem [ 12 ], such monotonic computations guarantee de-terministic convergence regardless of execution order, effec-tively eliminating the need for strict sequential coordination across different Datalog rules within the same stratum. SR-Datalog exploits this theoretical foundation to extract rule-level parallelism. Rather than evaluating rules sequentially, the SRDatalog Ahead-of-Time (AOT) compiler orchestrates a phase-aligned schedule that interleaves execution at the granularity of individual pipeline phases (Count → Scan →
+
+Resize → Materialize) across independent CUDA streams. As illustrated in the center of Figure 1, the Count and Mate-rialize kernels for independent rules (e.g., Rule 1 and Rule 2) are grouped by phase and dispatched concurrently onto separate CUDA streams, allowing the hardware scheduler to seamlessly overlap their execution and new tuple memory allocation on the device. 
+
+(a) Original Monolithic Rule 
+
+CallGraphEdge (i, m) ← 
+
+Reachable (j), Instruction_Method (i, j),
+
+VirtualMethodInvoc (i, b, sn , dsc ),
+
+VarPointsTo (h, b), HeapAllocation_Type (h, t),
+
+MethodLookup (sn , dsc , t, m).
+
+(1) 
+
+(b) Targeted Structural Split 
+
+HelpNT (sn , dsc , m, h) ← 
+
+MethodLookup (sn , dsc , t, m),
+
+HeapAllocation_Type (h, t).
+
+(2) 
+
+CallGraphEdge (i, m) ← 
+
+Reachable (j), Instruction_Method (i, j),
+
+VirtualMethodInvoc (i, b, sn , dsc ),
+
+VarPointsTo (h, b), HelpNT (sn , dsc , m, h).
+
+(3) 
+
+Figure 3. CallGraphEdge rule from micro-DOOP before (a) and after (b) SRDatalog’s targeted split. This stream-ordered model directly resolves the interact-ing bottlenecks of hardware underutilization inherent to real-world workloads like the DOOP program analysis suite. Individual rules frequently lack sufficient workload volume to fully saturate device Streaming Multiprocessors (SMs), particularly during the rapidly decaying “delta tail” of later fixpoint iterations. Executing these small kernels sequen-tially leaves hardware idle and exposes the pipeline to severe CUDA kernel launch and device memory allocation over-heads. Furthermore, complex Datalog rules may contain up to eight joined body clauses. As shown in § 2, each clause compiles into a nested intersection loop, dictating that inter-mediate materialized values and probing iterators reside in fast on-chip registers. This deep nesting generates intense register pressure, which limits the number of active warps per SM and prevents the hardware scheduler from hiding global memory latency. Stream ordering explicitly resolves this trap: by dispatching independent rules concurrently across streams, SRDatalog amortizes launch and allocation overheads, saturates the SMs with independent active warps, and sustains high device occupancy. While CPU-based incremental Datalog systems, such as FlowLog [ 50 ], leverage CALM further and achieve fully asyn-chronous, cross-iteration parallelism, this tuple-at-a-time streaming model is fundamentally incompatible with GPU architectures. SIMT throughput relies strictly on dense bulk operations, such as single-pass radix sorts, two-buffer path merges, and coalesced count/materialize kernels, to saturate global memory bandwidth. Fully asynchronous execution generates scattered, uncoalesced memory writes that destroy this throughput. By restricting concurrency to phase-aligned, Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Sun et al. 
+
+Table 1. Feature comparison of evaluated systems.                                                     
+
+> SRDatalog VFLog Souffle Ascent FlowLog cuMatch
+> GPU ✓✓✗✗✗✓
+> WCOJ ✓✗✗✗✗✓
+> Semi-naïve ✓✓✓✓✓✗
+> Recursion ✓✓✓✓✓✗
+> Negation ✓✗✓✓✓△
+> Macro-based ✓✗✗✓✗✗
+> Incremental ✗✗✗✗✓✗
+> ✓supported, ✗not supported, △partial.
+
+intra-iteration execution, SRDatalog extracts the hardware-friendly parallelism permitted by monotonicity while strictly preserving the dense, bandwidth-optimized data paths re-quired for GPU acceleration. 
+
+## 7 Evaluation 
+
+We evaluate SRDatalog across two distinct hardware settings, establishing a cost-equivalent baseline to isolate the architec-tural difference of GPU-accelerated evaluation against state-of-the-art CPU executions. GPU experiments are conducted on a workstation equipped with a single NVIDIA RTX 6000 Ada Generation (48 GB) paired with an AMD Ryzen Thread-ripper PRO 5945WX (12 physical cores). CPU baselines are evaluated on a cloud instance with an AMD EPYC 9655, uti-lizing 32 exposed physical cores and 256 GB of DDR5 mem-ory. These two platforms are strictly matched by commodity cloud rental cost ( ≈$1/hour at the time of writing). While they are not directly comparable on raw power budget—the entire EPYC draws roughly 400 W while we only own par-tial of it, against the RTX 6000 Ada’s 300 W—their power consumption are at same grade. As summarized in Table 1, we evaluate SRDatalog against five external systems that collectively span the architectural design space of modern relational and graph query evalu-ation. For GPU-accelerated baselines, we compare against cuMatch [ 31 ], a WCOJ engine that accelerates static graph queries but lacks semi-naïve recursion, and VFLog [ 39 ], a recursive Datalog engine structurally constrained by binary joins and materialized intermediates. Both GPU baselines, alongside SRDatalog, are compiled with Clang 20 and the NVIDIA HPC SDK 25.5. For CPU baselines, we evaluate against FlowLog [ 50 ], an incremental Datalog engine built atop Differential Dataflow; Soufflé [ 17 ], the de-facto standard ahead-of-time Datalog compiler; and Ascent [ 33 ], a high-performance macro-based Rust engine. As Table 1 illustrates, SRDatalog is uniquely positioned within this landscape as the only system uniting GPU acceleration, WCOJ execution, and full recursive Datalog semantics. All CPU-based baseline systems are built in their maximally optimized release con-figurations, with parallel evaluation strictly enforced at the highest hardware thread count exposed by the host platform. 
+
+7.1 End-to-end comparison 
+
+We evaluate the central architectural benefits of this paper: by structurally bypassing the intermediate memory exhaus-tion of binary joins, SRDatalog enables high-performance, end-to-end execution of deep, multi-relation program analy-sis on a GPU. Prior GPU Datalog engines (e.g., GDlog [ 41 ], VFLog [ 39 ]) are excluded from Table 2 because their binary-join execution models reliably Out-Of-Memory (OOM) on these topologies, as mathematically established in §3. Conse-quently, we compare SRDatalog against three mature CPU engines: Soufflé [ 35 ], FlowLog [ 50 ] (built on Differential Dataflow [ 26 ]), and Ascent [ 33 ]. All baselines execute at full multi-core parallelism on cost-equivalent hardware. To iso-late the core relational bottleneck, we evaluate the recursive structures of these workloads based on FlowLog’s bench-mark suite [ 50 ], leaving peripheral language features (e.g., arithmetic, user-defined functors) to future engineering. All reported measurements strictly evaluate the core com-pute phase, explicitly excluding initial data loading. For As-cent, timing begins exactly when the compiled run() routine is invoked. For FlowLog, we report the system’s internally profiled reasoning time. Because Soufflé’s compiled binaries do not natively expose isolated execution timers, we derive its compute phase by measuring the total GNU time wall-clock duration and mathematically subtracting the execution time of an I/O-only program stripped of its recursive rules. Table 2 reports these isolated end-to-end execution times across seven workload classes and 17 datasets. SRDatalog outperforms all baselines across every benchmark, demon-strating geometric mean speedups of 21 × over Ascent, 14 ×
+
+over FlowLog, and 26 × over Soufflé. Because this is a CPU-vs-GPU comparison, these massive gains reflect the combined synergy of SRDatalog’s architectural mechanisms: raw GPU memory bandwidth, the columnar WCOJ execution model, flat-array delta merges, stream-order rule multiplexing, and histogram-guided skew mitigation. A deeper analysis of the speedup variance across work-loads. On complex, multi-way program analysis workloads (doop , ddisasm , polonius ), SRDatalog achieves strong 3 ×–51 × speedups. The benchmark suite inherited from FlowLog specifically targets the critical relational bottlenecks within these industrial frameworks, evaluating foundational rules from micro-doop alongside subsets from the most compu-tationally expensive Strongly Connected Components of 
+
+ddisasm . These recursive topologies are fundamentally char-acterized by long-tail delta distributions: across their exten-sive fixpoint chains, the vast majority of iterations generate only a microscopic trickle of new delta tuples. This severe structural sparsity inherently bounds peak GPU efficiency, exposing the sequential launch overhead of the semi-naïve evaluation loop. However, while this specific topology al-lows CPU baselines like FlowLog to perform at their peak by amortizing iteration overhead via LSM-like versioning, Scaling Worst-Case Optimal Datalog to GPUs Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Table 2. Execution time (seconds) across different workloads. SRDatalog runs on a single NVIDIA RTX 6000 Ada GPU. CPU engines run on a 32-core AMD EPYC 9655 CPU with 256 GB RAM. Soufflé times exclude CSV data-loading overhead, measured separately via load-only programs. SF abbreviate Soufflé, Asc abbreviate Ascent, FL abbreviate Flowlog. 
+
+Workload Dataset Input Iters SRDatalog Ascent FlowLog Soufflé vs Asc vs FL vs SF (1 GPU) (32c) (32c) (32c) 
+
+ddisasm cvc5 1.5M 751 0.73 7.5 11.8 7.7 10 × 16 × 11 ×
+
+z3 126.9M 1542 2.00 24.4 14.7 10.7 12 × 7.4 × 5.4 ×
+
+coqidetop 31.6M 1192 1.07 4.9 2.9 6.4 5× 2.7 × 6.0 ×
+
+lean4 32.8M 530 0.61 5.3 4.3 13.9 9× 7.0 × 23 ×
+
+doop batik 20.4M 248 1.93 22.8 11.9 22.2 12 × 6× 12 ×
+
+eclipse 3.3M 253 1.70 16.2 12.4 15.2 10 × 7× 8.9 ×
+
+biojava 11.1M 179 1.60 40.6 8.3 45.0 25 × 5.2 × 28 ×
+
+zxing 5.5M 167 0.89 11.4 8.5 31.4 13 × 10 × 35 ×
+
+polonius clap-rs 1.1M 1488 2.64 70.9 33.5 135.9 27 × 13 × 51 ×
+
+wgpu 1.1M 1488 2.70 69.5 27.8 119.2 26 × 10 × 44 ×
+
+materialize 17.8M 2322 2.29 26.5 99.1 41.9 12 × 43 × 18 ×
+
+scallop 28.4M 1360 0.88 18.1 38.4 8.4 21 × 44 × 9.5 ×
+
+andersen medium 34.0M 25 0.06 2.0 2.7 10.6 32 × 43 × 176 ×
+
+large 68.0M 24 0.12 4.2 5.1 25.7 35 × 43 × 214 ×
+
+CSPA httpd 1.5M 31 0.73 34.7 13.9 31.3 48 × 19 × 43 ×
+
+postgresql 4.7M 34 0.96 36.1 14.1 38.0 38 × 15 × 40 ×
+
+galen galen 977K 33 0.28 7.0 6.3 20.6 25 × 23 × 74 ×
+
+SRDatalog’s WCOJ microarchitecture fundamentally over-powers them, maintaining a decisive victory even in their strongest operational regime. Furthermore, as detailed in §7.4, SRDatalog successfully deploys stream-parallel multi-plexing to mitigate this long-tail underutilization on highly fractured workloads like doop .
+
+Andersen and CSPA yield SRDatalog’s most overwhelming margins (32 ×–214 ×). Structurally, these workloads resemble non-linear Transitive Closure topologies [ 15 ]; they converge in very shallow fixpoint chains (24–34 iterations) but com-pute incredibly massive, dense relational intersections at every single step. This dense iterative behavior perfectly aligns with SIMT architectural strengths. Unencumbered by the sequential latency of long-tail fixpoints, SRDatalog can fully saturate its thousands of SMs with WCOJ math, exposing the true hardware delta between GPU memory bandwidth and traditional CPU evaluation. 
+
+7.2 SRDatalog versus SOTA GPU-based systems 
+
+As established in §3, existing GPU systems cannot execute our primary end-to-end program analysis workloads: static WCOJ engines lack recursive semi-naïve evaluation, and binary-join Datalog engines exhaust memory on complex multi-way rules. To rigorously evaluate SRDatalog’s microar-chitectural efficiency against these state-of-the-art (SOTA) baselines, we design two targeted experiments constrained strictly to their respective operational limits. 
+
+Versus GPU-based WCOJs. First, we compare SRDatalog against the fastest available GPU WCOJ system, cuMatch [ 31 ]. We evaluate both systems’ join time (partition time required by cuMatch is not included in timing) on the three most time-consuming graph pattern matching queries (Q6, Q7, Q9) with representative query pattern (triangle with filter, star shape join, triangle with negation) from the LSQB benchmark [ 27 ]. We exclude older systems like ALFTJ [ 20 ], as cuMatch has al-ready demonstrated > 3x speedups over them. To isolate raw in-memory intersection speed, we tune the dataset to Scale Factor 100 (SF=100), guaranteeing all computation remains strictly within GPU VRAM. Although cuMatch is explicitly architected to support out-of-core disk spilling—a design choice that inherently trades peak in-memory throughput for capacity—it serves as the most rigorous baseline available for evaluating multi-way GPU intersections. As shown in Figure 4, SRDatalog achieves speedups of 2.1x to 4.0x across all three query topologies. The performance gap is most pronounced on Q9 (2-hop path with negation), where SRDatalog reduces execution time from 3.07s to 0.78s (4.0x), and Q6 (2-hop path with interest), dropping execution from 12.85s to 3.64s (3.5x). These results validate SRData-log’s foundational storage design: by operating directly on Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Sun et al. Q6 Q7 Q9 
+
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> 14
+> 16
+> Execution Time (seconds)
+> 3.07s
+> 4.50s
+> 12.81s
+> 0.76s
+> 2.17s
+> 3.52s
+> 4.0x
+> 2.1x
+> 3.6x
+> cuMatch
+> SRDatalog
+
+Figure 4. LSQB SF=100 execution time. SRDatalog is 2.1– 4.0 × faster than cuMatch on all query types. flat columnar arrays, SRDatalog avoids the massive pointer-chasing and allocation overheads required to traverse and maintain cuMatch’s specialized grid-partitioned structures. 
+
+Versus GPU-Native Datalog Engines. Because the re-cently proposed Lobster [ 4 ] engine remains closed-source, we isolate recursive overhead against VFLog [ 39 ], the fastest open-source GPU Datalog alternative. Since VFLog reliably triggers out-of-memory (OOM) failures on deep program analysis rules, we evaluate both systems on the Same Gen-eration (SG) benchmark. Featuring three body clauses, SG represents the precise topological threshold where binary evaluation is forced to physically materialize one interme-diate relation per iteration. Table 3 reports execution times across four real-world graphs. SRDatalog outperforms VFLog by 2.3 × to 7.1 ×, converging on identical semi-naïve fixpoints. On the most iteration-heavy dataset, vsp_finan (513 itera-tions), SRDatalog reduces execution time from 35.5s to 5.01s. This performance delta directly exposes the severe mem-ory bandwidth tax of binary joins: at every iteration, VFLog must physically write and subsequently read an intermediate relation to global VRAM. By employing WCOJ, SRDatalog mathematically bypasses intermediate materialization, con-verting these global bandwidth savings directly into iteration speed. Furthermore, SRDatalog matches and exceeds the 2 ×–3× speedup over VFLog reported by Lobster [ 4]. SRDatalog achieves these margins purely through algorithmic WCOJ efficiency, avoiding the severe memory capacity penalties associated with Lobster’s mutable hashmaps. 
+
+7.3 Ablation Study: Handling Data Skew 
+
+In Section 5, we introduced SRDatalog’s histogram-guided work partitioning. To isolate its benefits, we select several kernels from the micro-doop and compare performance with and without histogram-guided partitioning. For the baseline, we implement a code generation path in compiler that join kernels that assign naively one outermost unique value per thread group, and compare their kernel times against the 
+
+Table 3. Same Generation (SG) benchmark comparing SR-Datalog (abbreviated as SR ) against VFLog (abbreviated as 
+
+VF ). All experiments run on an NVIDIA RTX 6000 Ada. 
+
+Dataset Edges |SG | Iters SR(s) VF(s) Speedup 
+
+fe-sphere 49,152 206M 127 1.04 3.73 3.6 ×
+
+SF.cedge 223,001 382M 269 1.10 7.63 6.9 ×
+
+fe_body 163,734 408M 125 3.23 7.56 2.3 ×
+
+vsp_finan 552,020 865M 513 5.01 35.5 7.1 ×HeapAlloc     
+
+> Helper
+> CastTo VirtDispatch CGE
+> Virtual
+> VPT
+> LoadField
+> StackDef
+> Used4
+> 10 1
+> 10 2
+> 10 3
+> Kernel Time (ms, log scale)
+> 35.8×
+> 1.8×
+> 3.1× 3.3×
+> 1.1×
+> 14.9×
+> Unbalanced Balanced
+
+Figure 5. Kernel microseconds time with (blue) and without (gray) skew handling across six rules (log scale). Kernel time measured by NVIDIA NSight System profiler. balanced kernels emitted by SRDatalog’s compiler. Kernel times are measured with the NVIDIA Nsight Systems profiler, and the results are reported in Figure 5. Speedups range from 1.1× to 35 .8×, heavily dependent on whether data skew aligns with the outermost partitioned variable. HeapAllocHelper achieves massive gains ( 35 .8×) by applying the structural splitting insight detailed in § 5. In real-world Java applications, a trivial number of base types (e.g., Object , Exception ) absolutely dominate the subtyping hierarchy, creating severe inner-variable skew deep within the heap allocation control flow. By splitting this rule, SRDat-alog elevates these ubiquitous types to the root level, allow-ing the 1-D histogram to perfectly absorb the imbalance. In contrast, the two virtual-dispatch rules ( 3.1×–3.3×) exhibit moderate outer skew on the receiver pointer but suffer from unmitigated inner skew on the VarPointsTo fan-out; thus, the speedup reflects only the resolution of the outermost imbal-ance. CastTo (1.8×) exhibits extreme outer skew—a single key encapsulates 75.5% of the workload—but operates on a modest absolute data volume (35.8M tuples, 160 ms baseline), fundamentally restricting the theoretical speedup ceiling. Finally, VPT_LoadField (1.1×) highlights a deliberate sched-uling trade-off. To minimize per-iteration overhead across hundreds of semi-naïve fixpoint steps, SRDatalog strictly places the delta relation ( ΔVarPointsTo ) outermost. Because this specific delta is small and near-uniformly distributed, the root histogram provides neutral scheduling benefits. The actual skew resides within the inner InstanceFieldPointsTo Scaling Worst-Case Optimal Datalog to GPUs Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 1.0 1.2 1.4 1.6 1.8 
+
+> Speedup over single-stream baseline
+> doop (batik)
+> doop (eclipse)
+> doop (zxing)
+> doop (xalan)
+> doop (biojava)
+> galen
+> andersen (medium)
+> ddisasm (z3)
+> ddisasm (cvc5)
+> polonius (clap-rs)
+> 1.66×
+> 1.57×
+> 1.56×
+> 1.43×
+> 1.27×
+> 1.23×
+> 1.06×
+> 1.04×
+> 1.03×
+> 1.03×
+
+Figure 6. Wall-time speedup of the stream-parallel schedule over a sequential rule-by-rule schedule. Each bar is the ratio of the two means over five runs relation, demonstrating that while the delta-first policy is globally optimal for iteration efficiency, it leaves un-split inner skew deliberately unaddressed. 
+
+7.4 Stream Parallel Kernel Scheduling Ablations 
+
+To isolate the performance impact of the phase-aligned sched-ule detailed in § 6, we compile each benchmark in two config-urations: the proposed stream-parallel schedule and a base-line sequential schedule that emits a strict rule-by-rule eval-uation loop onto the default CUDA stream. Figure 6 reports the wall-clock speedup of the stream-parallel approach. Workloads characterized by stratum of large numbers of complex rules exhibit substantial performance gains. The five DOOP datasets achieve speedups ranging from 1.27 × (bio-java ) to 1.66 × (batik ), while galen accelerates by 1.23 ×. The dominant recursive stratum in micro-doop contains twelve independent rules handling distinct pointer aliasing cases (e.g., array accesses, static loads, local variable assignments). Each rule performs deep three-to-six-way intersections, in-ducing heavy register pressure, yet processes insufficient data volume to independently saturate the GPU. Hardware profiling via NVIDIA Nsight Systems confirms that stream multiplexing natively resolves this underutilization. On the 
+
+batik workload, the stream-parallel configuration accumu-lates 3.0 s of raw device execution time but completes in only 2.3 s of wall-clock time, achieving a sustained 1.30 ×
+
+hardware concurrency factor by actively overlapping inde-pendent compute and memory allocation stalls. The remaining four benchmarks ( andersen , both ddisasm 
+
+variants, and polonius ) exhibit negligible variance ( ±3% ). This result directly reflects constrained workload where dominant strata contain three or fewer rules. (We note that while full 
+
+ddisasm comprises over 3,000 rules and structurally similar to doop , we evaluate the reduced artifact from FlowLog [ 50 ], whose dominant strongly connected component happens to be dense but rule-sparse). In such tight configurations, overlapping trivial secondary rules fails to inject meaningful hardware concurrency. This limitation is most pronounced in andersen , where a single massively recursive rule monopo-lizes execution. Because this isolated rule provides sufficient data volume to fully saturate device SMs on its own, no idle resources remain for concurrent streams to exploit. Ul-timately, these results empirically validate our core thesis: stream multiplexing recovers occupancy for broad, fractured strata ( e.g., micro-doop ), but yields diminishing returns for rule-sparse workloads that already saturate the hardware. 
+
+## 8 Related Work 
+
+High-performance Datalog systems. have been studied across both CPU and GPU platforms. On the CPU side, sys-tems such as Soufflé [ 17 ] established Datalog as a practical foundation for high-performance static analysis, while RD-Fox [ 28 ] demonstrated that highly scalable rule processing can also be achieved in RDF-oriented settings . On accelera-tors, early work explored GPU-based Datalog execution [ 25 ], and more recent systems have substantially improved GPU performance through column-oriented designs [ 40 ], opti-mized GPU execution strategies [ 41 ], and scaling across multiple GPUs and nodes [ 38 ]. Other recent frameworks have extended GPU-accelerated Datalog-style reasoning to richer settings such as neurosymbolic programming [ 4 ], while FlowLog focuses on efficient and extensible Datalog execution through incrementality [ 50 ]. These systems have advanced high-performance Datalog along several important axes, including scalable CPU execution, GPU acceleration, in-crementality, and multi-device scaling. In contrast, our work focuses specifically on recursive semi-naïve Datalog with worst-case optimal multi-way joins, where GPU execution must be tightly integrated with iterative delta maintenance, deterministic materialization, and fixpoint evaluation. 
+
+Graph Analytics Engines. Broader work on graph ana-lytics and irregular GPU execution has explored several re-lated directions. Prior systems have improved work efficiency for irregular vertex-centric graph processing on GPUs [ 19 ]; supported declarative and incremental analytics over evolv-ing graphs [ 14 , 23 , 24 ]; and accelerated pattern-aware graph mining, subgraph query processing, and subgraph count-ing [ 5, 16 , 37 ]. These works highlight the importance of handling skew, irregular parallelism, and graph-structured computation efficiently on modern hardware. However, they generally target graph analytics or subgraph-oriented tasks rather than recursive semi-naïve Datalog evaluation. In con-trast, our work focuses on recursive Datalog with worst-case optimal multi-way joins, where join execution must be tightly integrated with Datalog’s fixpoint semantics. 
+
+GPU Databases and Query Processing. systems have extensively studied how to execute relational workloads Conference acronym ’XX, June 03–05, 2018, Woodstock, NY Sun et al. 
+
+on heterogeneous CPU-GPU platforms, including column-store execution [ 11 ], adaptive operator placement across CPUs and GPUs [ 18 ], and high-performance GPU join im-plementations [ 32 ]. More recent work has expanded this line to end-to-end optimization of data placement and ex-ecution in heterogeneous databases [ 49 ], multi-GPU scal-ing for hybrid DBMSs [ 48 ], general GPU-accelerated rela-tional execution with load-balancing support [ 13 ], improved GPU joins and grouped aggregations [ 46 ], and execution beyond device memory capacity [ 21 ]. These systems sub-stantially advance general-purpose relational analytics on GPU-accelerated database platforms. In contrast, our set-ting is recursive semi-naïve Datalog with worst-case opti-mal multi-way joins, where join execution must be tightly integrated with iterative delta maintenance, deterministic materialization, and fixpoint semantics, rather than one-shot relational query evaluation. 
+
+## 9 Conclusion and Future Work 
+
+This paper presented SRDatalog, the first WCOJ GPU Data-log engine capable of executing multi-way recursive work-loads end-to-end. By fundamentally resolving the interme-diate memory exhaustion inherent to exiting binary joins based GPU Datalog system, SRDatalog achieves order-of-magnitude speedups over mature CPU baselines beyond sim-ple ( e.g., transitive closure) queries. This robust execution is achieved by balancing the demands of iterative updates and skewed multi-way intersections. Specifically, SRData-log enforces flat columnar storage to guarantee lightweight semi-naïve delta merges, utilizes a histogram guide join to de-terministically absorb structural skew, and leverages stream parallel rule scheduling to better staturating hardware. Several directions remain open for future research. At the microarchitectural level, residual inner-variable skew could be mitigated via inter-SM work redistribution on modern GPUs by exploiting architectural features such as Cluster Launch Control. Algorithmically, we plan to develop a GPU-native, cost-model-driven query planner to automatically identify instance-optimal variable orderings. 
+
+## References 
+
+[1] Serge Abiteboul, Richard Hull, and Victor Vianu. 1995. Foundations of Databases . Vol. 8. Addison-Wesley, Reading, MA. [2] Albert Atserias, Martin Grohe, and Dániel Marx. 2008. Size Bounds and Query Plans for Relational Joins. In Proceedings of the 2008 49th Annual IEEE Symposium on Foundations of Computer Science (FOCS ’08) . IEEE Computer Society, USA, 739–748. doi: 10.1109/FOCS.2008.43 
+
+[3] Albert Atserias, Martin Grohe, and Dániel Marx. 2013. Size bounds and query plans for relational joins. SIAM J. Comput. 42, 4 (2013), 1737–1767. [4] Paul Biberstein, Ziyang Li, Joseph Devietti, and Mayur Naik. 2025. Lob-ster: A GPU-Accelerated Framework for Neurosymbolic Programming. In Proceedings of the 31st ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 
+
+(USA) (ASPLOS ’26) . Association for Computing Machinery, New York, NY, USA, 147–162. doi: 10.1145/3760250.3762232 
+
+[5] Cameron Bradley, Ghadeer Ahmed H Alabandi, and Martin Burtscher. 2025. Fringe-SGC: Counting Subgraphs with Fringe Vertices. In Pro-ceedings of the International Conference for High Performance Comput-ing, Networking, Storage and Analysis (SC ’25) . Association for Comput-ing Machinery, New York, NY, USA, 1510–1523. doi: 10.1145/3712285. 3759839 
+
+[6] Martin Bravenboer and Yannis Smaragdakis. 2009. Strictly declarative specification of sophisticated points-to analyses. In Proceedings of the 24th ACM SIGPLAN Conference on Object Oriented Programming Sys-tems Languages and Applications (Orlando, Florida, USA) (OOPSLA ’09) .Association for Computing Machinery, New York, NY, USA, 243–262. doi: 10.1145/1640089.1640108 
+
+[7] Stefano Ceri, Georg Gottlob, LUIGI ANTONIO Lavazza, et al . 1986. Translation and optimization of logic queries: The algebraic approach. In Proceedings of the 12th International Conference on Very Large Data Bases . Morgan Kaufmann Publishers Inc., 395–402. [8] Stefano Ceri, Georg Gottlob, Letizia Tanca, et al . 1989. What you always wanted to know about Datalog(and never dared to ask). IEEE transactions on knowledge and data engineering 1, 1 (1989), 146–166. [9] Antonio Flores-Montoya and Eric Schulte. 2020. Datalog disassembly. In 29th USENIX Security Symposium (USENIX Security 20) . 1075–1092. [10] Oded Green, Robert McColl, and David A Bader. 2012. GPU merge path: a GPU merging algorithm. In Proceedings of the 26th ACM international conference on Supercomputing . 331–340. [11] Max Heimel, Michael Saecker, Holger Pirk, Stefan Manegold, and Volker Markl. 2013. Hardware-oblivious parallelism for in-memory column-stores. Proc. VLDB Endow. 6, 9 (July 2013), 709–720. doi: 10. 14778/2536360.2536370 
+
+[12] Joseph M Hellerstein and Peter Alvaro. 2020. Keeping CALM: when distributed consistency is easy. Commun. ACM 63, 9 (2020), 72–81. [13] Kijae Hong, Kyoungmin Kim, Young-Koo Lee, Yang-Sae Moon, Sourav S Bhowmick, and Wook-Shin Han. 2024. Themis: A GPU-Accelerated Relational Query Execution Engine. Proc. VLDB Endow. 
+
+18, 2 (Oct. 2024), 426–438. doi: 10.14778/3705829.3705856 
+
+[14] Farzin Houshmand, Mohsen Lesani, and Keval Vora. 2021. Grafs: declarative graph analytics. Proc. ACM Program. Lang. 5, ICFP, Article 83 (Aug. 2021), 32 pages. doi: 10.1145/3473588 
+
+[15] Yannis E. Ioannidis. 1986. On the Computation of the Transitive Closure of Relational Operators. In Proceedings of the 12th International Conference on Very Large Data Bases (VLDB ’86) . Morgan Kaufmann Publishers Inc., San Francisco, CA, USA, 403–411. [16] Kasra Jamshidi, Rakesh Mahadasa, and Keval Vora. 2020. Peregrine: a pattern-aware graph mining system. In Proceedings of the Fifteenth European Conference on Computer Systems (Heraklion, Greece) (Eu-roSys ’20) . Association for Computing Machinery, New York, NY, USA, Article 13, 16 pages. doi: 10.1145/3342195.3387548 
+
+[17] Herbert Jordan, Bernhard Scholz, and Pavle Subotić. 2016. Soufflé: On synthesis of program analyzers. In International Conference on Computer Aided Verification . Springer, 422–430. [18] Tomas Karnagel, Dirk Habich, and Wolfgang Lehner. 2017. Adaptive work placement for query processing on heterogeneous computing resources. Proc. VLDB Endow. 10, 7 (March 2017), 733–744. doi: 10. 14778/3067421.3067423 
+
+[19] Farzad Khorasani, Keval Vora, Rajiv Gupta, and Laxmi N. Bhuyan. 2017. Enabling Work-Efficiency for High Performance Vertex-Centric Graph Analytics on GPUs. In Proceedings of the Seventh Workshop on Irregular Applications: Architectures and Algorithms (Denver, CO, USA) 
+
+(IA3’17) . Association for Computing Machinery, New York, NY, USA, Article 11, 4 pages. doi: 10.1145/3149704.3149762 
+
+[20] Zhuohang Lai, Xibo Sun, Qiong Luo, and Xiaolong Xie. 2022. Accel-erating multi-way joins on the GPU. The VLDB Journal 31, 3 (2022), 529–553. [21] Yinan Li, Bailu Ding, Ziyun Wei, Lukas M. Maas, Momin Al-Ghosien, Spyros Blanas, Nicolas Bruno, Carlo Curino, Matteo Interlandi, Craig Scaling Worst-Case Optimal Datalog to GPUs Conference acronym ’XX, June 03–05, 2018, Woodstock, NY 
+
+Peeper, Kaushik Rajan, Surajit Chaudhuri, and Johannes Gehrke. 2025. Scaling GPU-Accelerated Databases Beyond GPU Memory Size. Proc. VLDB Endow. 18, 11 (July 2025), 4518–4531. doi: 10.14778/3749646. 3749710 
+
+[22] Ziyang Li, Jiani Huang, and Mayur Naik. 2023. Scallop: A language for neurosymbolic programming. Proceedings of the ACM on Programming Languages 7, PLDI (2023), 1463–1487. [23] Mugilan Mariappan, Joanna Che, and Keval Vora. 2021. DZiG: sparsity-aware incremental processing of streaming graphs. In Proceedings of the Sixteenth European Conference on Computer Systems (Online Event, United Kingdom) (EuroSys ’21) . Association for Computing Machinery, New York, NY, USA, 83–98. doi: 10.1145/3447786.3456230 
+
+[24] Mugilan Mariappan and Keval Vora. 2019. GraphBolt: Dependency-Driven Synchronous Processing of Streaming Graphs. In Proceedings of the Fourteenth EuroSys Conference 2019 (Dresden, Germany) (Eu-roSys ’19) . Association for Computing Machinery, New York, NY, USA, Article 25, 16 pages. doi: 10.1145/3302424.3303974 
+
+[25] Carlos Alberto Martínez-Angeles, Inês Dutra, Vítor Santos Costa, and Jorge Buenabad-Chávez. 2013. A datalog engine for gpus. In Inter-national Conference on Applications of Declarative Programming and Knowledge Management . Springer, 152–168. [26] Frank McSherry, Derek Gordon Murray, Rebecca Isaacs, and Michael Isard. 2013. Differential dataflow.. In CIDR .[27] Amine Mhedhbi, Matteo Lissandrini, Laurens Kuiper, Jack Waudby, and Gábor Szárnyas. 2021. LSQB: a large-scale subgraph query bench-mark. In Proceedings of the 4th ACM SIGMOD Joint International Work-shop on Graph Data Management Experiences & Systems (GRADES) and Network Data Analytics (NDA) (Virtual Event, China) (GRADES-NDA ’21) . Association for Computing Machinery, New York, NY, USA, Article 8, 11 pages. doi: 10.1145/3461837.3464516 
+
+[28] Yavor Nenov, Robert Piro, Boris Motik, Ian Horrocks, Zhe Wu, and Jay Banerjee. 2015. RDFox: A highly-scalable RDF store. In International Semantic Web Conference . Springer, 3–20. [29] Hung Q Ngo, Ely Porat, Christopher Ré, and Atri Rudra. 2018. Worst-case optimal join algorithms. Journal of the ACM (JACM) 65, 3 (2018), 1–40. [30] Hung Q Ngo, Christopher Ré, and Atri Rudra. 2014. Skew strikes back: new developments in the theory of join algorithms. Acm Sigmod Record 42, 4 (2014), 5–16. [31] Sungwoo Park, Seyeon Oh, and Min-Soo Kim. 2025. cuMatch: A GPU-based Memory-Efficient Worst-case Optimal Join Processing Method for Subgraph Queries with Complex Patterns. Proc. ACM Manag. Data 
+
+3, 3, Article 143 (June 2025), 28 pages. doi: 10.1145/3725398 
+
+[32] Ran Rui and Yi-Cheng Tu. 2017. Fast Equi-Join Algorithms on GPUs: Design and Implementation. In Proceedings of the 29th International Conference on Scientific and Statistical Database Management (Chicago, IL, USA) (SSDBM ’17) . Association for Computing Machinery, New York, NY, USA, Article 17, 12 pages. doi: 10.1145/3085504.3085521 
+
+[33] Arash Sahebolamri, Thomas Gilray, and Kristopher Micinski. 2022. Seamless deductive inference via macros. In Proceedings of the 31st ACM SIGPLAN International Conference on Compiler Construction . 77– 88. [34] Nadathur Satish, Mark Harris, and Michael Garland. 2009. Designing efficient sorting algorithms for manycore GPUs. In 2009 IEEE Interna-tional Symposium on Parallel & Distributed Processing . IEEE, 1–10. [35] Bernhard Scholz, Herbert Jordan, Pavle Subotić, and Till Westmann. 2016. On fast large-scale program analysis in datalog. In Proceedings of the 25th International Conference on Compiler Construction . 196–206. [36] Jiwon Seo, Stephen Guo, and Monica S Lam. 2013. SociaLite: Datalog extensions for efficient social network analysis. In 2013 IEEE 29th International Conference on Data Engineering (ICDE) . IEEE, 278–289. [37] Bishal Sharma and Martin Burtscher. 2025. Profiling Application-Specific Properties of Irregular Graph Algorithms on GPUs. In Pro-ceedings of the SC ’25 Workshops of the International Conference for High Performance Computing, Networking, Storage and Analysis (SC Workshops ’25) . Association for Computing Machinery, New York, NY, USA, 784–792. doi: 10.1145/3731599.3767443 
+
+[38] Ahmedur Rahman Shovon, Yihao Sun, Kristopher Micinski, Thomas Gilray, and Sidharth Kumar. 2025. Multi-node multi-gpu datalog. In 
+
+Proceedings of the 39th ACM International Conference on Supercomput-ing . 822–836. [39] Yihao Sun, Sidharth Kumar, Thomas Gilray, and Kristopher Micinski. 2025. Column-Oriented Datalog on the GPU. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 39. 15177–15185. [40] Yihao Sun, Sidharth Kumar, Thomas Gilray, and Kristopher Micin-ski. 2025. Column-oriented datalog on the GPU. In Proceedings of the Thirty-Ninth AAAI Conference on Artificial Intelligence and Thirty-Seventh Conference on Innovative Applications of Artificial Intelligence and Fifteenth Symposium on Educational Advances in Artificial Intelli-gence (AAAI’25/IAAI’25/EAAI’25) . AAAI Press, Article 1692, 9 pages. doi: 10.1609/aaai.v39i14.33665 
+
+[41] Yihao Sun, Ahmedur Rahman Shovon, Thomas Gilray, Sidharth Kumar, and Kristopher Micinski. 2025. Optimizing Datalog for the GPU. In 
+
+Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 .762–776. [42] Todd L Veldhuizen. 2014. Leapfrog triejoin: A simple, worst-case optimal join algorithm. In Proc. International Conference on Database Theory .[43] Junxiong Wang, Immanuel Trummer, Ahmet Kara, and Dan Olteanu. 2023. ADOPT: Adaptively Optimizing Attribute Orders for Worst-Case Optimal Join Algorithms via Reinforcement Learning. Proc. VLDB Endow. 16, 11 (July 2023), 2805–2817. doi: 10.14778/3611479.3611489 
+
+[44] Yisu Remy Wang, Max Willsey, and Dan Suciu. 2023. Free join: Unify-ing worst-case optimal and traditional joins. Proceedings of the ACM on Management of Data 1, 2 (2023), 1–23. [45] John Whaley, Dzintars Avots, Michael Carbin, and Monica S. Lam. 2005. Using datalog with binary decision diagrams for program analysis. In 
+
+Proceedings of the Third Asian Conference on Programming Languages and Systems (Tsukuba, Japan) (APLAS’05) . Springer-Verlag, Berlin, Heidelberg, 97–118. doi: 10.1007/11575467_8 
+
+[46] Bowen Wu, Dimitrios Koutsoukos, and Gustavo Alonso. 2025. Effi-ciently Processing Joins and Grouped Aggregations on GPUs. Proc. ACM Manag. Data 3, 1, Article 39 (Feb. 2025), 27 pages. doi: 10.1145/ 3709689 
+
+[47] Jiacheng Wu and Dan Suciu. 2025. HoneyComb: A Parallel Worst-Case Optimal Join on Multicores. Proceedings of the ACM on Management of Data 3, 3 (2025), 1–27. [48] Bobbi Yogatama, Weiwei Gong, and Xiangyao Yu. 2024. Scaling your Hybrid CPU-GPU DBMS to Multiple GPUs. Proc. VLDB Endow. 17, 13 (Sept. 2024), 4709–4722. doi: 10.14778/3704965.3704977 
+
+[49] Bobbi W. Yogatama, Weiwei Gong, and Xiangyao Yu. 2022. Or-chestrating data placement and query execution in heterogeneous CPU-GPU DBMS. Proc. VLDB Endow. 15, 11 (July 2022), 2491–2503. doi: 10.14778/3551793.3551809 
+
+[50] Hangdong Zhao, Zhenghong Yu, Srinag Rao, Simon Frisk, Zhiwei Fan, and Paraschos Koutris. 2025. FlowLog: Efficient and Extensible Datalog via Incrementality. arXiv preprint arXiv:2511.00865 (2025). 
+
+Received 20 February 2007; revised 12 March 2009; accepted 5 June 2009

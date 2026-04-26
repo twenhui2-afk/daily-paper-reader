@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-25
-- 运行时间：2026-04-26 04:14:56 UTC+8
+- 最新运行日期：2026-04-26
+- 运行时间：2026-04-27 03:28:29 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Re$^2$MoGen: Open-Vocabulary Motion Generation via LLM Reasoning and Physics-Aware Refinement》（7.8/10）, 《Beyond Bass Collapse: New Irregular Edge-Space Invariants in Ihara Theory》（7.5/10）, 《Lusztig constants and endoscopy》（7.5/10）
+- 速读：《Robustness Analysis of POMDP Policies to Observation Perturbations》（7.9/10）, 《A Survey of Legged Robotics in Non-Inertial Environments: Past, Present, and Future》（7.8/10）, 《AGNT2: Autonomous Agent Economies on Interaction-Optimized Layer 2 Infrastructure》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/25/README](/202604/25/README)
+- 详情：[/202604/26/README](/202604/26/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Re$^2$MoGen: Open-Vocabulary Motion Generation via LLM Reasoning and Physics-Aware Refinement](/202604/25/2604.17807v1-re2mogen-open-vocabulary-motion-generation-via-llm-reasoning-and-physics-aware-refinement)  
+1. [Robustness Analysis of POMDP Policies to Observation Perturbations](/202604/26/2604.21256v1-robustness-analysis-of-pomdp-policies-to-observation-perturbations)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+2. [A Survey of Legged Robotics in Non-Inertial Environments: Past, Present, and Future](/202604/26/2604.20990v1-a-survey-of-legged-robotics-in-non-inertial-environments-past-present-and-future)  
    标签：评分：7.8/10
    evidence：检索回退候选
-2. [Beyond Bass Collapse: New Irregular Edge-Space Invariants in Ihara Theory](/202604/25/2604.20578v1-beyond-bass-collapse-new-irregular-edge-space-invariants-in-ihara-theory)  
-   标签：评分：7.5/10
+3. [AGNT2: Autonomous Agent Economies on Interaction-Optimized Layer 2 Infrastructure](/202604/26/2604.21129v1-agnt2-autonomous-agent-economies-on-interaction-optimized-layer-2-infrastructure)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-3. [Lusztig constants and endoscopy](/202604/25/2604.21703v1-lusztig-constants-and-endoscopy)  
-   标签：评分：7.5/10
+4. [Breaking Bad: Interpretability-Based Safety Audits of State-of-the-Art LLMs](/202604/26/2604.20945v1-breaking-bad-interpretability-based-safety-audits-of-state-of-the-art-llms)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-4. [Quantization of nilpotent coadjoint $GL_N$-orbit closures in positive characteristics](/202604/25/2604.21597v1-quantization-of-nilpotent-coadjoint-gln-orbit-closures-in-positive-characteristics)  
-   标签：评分：7.4/10
+5. [Scaling Worst-Case Optimal Datalog to GPUs](/202604/26/2604.20073v2-scaling-worst-case-optimal-datalog-to-gpus)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-5. [Yang-Baxter Integrability and Exceptional-Point Structure in Pseudo-Hermitian Quantum Impurity Systems](/202604/25/2604.21547v1-yang-baxter-integrability-and-exceptional-point-structure-in-pseudo-hermitian-quantum-impurity-systems)  
-   标签：评分：7.4/10
+6. [Co-Designing Error Mitigation and Error Detection for Logical Qubits](/202604/26/2604.19871v1-co-designing-error-mitigation-and-error-detection-for-logical-qubits)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-6. [Process-Mining of Hypertraces: Enabling Scalable Formal Security Verification of (Automotive) Network Architectures](/202604/25/2604.21606v1-process-mining-of-hypertraces-enabling-scalable-formal-security-verification-of-automotive-network-architectures)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-7. [Analytic Inverse Design of Temporal Metamaterials via Space-Time Duality](/202604/25/2604.21383v1-analytic-inverse-design-of-temporal-metamaterials-via-space-time-duality)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-8. [Guaranteed inf-sup bounds and existence verification for semilinear elliptic problems via nonconforming finite elements](/202604/25/2604.21887v1-guaranteed-inf-sup-bounds-and-existence-verification-for-semilinear-elliptic-problems-via-nonconforming-finite-elements)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-9. [Decomposing Fractional Quantum Hall Wave Functions via Operator Contraction Multiplication](/202604/25/2604.21434v1-decomposing-fractional-quantum-hall-wave-functions-via-operator-contraction-multiplication)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-10. [Security Is Relative: Training-Free Vulnerability Detection via Multi-Agent Behavioral Contract Synthesis](/202604/25/2604.19012v1-security-is-relative-training-free-vulnerability-detection-via-multi-agent-behavioral-contract-synthesis)  
+7. [Hybrid Deep Learning Approach for Coupled Demand Forecasting and Supply Chain Optimization](/202604/26/2604.21567v1-hybrid-deep-learning-approach-for-coupled-demand-forecasting-and-supply-chain-optimization)  
    标签：评分：6.4/10
    evidence：检索回退候选
-11. [Hill's level surfaces in the circular restricted three-body problem solved](/202604/25/2604.21426v1-hills-level-surfaces-in-the-circular-restricted-three-body-problem-solved)  
+8. [On non-relativistic integrable models and 4d SCFTs](/202604/26/2604.19885v1-on-non-relativistic-integrable-models-and-4d-scfts)  
    标签：评分：6.3/10
+   evidence：检索回退候选
+9. [A Limit-Free Algebraic-Geometric Construction of the Derivative with a Foundational Model in the Class of Polynomial Functions](/202604/26/2604.20888v1-a-limit-free-algebraic-geometric-construction-of-the-derivative-with-a-foundational-model-in-the-class-of-polynomial-functions)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+10. [Hausdorff Dimension of Anosov Subgroups' Limit Sets with Special Self-Affine Complexity](/202604/26/2604.18365v1-hausdorff-dimension-of-anosov-subgroups-limit-sets-with-special-self-affine-complexity)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Align then Refine: Text-Guided 3D Prostate Lesion Segmentation](/202604/26/2604.18713v1-align-then-refine-text-guided-3d-prostate-lesion-segmentation)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
