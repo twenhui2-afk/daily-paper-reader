@@ -1,0 +1,465 @@
+Title: Leveraging LLMs for Multi-File DSL Code Generation: An Industrial Case Study
+
+URL Source: https://arxiv.org/pdf/2604.24678v1
+
+Published Time: Tue, 28 Apr 2026 02:15:20 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Leveraging LLMs for Multi-File DSL Code Generation: An Industrial Case Study 
+
+# Sivajeet Chand ∗
+
+Technical University of Munich Munich, Germany sivajeet.chand@tum.de 
+
+# Kevin Nguyen ∗
+
+BMW Group Munich, Germany kevin.k.nguyen@bmw.de 
+
+# Peter Kuntz 
+
+BMW Group Munich, Germany peter.kuntz@bmw.de 
+
+# Alexander Pretschner 
+
+Technical University of Munich Munich, Germany alexander.pretschner@tum.de 
+
+## Abstract 
+
+Large language models (LLMs) perform strongly on general-purpose code generation, yet their applicability to enterprise domain-specific languages (DSLs) remains underexplored, especially for repository-scale change generation spanning multiple files and folder struc-tures from a single natural-language (NL) instruction. We report an industrial case study at BMW that adapts code-oriented LLMs to generate and modify project-root DSL artifacts for an Xtext-based DSL that drives downstream Java/TypeScript code generation. We develop an end-to-end pipeline for dataset construction, multi-file task representation, model adaptation, and evaluation. We encode DSL folder hierarchies as structured, path-preserving JSON, allow-ing single-response generation at repository scale and learning cross-file dependencies. We evaluate two instruction-tuned code LLMs (Qwen2.5-Coder and DeepSeek-Coder, 7B) under three con-figurations: baseline prompting, one-shot in-context learning, and parameter-efficient fine-tuning (QLoRA). Beyond standard similar-ity metrics, we introduce task-specific measures that assess edit correctness and repository structural fidelity. Fine-tuning yields the most significant gains across models and metrics, achieving high exact-match accuracy, substantial edit similarity, and structural fi-delity of 1.00 on our held-out set for multi-file outputs. At the same time, one-shot in-context learning provides smaller but consistent improvements over baseline prompting. We further validate practi-cal utility via an expert developer survey and an execution-based check using the existing code generator. 
+
+## CCS Concepts 
+
+• Software and its engineering → Domain specific languages . 
+
+> ∗Both authors contributed equally to this research. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> EASE 2026, Glasgow, Scotland, United Kingdom
+> ©2026 Copyright held by the owner/author(s). Publication rights licensed to ACM.
+
+## Keywords 
+
+Large Language Models, Domain-Specific Languages, Code Gener-ation, Fine-Tuning, Low-Rank Adaptation, In-Context Learning 
+
+ACM Reference Format: 
+
+Sivajeet Chand, Kevin Nguyen, Peter Kuntz, and Alexander Pretschner. 2026. Leveraging LLMs for Multi-File DSL Code Generation: An Industrial Case Study. In Proceedings of The 30th International Conference on Evaluation and Assessment in Software Engineering (EASE 2026). ACM, New York, NY, USA, 10 pages. 
+
+## 1 Introduction 
+
+Transformer-based LLMs have become effective assistants for code-related tasks in general-purpose languages (GPLs) [ 13 , 29 , 37 ], but there is still limited empirical evidence on their effectiveness for enterprise DSLs [ 16 ], particularly for repository-scale generation involving multiple files and folder structures from a single NL in-struction. In industrial settings, DSLs are frequently used as the authoritative source from which generators produce downstream artifacts (e.g., Java/TypeScript), meaning that small errors in the DSL can break compilation or generation and directly impact engi-neering workflows. This paper reports an industrial case study with BMW Financial Services, where a custom Xtext-based DSL [ 14 ] is used to gener-ate boilerplate and configuration artifacts across multiple regional markets. The DSL serves as an abstraction layer that accelerates development, but authoring and evolving the DSL remains manual and requires substantial expertise—particularly when creating or adapting market configurations that involve coordinated changes across multiple folders and files. Our goal is to let developers (and potentially non-technical stakeholders) specify high-level changes in NL and automatically obtain a consistent, project-root set of DSL artifacts consumable by the existing code generator. A key challenge is repository-scale generation: one instruction can require coordinated edits across multiple DSL files with cross-file dependencies (e.g., adding an attribute in one layer implies updates in related layers). To fit within context-window limits and enable objective evaluation, we linearize the entire DSL folder hierarchy into a single JSON document, using file paths as keys and file contents as values. This lets the model operate at project-root level in one generation step and supports systematic comparison of original context, target state, and model output. 
+
+> arXiv:2604.24678v1 [cs.SE] 27 Apr 2026
+
+EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom Sivajeet et al. Developer  
+
+> Manual DSL
+> Creation/Edition
+> Target Code
+> Generation
+> DSL to Code
+> Generator
+> Java
+> Code
+> TypeScript
+> Code
+> Target Language Code
+> Build
+> Compile
+> Deploy
+> Integration
+> Developer
+> Natural
+> Language
+> Prompt Target Code
+> Generation
+> DSL to Code
+> Generator
+> Java
+> Code
+> TypeScript
+> Code
+> Target Language Code
+> Build
+> Compile
+> Deploy
+> Integration
+> file1.dsl
+> DSL
+> Code
+> DSL
+> Code
+> DSL
+> Code
+> Multiple Files
+> DSL Files(N)
+> file2.dsl
+> fileN.dsl
+> Repeat per file
+> Fine-tuned LLM
+> Current Approach
+> Proposed Approach
+> Automated DSL
+> Code Generation
+> Linearization Context DSL files
+> DSL
+> Code
+> Linearized JSON Representation
+
+Figure 1: Overview of current workflow vs the proposed workflow 
+
+Figure 1 illustrates the industrial workflow and how the pro-posed approach changes it: in the current (“as-is”) process, develop-ers manually create/modify DSL files file-by-file; in the proposed (“to-be”) process, a NL instruction is translated into a complete, consistent set of DSL files, which is then passed to the existing DSL generator to produce downstream artifacts. The critical success criterion is therefore not only textual similarity, but that the gen-erated DSL artifacts preserve repository structure and satisfy the DSL toolchain requirements. To investigate feasibility and cost–benefit trade-offs of adapting LLMs, we evaluate two instruction-tuned LLMs (Qwen2.5-Coder and DeepSeek-Coder, 7B) under three configurations: (i) baseline zero-shot prompting, (ii) one-shot in-context learning (ICL) with DSL rules and an example [ 3 ], and (iii) parameter-efficient fine-tuning using QLoRA [ 18 ]. Because generic similarity metrics alone are insufficient for repository-scale DSL changes, we combine stan-dard measures (e.g., exact match, BLEU, JSON validity) with task-specific metrics that focus on edit correctness and structural fidelity of the generated folder/file tree. We further validate practical utility through execution-oriented checks using an existing DSL generator and an expert review by senior developers familiar with the DSL. 
+
+This paper makes the following contributions :
+
+• An industrial BMW case study on repository-scale NL-driven generation and modification of Xtext-based DSL artifacts. 
+
+• A structured linearization that encodes multi-file DSL repos-itories into a single input/output for project-root generation and consistent cross-file updates. 
+
+• A task-specific evaluation framework that complements stan-dard metrics with change-focused similarity and structural fidelity measures for multi-file DSL changes. 
+
+• An empirical comparison of zero-shot, one-shot ICL, and parameter-efficient fine-tuning (QLoRA) on this industrial DSL task, including execution- and expert-based validation. We evaluate these contributions via three research questions: 
+
+RQ1: How accurately can LLMs generate repository-scale DSL change-sets (files, folders, and contents) from a natural-language instruction? 
+
+This research question establishes the feasibility of applying LLMs to the proposed task. 
+
+RQ2: To what extent do prompting and fine-tuning improve LLM performance on this task? 
+
+This question assesses the incremental gains of adaptation tech-niques over the baseline, weighing prompt engineering and fine-tuning effort against improvements across validity, structural cor-rectness, and semantic similarity. 
+
+RQ3: How useful are the generated DSL change-sets to de-velopers who maintain these DSL repositories in practice? 
+
+This question examines whether LLM outputs provide workflow value by reducing authoring time and correction effort while main-taining acceptable quality. 
+
+## 2 Background 
+
+DSLs raise the level of abstraction by providing constructs tailored to a particular domain, enabling more concise specifications than GPLs and supporting automation via generators [ 15 , 26 , 38 , 40 ]. In model-driven settings, DSL artifacts are commonly transformed into GPL code, which reduces boilerplate editing effort and can improve consistency and maintainability. 
+
+Listing 1: Anonymized DSL snippet for server-side configu-ration 
+
+entity abstract FinanceProductBase extends FinanceProduct { attribute1: AttributeType16 attribute2: AttributeType17 attribute3: AttributeType8 attribute4: AttributeType9 attribute5: AttributeType9 attribute6: AttributeType6 }entity ProductTypeA extends FinanceProductBase { attribute7: AttributeType18 attribute8 = FinanceProductTypeModule::type_a attribute9 = CategoryType::loan }
+
+As shown in Figure 1, in our industrial setting, the DSL is im-plemented with Eclipse Xtext [ 14 , 48 ]. Xtext grammars define the DSL syntax and allow generation of parsers and abstract syntax Leveraging LLMs for Multi-File DSL Code Generation: An Industrial Case Study EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom 
+
+representations, while a custom generator translates DSL files into Java and TypeScript artifacts for different subsystems. This work-flow is effective, but it still relies on developers to manually author and update many DSL files, often across nested project structures. Our work targets automating this root-folder / multi-file DSL au-thoring step from NL instructions while maintaining generator compatibility. 
+
+Listing 2: Anonymized Java Code Snippet for Server Config-uration                      
+
+> @RegionSpecific(Region.MARKET)
+> public abstract class FinanceProductBase extends FinanceProduct {
+> public static final String PROPERTY_ATTRIBUTE_1 = "attribute1";
+> public static final String PROPERTY_ATTRIBUTE_2 = "attribute2";
+> public static final String PROPERTY_ATTRIBUTE_3 = "attribute3";
+> public static final String PROPERTY_ATTRIBUTE_4 = "attribute4";
+> public static final String PROPERTY_ATTRIBUTE_5 = "attribute5";
+> public static final String PROPERTY_ATTRIBUTE_6 = "attribute6";
+> private AttributeType16 attribute1;
+> private AttributeType17 attribute2;
+> private AttributeType9 attribute3;
+> private AttributeType9 attribute4;
+> private AttributeType9 attribute5;
+> private AttributeType6 attribute6;
+> public FinanceProductTypeA(AttributeType18 attribute7, FinanceProductTypeModule attribute8) {
+> super (attribute7, attribute8); setAttributeType25( new AttributeType25()); }
+> public AttributeType16 getAttribute1() {
+> return attribute1; }
+> public void setAttribute1(AttributeType16 attribute1) {
+> this .attribute1 = attribute1; }
+> public FinanceProductTypeA attribute1(AttributeType16 attribute1) {
+> this .attribute1 = attribute1;
+> return this ;}}
+
+Listing 1 illustrates an anonymized and simplified excerpt of our Xtext-based DSL. The core construct is an entity , which supports inheritance and declares domain attributes at a high level of ab-straction. In contrast, the corresponding generated GPL artifacts are considerably more verbose [ 41 ]: Listing 2 shows a representative Java excerpt produced from the DSL, including boilerplate such as constants, field declarations, constructors, and accessor methods. This highlights a key advantage of using DSLs: editing the DSL files is more efficient and less error-prone than directly modify-ing the Java codebase. Moreover, this conciseness is important for NL-to-DSL generation: compared to generating Java/TypeScript directly, the DSL captures the same domain intent with fewer to-kens, making it feasible for an LLM to generate complete market configurations (including multiple interdependent files and folders) within context-window limits, while reducing the syntactic search space due to the DSL’s more regular grammar. LLM-based code generation is predominantly built on the Trans-former architecture [ 39 ]. Code-oriented LLMs benefit from pre-training on large corpora and can be adapted to specialized tasks via fine-tuning [ 3, 5 ]. However, enterprise DSLs typically have limited training data and strict grammars, making reliability and structural validity central concerns. To reduce fine-tuning cost, parameter-efficient fine-tuning (PEFT) methods such as LoRA and QLoRA are widely used [ 10 , 18 , 45 ]. As an alternative or comple-ment, prompting / in-context learning (ICL) can elicit task behavior without weight updates [ 3 , 12 , 24 , 34 , 35 , 43 , 49 ], but tends to be less stable for tasks requiring strict syntax and domain conventions, particularly under long-context and multi-file constraints [25, 28]. Evaluating NL-to-code systems remains non-trivial. Text-overlap metrics such as BLEU are known to correlate weakly with seman-tic correctness [ 30 ]. Code-specific variants (e.g., CodeBLEU) in-corporate syntax/semantic signals, but are primarily designed for GPLs [ 33 ]. For DSL generation, functional unit-test execution (e.g., HumanEval-style evaluation) is often not directly applicable be-cause the DSL artifacts are typically inputs to generators rather than executable programs [ 4 ]. Accordingly, DSL generation evalu-ation commonly combines: (i) syntactic validity (parse/grammar conformance), (ii) toolchain acceptance (generator/build success), and (iii) expert review of structural fidelity and maintainability [ 31 ]. 
+
+## 3 Related Work 
+
+Early work on translating NL into formal representations is rooted in semantic parsing and program synthesis [ 2, 11 ]. A key line of research introduced grammar-constrained decoding and AST-based generation to increase syntactic validity in structured outputs [ 32 , 47 ]. These ideas are directly relevant to NL-to-DSL generation because DSLs are typically specified by explicit grammars and downstream generators are sensitive to syntactic errors. Recent work focuses on specifically making LLM outputs for DSL-like formats structurally correct and parseable. Constraint-based and grammar-aware generation methods aim to guide decoding so that outputs remain machine-consumable [ 42 ]. Practical systems such as DSL-Xpert combine grammar prompting and example-driven prompting to improve reliability of NL-to-DSL translation [22 ]. Other research explores using DSLs as intermediates for niche code generation [ 21 ]. Empirical studies also report that general LLMs often underperform on DSLs without adaptation, motivating fine-tuning and stronger constraints [1, 16, 20]. Despite this progress, existing research provides limited evidence on project-level, multi-file DSL generation where the required out-put spans nested folders and multiple mutually dependent DSL artifacts, and where success is determined by compatibility with an existing industrial generator and build pipeline. Our paper ad-dresses this gap by studying (i) fine-tuning of modern code LLMs for a proprietary Xtext-based DSL and (ii) comparison to prompting baselines, under an evaluation centered on syntactic validity and toolchain acceptance for root-folder/multi-file outputs. 
+
+## 4 Methodology 
+
+We study NL-to-DSL generation at the root-folder level: given (i) a NL instruction and (ii) the current state of a market-specific DSL project (multiple folders/files), the system outputs the complete updated project state applying the requested change. The use case is that developers or non-technical stakeholders describe market creation or modifications in plain English, and the system generates or edits the corresponding DSL codebase across dependent files. EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom Sivajeet et al. Natural Language 
+
+> Instruction
+> Context JSON
+> Target JSON
+> Training Example
+> Linearized
+> DSL
+> Linearize Folder
+> structures
+> Train/Test Data Split
+> 1. Dataset Preparation
+> 2. Fine-Tuning
+> Quantize Model
+> weights to 4-bit
+> precision
+> 87% Data
+> Apply LoRA
+> Adapters
+> Run Model
+> Training
+> Raw Models
+> LLMs
+> 3. Evaluation
+> Best Performing Model
+> Quantitative Evaluation
+> Qualitative Evaluation
+> 13%
+> Data
+> Context DSL files +
+> Target DSL files
+> DSL
+> Codebase
+> DSL Experts
+> Fine-tuned LLMs
+> Prompt
+> Engineering
+
+Figure 2: End-to-end workflow 
+
+Figure 2 summarizes the workflow from data preparation to training and evaluation. 
+
+## 4.1 Data preparation and task representation 
+
+The DSL is implemented in Eclipse Xtext and defines market-specific project structures across multiple subsystems (e.g., server/UI). The key challenge is capturing cross-file and cross-folder dependen-cies so that a single instruction yields consistent multi-file updates. 
+
+Linearized project context and task. For each market, we serial-ize the DSL folder hierarchy into a single structured JSON docu-ment: folders are nested JSON objects, files are nested keys, and file contents are stored as strings with newline characters preserved. This enables root-folder-level editing: given an instruction and a project snapshot (context JSON), the model generates the fully updated snapshot (target JSON), including all required cross-file changes (e.g., dependent edits and import updates). 
+
+Example structure and operations. Each example is an (instruc-tion, context, target) triple, where the instruction is manually au-thored with DSL experts and context/target are the before/after project snapshots. The dataset covers three operation families: (i) 
+
+create a new market (often derived from an existing one), (ii) add 
+
+features (attributes or finance products), and (iii) delete features (attributes or finance products). These operations are dependency-heavy: changes in one file can require consistent updates in other files, including adding/removing imports. 
+
+Minimal-context variants. In addition to full-context examples, we include minimal-context variants of the same underlying tasks: the instruction is unchanged, but the context JSON retains only the most relevant files/folders (and simplified context files where applicable) to reduce noise from unrelated artifacts. 
+
+Dataset size, composition, and constraints. We manually con-structed the dataset (no public dataset exists for this proprietary DSL). It contains 774 training examples and 105 held-out evalu-ation examples. Of the training set, 309/774 (40%) examples are minimal-context variants and 465/774 (60%) are full-context. Across all training examples, average context/target sizes are 196/199 LOC with ∼6.1 files and ∼5.6 folders per example; minimal-context exam-ples average ≈133/134 LOC with ≈4.3 files and ≈4.3 folders, whereas full-context examples average ≈239/243 LOC with ≈7.4 files and 
+
+≈6.5 folders. 
+
+Data split and leakage control. Because minimal-context variants share the same instruction as their corresponding full-context tasks, we prevent leakage by assigning all variants derived from the same underlying market change to the same split. 
+
+SFT formatting and masking. We convert each triple into an instruction-following format for instruction-tuned causal LLMs, tokenize using the base-model tokenizer, and mask labels so loss is computed only on the target output (prefix masked with -100). We run prefix-alignment checks to prevent truncation or chat-template misalignment, store metadata (token counts and rendered prompt-s/targets), and export the processed data as a HuggingFace dataset. 
+
+## 4.2 Model selection 
+
+We fine-tune two open-source, instruction-tuned code LLMs: 
+
+Qwen-2.5-Coder-7B-Instruct [ 19 ] and DeepSeek-6.7B-Coder -Instruct [ 17 ]. We selected 7 billion parameter models as a bal-ance between (a) capacity to model strict DSL syntax and multi-file dependencies and (b) resource/cost constraints. Smaller variants (1.5B/3B) were considered but risk underfitting for multi-file edits; larger variants (14B/32B) were excluded due to budget and increased overfitting risk given < 1000 training samples. Both models have adequate context to include instruction, a full linearized market context, and generate the fully updated JSON without truncation. 
+
+## 4.3 Prompting Baselines 
+
+To benchmark fine-tuning against in-context learning, we evaluate two prompting configurations on the unfine-tuned base models. In 
+
+zero-shot setting, the prompt includes only the raw user instruction and the linearized context JSON, requiring the model to infer the ed-its without further guidance. In one-shot setting, we add a compact summary of DSL grammar rules and a single instruction–output demonstration showing the expected JSON format and typical cross-file edits, to steer the model toward syntactically valid DSL and correct project-level structure. By contrast, prompts for supervised fine-tuning include only the raw instruction (plus context JSON), since syntactic regularities and formatting conventions are learned from training data rather than provided at inference time. 
+
+## 4.4 Fine-tuning with QLoRA 
+
+Given the limited dataset size, we use parameter-efficient fine-tuning rather than full fine-tuning to reduce overfitting. Specif-ically, we apply QLoRA [ 10 ]: base weights are quantized to 4-bit using bitsandbytes [ 9], while computation uses float16 [27 ]. We additionally enable FlashAttention [ 7, 8] where supported. This sig-nificantly reduces the memory required to store the model weights. 
+
+LoRA configuration. We use rank 𝑟 = 16 , scaling lora_alpha =
+
+32 , dropout 0.05 , bias = none , and task_type = CAUSAL_LM 
+
+[ 10 , 18 , 46 ]. Adapters are applied to attention q_proj and v_proj ;
+
+k_proj and o_proj remain frozen to keep the trainable parameter count low while preserving adaptation capacity. 
+
+Training. Training runs are executed on AWS SageMaker using a custom Python script built on HuggingFace Transformers [ 44 ]Leveraging LLMs for Multi-File DSL Code Generation: An Industrial Case Study EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom 
+
+and PyTorch. We monitor training via SageMaker Studio logs and select checkpoints by evaluation loss. To reduce memory usage, we enable gradient checkpointing [ 6] and use gradient accumulation [23 ]. All final training runs use ml.g5.xlarge instances (minimum viable GPU memory for end-to-end training). 
+
+Hyperparameters. For both models, we use: per-device batch size 
+
+= 1, gradient accumulation steps = 8 (effective batch size = 8), learning rate 1e −4, optimizer adamw_bnb_8bit , 2 epochs, warmup steps = 10 , evaluation every 10 steps, and checkpoint saving every 10 steps. The best checkpoint is persisted to S3. 
+
+## 4.5 Evaluation 
+
+We evaluate (i) the two fine-tuned models and (ii) baselines on the same held-out set. For each base model, we compare: zero-shot 
+
+prompting, one-shot prompting (with grammar summary + one demonstration), and the fine-tuned variant. The best-performing fine-tuned model is then used for deeper qualitative review and a prototype demonstration. 
+
+Quantitative metrics. We report: 
+
+• Exact match (binary) compares the generated DSL output with the expected output and yields a 0 or 1 score depending on whether they are identical or not [32, 36]. 
+
+• BLEU scores a candidate text ’c’ against one or more reference texts ’r’ by combining modified n-gram precision with a brevity penalty [30]. 
+
+• Valid JSON check to ensure outputs are parseable as the expected linearized structure. 
+
+• Custom DSL metrics targeting (a) change similarity and (b) structural fidelity . 
+
+Change similarity. Standard metrics are dominated by unchanged context when edits are small, so we score only the expected changes .For each example, we flatten the context/target/predicted JSON into leaf key–value pairs, use Python SequenceMatcher to compute a line-level difference between context and target, and compare the corresponding changed lines in target vs. prediction at token level. We then compute the normalized token-level Levenshtein error per changed line: 
+
+𝑒 𝑖 = 𝑑 lev (𝑡 𝑖 , 𝑝 𝑖 )
+
+max (| 𝑡 𝑖 |, |𝑝 𝑖 |, 1) (1) The errors E are accumulated, resulting in a raw similarity score between 0 and 1 for each changed line. This similarity score is then exponentiated with a parameter 
+
+𝛼 = 5.0 to magnify the error penalties for larger inaccuracies, resulting in the final similarity score per line: 
+
+𝐸 =∑︁ 
+
+> 𝑖
+
+𝑒 𝑖 , 𝑆 raw = 1 − 𝐸 , 𝑆 line = 𝑆 𝛼  
+
+> raw
+
+(2) To compute the overall average change similarity score of the model, a log-weighted aggregation is applied. First, for each changed line 𝑐 ∈ C , a weight is computed based on its size. This ensures that larger changes contribute more to the final similarity score, while in the same time the logarithm prevents very large changes from dominating the whole score: 
+
+𝑤 (𝑐 ) = min 
+
+
+
+log  1 + len (𝑣 true ,𝑐 ), 𝑤 max 
+
+
+
+(3) Here len (𝑣 true ,𝑐 ) denotes the size of the true line content for change 𝑐 , and 𝑤 max = 20 .0 is the maximum cap for the weight. Finally, the line-level token similarity score 𝑆 line (𝑐 ), computed using a combination of line-level diffing, token-level alignment, and Levenshtein distance is combined with the line weight to obtain the overall average change similarity: average_change_similarity =
+
+Í𝑐 ∈ C 𝑆 final (𝑐 ) 𝑤 (𝑐 )
+
+Í𝑐 ∈ C 𝑤 (𝑐 ) (4) This formula prioritizes correctness on lines that were actually changed, rather than being dominated by the unchanged majority of the code, resulting in a normalized final score between 0 and 1. 
+
+Structural fidelity (project structure correctness). We extract all JSON keys/indices (i.e., folder/file structure) from target and pre-dicted outputs into sets 𝐾 true and 𝐾 pred and compute precision, recall, and F1. This captures spurious files/folders (precision loss) and missing expected artifacts (recall loss). We report F1 as the structural fidelity score. Precision = |𝐾 true ∩ 𝐾 pred ||𝐾 pred | Recall = |𝐾 true ∩ 𝐾 pred ||𝐾 true | (5) F1 = structural_fidelity = 2 Precision Recall Precision + Recall (6) 
+
+Human evaluation. We conducted a qualitative review with four 
+
+DSL-proficient developers ( 3–15 years industry experience) who use the DSL daily. They evaluated 20 outputs from the best fine-tuned model, randomly sampled and stratified across five operation types ( create , add attribute, add finance product, delete attribute, 
+
+delete finance product; 4 per type). Each reviewer independently assessed every sample, ran the existing DSL-to-code generator to detect compilation/generation errors, and could additionally submit free-form NL requests beyond the five operations for qualitative ex-ploration. Reviewers then completed a questionnaire with nine 1–5 Likert criteria (syntactic correctness, structural fidelity, semantic correctness, rule adherence, readability, completeness, absence of hallucinations, overall quality, usefulness) plus an open-ended ques-tion on expected time savings when creating a new market from scratch. All reviews were conducted independently to reduce group influence and capture inter-reviewer variation. Across the eight Likert-rated quality dimensions, reviewers showed high practical consistency: exact agreement (all four reviewers selecting the same score) occurred for 2/8 dimensions (25%), and agreement within 
+
+±1 point occurred for 7/8 dimensions (87.5%). Variation is primar-ily concentrated in the Completeness dimension. More detailed per-criterion distributions are shown in Figure 3. 
+
+Toolchain acceptance test. Finally, we feed selected generated DSL outputs into the existing DSL-to-code generator to verify that the outputs (i) conform to the DSL grammar and (ii) can be transformed into Java/TypeScript without generator errors. This step provides an end-to-end validation beyond surface similarity. 
+
+Replication package. To support reproducibility, we provide a replication package containing the survey instrument and anonym-ized responses, analysis scripts, and the evaluation/training utilities used in this study. 1 
+
+> 1https://doi.org/10.6084/m9.figshare.31423292 EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom Sivajeet et al.
+
+Table 1: Scores of the two evaluated models across settings.                                    
+
+> Model Setting EM JSON BLEU Change Similar. Struct. Fidelity Qwen Raw 0.076 0.895 0.633 0.372 0.663 Raw+ICL 0.171 1.000 0.898 0.586 0.958 FT 0.629 1.000 0.976 0.834 0.990 DeepSeek Raw 0.371 0.848 0.762 0.522 0.783 Raw+ICL 0.448 0.895 0.825 0.567 0.865 FT 0.657 1.000 0.986 0.841 1.000
+
+## 5 Results 
+
+We report results for two models (Qwen and DeepSeek) under three configurations: Raw (zero-shot), Raw+ICL (one-shot with DSL grammar overview and a single demonstration), and FT (QLoRA fine-tuned). We evaluate repository-scale outputs using automatic metrics (Exact Match, Valid JSON, BLEU, Change Similarity, Struc-tural Fidelity) and complement them with a developer study and toolchain acceptance via the DSL-to-code generator. 
+
+## 5.1 RQ1: Repository-Scale Accuracy 
+
+Table 1 demonstrates that repository-scale NL-to-DSL generation is feasible, but baseline accuracy varies substantially by model and setting. A first observation is that the representation itself is not the primary bottleneck: even raw models frequently produce valid linearized project JSON (Qwen-Raw: 0.895; DeepSeek-Raw: 0.848). However, correctness at repository scale is stricter than formatting— raw models often produce outputs that are structurally plausible but not identical to the reference, reflected by low exact match (Qwen-Raw: 0.076; DeepSeek-Raw: 0.371). Another observation is that baseline feasibility is strongly model-dependent. DeepSeek starts substantially higher than Qwen on exact match (+0.295 absolute; 0.371 vs. 0.076) and also leads on change similarity (0.522 vs. 0.372) and structural correctness (0.783 vs. 0.663), suggesting that some models transfer better to this DSL and project-level editing task even before adaptation. Fine-tuning yields high repository-level accuracy for both mod-els. DeepSeek-FT achieves 0.657 exact match, 1.000 valid JSON, 0.986 BLEU, 0.841 change similarity, and 1.000 structural correct-ness; Qwen-FT is close (0.629 exact match; 0.990 structural cor-rectness). Notably, the remaining gap between near-perfect lexical overlap/structure and exact match (e.g., BLEU ≈ 0.98 and structure 
+
+≈ 1.0 vs. exact match ≈ 0.66) indicates a “near-miss” regime: many failures are likely due to small but critical content differences rather than missing files/folders. Finally, across configurations, structural correctness consistently exceeds change similarity, implying that generating the correct repository shape (files/folders) is easier than performing fully cor-rect dependency-aware edits across file contents, a key challenge in repository-scale DSL editing. 
+
+Answer to RQ1. LLMs can generate repository-scale DSL change-sets from a single instruction with high accuracy after adapta-tion: the best fine-tuned model reaches 0.657 exact match, 0.841 
+
+change similarity, 1.000 structural correctness, and 0.986 BLEU. 
+
+## 5.2 RQ2: Impact of Adaptation 
+
+To quantify the benefit of adaptation, we compare Raw (zero-shot), 
+
+Raw+ICL (one-shot with a compact DSL grammar overview and a single demonstration), and FT (QLoRA fine-tuned) for both base models as discussed in Table 1). We focus on three outcome dimen-sions that matter for repository-scale DSL editing: (i) strict end-to-end correctness (Exact Match), (ii) correctness of the requested edits 
+
+(Change Similarity), and (iii) repository shape correctness (Structural Correctness). 
+
+Prompting (ICL) improves format and structure, especially for Qwen. One-shot ICL yields clear improvements over raw baselines, but its impact is uneven across models. For Qwen, ICL substan-tially increases structural correctness (0.663 → 0.958, +0.295) and change similarity (0.372 → 0.586, +0.214), while exact match im-proves only modestly (0.076 → 0.171, +0.095). For DeepSeek, ICL gains are smaller across the board (exact match: 0.371 → 0.448, +0.077; change similarity: 0.522 → 0.567, +0.045; structural correct-ness: 0.783 → 0.865, +0.082). This pattern suggests that a single demonstration and rule summary helps the model preserve the expected repository structure and output format, but is less reliable at enforcing the DSL-specific semantics and cross-file dependency edits that determine exact matches. 
+
+Fine-tuning delivers the largest gains in edit correctness and strict correctness. Fine-tuning provides the strongest overall improve-ments for both models, particularly on exact match and change similarity. For Qwen, FT increases exact match from 0.171 (ICL) to 0.629 (+0.458) and change similarity from 0.586 to 0.834 (+0.248), while structural correctness improves slightly further from 0.958 to 0.990 (+0.032). For DeepSeek, FT increases exact match from 0.448 to 0.657 (+0.209) and change similarity from 0.567 to 0.841 (+0.274), with structural correctness rising from 0.865 to 1.000 (+0.135). No-tably, after fine-tuning both models reach near-perfect structural correctness (Qwen-FT: 0.990; DeepSeek-FT: 1.000) and high change similarity (0.834–0.841), but exact match remains lower (0.629– 0.657), indicating that the remaining errors are typically small but critical deviations rather than missing files/folders. 
+
+ICL is a useful “quick win”, but fine-tuning is required for reliable dependency-aware edits. ICL can move a weak baseline (Qwen-Raw) close to the desired repository structure, but the largest improve-ments in applying correct multi-file edits (Change Similarity) and achieving strict end-to-end correctness (Exact Match) come from supervised fine-tuning. 
+
+Answer to RQ2. Both techniques improve performance, but fine-tuning provides the dominant gains on repository-scale cor-rectness: over Raw+ICL, it raises exact match by +0.458 (Qwen) and +0.209 (DeepSeek), change similarity by +0.248 and +0.274 ,and structural correctness to 0.990–1.000 .
+
+## 5.3 RQ3: Developer usefulness 
+
+Automatic metrics do not guarantee that generated change-sets are acceptable in day-to-day maintenance workflows. We there-fore evaluated developer-perceived quality and usefulness of the best-performing model (DeepSeek-FT) using (i) expert ratings and qualitative feedback and (ii) toolchain acceptance via the official DSL generator. Leveraging LLMs for Multi-File DSL Code Generation: An Industrial Case Study EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom Syntactic              
+
+> Correctness
+> Structural
+> Fidelity
+> Semantic
+> Correctness
+> Rule
+> Adherence
+> Readability Completeness No
+> Hallucination
+> Overall
+> Quality
+> Usefulness
+> 1
+> (Poor)
+> 2
+> 3
+> 4
+> 5
+> (Excellent)
+> Rating Score (1-5 Scale)
+> 4.25 5.00 4.50 4.25 5.00 4.00 4.50 4.50 4.50
+> Code Quality Metrics
+> Real-World
+> Utility
+> Overall Mean: 4.50 | Highest: Structural Fidelity & Readability (5.00) | Lowest: Completeness (4.00)
+> Human Evaluation of Fine-Tuned DeepSeek Model for DSL Code Generation (n=4 Senior Developers, 20 Samples)
+> Interquartile Range (IQR) Median Mean Outliers
+
+Figure 3: Distribution of human evaluation scores for the fine-tuned DeepSeek model. 
+
+Perceived DSL code quality. Four DSL-proficient senior developers reviewed 20 randomly sampled model outputs (stratified across the five operation types; 4 samples per type) and rated eight quality dimensions on a 1–5 Likert scale. Figure 3 summarizes the distri-bution of ratings. Overall, ratings indicate high practical quality: the mean score across criteria is 4.50/5, with Structural Fidelity and Readability achieving the highest mean scores (5.00/5). Semantic Correctness and Overall Quality were rated 4.50/5, while Syntactic Correctness and Rule Adherence scored 4.25/5. The lowest-rated dimension was Completeness (4.00/5), reflecting reviewer feedback that broader DSL coverage (e.g., larger markets and additional op-erations) would be required for full production applicability. 
+
+Usefulness and adoption signals. Developers rated perceived use-fulness at 4.50/5 (Figure 3), and all reviewers indicated they would consider using such an LLM-based tool for daily DSL tasks. 
+
+Estimated time savings. Reviewers’ estimates of potential time savings for creating a new market from scratch (copying an existing market and applying required modifications) varied substantially with market complexity and similarity to existing markets. One reviewer described the expected savings qualitatively as “a lot,” conditional on similarity between source and target markets. Quan-titatively, reviewers estimated savings of approximately 40% , up to 
+
+70% for smaller markets, and up to 80% under the assumption of full functional coverage across markets. In contrast, for larger mar-kets, one reviewer estimated substantially lower savings ( 5–10% ), arguing that extensive manual correction would still be required even if the model provides a useful initial scaffold. Taken together, the feedback indicates that the tool’s perceived value is highest for market bootstrapping and repetitive boilerplate edits, while end-to-end time savings depend strongly on inference latency and training coverage of complex market configurations. 
+
+Toolchain acceptance (generator execution). To validate usability beyond subjective ratings, we ran the DSL-to-code generator on 
+
+20 sampled outputs ( 4 per operation type). Success was perfect for create and both delete operations ( 1.00 ), but lower for add 
+
+operations ( 0.75 for adding an attribute; 0.75 for adding a finance product). Failures were near-miss errors: (i) a hallucinated attribute type unknown to the generator and (ii) an unnecessary attribute added in the time-slices layer, violating DSL rules. Both required only a minimal single-line fix, but they indicate that strict toolchain compatibility is the main deployment barrier in dependency-heavy 
+
+add scenarios. 
+
+Answer to RQ3. Developers judged the generated change-sets as highly usable in practice (overall mean 4.50/5 ; usefulness 
+
+4.50/5 ), with strongest performance on repository structure and readability. Remaining adoption barriers are occasional seman-tic/rule errors in add operations, plus non-functional limits such as latency and coverage of larger markets. 
+
+## 6 Discussion 
+
+This section interprets the empirical findings with respect to RQ1– RQ3 and discusses implications for repository-scale NL-to-DSL generation, followed by limitations and future work. 
+
+RQ1–RQ2: Feasibility and the effect of adaptation. Across both model families, the raw (zero-shot) baselines demonstrate that the task is partially feasible but not reliable without adaptation. While both models frequently produce structurally plausible out-puts in the linearized JSON representation (Valid JSON rates of 0.895 for Qwen-Raw and 0.848 for DeepSeek-Raw), strict end-to-end correctness remains low, particularly for Qwen-Raw (Exact Match 0.076) compared to DeepSeek-Raw (0.371). This gap indi-cates that format compliance is not the primary difficulty; rather, the bottleneck is dependency-aware semantic editing across files and layers (e.g., selecting valid attribute types and updating dependent locations consistently). These observations align with prior findings that general and code-focused LLMs often underperform on DSLs without task- and domain-aligned supervision [16, 20]. Prompting (one-shot ICL) improves performance for both mod-els, but the magnitude differs: Qwen benefits markedly (e.g., Struc-tural Score 0.663 → 0.958; Change Similarity 0.372 → 0.586), while DeepSeek improves more modestly (Structural Score 0.783 → 0.865; Change Similarity 0.522 → 0.567). A plausible interpretation is that ICL mainly provides a structural prior —how to format and organize repository-scale outputs—and therefore helps the weaker Qwen EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom Sivajeet et al. 
+
+baseline more than the already-stronger DeepSeek baseline. How-ever, one-shot prompting still does not yield consistently correct multi-file edits, and moving to few-shot would increase prompt length and interaction overhead, conflicting with the goal of mini-mal user input in practice. Fine-tuning yields the strongest and most consistent improve-ments across metrics for both models. DeepSeek-FT achieves the best overall quantitative performance (Exact Match 0.657; Change Similarity 0.841; Structural Score 1.000), with Qwen-FT close be-hind (Exact Match 0.629; Change Similarity 0.834; Structural Score 0.990). Importantly, the remaining gap between near-perfect over-lap/structure (e.g., BLEU ≈ 0.98 and Structural Score ≈ 1.0) and Exact Match ( ≈ 0.66) suggests a near-miss regime : many failures are likely caused by small but critical content deviations rather than missing files/folders. This is expected for repository-scale outputs where a single incorrect token (e.g., an invalid type identifier) can invalidate an otherwise correct change-set. 
+
+RQ3: Practical utility for DSL maintainers. The human eval-uation provides direct evidence for practical usefulness. Four senior DSL developers rated DeepSeek-FT outputs highly across all eight quality dimensions. Perceived usefulness was also high (4.50/5), and all reviewers indicated they would consider using such a tool in daily work. Two adoption-relevant themes emerge from the open feedback. Reviewers emphasized workflow integration (IDE support) and interaction design (bulk edits), which reflects that usefulness depends not only on correctness but also on how well the tool fits existing development practices. Time-savings estimates were strongly contingent on scope and market complexity: review-ers suggested large potential savings for smaller (roughly 40–80%), but substantially smaller savings for large markets (e.g., 5–10%), where manual correction remains necessary. Toolchain-based validation highlights an important practical implication: repository-scale NL-to-DSL generation can appear highly accurate while still failing under strict downstream compila-tion constraints. In our case, add operations are more fragile than 
+
+create /delete because they require new type selection and rule-consistent insertion across dependency-heavy layers, where even small semantic deviations can invalidate the change-set. For real-world adoption, this suggests pairing generation with automated safeguards, for example, generator-driven feedback for iterative repair, lightweight rule checks (e.g., type existence/allowed place-ments), or grammar-/constraint-aware decoding, to systematically close the remaining gap to toolchain acceptance. 
+
+Implications for repository-scale NL-to-DSL generation. Over-all, linearizing repository state into a single JSON document is a vi-able way to teach LLMs repository-scale edits, provided the model is adapted to the DSL via fine-tuning. Structural correctness improves with both ICL and fine-tuning, and fine-tuned models reliably pre-serve folder/file structure. The harder challenge is semantic correct-ness in change-intensive cases, where outputs must satisfy both DSL grammar and domain conventions (e.g., attribute-type map-pings and cross-layer dependencies). This matters for evaluation: overlap-heavy metrics over largely unchanged context (e.g., BLEU) can appear near-perfect even when strict correctness and toolchain acceptance fail, so change-focused metrics and generator-based val-idation are necessary complements for assessing repository-scale DSL change-sets. 
+
+Threats to validity. This study has several threats to validity. This is an industrial study in a specific setting, so results may not fully transfer. We report the results as an in-depth case study to pro-vide empirical motivation and practical guidance for organizations facing similar repository-scale multi-file generation tasks. The dataset is small and manually constructed, reflecting the practical constraint that no public dataset exists for the propri-etary DSL. Limited data likely contributes to residual errors in type selection and rule adherence, especially for add operations. The human evaluation used four internal experts; while we ran-domized presentation to reduce ordering effects and report inter-rater reliability to assess rating consistency, the small internal panel may limit generalizability and introduce shared-context bias. The custom DSL-specific metrics capture change-level similarity and structural correctness but may penalize semantically equivalent edits placed differently; generator-based validation partly mitigates this but is also limited to the generator’s notion of correctness. 
+
+Future work. Future work should evaluate generalizability and reliability at larger scales. Promising directions include (i) expand-ing datasets and operations to cover larger repositories and more complex edit types, (ii) incorporating constraints and validation/re-pair loops using grammar rules and generator feedback to improve correctness for dependency-heavy changes, and (iii) reducing con-text requirements via retrieval-based context selection so models can operate on larger repositories within fixed context windows. Replications on additional DSLs and domains are needed to assess external validity. 
+
+## 7 Conclusion 
+
+This paper studied repository-scale NL-to-DSL generation for an industrial, Xtext-based DSL, focusing on whether a single natural-language instruction can be translated into a coherent multi-file change-set (folders, files, and contents). We operationalized reposi-tory context by linearizing each market’s DSL project into a single structured JSON document and evaluated two code-oriented LLMs (Qwen2.5-Coder and DeepSeek-Coder) under three settings: zero-shot, one-shot prompting, and parameter-efficient fine-tuning. Across automated metrics, both prompting and fine-tuning im-proved performance, with fine-tuning delivering the largest gains in strict correctness and change-focused accuracy. The best fine-tuned model achieved high repository-level accuracy while preserv-ing project structure, indicating that repository-scale DSL change-sets can be generated from a single instruction when the model is adapted to the DSL. Developer evaluation and Toolchain execution further support practical utility. Four senior DSL developers rated DeepSeek-FT outputs highly, with ceiling-level scores for structural fidelity and readability, and identified remaining adoption barriers mainly in coverage completeness, occasional rule/type selection errors, and deployment constraints such as latency. Overall, the paper provides evidence that linearized repository context combined with parameter-efficient fine-tuning is an effec-tive approach for repository-scale NL-to-DSL generation. Future work should study reliability mechanisms (constraint-aware gen-eration and validation/repair), context-selection strategies to scale to larger repositories, and replications across additional DSLs to strengthen external validity. Leveraging LLMs for Multi-File DSL Code Generation: An Industrial Case Study EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom 
+
+## References 
+
+[1] Nastaran Bassamzadeh and Chhaya Methani. 2024. A Comparative Study of DSL Code Generation: Fine-Tuning vs. Optimized Retrieval Augmentation. ArXiv 
+
+abs/2407.02742 (2024). https://api.semanticscholar.org/CorpusID:270923697 [2] Jonathan Berant, Andrew K. Chou, Roy Frostig, and Percy Liang. 2013. Seman-tic Parsing on Freebase from Question-Answer Pairs. In Conference on Empir-ical Methods in Natural Language Processing . https://api.semanticscholar.org/ CorpusID:6401679 [3] Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. 2020. Language models are few-shot learners. In 
+
+Proceedings of the 34th International Conference on Neural Information Processing Systems (Vancouver, BC, Canada) (NIPS ’20) . Curran Associates Inc., Red Hook, NY, USA, Article 159, 25 pages. [4] Liguo Chen, Qi Guo, Hongrui Jia, Zhengran Zeng, Xin Wang, Yijiang Xu, Jian Wu, Yidong Wang, Qing Gao, Jindong Wang, Wei Ye, and Shikun Zhang. 2025. A Survey on Evaluating Large Language Models in Code Generation Tasks. arXiv:2408.16498 [cs.SE] https://arxiv.org/abs/2408.16498 [5] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, Alex Ray, Raul Puri, Gretchen Krueger, Michael Petrov, Heidy Khlaaf, Girish Sastry, Pamela Mishkin, Brooke Chan, Scott Gray, Nick Ryder, Mikhail Pavlov, Alethea Power, Lukasz Kaiser, Mohammad Bavarian, Clemens Winter, Philippe Tillet, Felipe Petroski Such, Dave Cummings, Matthias Plappert, Fo-tios Chantzis, Elizabeth Barnes, Ariel Herbert-Voss, William Hebgen Guss, Alex Nichol, Alex Paino, Nikolas Tezak, Jie Tang, Igor Babuschkin, Suchir Balaji, Shan-tanu Jain, William Saunders, Christopher Hesse, Andrew N. Carr, Jan Leike, Josh Achiam, Vedant Misra, Evan Morikawa, Alec Radford, Matthew Knight, Miles Brundage, Mira Murati, Katie Mayer, Peter Welinder, Bob McGrew, Dario Amodei, Sam McCandlish, Ilya Sutskever, and Wojciech Zaremba. 2021. Eval-uating Large Language Models Trained on Code. arXiv:2107.03374 [cs.LG] https://arxiv.org/abs/2107.03374 [6] Tianqi Chen, Bing Xu, Chiyuan Zhang, and Carlos Guestrin. 2016. Training Deep Nets with Sublinear Memory Cost. arXiv:1604.06174 [cs.LG] https://arxiv.org/ abs/1604.06174 [7] Tri Dao. 2023. FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning. arXiv:2307.08691 [cs.LG] https://arxiv.org/abs/2307.08691 [8] Tri Dao, Daniel Y. Fu, Stefano Ermon, Atri Rudra, and Christopher Ré. 2022. FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness. arXiv:2205.14135 [cs.LG] https://arxiv.org/abs/2205.14135 [9] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. 2022. LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale. arXiv:2208.07339 [cs.LG] https://arxiv.org/abs/2208.07339 [10] Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. 2023. QLoRA: Efficient Finetuning of Quantized LLMs. arXiv:2305.14314 [cs.LG] https: //arxiv.org/abs/2305.14314 [11] Li Dong and Mirella Lapata. 2016. Language to Logical Form with Neural Attention. In Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , Katrin Erk and Noah A. Smith (Eds.). Association for Computational Linguistics, Berlin, Germany, 33–43. doi:10.18653/v1/P16-1004 [12] Qingxiu Dong, Lei Li, Damai Dai, Ce Zheng, Jingyuan Ma, Rui Li, Heming Xia, Jingjing Xu, Zhiyong Wu, Baobao Chang, Xu Sun, Lei Li, and Zhifang Sui. 2024. A Survey on In-context Learning. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , Yaser Al-Onaizan, Mohit Bansal, and Yun-Nung Chen (Eds.). Association for Computational Linguistics, Miami, Florida, USA, 1107–1128. doi:10.18653/v1/2024.emnlp-main.64 [13] Xueying Du, Mingwei Liu, Kaixin Wang, Hanlin Wang, Junwei Liu, Yixuan Chen, Jiayi Feng, Chaofeng Sha, Xin Peng, and Yiling Lou. 2024. Evaluating Large Language Models in Class-Level Code Generation. In Proceedings of the IEEE/ACM 46th International Conference on Software Engineering (Lisbon, Portugal) (ICSE ’24) .Association for Computing Machinery, New York, NY, USA, Article 81, 13 pages. doi:10.1145/3597503.3639219 [14] Sven Efftinge and Markus Völter. 2006. oAW xText: A framework for textual DSLs. In Workshop on Modeling Symposium at Eclipse Summit , Vol. 32. [15] Martin Fowler. 2010. Domain Specific Languages . Addison-Wesley Professional. doi:10.5555/1809745 [16] Xiaodong Gu, Meng Chen, Yalan Lin, Yuhan Hu, Hongyu Zhang, Chengcheng Wan, Zhao Wei, Yong Xu, and Juhong Wang. 2025. On the Effectiveness of Large Language Models in Domain-Specific Code Generation. ACM Transactions on Software Engineering and Methodology 34, 3 (2025), 1–22. doi:10.1145/3697012 Article No. 78. [17] Daya Guo, Qihao Zhu, Dejian Yang, Zhenda Xie, Kai Dong, Wentao Zhang, Guanting Chen, Xiao Bi, Y. Wu, Y. K. Li, Fuli Luo, Yingfei Xiong, and Wen-feng Liang. 2024. DeepSeek-Coder: When the Large Language Model Meets Programming – The Rise of Code Intelligence. arXiv:2401.14196 [cs.SE] https: //arxiv.org/abs/2401.14196 [18] Edward Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, and Weizhu Chen. 2021. LoRA: Low-Rank Adaptation of Large Language Models . doi:10.48550/arXiv.2106.09685 [19] Binyuan Hui, Jian Yang, Zeyu Cui, Jiaxi Yang, Dayiheng Liu, Lei Zhang, Tianyu Liu, Jiajun Zhang, Bowen Yu, Keming Lu, Kai Dang, Yang Fan, Yichang Zhang, An Yang, Rui Men, Fei Huang, Bo Zheng, Yibo Miao, Shanghaoran Quan, Yunlong Feng, Xingzhang Ren, Xuancheng Ren, Jingren Zhou, and Junyang Lin. 2024. Qwen2.5-Coder Technical Report. arXiv:2409.12186 [cs.CL] https://arxiv.org/ abs/2409.12186 [20] Sathvik Joel, Jie JW Wu, and Fatemeh H. Fard. 2024. A Survey on LLM-based Code Generation for Low-Resource and Domain-Specific Programming Languages. arXiv:2410.03981 [cs.SE] https://arxiv.org/abs/2410.03981 [21] Philipp Kogler, Wei Chen, and Stefan Wallner. 2025. Code Generation for Niche Programming Languages with Large Language Models. In Software Engineering 2025 – Companion Proceedings . Gesellschaft für Informatik, Bonn. doi:10.18420/ se2025-ws-13 [22] Victor Lamas, Miguel R. Luaces, and Daniel Garcia-Gonzalez. 2024. DSL-Xpert: LLM-driven Generic DSL Code Generation. In Proceedings of the ACM/IEEE 27th International Conference on Model Driven Engineering Languages and Systems 
+
+(Linz, Austria) (MODELS Companion ’24) . Association for Computing Machinery, New York, NY, USA, 16–20. doi:10.1145/3652620.3687782 [23] Joel Lamy-Poirier. 2021. Layered gradient accumulation and modular pipeline parallelism: fast and efficient training of large language models. arXiv:2106.02679 [cs.LG] https://arxiv.org/abs/2106.02679 [24] Yinheng Li. 2023. A Practical Survey on Zero-shot Prompt Design for In-context Learning. In Proceedings of the Conference Recent Advances in Natural Language Processing - Large Language Models for Natural Language Processings (RANLP) .INCOMA Ltd., Shoumen, BULGARIA, 641–647. doi:10.26615/978-954-452-092-2_069 [25] Haokun Liu, Derek Tam, Mohammed Muqeeth, Jay Mohta, Tenghao Huang, Mohit Bansal, and Colin Raffel. 2022. Few-Shot Parameter-Efficient Fine-Tuning is Better and Cheaper than In-Context Learning. arXiv:2205.05638 [cs.LG] https: //arxiv.org/abs/2205.05638 [26] Marjan Mernik, Jan Heering, and Anthony M. Sloane. 2005. When and how to develop domain-specific languages. ACM Comput. Surv. 37, 4 (Dec. 2005), 316–344. doi:10.1145/1118890.1118892 [27] Paulius Micikevicius, Sharan Narang, Jonah Alben, Gregory Diamos, Erich Elsen, David Garcia, Boris Ginsburg, Michael Houston, Oleksii Kuchaiev, Ganesh Venkatesh, and Hao Wu. 2018. Mixed Precision Training. arXiv:1710.03740 [cs.AI] https://arxiv.org/abs/1710.03740 [28] Marius Mosbach, Tiago Pimentel, Shauli Ravfogel, Dietrich Klakow, and Yanai Elazar. 2023. Few-shot Fine-tuning vs. In-context Learning: A Fair Comparison and Evaluation. arXiv:2305.16938 [cs.CL] https://arxiv.org/abs/2305.16938 [29] Sushant Kumar Pandey, Sivajeet Chand, Jennifer Horkoff, Miroslaw Staron, Miroslaw Ochodek, and Darko Durisic. 2025. Design pattern recognition: a study of large language models. Empirical Software Engineering 30, 3 (2025), 69. [30] Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu. 2002. BLEU: a method for automatic evaluation of machine translation. In Proceedings of the 40th Annual Meeting on Association for Computational Linguistics (Philadelphia, Penn-sylvania) (ACL ’02) . Association for Computational Linguistics, USA, 311–318. doi:10.3115/1073083.1073135 [31] Debalina Ghosh Paul, Hong Zhu, and Ian Bayley. 2024. Benchmarks and Metrics for Evaluations of Code Generation: A Critical Review. arXiv:2406.12655 [cs.AI] https://arxiv.org/abs/2406.12655 [32] Maxim Rabinovich, Mitchell Stern, and Dan Klein. 2017. Abstract Syntax Net-works for Code Generation and Semantic Parsing. In Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , Regina Barzilay and Min-Yen Kan (Eds.). Association for Computational Linguistics, Vancouver, Canada, 1139–1149. doi:10.18653/v1/P17-1105 [33] Shuo Ren, Daya Guo, Shuai Lu, Long Zhou, Shujie Liu, Duyu Tang, Neel Sun-daresan, Ming Zhou, Ambrosio Blanco, and Shuai Ma. 2020. CodeBLEU: a Method for Automatic Evaluation of Code Synthesis. arXiv:2009.10297 [cs.SE] https://arxiv.org/abs/2009.10297 [34] Laria Reynolds and Kyle McDonell. 2021. Prompt Programming for Large Lan-guage Models: Beyond the Few-Shot Paradigm (CHI EA ’21) . Association for Computing Machinery, New York, NY, USA, Article 314, 7 pages. doi:10.1145/ 3411763.3451760 [35] Pranab Sahoo, Ayush Kumar Singh, Sriparna Saha, Vinija Jain, Samrat Mondal, and Aman Chadha. 2025. A Systematic Survey of Prompt Engineering in Large Language Models: Techniques and Applications. arXiv:2402.07927 [cs.AI] https: //arxiv.org/abs/2402.07927 [36] Ahmed S. Soliman, Mayada M. Hadhoud, and Samir I. Shaheen. 2022. MarianCG: a code generation transformer model inspired by machine translation. Journal of EASE 2026, 9–12 June, 2026, Glasgow, Scotland, United Kingdom Sivajeet et al. 
+
+Engineering and Applied Science 69 (2022), 104. [37] Weisong Sun, Yun Miao, Yuekang Li, Hongyu Zhang, Chunrong Fang, Yi Liu, Gelei Deng, Yang Liu, and Zhenyu Chen. 2025. Source Code Summarization in the Era of Large Language Models . In 2025 IEEE/ACM 47th International Conference on Software Engineering (ICSE) . IEEE Computer Society, Los Alamitos, CA, USA, 1882–1894. doi:10.1109/ICSE55347.2025.00034 [38] Arie van Deursen, Paul Klint, and Joost Visser. 2000. Domain-specific languages: an annotated bibliography. SIGPLAN Not. 35, 6 (June 2000), 26–36. doi:10.1145/ 352029.352035 [39] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Proceedings of the 31st International Conference on Neural Information Processing Systems (Long Beach, California, USA) (NIPS’17) . Curran Associates Inc., Red Hook, NY, USA, 6000–6010. [40] Markus Voelter, Sebastian Benz, Christian Dietrich, Birgit Engelmann, Mats Helander, Lennart C. L. Kats, Eelco Visser, and Guido Wachsmuth. 2013. DSL Engineering - Designing, Implementing and Using Domain-Specific Languages. 
+
+dslbook.org. 1–558 pages. [41] M. Voelter and E. Visser. 2011. Product Line Engineering Using Domain-Specific Languages. In 2011 15th International Software Product Line Conference . 70–79. doi:10.1109/SPLC.2011.25 [42] Jiaye Wang. 2024. Guiding Large Language Models to Generate Computer-Parsable Content. arXiv:2404.05499 [cs.SE] https://arxiv.org/abs/2404.05499 [43] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia, Ed H. Chi, Quoc V. Le, and Denny Zhou. 2022. Chain-of-thought prompting elicits reasoning in large language models. In Proceedings of the 36th International Conference on Neural Information Processing Systems (New Orleans, LA, USA) 
+
+(NIPS ’22) . Curran Associates Inc., Red Hook, NY, USA, Article 1800, 14 pages. [44] Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond, Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Rémi Louf, Morgan Funtowicz, Joe Davison, Sam Shleifer, Patrick von Platen, Clara Ma, Yacine Jernite, Julien Plu, Canwen Xu, Teven Le Scao, Sylvain Gugger, Mariama Drame, Quentin Lhoest, and Alexander M. Rush. 2020. HuggingFace’s Transformers: State-of-the-art Natural Language Processing. arXiv:1910.03771 [cs.CL] https://arxiv.org/abs/1910.03771 [45] Lingling Xu, Haoran Xie, Si-Zhao Joe Qin, Xiaohui Tao, and Fu Lee Wang. 2023. Parameter-Efficient Fine-Tuning Methods for Pretrained Language Models: A Critical Review and Assessment. arXiv:2312.12148 [cs.CL] https://arxiv.org/abs/ 2312.12148 [46] Minghao Yan, Zhuang Wang, Zhen Jia, Shivaram Venkataraman, and Yida Wang. 2025. PLoRA: Efficient LoRA Hyperparameter Tuning for Large Models. arXiv:2508.02932 [cs.LG] https://arxiv.org/abs/2508.02932 [47] Pengcheng Yin and Graham Neubig. 2017. A Syntactic Neural Model for General-Purpose Code Generation. arXiv:1704.01696 [cs.CL] https://arxiv.org/abs/1704. 01696 [48] Weixing Zhang, Daniel Strüber, and Regina Hebig. 2025. Development and Evolution of Xtext-based DSLs on GitHub: An Empirical Investigation. arXiv:2501.19222 [cs.SE] https://arxiv.org/abs/2501.19222 [49] Tony Z. Zhao, Eric Wallace, Shi Feng, Dan Klein, and Sameer Singh. 2021. Calibrate Before Use: Improving Few-Shot Performance of Language Models. arXiv:2102.09690 [cs.CL] https://arxiv.org/abs/2102.09690
