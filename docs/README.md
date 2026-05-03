@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-02
-- 运行时间：2026-05-03 03:57:02 UTC+8
+- 最新运行日期：2026-05-03
+- 运行时间：2026-05-04 03:42:03 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Intensity-guided pose-free multiview fusion for single photon sensing》（7.5/10）, 《Planar master integrals for two-loop NLO electroweak light-fermion contributions to $g g \rightarrow Z H$》（7.4/10）, 《Quantum Probe to the Higher Dimensional Yang-Mills Singularity》（7.4/10）
+- 速读：《One Refiner to Unlock Them All: Inference-Time Reasoning Elicitation via Reinforcement Query Refinement》（7.1/10）, 《A Geometric Perspective on Polynomially Solvable Convex Maximization》（7.0/10）, 《Cognitive Atrophy and Systemic Collapse in AI-Dependent Software Engineering》（7.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/02/README](/202605/02/README)
+- 详情：[/202605/03/README](/202605/03/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Intensity-guided pose-free multiview fusion for single photon sensing](/202605/02/2604.25666v1-intensity-guided-pose-free-multiview-fusion-for-single-photon-sensing)  
-   标签：评分：7.5/10
+1. [One Refiner to Unlock Them All: Inference-Time Reasoning Elicitation via Reinforcement Query Refinement](/202605/03/2604.25444v1-one-refiner-to-unlock-them-all-inference-time-reasoning-elicitation-via-reinforcement-query-refinement)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-2. [Planar master integrals for two-loop NLO electroweak light-fermion contributions to $g g \rightarrow Z H$](/202605/02/2604.27314v1-planar-master-integrals-for-two-loop-nlo-electroweak-light-fermion-contributions-to-g-g-rightarrow-z-h)  
-   标签：评分：7.4/10
+2. [A Geometric Perspective on Polynomially Solvable Convex Maximization](/202605/03/2604.27427v1-a-geometric-perspective-on-polynomially-solvable-convex-maximization)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-3. [Quantum Probe to the Higher Dimensional Yang-Mills Singularity](/202605/02/2604.26350v1-quantum-probe-to-the-higher-dimensional-yang-mills-singularity)  
-   标签：评分：7.4/10
+3. [Cognitive Atrophy and Systemic Collapse in AI-Dependent Software Engineering](/202605/03/2604.26855v1-cognitive-atrophy-and-systemic-collapse-in-ai-dependent-software-engineering)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-4. [Robust inference methods of diagnostic test accuracy meta-analysis for influential outlying studies via density power divergence](/202605/02/2604.27409v1-robust-inference-methods-of-diagnostic-test-accuracy-meta-analysis-for-influential-outlying-studies-via-density-power-divergence)  
-   标签：评分：7.3/10
+4. [On the Role of Time Series Clustering in Traffic Matrix Prediction](/202605/03/2604.26081v1-on-the-role-of-time-series-clustering-in-traffic-matrix-prediction)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-5. [The $β$-Dependence of Particle Spectra in Relativistic Turbulent Reconnection](/202605/02/2604.26194v1-the--dependence-of-particle-spectra-in-relativistic-turbulent-reconnection)  
-   标签：评分：7.3/10
+5. [Precision Spectroscopy of 2S-nS Transitions in Atomic Hydrogen: A Determination of the Proton Charge Radius](/202605/03/2604.26401v1-precision-spectroscopy-of-2s-ns-transitions-in-atomic-hydrogen-a-determination-of-the-proton-charge-radius)  
+   标签：评分：6.5/10
    evidence：检索回退候选
-6. [Akita: A High Usability Simulation Framework for Computer Architecture](/202605/02/2604.28073v1-akita-a-high-usability-simulation-framework-for-computer-architecture)  
-   标签：评分：7.2/10
+6. [Scaling in Supersonic Turbulence: Energy Spectra and Fluxes using High-Fidelity Direct Numerical Simulations](/202605/03/2604.26290v1-scaling-in-supersonic-turbulence-energy-spectra-and-fluxes-using-high-fidelity-direct-numerical-simulations)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-7. [The Super Virasoro Minimal String from 3d Supergravity](/202605/02/2604.26038v1-the-super-virasoro-minimal-string-from-3d-supergravity)  
-   标签：评分：6.8/10
+7. [Quantum mechanical bootstrap without inequalities: SYK bilinear spectrum](/202605/03/2604.26007v1-quantum-mechanical-bootstrap-without-inequalities-syk-bilinear-spectrum)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-8. [Some Properties and Uses of the Species Scale](/202605/02/2604.27835v1-some-properties-and-uses-of-the-species-scale)  
-   标签：评分：6.8/10
+8. [Explaining the "Why": A Unified Framework for the Additive Attribution of Changes in Arbitrary Measures](/202605/03/2604.26266v1-explaining-the-why-a-unified-framework-for-the-additive-attribution-of-changes-in-arbitrary-measures)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-9. [Wave-number-dependent closure condition for fluid moment equations](/202605/02/2604.25112v2-wave-number-dependent-closure-condition-for-fluid-moment-equations)  
-   标签：评分：6.8/10
+9. [Unsupervised Physics-Informed Deep Learning for Dual-Energy CT Material Decomposition](/202605/03/2604.25356v1-unsupervised-physics-informed-deep-learning-for-dual-energy-ct-material-decomposition)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-10. [Implied Volatility Expansions for VIX Options in Forward Variance Models](/202605/02/2604.25123v1-implied-volatility-expansions-for-vix-options-in-forward-variance-models)  
-   标签：评分：6.7/10
+10. [Wave-number-dependent closure condition for fluid moment equations](/202605/03/2604.25112v1-wave-number-dependent-closure-condition-for-fluid-moment-equations)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-11. [Semantic Layers for Reliable LLM-Powered Data Analytics: A Paired Benchmark of Accuracy and Hallucination Across Three Frontier Models](/202605/02/2604.25149v1-semantic-layers-for-reliable-llm-powered-data-analytics-a-paired-benchmark-of-accuracy-and-hallucination-across-three-frontier-models)  
-   标签：评分：6.6/10
+11. [Towards Seamless Lunar Mosaics: Deep Radiometric Normalization for Cross-Sensor Orbital Imagery Using Chandrayaan-2 TMC Data](/202605/03/2604.25208v1-towards-seamless-lunar-mosaics-deep-radiometric-normalization-for-cross-sensor-orbital-imagery-using-chandrayaan-2-tmc-data)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
