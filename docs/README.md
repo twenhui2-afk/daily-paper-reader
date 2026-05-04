@@ -6,55 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-03
-- 运行时间：2026-05-04 03:42:03 UTC+8
+- 最新运行日期：2026-05-04
+- 运行时间：2026-05-05 04:51:16 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《One Refiner to Unlock Them All: Inference-Time Reasoning Elicitation via Reinforcement Query Refinement》（7.1/10）, 《A Geometric Perspective on Polynomially Solvable Convex Maximization》（7.0/10）, 《Cognitive Atrophy and Systemic Collapse in AI-Dependent Software Engineering》（7.0/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Hamilton decompositions of the directed 7-torus at odd modulus via root-flat certificates and a prefix-count construction》（8.4/10）, 《Strong-disorder expansion of the root-averaged density of states for the Anderson model on the Bethe lattice》（8.3/10）
+- 速读：《On $π$-systems of symmetrizable Kac-Moody algebras》（7.8/10）, 《A Simple Bivariate Example of Fast Convergence Rates for Maximum Likelihood Estimates》（7.6/10）, 《A Model-based Visual Contact Localization and Force Sensing System for Compliant Robotic Grippers》（7.3/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/03/README](/202605/03/README)
+- 详情：[/202605/04/README](/202605/04/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Hamilton decompositions of the directed 7-torus at odd modulus via root-flat certificates and a prefix-count construction](/202605/04/2605.00660v1-hamilton-decompositions-of-the-directed-7-torus-at-odd-modulus-via-root-flat-certificates-and-a-prefix-count-construction)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+2. [Strong-disorder expansion of the root-averaged density of states for the Anderson model on the Bethe lattice](/202605/04/2605.00478v1-strong-disorder-expansion-of-the-root-averaged-density-of-states-for-the-anderson-model-on-the-bethe-lattice)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
+3. [Hypergraph and Latent ODE Learning for Multimodal Root Cause Localization in Microservices](/202605/04/2605.00351v1-hypergraph-and-latent-ode-learning-for-multimodal-root-cause-localization-in-microservices)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [One Refiner to Unlock Them All: Inference-Time Reasoning Elicitation via Reinforcement Query Refinement](/202605/03/2604.25444v1-one-refiner-to-unlock-them-all-inference-time-reasoning-elicitation-via-reinforcement-query-refinement)  
+1. [On $π$-systems of symmetrizable Kac-Moody algebras](/202605/04/2605.00469v1-on--systems-of-symmetrizable-kac-moody-algebras)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+2. [A Simple Bivariate Example of Fast Convergence Rates for Maximum Likelihood Estimates](/202605/04/2605.00198v1-a-simple-bivariate-example-of-fast-convergence-rates-for-maximum-likelihood-estimates)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+3. [A Model-based Visual Contact Localization and Force Sensing System for Compliant Robotic Grippers](/202605/04/2605.00307v1-a-model-based-visual-contact-localization-and-force-sensing-system-for-compliant-robotic-grippers)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+4. [Paired-CSLiDAR: Height-Stratified Registration for Cross-Source Aerial-Ground LiDAR Pose Refinement](/202605/04/2605.00634v1-paired-cslidar-height-stratified-registration-for-cross-source-aerial-ground-lidar-pose-refinement)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+5. [Gradient Regularized Newton Boosting Trees with Global Convergence](/202605/04/2605.00581v1-gradient-regularized-newton-boosting-trees-with-global-convergence)  
    标签：评分：7.1/10
    evidence：检索回退候选
-2. [A Geometric Perspective on Polynomially Solvable Convex Maximization](/202605/03/2604.27427v1-a-geometric-perspective-on-polynomially-solvable-convex-maximization)  
-   标签：评分：7.0/10
+6. [Crab: A Semantics-Aware Checkpoint/Restore Runtime for Agent Sandboxes](/202605/04/2604.28138v1-crab-a-semantics-aware-checkpointrestore-runtime-for-agent-sandboxes)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-3. [Cognitive Atrophy and Systemic Collapse in AI-Dependent Software Engineering](/202605/03/2604.26855v1-cognitive-atrophy-and-systemic-collapse-in-ai-dependent-software-engineering)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-4. [On the Role of Time Series Clustering in Traffic Matrix Prediction](/202605/03/2604.26081v1-on-the-role-of-time-series-clustering-in-traffic-matrix-prediction)  
+7. [From Elastic to Viscoelastic: An EEMD-Enhanced Pulse Transit Time Model for Robust Blood Pressure Estimation](/202605/04/2604.27500v1-from-elastic-to-viscoelastic-an-eemd-enhanced-pulse-transit-time-model-for-robust-blood-pressure-estimation)  
    标签：评分：6.9/10
    evidence：检索回退候选
-5. [Precision Spectroscopy of 2S-nS Transitions in Atomic Hydrogen: A Determination of the Proton Charge Radius](/202605/03/2604.26401v1-precision-spectroscopy-of-2s-ns-transitions-in-atomic-hydrogen-a-determination-of-the-proton-charge-radius)  
-   标签：评分：6.5/10
+8. [NORACL: Neurogenesis for Oracle-free Resource-Adaptive Continual Learning](/202605/04/2604.27031v1-noracl-neurogenesis-for-oracle-free-resource-adaptive-continual-learning)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-6. [Scaling in Supersonic Turbulence: Energy Spectra and Fluxes using High-Fidelity Direct Numerical Simulations](/202605/03/2604.26290v1-scaling-in-supersonic-turbulence-energy-spectra-and-fluxes-using-high-fidelity-direct-numerical-simulations)  
-   标签：评分：6.4/10
+9. [Delta Score Matters! Spatial Adaptive Multi Guidance in Diffusion Models](/202605/04/2604.26503v1-delta-score-matters-spatial-adaptive-multi-guidance-in-diffusion-models)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-7. [Quantum mechanical bootstrap without inequalities: SYK bilinear spectrum](/202605/03/2604.26007v1-quantum-mechanical-bootstrap-without-inequalities-syk-bilinear-spectrum)  
-   标签：评分：6.4/10
+10. [Culturally Aware GenAI Risks for Youth: Perspectives from Youth, Parents, and Teachers in a Non-Western Context](/202605/04/2604.26494v1-culturally-aware-genai-risks-for-youth-perspectives-from-youth-parents-and-teachers-in-a-non-western-context)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-8. [Explaining the "Why": A Unified Framework for the Additive Attribution of Changes in Arbitrary Measures](/202605/03/2604.26266v1-explaining-the-why-a-unified-framework-for-the-additive-attribution-of-changes-in-arbitrary-measures)  
-   标签：评分：6.3/10
-   evidence：检索回退候选
-9. [Unsupervised Physics-Informed Deep Learning for Dual-Energy CT Material Decomposition](/202605/03/2604.25356v1-unsupervised-physics-informed-deep-learning-for-dual-energy-ct-material-decomposition)  
-   标签：评分：6.1/10
-   evidence：检索回退候选
-10. [Wave-number-dependent closure condition for fluid moment equations](/202605/03/2604.25112v1-wave-number-dependent-closure-condition-for-fluid-moment-equations)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [Towards Seamless Lunar Mosaics: Deep Radiometric Normalization for Cross-Sensor Orbital Imagery Using Chandrayaan-2 TMC Data](/202605/03/2604.25208v1-towards-seamless-lunar-mosaics-deep-radiometric-normalization-for-cross-sensor-orbital-imagery-using-chandrayaan-2-tmc-data)  
-   标签：评分：6.0/10
+11. [Point Cloud Registration via Probabilistic Self-Update Local Correspondence and Line Vector Sets](/202605/04/2604.26318v1-point-cloud-registration-via-probabilistic-self-update-local-correspondence-and-line-vector-sets)  
+   标签：评分：6.8/10
    evidence：检索回退候选
 
 
