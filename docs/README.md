@@ -6,64 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-04
-- 运行时间：2026-05-05 04:51:16 UTC+8
+- 最新运行日期：2026-05-05
+- 运行时间：2026-05-06 04:23:30 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Hamilton decompositions of the directed 7-torus at odd modulus via root-flat certificates and a prefix-count construction》（8.4/10）, 《Strong-disorder expansion of the root-averaged density of states for the Anderson model on the Bethe lattice》（8.3/10）
-- 速读：《On $π$-systems of symmetrizable Kac-Moody algebras》（7.8/10）, 《A Simple Bivariate Example of Fast Convergence Rates for Maximum Likelihood Estimates》（7.6/10）, 《A Model-based Visual Contact Localization and Force Sensing System for Compliant Robotic Grippers》（7.3/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《EventADL: Open-Box Anomaly Detection and Localization Framework for Events in Cloud-Based Service Systems》（8.5/10）, 《Two-place Laplacian matching root integral variations are impossible》（8.0/10）
+- 速读：《ShieldShare: Building a VPN-backed Android Hotspot for Secure Internet Sharing with Per-User Traffic Accounting》（7.5/10）, 《Efficient Reconstruction of Arboreal Networks》（7.4/10）, 《Monogenic Fields from Polynomial Compositions with Applications》（7.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/04/README](/202605/04/README)
+- 详情：[/202605/05/README](/202605/05/README)
 
 ### 精读区论文标签
-1. [Hamilton decompositions of the directed 7-torus at odd modulus via root-flat certificates and a prefix-count construction](/202605/04/2605.00660v1-hamilton-decompositions-of-the-directed-7-torus-at-odd-modulus-via-root-flat-certificates-and-a-prefix-count-construction)  
-   标签：评分：8.4/10
+1. [EventADL: Open-Box Anomaly Detection and Localization Framework for Events in Cloud-Based Service Systems](/202605/05/2605.00936v1-eventadl-open-box-anomaly-detection-and-localization-framework-for-events-in-cloud-based-service-systems)  
+   标签：评分：8.5/10
    evidence：检索回退候选
-2. [Strong-disorder expansion of the root-averaged density of states for the Anderson model on the Bethe lattice](/202605/04/2605.00478v1-strong-disorder-expansion-of-the-root-averaged-density-of-states-for-the-anderson-model-on-the-bethe-lattice)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-3. [Hypergraph and Latent ODE Learning for Multimodal Root Cause Localization in Microservices](/202605/04/2605.00351v1-hypergraph-and-latent-ode-learning-for-multimodal-root-cause-localization-in-microservices)  
-   标签：评分：8.2/10
+2. [Two-place Laplacian matching root integral variations are impossible](/202605/05/2605.01760v1-two-place-laplacian-matching-root-integral-variations-are-impossible)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [On $π$-systems of symmetrizable Kac-Moody algebras](/202605/04/2605.00469v1-on--systems-of-symmetrizable-kac-moody-algebras)  
-   标签：评分：7.8/10
+1. [ShieldShare: Building a VPN-backed Android Hotspot for Secure Internet Sharing with Per-User Traffic Accounting](/202605/05/2605.01569v1-shieldshare-building-a-vpn-backed-android-hotspot-for-secure-internet-sharing-with-per-user-traffic-accounting)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-2. [A Simple Bivariate Example of Fast Convergence Rates for Maximum Likelihood Estimates](/202605/04/2605.00198v1-a-simple-bivariate-example-of-fast-convergence-rates-for-maximum-likelihood-estimates)  
-   标签：评分：7.6/10
+2. [Efficient Reconstruction of Arboreal Networks](/202605/05/2605.01044v1-efficient-reconstruction-of-arboreal-networks)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-3. [A Model-based Visual Contact Localization and Force Sensing System for Compliant Robotic Grippers](/202605/04/2605.00307v1-a-model-based-visual-contact-localization-and-force-sensing-system-for-compliant-robotic-grippers)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-4. [Paired-CSLiDAR: Height-Stratified Registration for Cross-Source Aerial-Ground LiDAR Pose Refinement](/202605/04/2605.00634v1-paired-cslidar-height-stratified-registration-for-cross-source-aerial-ground-lidar-pose-refinement)  
+3. [Monogenic Fields from Polynomial Compositions with Applications](/202605/05/2605.00949v1-monogenic-fields-from-polynomial-compositions-with-applications)  
    标签：评分：7.2/10
    evidence：检索回退候选
-5. [Gradient Regularized Newton Boosting Trees with Global Convergence](/202605/04/2605.00581v1-gradient-regularized-newton-boosting-trees-with-global-convergence)  
+4. [A note on bilinear sums with modular square roots](/202605/05/2605.01635v1-a-note-on-bilinear-sums-with-modular-square-roots)  
    标签：评分：7.1/10
    evidence：检索回退候选
-6. [Crab: A Semantics-Aware Checkpoint/Restore Runtime for Agent Sandboxes](/202605/04/2604.28138v1-crab-a-semantics-aware-checkpointrestore-runtime-for-agent-sandboxes)  
-   标签：评分：7.1/10
+5. [Higher Commutativity in Finite Groups: Exact Asymptotics and Finite Spectrum](/202605/05/2605.02071v1-higher-commutativity-in-finite-groups-exact-asymptotics-and-finite-spectrum)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-7. [From Elastic to Viscoelastic: An EEMD-Enhanced Pulse Transit Time Model for Robust Blood Pressure Estimation](/202605/04/2604.27500v1-from-elastic-to-viscoelastic-an-eemd-enhanced-pulse-transit-time-model-for-robust-blood-pressure-estimation)  
+6. [Semi-hyponormality of commuting pairs of Hilbert space operators](/202605/05/2605.02197v1-semi-hyponormality-of-commuting-pairs-of-hilbert-space-operators)  
+   标签：评分：7.0/10
+   evidence：检索回退候选
+7. [Factorization of invariant polynomials and generalized spectral characterizations of graphs](/202605/05/2605.02711v1-factorization-of-invariant-polynomials-and-generalized-spectral-characterizations-of-graphs)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [NORACL: Neurogenesis for Oracle-free Resource-Adaptive Continual Learning](/202605/04/2604.27031v1-noracl-neurogenesis-for-oracle-free-resource-adaptive-continual-learning)  
-   标签：评分：6.9/10
+8. [What Suppresses Nash Equilibrium Play in Large Language Models? Mechanistic Evidence and Causal Control](/202605/05/2604.27167v2-what-suppresses-nash-equilibrium-play-in-large-language-models-mechanistic-evidence-and-causal-control)  
+   标签：评分：6.2/10
    evidence：检索回退候选
-9. [Delta Score Matters! Spatial Adaptive Multi Guidance in Diffusion Models](/202605/04/2604.26503v1-delta-score-matters-spatial-adaptive-multi-guidance-in-diffusion-models)  
-   标签：评分：6.8/10
+9. [Cognitive Atrophy and Systemic Collapse in AI-Dependent Software Engineering](/202605/05/2604.26855v2-cognitive-atrophy-and-systemic-collapse-in-ai-dependent-software-engineering)  
+   标签：评分：6.2/10
    evidence：检索回退候选
-10. [Culturally Aware GenAI Risks for Youth: Perspectives from Youth, Parents, and Teachers in a Non-Western Context](/202605/04/2604.26494v1-culturally-aware-genai-risks-for-youth-perspectives-from-youth-parents-and-teachers-in-a-non-western-context)  
-   标签：评分：6.8/10
+10. [The Attention Market: Interpreting Online Fair Re-ranking as Manifold Optimization under Walrasian Equilibrium](/202605/05/2604.25577v1-the-attention-market-interpreting-online-fair-re-ranking-as-manifold-optimization-under-walrasian-equilibrium)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-11. [Point Cloud Registration via Probabilistic Self-Update Local Correspondence and Line Vector Sets](/202605/04/2604.26318v1-point-cloud-registration-via-probabilistic-self-update-local-correspondence-and-line-vector-sets)  
-   标签：评分：6.8/10
+11. [From Threads to Trajectories: A Multi-LLM Pipeline for Community Knowledge Extraction from GitHub Issue Discussions](/202605/05/2604.25880v1-from-threads-to-trajectories-a-multi-llm-pipeline-for-community-knowledge-extraction-from-github-issue-discussions)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
