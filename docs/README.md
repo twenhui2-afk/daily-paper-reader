@@ -6,60 +6,63 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-05
-- 运行时间：2026-05-06 04:23:30 UTC+8
+- 最新运行日期：2026-05-06
+- 运行时间：2026-05-07 04:44:09 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《EventADL: Open-Box Anomaly Detection and Localization Framework for Events in Cloud-Based Service Systems》（8.5/10）, 《Two-place Laplacian matching root integral variations are impossible》（8.0/10）
-- 速读：《ShieldShare: Building a VPN-backed Android Hotspot for Secure Internet Sharing with Per-User Traffic Accounting》（7.5/10）, 《Efficient Reconstruction of Arboreal Networks》（7.4/10）, 《Monogenic Fields from Polynomial Compositions with Applications》（7.2/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《More Permutations Do Not Always Increase Power: Non-monotonicity in Monte Carlo Permutation Tests》（8.5/10）, 《Dependency-Aware Privacy for Multi-turn Agents》（8.5/10）
+- 速读：《Nondeterministic state complexity of square root》（7.8/10）, 《The Distribution Of Subtrees In Dense Graphs And The Roots Of The Subtree Polynomial》（6.8/10）, 《Complex Equation Learner: Rational Symbolic Regression with Gradient Descent in Complex Domain》（6.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/05/README](/202605/05/README)
+- 详情：[/202605/06/README](/202605/06/README)
 
 ### 精读区论文标签
-1. [EventADL: Open-Box Anomaly Detection and Localization Framework for Events in Cloud-Based Service Systems](/202605/05/2605.00936v1-eventadl-open-box-anomaly-detection-and-localization-framework-for-events-in-cloud-based-service-systems)  
+1. [More Permutations Do Not Always Increase Power: Non-monotonicity in Monte Carlo Permutation Tests](/202605/06/2605.03886v1-more-permutations-do-not-always-increase-power-non-monotonicity-in-monte-carlo-permutation-tests)  
    标签：评分：8.5/10
    evidence：检索回退候选
-2. [Two-place Laplacian matching root integral variations are impossible](/202605/05/2605.01760v1-two-place-laplacian-matching-root-integral-variations-are-impossible)  
-   标签：评分：8.0/10
+2. [Dependency-Aware Privacy for Multi-turn Agents](/202605/06/2605.03188v1-dependency-aware-privacy-for-multi-turn-agents)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+3. [Multi-Agent Systems for Root Cause Analysis in Microservices](/202605/06/2605.03505v1-multi-agent-systems-for-root-cause-analysis-in-microservices)  
+   标签：评分：8.3/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [ShieldShare: Building a VPN-backed Android Hotspot for Secure Internet Sharing with Per-User Traffic Accounting](/202605/05/2605.01569v1-shieldshare-building-a-vpn-backed-android-hotspot-for-secure-internet-sharing-with-per-user-traffic-accounting)  
-   标签：评分：7.5/10
+1. [Nondeterministic state complexity of square root](/202605/06/2605.02957v1-nondeterministic-state-complexity-of-square-root)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-2. [Efficient Reconstruction of Arboreal Networks](/202605/05/2605.01044v1-efficient-reconstruction-of-arboreal-networks)  
-   标签：评分：7.4/10
+2. [The Distribution Of Subtrees In Dense Graphs And The Roots Of The Subtree Polynomial](/202605/06/2605.03583v1-the-distribution-of-subtrees-in-dense-graphs-and-the-roots-of-the-subtree-polynomial)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-3. [Monogenic Fields from Polynomial Compositions with Applications](/202605/05/2605.00949v1-monogenic-fields-from-polynomial-compositions-with-applications)  
-   标签：评分：7.2/10
+3. [Complex Equation Learner: Rational Symbolic Regression with Gradient Descent in Complex Domain](/202605/06/2605.03841v1-complex-equation-learner-rational-symbolic-regression-with-gradient-descent-in-complex-domain)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-4. [A note on bilinear sums with modular square roots](/202605/05/2605.01635v1-a-note-on-bilinear-sums-with-modular-square-roots)  
-   标签：评分：7.1/10
+4. [An analytic approach to the finite R-transform](/202605/06/2605.02093v2-an-analytic-approach-to-the-finite-r-transform)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-5. [Higher Commutativity in Finite Groups: Exact Asymptotics and Finite Spectrum](/202605/05/2605.02071v1-higher-commutativity-in-finite-groups-exact-asymptotics-and-finite-spectrum)  
-   标签：评分：7.0/10
+5. [An Orlov theorem for matrix factorizations with multiple factors](/202605/06/2605.01641v1-an-orlov-theorem-for-matrix-factorizations-with-multiple-factors)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-6. [Semi-hyponormality of commuting pairs of Hilbert space operators](/202605/05/2605.02197v1-semi-hyponormality-of-commuting-pairs-of-hilbert-space-operators)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-7. [Factorization of invariant polynomials and generalized spectral characterizations of graphs](/202605/05/2605.02711v1-factorization-of-invariant-polynomials-and-generalized-spectral-characterizations-of-graphs)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-8. [What Suppresses Nash Equilibrium Play in Large Language Models? Mechanistic Evidence and Causal Control](/202605/05/2604.27167v2-what-suppresses-nash-equilibrium-play-in-large-language-models-mechanistic-evidence-and-causal-control)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-9. [Cognitive Atrophy and Systemic Collapse in AI-Dependent Software Engineering](/202605/05/2604.26855v2-cognitive-atrophy-and-systemic-collapse-in-ai-dependent-software-engineering)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-10. [The Attention Market: Interpreting Online Fair Re-ranking as Manifold Optimization under Walrasian Equilibrium](/202605/05/2604.25577v1-the-attention-market-interpreting-online-fair-re-ranking-as-manifold-optimization-under-walrasian-equilibrium)  
+6. [An analytic approach to the finite R-transform](/202605/06/2605.02093v1-an-analytic-approach-to-the-finite-r-transform)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [From Threads to Trajectories: A Multi-LLM Pipeline for Community Knowledge Extraction from GitHub Issue Discussions](/202605/05/2604.25880v1-from-threads-to-trajectories-a-multi-llm-pipeline-for-community-knowledge-extraction-from-github-issue-discussions)  
+7. [Rethinking Mutual Coupling in Movable Antenna MIMO Systems: Modeling and Optimization](/202605/06/2604.26282v1-rethinking-mutual-coupling-in-movable-antenna-mimo-systems-modeling-and-optimization)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+8. [Beyond Code Reasoning: Specification-Anchored Auditing of Multi-Implementation Distributed Protocols](/202605/06/2604.26495v2-beyond-code-reasoning-specification-anchored-auditing-of-multi-implementation-distributed-protocols)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+9. [WaferSAGE: Large Language Model-Powered Wafer Defect Analysis via Synthetic Data Generation and Rubric-Guided Reinforcement Learning](/202605/06/2604.27629v1-wafersage-large-language-model-powered-wafer-defect-analysis-via-synthetic-data-generation-and-rubric-guided-reinforcement-learning)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Supercriticality of the SIRS on random networks](/202605/06/2604.28150v1-supercriticality-of-the-sirs-on-random-networks)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Polarization-controlled effective Rabi dynamics in driven Graphene: A Floquet-Magnus approach](/202605/06/2605.00325v1-polarization-controlled-effective-rabi-dynamics-in-driven-graphene-a-floquet-magnus-approach)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
