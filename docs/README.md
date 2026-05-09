@@ -6,64 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-08
-- 运行时间：2026-05-09 04:12:38 UTC+8
+- 最新运行日期：2026-05-09
+- 运行时间：2026-05-10 04:18:28 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Linked-Tucker Factorized Individualized Regression for Paired Multivariate Categorical Outcomes》（8.5/10）, 《Equivariant version of the characteristic quasi-polynomials of root systems》（8.2/10）
-- 速读：《Root systems constructed by folding of the extended Dynkin diagrams》（7.8/10）, 《On a polynomial involving quadratic residues modulo primes》（6.8/10）, 《Fertility fibres and coproduct coefficients in the LOT Hopf algebra》（6.7/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Modeling Stock Returns and Volatility Using Bivariate Gamma Generalized Laplace Law》（6.6/10）, 《Beyond Independence: on Jointly Normal Priors in Bayesian Inversion》（6.5/10）, 《StressEval: Failure-Driven Dynamic Benchmarking for Knowledge-Intensive Reasoning in Large Language Models》（6.4/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/08/README](/202605/08/README)
+- 详情：[/202605/09/README](/202605/09/README)
 
 ### 精读区论文标签
-1. [Linked-Tucker Factorized Individualized Regression for Paired Multivariate Categorical Outcomes](/202605/08/2605.06135v1-linked-tucker-factorized-individualized-regression-for-paired-multivariate-categorical-outcomes)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [Equivariant version of the characteristic quasi-polynomials of root systems](/202605/08/2605.05695v1-equivariant-version-of-the-characteristic-quasi-polynomials-of-root-systems)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [Covariance Square Root Second-Order Mapping](/202605/08/2605.05560v1-covariance-square-root-second-order-mapping)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Root systems constructed by folding of the extended Dynkin diagrams](/202605/08/2605.05677v1-root-systems-constructed-by-folding-of-the-extended-dynkin-diagrams)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-2. [On a polynomial involving quadratic residues modulo primes](/202605/08/2605.05200v2-on-a-polynomial-involving-quadratic-residues-modulo-primes)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-3. [Fertility fibres and coproduct coefficients in the LOT Hopf algebra](/202605/08/2605.05542v1-fertility-fibres-and-coproduct-coefficients-in-the-lot-hopf-algebra)  
-   标签：评分：6.7/10
-   evidence：检索回退候选
-4. [A $μ$-distance for semidirected orchard phylogenetic networks](/202605/08/2605.06243v1-a--distance-for-semidirected-orchard-phylogenetic-networks)  
+1. [Modeling Stock Returns and Volatility Using Bivariate Gamma Generalized Laplace Law](/202605/09/2605.00196v1-modeling-stock-returns-and-volatility-using-bivariate-gamma-generalized-laplace-law)  
    标签：评分：6.6/10
    evidence：检索回退候选
-5. [Fast decremental tree sums in forests](/202605/08/2605.06555v1-fast-decremental-tree-sums-in-forests)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-6. [Galois Solvability of Finite-Size Bethe Solutions in the Heisenberg Chain](/202605/08/2605.05589v1-galois-solvability-of-finite-size-bethe-solutions-in-the-heisenberg-chain)  
+2. [Beyond Independence: on Jointly Normal Priors in Bayesian Inversion](/202605/09/2605.00332v1-beyond-independence-on-jointly-normal-priors-in-bayesian-inversion)  
    标签：评分：6.5/10
    evidence：检索回退候选
-7. [D-SHIFT: Transferring High Spatial Information from GRACE Monthly TWSA Mascon to Daily Products Using Generative Adversarial Networks](/202605/08/2605.00652v1-d-shift-transferring-high-spatial-information-from-grace-monthly-twsa-mascon-to-daily-products-using-generative-adversarial-networks)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-8. [Architectural Obsolescence of Unhardened Agentic-AI Runtimes](/202605/08/2605.01740v1-architectural-obsolescence-of-unhardened-agentic-ai-runtimes)  
+3. [StressEval: Failure-Driven Dynamic Benchmarking for Knowledge-Intensive Reasoning in Large Language Models](/202605/09/2605.01939v1-stresseval-failure-driven-dynamic-benchmarking-for-knowledge-intensive-reasoning-in-large-language-models)  
    标签：评分：6.4/10
    evidence：检索回退候选
-9. [When Agents Handle Secrets: A Survey of Confidential Computing for Agentic AI](/202605/08/2605.03213v1-when-agents-handle-secrets-a-survey-of-confidential-computing-for-agentic-ai)  
-   标签：评分：6.4/10
+4. [TCDA: Thread-Constrained Discourse-Aware Modeling for Conversational Sentiment Quadruple Analysis](/202605/09/2605.01717v1-tcda-thread-constrained-discourse-aware-modeling-for-conversational-sentiment-quadruple-analysis)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-10. [Revisiting the Travel Planning Capabilities of Large Language Models](/202605/08/2605.03308v1-revisiting-the-travel-planning-capabilities-of-large-language-models)  
+5. [Attention Sinks in Massively Multilingual Neural Machine Translation:Discovery, Analysis, and Mitigation](/202605/09/2605.01229v1-attention-sinks-in-massively-multilingual-neural-machine-translationdiscovery-analysis-and-mitigation)  
    标签：评分：6.2/10
    evidence：检索回退候选
-11. [Model synthesis and identifiability analysis of stiff chemical reaction systems with inVAErt networks](/202605/08/2605.04134v1-model-synthesis-and-identifiability-analysis-of-stiff-chemical-reaction-systems-with-invaert-networks)  
+6. [TRAP: Tail-aware Ranking Attack for World-Model Planning](/202605/09/2605.01950v1-trap-tail-aware-ranking-attack-for-world-model-planning)  
    标签：评分：6.1/10
+   evidence：检索回退候选
+7. [A differential characterization of volume polynomials of permutohedra](/202605/09/2605.01071v1-a-differential-characterization-of-volume-polynomials-of-permutohedra)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+8. [Closed Forms for Gaussian Kullback--Leibler Unbalanced Optimal Transport without Coupling Entropy](/202605/09/2605.02497v1-closed-forms-for-gaussian-kullback--leibler-unbalanced-optimal-transport-without-coupling-entropy)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+9. [A partial dictionary between universal central extensions and orthogonal polynomials in the superelliptic Krichever--Novikov setting](/202605/09/2605.02530v1-a-partial-dictionary-between-universal-central-extensions-and-orthogonal-polynomials-in-the-superelliptic-krichever--novikov-setting)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Operating the Fabry-Pérot systems of the European Solar Telescope in multi-aperture mode](/202605/09/2605.02687v1-operating-the-fabry-prot-systems-of-the-european-solar-telescope-in-multi-aperture-mode)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Dynamic Vine Copulas: Detecting and Quantifying Time-Varying Higher-Order Interactions](/202605/09/2605.03061v2-dynamic-vine-copulas-detecting-and-quantifying-time-varying-higher-order-interactions)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
