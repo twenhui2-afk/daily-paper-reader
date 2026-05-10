@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-09
-- 运行时间：2026-05-10 04:18:28 UTC+8
+- 最新运行日期：2026-05-10
+- 运行时间：2026-05-11 04:06:32 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Modeling Stock Returns and Volatility Using Bivariate Gamma Generalized Laplace Law》（6.6/10）, 《Beyond Independence: on Jointly Normal Priors in Bayesian Inversion》（6.5/10）, 《StressEval: Failure-Driven Dynamic Benchmarking for Knowledge-Intensive Reasoning in Large Language Models》（6.4/10）
+- 速读：《Numerical methods for lambda quantiles: robust evaluation and portfolio optimisation》（7.1/10）, 《Diffusio-osmotic transport in nanochannels》（7.0/10）, 《Model Form Identification in High-Dimensional Functional Linear Regressions》（7.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/09/README](/202605/09/README)
+- 详情：[/202605/10/README](/202605/10/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Modeling Stock Returns and Volatility Using Bivariate Gamma Generalized Laplace Law](/202605/09/2605.00196v1-modeling-stock-returns-and-volatility-using-bivariate-gamma-generalized-laplace-law)  
+1. [Numerical methods for lambda quantiles: robust evaluation and portfolio optimisation](/202605/10/2605.06220v1-numerical-methods-for-lambda-quantiles-robust-evaluation-and-portfolio-optimisation)  
+   标签：评分：7.1/10
+   evidence：检索回退候选
+2. [Diffusio-osmotic transport in nanochannels](/202605/10/2605.02419v1-diffusio-osmotic-transport-in-nanochannels)  
+   标签：评分：7.0/10
+   evidence：检索回退候选
+3. [Model Form Identification in High-Dimensional Functional Linear Regressions](/202605/10/2605.05458v1-model-form-identification-in-high-dimensional-functional-linear-regressions)  
+   标签：评分：7.0/10
+   evidence：检索回退候选
+4. [The Design and Composition of Structural Causal Decision Processes](/202605/10/2605.02681v1-the-design-and-composition-of-structural-causal-decision-processes)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+5. [Analytical Angle-Finding and Series Expansions for Quantum Signal Processing via Orthogonal Polynomial Theory](/202605/10/2605.05321v1-analytical-angle-finding-and-series-expansions-for-quantum-signal-processing-via-orthogonal-polynomial-theory)  
    标签：评分：6.6/10
    evidence：检索回退候选
-2. [Beyond Independence: on Jointly Normal Priors in Bayesian Inversion](/202605/09/2605.00332v1-beyond-independence-on-jointly-normal-priors-in-bayesian-inversion)  
+6. [The Structural Origin of Attention Sink: Variance Discrepancy, Super Neurons, and Dimension Disparity](/202605/10/2605.06611v1-the-structural-origin-of-attention-sink-variance-discrepancy-super-neurons-and-dimension-disparity)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+7. [Two Regularized Determinants of Laplacian through Resurgence theory](/202605/10/2605.03960v1-two-regularized-determinants-of-laplacian-through-resurgence-theory)  
    标签：评分：6.5/10
    evidence：检索回退候选
-3. [StressEval: Failure-Driven Dynamic Benchmarking for Knowledge-Intensive Reasoning in Large Language Models](/202605/09/2605.01939v1-stresseval-failure-driven-dynamic-benchmarking-for-knowledge-intensive-reasoning-in-large-language-models)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-4. [TCDA: Thread-Constrained Discourse-Aware Modeling for Conversational Sentiment Quadruple Analysis](/202605/09/2605.01717v1-tcda-thread-constrained-discourse-aware-modeling-for-conversational-sentiment-quadruple-analysis)  
+8. [Predicting missing values: A good idea?](/202605/10/2605.03733v1-predicting-missing-values-a-good-idea)  
    标签：评分：6.3/10
    evidence：检索回退候选
-5. [Attention Sinks in Massively Multilingual Neural Machine Translation:Discovery, Analysis, and Mitigation](/202605/09/2605.01229v1-attention-sinks-in-massively-multilingual-neural-machine-translationdiscovery-analysis-and-mitigation)  
+9. [A Directivity-Dependent Rician K-Factor Model for Indoor Industrial Channels](/202605/10/2605.03811v1-a-directivity-dependent-rician-k-factor-model-for-indoor-industrial-channels)  
    标签：评分：6.2/10
    evidence：检索回退候选
-6. [TRAP: Tail-aware Ranking Attack for World-Model Planning](/202605/09/2605.01950v1-trap-tail-aware-ranking-attack-for-world-model-planning)  
+10. [Optimizing Bit-Labeling of Voronoi Constellations](/202605/10/2605.05202v1-optimizing-bit-labeling-of-voronoi-constellations)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+11. [Consideration of Control-Loop Interaction in Transient Stability of Grid-Following Inverters using Bandwidth Separation Method](/202605/10/2605.05932v1-consideration-of-control-loop-interaction-in-transient-stability-of-grid-following-inverters-using-bandwidth-separation-method)  
    标签：评分：6.1/10
-   evidence：检索回退候选
-7. [A differential characterization of volume polynomials of permutohedra](/202605/09/2605.01071v1-a-differential-characterization-of-volume-polynomials-of-permutohedra)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-8. [Closed Forms for Gaussian Kullback--Leibler Unbalanced Optimal Transport without Coupling Entropy](/202605/09/2605.02497v1-closed-forms-for-gaussian-kullback--leibler-unbalanced-optimal-transport-without-coupling-entropy)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-9. [A partial dictionary between universal central extensions and orthogonal polynomials in the superelliptic Krichever--Novikov setting](/202605/09/2605.02530v1-a-partial-dictionary-between-universal-central-extensions-and-orthogonal-polynomials-in-the-superelliptic-krichever--novikov-setting)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-10. [Operating the Fabry-Pérot systems of the European Solar Telescope in multi-aperture mode](/202605/09/2605.02687v1-operating-the-fabry-prot-systems-of-the-european-solar-telescope-in-multi-aperture-mode)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [Dynamic Vine Copulas: Detecting and Quantifying Time-Varying Higher-Order Interactions](/202605/09/2605.03061v2-dynamic-vine-copulas-detecting-and-quantifying-time-varying-higher-order-interactions)  
-   标签：评分：6.0/10
    evidence：检索回退候选
 
 
