@@ -1,0 +1,1289 @@
+Title: LPDP: Inference-Time Reward Control for Variable-Length DNA Generation with Edit Flows
+
+URL Source: https://arxiv.org/pdf/2605.11368v1
+
+Published Time: Wed, 13 May 2026 00:30:03 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# LPDP: Inference-Time Reward Control for Variable-Length DNA Generation with Edit Flows 
+
+Jeongchan Kim Yunkyung Ko Jong Chul Ye 
+
+KAIST AI 
+
+{jchan.kim, jong.ye}@kaist.ac.kr 
+
+Abstract 
+
+We study the application of recent Edit Flows for inference-time reward control for DNA sequence generation. Unlike most reward-guided DNA generation frame-works, which operate on fixed-length sequence spaces, Edit Flows have a potential to generate variable-length DNA through biologically plausible insertion, deletion, and substitution operations. In particular, we propose Local Perturbation Discrete Programming (LPDP) , a training-free, intermediate-state and action-aware local re-solving operator for variable-length DNA edit-action generators at inference time. More specifically, at each guided rollout step, LPDP scores one-step root edits, retains a near-best root band, and re-ranks each retained root by solving a bounded local discrete program around its child sequence. This local program uses the typed geometry of edit actions to focus on coherent substitution, insertion, or deletion subgraphs, and aggregates local continuations with either a hard Max backup or a soft log-sum-exponential (LSE) backup. We instantiate LPDP in two regimes: front-loaded reward tilting for enhancer optimization, where early edits are critical for establishing global regulatory sequence structure, and back-loaded reward tilting for exon–intron–exon inpainting, where late edits fine-tune splice-boundary contexts. Across enhancer and splice benchmarks, LPDP im-proves frozen-oracle reward under comparable search budgets while preserving base-flow and sequence-distribution diagnostics. To our knowledge, LPDP is the first inference-time reward-tilting framework built specifically for variable-length DNA edit flows with explicit insertion, deletion, and substitution actions. 
+
+1 Introduction 
+
+Reward-guided DNA design asks a generative model to propose DNA sequences with high predicted function while avoiding obvious departures from realistic sequence statistics. Specifically, a sequence is functional if a downstream biological oracle predicts a desired effect, such as strong regulatory activity or correct splice-site formation; it is plausible if it still resembles realistic genomic DNA rather than an adversarial string optimized only for the oracle. We study this setting with frozen oracles, which are queried only at inference time and may be expensive or unavailable during generator training. We consider two representative tasks. In enhancer optimization, the model seeks regulatory DNA sequences predicted to activate gene expression. In exon–intron–exon inpainting, the model fills an intronic region between two exon contexts and must create or preserve splice donor and acceptor signals needed for RNA splicing. These tasks stress complementary regimes: enhancer design depends on global regulatory sequence patterns, while splice inpainting depends on local boundary motifs and context. Most reward-guided DNA generators are formulated over fixed-length sequence spaces, often using token replacement, masking, or denoising on X = Σ N [DaSilva et al., 2024, Wang et al., 2025,                                            
+
+> Preprint.
+> arXiv:2605.11368v1 [cs.LG] 12 May 2026 SSubstitution
+> IInsertion
+> DDeletion
+> AG
+> AAT
+> ATCAC
+> Stage 1
+> Score all root edits
+> and retain root band
+> S
+> S
+> I
+> SD
+> S
+> S
+> ATCGTCTGC
+> 123456789
+> S
+> Site local neighborhood
+> around latest edit
+> Continuation Edit Score
+> within Neighborhood Mixed ST
+> After
+> ST
+> First
+> S
+> I
+> 4: G →T
+> 6: + A
+> 0.96
+> 0.88
+> …
+> 3: C →A0.52
+> 3: C →T0.31 S
+> D
+> H-depth lookahead
+> for root scoring
+> Max LSE
+> Best singl econtinuation soft mass
+> over continuations
+> Total
+> LPDP
+> Score
+> Root
+> score
+
+λ Local                          
+
+> Future
+> Correction
+> Edit Actions
+> Shared LPDP core
+> Current DNA seq
+> ATCGACTGC
+> 123456789
+> LPDP Core
+> S
+> I
+> D
+> 5: A →T
+> 7: + G
+> 3:-C
+> 1.23
+> 0.88
+> 0.11
+> …
+> Stage 2
+> Local neighborhood
+> around root child
+> Stage 3
+> Typed Local Candidate Rule
+> (Same Type (ST) edit filtering)
+> Stage 4
+> Local edit -action lookahead graph Stage 5
+> Local re -solving backup
+> 5
+> 4
+> 6
+> D7
+> I
+> retained roots
+> Root -local future correction
+
+Figure 1: Overview of LPDP. LPDP re-solves each reward-guided rollout step at the level of edit actions. From the current sequence xt, it scores all valid substitution, insertion, and deletion root edits using the base-flow score and immediate oracle improvement, and retains a near-best root band for lookahead (Stage 1) . For each retained root, LPDP applies the root edit to obtain a child sequence and defines a site-local neighborhood around the latest edit site, within which continuation edits are scored (Stage 2) . It then applies a typed local candidate rule (Stage 3) : Mixed keeps the local top-K
+
+edits across all edit types, ST-after first ranks the mixed shortlist and then filters it by the same edit type as the current local parent edit, and ST-first first restricts to that edit type and then ranks within the typed subset. These candidates define a bounded H-depth local edit-action lookahead graph used only for root scoring (Stage 4) ; the graph shown is a Mixed example. Finally, LPDP backs up this graph with Max, which selects the best single continuation, or LSE, which aggregates soft mass over plausible continuations (Stage 5) . It applies only the highest-scoring root edit and re-solves from the new sequence at the next rollout step. Wu et al., 2026]. Fixed-length modeling is convenient, but many genomic design problems involve sequences that naturally occur at different lengths, such as regulatory elements, introns, and edit-induced variants. Insertions and deletions are therefore not merely nuisance operations; they are biologically meaningful changes that alter local sequence context. This motivates reward-guided generation methods that can operate directly over variable-length DNA. Among recent generative models, Edit Flows [Havasi et al., 2025] provide such a backbone by generating finite sequences through explicit substitution, insertion, and deletion transitions. This action-level structure exposes more than a token sequence: at an intermediate rollout state, a candidate edit changes both the current sequence and the short local continuations that become available afterward. This setting makes standard diffusion guidance difficult to apply directly: continuous guidance acts through gradients on fixed-dimensional noised states, while many discrete diffusion methods rely on fixed-position or masked-token updates. In contrast, edit flows use valid edit actions that can change sequence length and coordinates. The challenge is to exploit this action geometry at inference time to maximize the reward without expanding the full edit tree. To address this challenge, we propose Local Perturbation Discrete Programming (LPDP) , a training-free, intermediate-state and action-aware reward-tilting method for pretrained DNA edit flows. LPDP treats each rollout decision as a root re-solving problem. At a current sequence xt, it scores all valid one-step root edits, retains a score band of competitive roots, and re-ranks each retained root by solving a bounded local discrete program around the child sequence induced by that root. Rather than searching a global frontier of partial sequences, LPDP asks a root-local question: if this edit is chosen now, what short local continuation makes it valuable? In particular, we consider two design axes for the local discrete program. First, LPDP uses the typed geometry of edit actions to construct local candidate graphs. We compare Mixed , which keeps mixed-type local candidates, ST-after , which first forms a mixed local top-K shortlist and then filters by the previous edit type, and ST-first , which filters by edit type before ranking. These same-type (ST) rules define typed local subgraphs for bounded edit-flow re-solving. Second, LPDP aggregates local futures with either a hard Max backup, which follows the best local continuation, or a soft 2log-sum-exponential (LSE) backup, which aggregates multiple plausible continuations through a soft log-partition. We instantiate LPDP in two regimes. For enhancer optimization, we apply front-loaded reward tilting, where early edits can shape the global regulatory sequence trajectory. For exon–intron–exon inpainting, we apply back-loaded reward tilting, where late edits act after a coarse intron context and splice-boundary candidates have formed. Across these tasks, LPDP improves frozen-oracle reward under comparable search budgets while preserving base-flow and sequence-distribution diagnostics. 
+
+2 Background and Related Work 
+
+Fixed-length DNA generators and reward guidance. Modern DNA generators include masked language models [Ji et al., 2021, Dalla-Torre et al., 2025], discrete diffusion models [Avdeyev et al., 2023, DaSilva et al., 2024, Sarkar et al., 2024, Yang et al., 2026], and flow-matching variants [Gat et al., 2024, Wu et al., 2026]. Existing reward-guided methods, including DRAKES [Wang et al., 2025], SVDD-style guidance [Li et al., 2024], and test-time diffusion refinement [Uehara et al., 2025], mostly act on fixed-length token, mask, or denoising states. LPDP targets a complementary setting: variable-length edit-flow trajectories with explicit insertion, deletion, and substitution actions. Because these fixed-length guidance methods do not directly instantiate on the edit-action state space, we compare against search and particle baselines on the same frozen edit-flow generator. 
+
+Edit flows and typed action geometry. Discrete flow matching defines continuous-time gener-ative processes over discrete objects [Gat et al., 2024]. Edit Flows extend this view to sequence spaces with edit operations, using insertions, deletions, and substitutions as transitions over finite sequences [Havasi et al., 2025]. This transition structure matters for inference-time control. A substitution changes a base while preserving sequence length; an insertion or deletion changes length and shifts downstream coordinates. Thus edit actions induce a typed local geometry that is absent from fixed-position token replacement models. LPDP uses this geometry directly: it scores root edits, constructs local continuation graphs around retained roots, and applies a short discrete program on those graphs. 
+
+Inference-time search and trajectory guidance. Our baselines represent standard ways to allocate test-time reward computation in discrete generation. CEM [Rubinstein, 1999] refits a sampling distribution toward high-scoring sampled elites; beam search [Freitag and Al-Onaizan, 2017] expands a fixed-width frontier of partial trajectories; SMC [Doucet et al., 2001] maintains and resamples a reward-weighted particle population; and TDS-style twisted samplers bias trajectories using twisting potentials [Wu et al., 2023, Whiteley and Lee, 2014, Heng et al., 2020]. These methods spend computation across sampled trajectories, particles, or sequence-level frontiers. LPDP uses a different allocation rule: it first scores all one-step root edits exactly, retains competitive roots, and then re-solves a small local action graph around each retained root. Thus the contrast is not simply search versus no search, but sequence-level frontier breadth versus root-conditioned local re-solving .
+
+Soft discrete programming. The log-sum-exponential Bellman operator is standard in entropy-regularized control, path-integral control, and maximum causal entropy models [Kappen, 2005, Todorov, 2009, Ziebart, 2010]. In those settings, a soft value aggregates multiple high-return futures rather than selecting only one best path. LPDP-LSE uses the same operator on the restricted local graph induced by a retained root, while LPDP-Max corresponds to the low-temperature hard-selection limit. This lets LPDP compare two local backups: a hard exploitation backup over the single best local continuation and a soft backup over the tilted mass of multiple plausible continuations. 
+
+3 Methods 
+
+LPDP is a root-conditioned local re-solving operator for pretrained edit flows with frozen reward oracles. Rather than allocating inference-time computation to a sequence-level frontier, LPDP spends its oracle budget locally around root edits that are already competitive under exact one-step scoring. Figure 1 summarizes the five stages used at each guided rollout step. Importantly, the local lookahead graph is used only to re-rank the current root edit: after the backup, LPDP applies a single root edit and then repeats the same procedure from the new sequence. 33.1 Stage 1: Score all root edits and retain root band 
+
+We consider reward-guided generation with an Edit-Flow model [Havasi et al., 2025] pretrained on DNA sequences. Let X be the set of finite DNA sequences over alphabet V = {A, C, G, T }. For any sequence x ∈ X , let A(x) denote the set of edits that are valid at x. An edit action is written as 
+
+a = ( s, e, v ) ∈ A (x), where s is a valid site, e ∈ { ins , del , sub } is the edit type, and v ∈ V is the nucleotide used for insertion or substitution. For deletion, the token field is ignored. Applying an edit is deterministic; we write f (x, a ) for the sequence obtained by applying a to x.At inference step t, the pretrained edit-flow model defines a Continuous-Time Markov Chain (CTMC) rate over variable-length sequences, supported only on one-edit successors x′ = f (x, a ). The rate 
+
+uθt (x′ | x) is the learned edit-flow transition rate from x to x′ at time t. We convert these rates into a normalized base edit proposal, 
+
+p0(a | x, t ) = uθt (f (x, a ) | x)
+
+P 
+
+> a′∈A (x)
+
+uθt (f (x, a ′) | x) . (1) Thus p0(a | x, t ) is the base-model probability of choosing edit a among all valid one-edit transitions from x at time t. This exposes the edit type, site, and token of each transition as local structure for LPDP, without assuming that any edit type is globally dominant. The reward oracle is denoted by R : X → R. Unlike noised or masked intermediate states in many diffusion samplers, an edit-flow intermediate state is itself a complete DNA sequence. Thus the frozen DNA oracle can be queried on both the current sequence and its one-edit successor. The immediate reward change caused by edit a is 
+
+∆R(x, a ) = R(f (x, a )) − R(x). (2) Given a reward scale β > 0, we define the one-step tilted score 
+
+qt(x, a ) = log p0(a | x, t ) + β ∆R(x, a ). (3) The first term keeps the edit close to the pretrained edit-flow model, while the second term favors edits that increase the reward. LPDP evaluates every valid root edit using Eq. (3). Let 
+
+q⋆t (xt) = max  
+
+> a∈A (xt)
+
+qt(xt, a ) (4) be the best one-step root score. For a tolerance δ ≥ 0, define the uncapped score band 
+
+Bδ (xt) = {a ∈ A (xt) : qt(xt, a ) ≥ q⋆t (xt) − δ} . (5) With a root cap Kroot , the root band used by LPDP is 
+
+Bδ,K root (xt) = TopK Kroot (Bδ (xt); qt(xt, ·)) , (6) where the top-K operation is taken by the one-step score qt. The word “band” refers to a score band around the best one-step edit, not to a genomic interval: the root band contains edits that are competitive under exact one-step scoring, regardless of where they occur in the sequence. The band is LPDP’s first approximation: rather than expanding lookahead at every valid root edit, LPDP spends lookahead only on near-best roots under exact one-step scoring. 
+
+Lemma 1 (Root-band truncation) . Every root edit outside the uncapped band Bδ (xt) has one-step tilted score strictly below q⋆t (xt) − δ; restricting root lookahead to Bδ (xt) thus discards only edits whose exact one-step score is at least δ below the optimum. 
+
+The lemma is deliberately a root-level statement: LPDP trusts exact one-step scoring to identify the root edits worth spending lookahead, while a low one-step edit may in principle have unusually good future value. The proof is in Appendix A.1. 
+
+3.2 Stage 2: Local neighborhood around root child 
+
+For each retained root edit a ∈ B δ,K root (xt), let ya = f (xt, a ) be the child sequence obtained after applying a. LPDP evaluates this root by asking a local continuation question: if a were chosen now, what short sequence of nearby edits would make this child valuable? 4A continuation state z is reached by a sequence of local edits, and aprev denotes the most recent edit used to reach z. Let α(aprev ) denote the anchor site of the previous edit in the current sequence: the substituted site for substitutions, and the nearby resulting site for insertions or deletions. For radius r,LPDP defines the site-local neighborhood 
+
+Nr (z, a prev ) = {(s, e, v ) ∈ A (z) : |s − α(aprev )| ≤ r} . (7) This neighborhood specifies where LPDP is allowed to look after a retained root; the next stage specifies which candidates inside the neighborhood are kept. For an internal lookahead depth i, each continuation edit b ∈ N r (z, a prev ) is scored by the same tilted form, 
+
+qt+i(z, b ) = log p0(b | z, t + i) + β [R(f (z, b )) − R(z)] . (8) 
+
+3.3 Stage 3: Typed local candidate rules 
+
+Let e(a) denote the edit type of action a, and let Kloc be the local cap. A site-local neighborhood 
+
+Nr (z, a prev ) can still contain substitutions, insertions, and deletions after locality truncation. LPDP therefore constructs the final local candidate set C(z, a prev ) ⊆ N r (z, a prev ) through a small family of typed candidate rules. We do not assume that same-type continuations are globally optimal. Instead, we compare three candidate rules, abbreviated as Mixed , ST-after , and ST-first . Mixed is the reference local rule, while ST-after and ST-first are typed local subgraph approximations that trade off mixed-type flexibility, base-prior faithfulness, and local search size. 
+
+Mixed. The mixed-type local set is 
+
+Cnone (z, a prev ) = TopK Kloc (Nr (z, a prev ); p0(· | z, t )) . (9) This keeps the most likely local edits under the base flow, allowing substitutions, insertions, and deletions to compete together. 
+
+Same-type after top-K (ST-after). First form the mixed local shortlist 
+
+eC(z, a prev ) = Cnone (z, a prev ). (10) Then keep same-type edits inside that shortlist: 
+
+Cafter (z, a prev ) = 
+
+n
+
+b ∈ eC(z, a prev ) : e(b) = e(aprev )
+
+o
+
+, (11) with fallback to eC if the filtered set is empty. ST-after first asks which local edits are base-plausible, and only then restricts to the typed subgraph. 
+
+Same-type first (ST-first). The ST-first set is 
+
+Cfirst (z, a prev ) = TopK Kloc ({b ∈ N r (z, a prev ) : e(b) = e(aprev )} ; p0(· | z, t )) , (12) again with fallback to Eq. (9) if the same-type set is empty. ST-first commits to the typed neighborhood before ranking, and is therefore the stronger typed subproblem. no-same after-top-K same-type       
+
+> first
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Relative local search size
+> 1.00
+> 0.43
+> 0.50
+> 1.00
+> 0.49
+> 0.86
+> A. Branch reduction
+> Enhancer candidates
+> Enhancer paths
+> Splice candidates
+> Splice paths
+> after-top-K same-type
+> first
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Top-1 agreement with mixed DP
+> 81% 80%
+> 84% 84%
+> 61% 62%
+> 52%
+> 61%
+> B. Root-decision agreement
+> Enhancer MAX
+> Enhancer LSE
+> Splice MAX
+> Splice LSE
+> after-top-K same-type
+> first
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Fraction retained in mixed top-K
+> 100%
+> tail 0%
+> 92%
+> tail 8%
+> 100%
+> tail 0%
+> 62%
+> tail 38%
+> C. Base plausibility / faithfulness
+> Enhancer Splice
+
+Figure 2: Typed local candidate rules as structured local approximations. We compare the Mixed candidate rule with two same-type (ST) pruning rules under the main 256-step schedule and 16-step guided window. (A) ST rules reduce the retained local search space relative to Mixed. (B) Despite this reduction, they often select the same top root edit as Mixed local DP. (C) ST-after is the conservative typed rule: all retained candidates remain inside the mixed local top-K shortlist, whereas ST-first can introduce candidates outside that shortlist. Full diagnostics, including path-mass efficiency and root-type breakdowns, are in Appendix A.5. 5Proposition 1 (Conservative ST-after pruning) . Every candidate b ∈ C after (z, a prev ) has mixed-type local base-prior rank at most Kloc within Nr (z, a prev ). In contrast, a candidate selected by ST-first can have mixed-type local rank greater than Kloc .
+
+Proposition 1 identifies ST-after as the conservative member of the typed candidate-rule family: it imposes type coherence without introducing edits outside the base mixed top-K shortlist. ST-first instead commits to the typed neighborhood before ranking, which can be useful when the reward favors a more focused edit mode. We therefore report Mixed, ST-after, and ST-first as complementary candidate-rule choices throughout the experiments. Figure 2 summarizes whether these rules reduce local search, preserve the Mixed local-DP root decision, and remain faithful to the base mixed top-K
+
+shortlist. 
+
+3.4 Stage 4: Local edit-action lookahead graph 
+
+Using the candidate rule from Stage 3, LPDP builds a bounded root-local lookahead graph for each retained root. Mathematically, this graph is rooted at ya = f (xt, a ). A node is an intermediate sequence z, and an edge z → f (z, b ) is a valid continuation edit b ∈ C (z, a prev ). Conditioning the candidate set on aprev keeps the graph anchored to the most recent local edit. Let H be the total LPDP lookahead horizon. After a root edit is fixed for evaluation, the graph is expanded for at most H − 1 continuation edits, so H = 1 corresponds to pure one-step root scoring and H > 1 adds hypothetical local continuations below the root. This graph is not a multi-edit commitment: it is used only to compute a root-local future correction, after which LPDP applies a single root edit and re-solves at the next rollout step. The graph remains tractable because the root band, site-local radius, local cap, and horizon are all bounded. 
+
+3.5 Stage 5: Local re-solving backup 
+
+Given a bounded local graph, LPDP computes a root-local continuation value with either a soft LSE backup or a hard Max backup. The terminal value is V0(z, a prev ) = 0 .
+
+Soft LSE backup. Following entropy-regularized control [Kappen, 2005, Todorov, 2009, Ziebart, 2010], we replace the hard maximum over local continuations by a soft log-partition. The LSE backup takes the soft Bellman form: 
+
+V lse  
+
+> h
+
+(z, a prev ) = τ log X 
+
+> b∈C (z,a prev )
+
+exp q(z, b ) + γV lse 
+
+> h−1
+
+(f (z, b ), b )
+
+τ
+
+!
+
+, (13) where τ > 0 is the soft backup temperature and γ ∈ [0 , 1] is a local lookahead discount; C, q, and 
+
+f are as defined in Stages 1–4. This backup assigns high value to a root when its restricted local graph contains substantial reward-tilted mass over short continuations, rather than only a single high-scoring continuation. When γ = 1 , the recursion is exactly the log-partition function over all length-h edit paths in the restricted local graph; Theorem 1 in Appendix A.2 formalizes this path-space interpretation. 
+
+Hard Max backup. The Max backup is 
+
+V max  
+
+> h
+
+(z, a prev ) = max  
+
+> b∈C (z,a prev )
+
+q(z, b ) + γV max  
+
+> h−1
+
+(f (z, b ), b ) , (14) which follows the single best local continuation inside the same restricted graph. By the standard 
+
+τ → 0+ limit of the log-sum-exponential operator, Max is the low-temperature limit of LSE. When 
+
+γ = 1 , the difference between the LSE and Max values is bounded by the soft path entropy term 
+
+τ log |T h(z, a prev )|, where Th(z, a prev ) denotes the finite set of length-h local paths in the restricted graph (Theorem 2, Appendix A.3). Max and LSE are therefore two backup regimes for the same restricted local discrete program: Max exploits the single best local future, while LSE preserves soft path mass over multiple plausible futures. 
+
+Sensitivity to typed pruning. Typed candidate rules and backup operators affect different parts of LPDP. The candidate rule determines which local edit-action graph is solved, whereas the backup determines how paths on that graph are aggregated. Under Max, pruning the mixed graph leaves the local value unchanged whenever the best mixed path is still retained (Proposition 2, Appendix A.6). 6Under LSE, even if the best path remains, pruning can change the value by removing reward-tilted mass from other plausible paths, creating a log-partition gap (Proposition 3, Appendix A.6). Thus, typed candidate rules define the local graph approximation, while Max and LSE define the aggregation regime on that graph. 
+
+Root-local future correction and final score. Given either backup, LPDP scores a root edit a by 
+
+SLPDP (xt, a ) = qt(xt, a ) + λV loc 
+
+> H−1
+
+(f (xt, a ), a ), (15) where V loc is either V max or V lse . Here β controls the reward tilt in the root and continuation scores, while λ ≥ 0 damps the approximate local future correction computed on the truncated graph. LPDP selects the root edit with the largest SLPDP among edits in Bδ,K root (xt).This final score also gives LPDP-LSE a restricted soft-control interpretation. Entropy-regularized control favors high-reward trajectories while penalizing deviations from a reference process, yielding soft values that are log-partitions over reward-tilted reference paths. LPDP-LSE has the same structure only on the restricted root-local graph: it aggregates base-flow path mass tilted by exponentiated reward increments to estimate a local future correction. If H = 1 or λ = 0 , the continuation term vanishes and LPDP reduces to exact one-step planning over the root band. At the other extreme, with λ = 1 , the full root action set, and C(z, a prev ) = A(z) at every intermediate state, LPDP recovers finite-horizon dynamic programming on the full edit graph. Otherwise, LPDP is exact root scoring plus a damped local future correction. 
+
+3.6 The algorithm 
+
+Algorithm 1 combines the five stages into the per-step LPDP procedure: at rollout step t, evaluate all valid root edits exactly via Eq. (3) , retain the score band of near-best roots via Eq. (6) , build a bounded local graph around each retained child using Eqs. (7) and (9) – (12) , back it up with Eq. (14) or Eq. (13) , and apply the maximizer of Eq. (15) . Rolling this one-edit re-solving step out generates the full sequence. 
+
+Algorithm 1 Local Perturbation Discrete Programming (LPDP) 
+
+Require: Current sequence xt; root-band width δ; root cap Kroot ; local radius r; local cap Kloc ; hori-zon H; correction damping λ; candidate rule ρ ∈ { mixed , after , first }; backup ⊕ ∈ { lse , max }. 
+
+> 1:
+
+Evaluate qt(xt, a ) for all a ∈ A (xt) using Eq. (3).  
+
+> 2:
+
+Construct the root band Bδ,K root (xt) using Eq. (6).  
+
+> 3:
+
+for each a ∈ B δ,K root (xt) do  
+
+> 4:
+
+Set ya = f (xt, a ). 
+
+> 5:
+
+Construct the local candidate graph rooted at ya using Eq. (7) and the candidate rule ρ from Eqs. (9)–(12).  
+
+> 6:
+
+Compute V ⊕
+
+> H−1
+
+(ya, a ) using Eq. (14) if ⊕ = max and Eq. (13) if ⊕ = lse . 
+
+> 7:
+
+Compute SLPDP (xt, a ) using Eq. (15).  
+
+> 8:
+
+end for  
+
+> 9:
+
+return 
+
+arg max  
+
+> a∈B δ,K root (xt)
+
+SLPDP (xt, a ).
+
+Across tasks, LPDP uses the same root re-solving recursion, candidate rules, and Max/LSE backups; task-specific choices enter only through the conditioning context, the frozen reward oracle, and the rollout window in which guidance is applied. 
+
+4 Experiments 
+
+Reward models and baselines. We evaluate LPDP on two reward-guided DNA edit-flow tasks with frozen generators and reward models. Enhancer optimization uses a pretrained gReLU oracle [Lal et al., 2025, Wang et al., 2025] to optimize predicted HepG2 activity, while exon–intron–exon splice inpainting uses a frozen SpliceAI reward model [Jaganathan et al., 2019]. These tasks test 7complementary reward regimes: global regulatory sequence patterns for enhancers and local donor– acceptor boundary formation for splicing. All main benchmarks use 500 generated samples per method and a 256-step base edit-flow schedule. Guidance is applied during the first 16 rollout steps for enhancer design and during the last 16 steps for splice inpainting, where coarse intron context and candidate splice-boundary neighborhoods have already formed. Baseline parameters are chosen for broadly comparable effective search depth and uncached oracle-call scale; exact settings are given in Appendix F. Appendix D reports sensitivity ablations over guidance windows, λ, and H, supporting the defaults as cost-controlled operating points. 
+
+Metrics. For enhancer optimization, the primary metric is predicted HepG2 activity; we additionally report 3-mer JSD (k-mer drift), JASPAR motif-profile correlation, and base trajectory log-likelihood (base-flow compatibility). The UMAP panel in Figure 3 is qualitative. For splice inpainting, we report Splice-Geomean (geometric mean of donor and acceptor scores), Splice-Min (weaker of the two), Donor GT Rate (preservation of the canonical GT donor motif), and base trajectory log-likelihood; full definitions are in Appendix C.3. Calls/sample counts uncached oracle evaluations per sample and serves as a cost descriptor; see Appendix F for details. 
+
+Enhancer optimization. The enhancer dataset consists of GRCh38-derived variable-length sequences of 200–400 bp. Each sequence is evaluated by five 200-bp windows, and the task label is the mean of the top two HepG2 oracle predictions across windows. We compare raw base sampling, CEM, beam search, TDS, SMC, and LPDP variants under the same 256-step schedule with a 16-step guided window. Table 1: Enhancer main results. Bold : best, and underline: second-best result. 
+
+Method Pred-Activity ↑ 3-mer JSD ↓ JASPAR Corr ↑ Base traj.-LL ↑ Calls/sample Raw base 1.280 0.02234 0.9886 −7.831 0CEM 6.301 0.02516 0.9867 −7.452 1,141 Beam 7.116 0.02362 0.9863 −7.385 40,388 TDS 7.082 0.02386 0.9860 −7.463 39,822 SMC 5.333 0.02486 0.9865 −7.534 40,214 LPDP-Mixed-Max 7.803 0.02332 0.9846 −7.798 39,761 LPDP-Mixed-LSE 7.813 0.02366 0.9845 −7.803 39,769 LPDP-ST-after-Max 7.814 0.02278 0.9872 −7.853 39,652 LPDP-ST-after-LSE 7.837 0.02253 0.9873 −7.874 39,693 LPDP-ST-first-Max 7.727 0.02387 0.9856 −7.813 39,726 LPDP-ST-first-LSE 7.723 0.02425 0.9864 −7.823 39,801 
+
+LPDP-ST-after-LSE gives the highest predicted HepG2 activity and the lowest 3-mer JSD among the compared guided samplers, while using an oracle-call scale comparable to beam, TDS, and SMC. Raw base CEM Beam TDS SMC LPDP LSE                 
+
+> 0
+> 2
+> 4
+> 6
+> 8
+> Pred-Activity
+> AEnhancer Pred-Activity
+> 246810 12
+> UMAP1
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> UMAP2
+> BEnhancer 3-mer Frequency UMAP
+> Top-dELS reference
+> Background reference
+> Raw base
+> CEM
+> Beam
+> TDS
+> SMC
+> LPDP LSE
+> Ref support
+> Raw base -3.78
+> CEM -3.70
+> Beam -3.72
+> TDS -3.72
+> SMC -3.72
+> LPDP LSE -3.67
+
+Figure 3: Enhancer activity and 3-mer support. (A) Predicted HepG2 activity distributions for generated enhancer sequences. LPDP-ST-after-LSE shifts the distribution toward higher activity. (B) Qualitative 3-mer UMAP visualization. Reference points correspond to top-dELS and background sequences; method contours show generated samples. 8The distribution in Figure 3 shows that the activity gain is broad rather than driven by a few outliers. The quantitative 3-mer JSD indicates that the gain is not accompanied by large global k-mer drift; the UMAP panel is included only as a qualitative support visualization. The comparison between Mixed and same-type variants shows that typed local candidate rules change the search bias without increasing the cost scale. Raw base CEM Beam TDS SMC LPDP Max 
+
+> Method
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Splice Score
+> Splice Score
+
+Figure 4: Splice inpainting score distributions. The box plot shows the distribution of intended-junction splice geomean scores. 
+
+Splice inpainting. For splice inpainting, the model receives two exon contexts and generates the intervening intron. We apply LPDP over the late rollout window, where the intron context has partially formed and donor/acceptor boundary can-didates are present, making the splice reward more actionable. LPDP uses the same root re-solving procedure as in enhancer design; only the conditioning context and frozen reward oracle change. Dataset construction and splice metrics are described in Appendix C.2 and Appendix C.4. The splice benchmark shows the same LPDP mechanism in a different reward geometry. ST-first-Max achieves the highest splice geomean, splice minimum, and donor GT rate, while ST-after-Max is the next strongest variant and has the best base trajectory likelihood. Together with the enhancer results, this pattern supports the interpretation of ST-after and ST-first as complementary typed candidate rules. ST-after is a conservative base-faithful approximation that pairs naturally with LSE when multiple plausible regulatory continuations matter, whereas ST-first defines a stronger typed subproblem that can be advantageous for late-stage splice repair with a more committed local edit mode. Table 2: Splice inpainting main results. Bold : best, and underline: second-best result.                                                                 
+
+> Method Splice-Geomean ↑Splice-Min ↑Donor GT Rate ↑Base traj.-LL ↑Calls/sample Raw base 0.0204 0.0060 0.344 −5.82 0CEM 0.4810 0.4395 0.719 −6.12 21,805 Beam 0.7100 0.6701 0.813 −6.11 20,013 TDS 0.5686 0.5058 0.719 −6.17 21746 SMC 0.1274 0.0728 0.500 −6.52 24,211 LPDP-Mixed-Max 0.8227 0.7978 0.814 −6.01 20,642 LPDP-Mixed-LSE 0.8366 0.8017 0.813 −5.98 22,088 LPDP-ST-after-Max 0.8664 0.8348 0.843 −5.73 20,997 LPDP-ST-after-LSE 0.8385 0.8079 0.750 −5.93 21,825 LPDP-ST-first-Max 0.8713 0.8400 0.881 −5.76 21,222 LPDP-ST-first-LSE 0.8484 0.8216 0.823 −5.91 22,246
+
+5 Conclusion 
+
+LPDP provides inference-time reward tilting for variable-length DNA edit flows by re-ranking root edits with bounded local dynamic programs. The method uses the structure exposed by edit flows— site, type, and token—to allocate uncached oracle computation to locally plausible futures around high-scoring roots. In enhancer optimization, LPDP improves predicted activity under comparable search budgets while preserving base-flow and sequence-distribution diagnostics. In splice inpainting, the same root-scoring and local re-solving core improves intended-junction quality under a different conditioning context and reward oracle. Overall, the typed-rule results support viewing Mixed, ST-after, and ST-first as a candidate-rule family rather than task-specific heuristics. LPDP remains limited by its root-band truncation, bounded site-local graph, and shallow lookahead, which keep inference tractable but may miss long-range or multi-site edit interactions. Because all rewards are frozen predictive oracles, the reported biological improvements are model-based and require downstream experimental validation. 9References 
+
+Pavel Avdeyev, Chenlai Shi, Yuhao Tan, Kseniia Dudnyk, and Jian Zhou. Dirichlet diffusion score model for biological sequence generation. In International Conference on Machine Learning , 2023. Hugo Dalla-Torre, Liam Gonzalez, Javier Mendoza-Revilla, Nicolas Lopez Carranza, Adam Henryk Grzywaczewski, Francesco Oteri, Christian Dallago, Evan Trop, Bernardo P. de Almeida, Hassan Sirelkha-tim, Guillaume Richard, Marcin J. Skwark, Karim Beguir, Marie Lopez, and Thomas Pierrot. Nucleotide transformer: Building and evaluating robust foundation models for human genomics. Nature Methods , 2025. Lucas Ferreira DaSilva, Shreyas Senan, Zain Munir Patel, Aniketh Janardhan Reddy, Sameer Gabbita, Zach Nussbaum, César Miguel Valdez Córdova, Aaron Wenteler, Noah Weber, Tin M. Tunjic, et al. Dna-diffusion: Leveraging generative models for controlling chromatin accessibility and gene expression via synthetic regulatory elements. bioRxiv , 2024. Arnaud Doucet, Nando de Freitas, and Neil Gordon. Sequential Monte Carlo Methods in Practice . Springer, 2001. Adam Frankish, Mark Diekhans, Irwin Jungreis, Julien Lagarde, Jane E. Loveland, Jonathan M. Mudge, Cristina Sisu, James C. Wright, Joel Armstrong, If Barnes, et al. GENCODE 2021. Nucleic Acids Research , 49(D1): D916–D923, 2021. Markus Freitag and Yaser Al-Onaizan. Beam search strategies for neural machine translation. In Proceedings of the First Workshop on Neural Machine Translation , pages 56–60, 2017. Itai Gat, Tal Remez, Neta Shaul, Felix Kreuk, Ricky T. Q. Chen, Gabriel Synnaeve, Yossi Adi, and Yaron Lipman. Discrete flow matching. In Advances in Neural Information Processing Systems , 2024. Marton Havasi, Brian Karrer, Itai Gat, and Ricky T. Q. Chen. Edit flows: Flow matching with edit operations. In 
+
+Advances in Neural Information Processing Systems , 2025. Jeremy Heng, Adrian N. Bishop, George Deligiannidis, and Arnaud Doucet. Controlled sequential monte carlo. 
+
+Annals of Statistics , 48(5):2904–2929, 2020. Karthik Jaganathan, Sofia Kyriazopoulou Panagiotopoulou, James F. McRae, Seyed F. Darbandi, David Knowles, Yang I. Li, Jack A. Kosmicki, Jorge Arbelaez, Wenlu Cui, Gregory B. Schwartz, Eric D. Chow, Evgenia Kanterakis, Hong-He Gao, Armin Kia, Serafim Batzoglou, Stephan J. Sanders, and Kyle K. H. Farh. Predicting splicing from primary sequence with deep learning. Cell , 176(3):535–548, 2019. Yanrong Ji, Zhihan Zhou, Han Liu, and Ramana V. Davuluri. Dnabert: Pre-trained bidirectional encoder representations from transformers model for dna-language in genome. Bioinformatics , 37(15):2112–2120, 2021. Hilbert J. Kappen. Path integrals and symmetry breaking for optimal control theory. Journal of Statistical Mechanics: Theory and Experiment , page P11011, 2005. Avantika Lal, Laura Gunsalus, Surag Nair, Tommaso Biancalani, and Gokcen Eraslan. gReLU: A comprehensive framework for DNA sequence modeling and design. Nature Methods , 22:2253–2257, 2025. Xiner Li, Yulai Zhao, Chenyu Wang, Gabriele Scalia, Gokcen Eraslan, Surag Nair, Tommaso Biancalani, Shuiwang Ji, Aviv Regev, Sergey Levine, and Masatoshi Uehara. Derivative-free guidance in continuous and discrete diffusion models with soft value-based decoding. arXiv preprint arXiv:2408.08252 , 2024. Leland McInnes, John Healy, and James Melville. UMAP: Uniform manifold approximation and projection for dimension reduction. arXiv preprint arXiv:1802.03426 , 2018. Ieva Rauluseviciute et al. Jaspar 2024: 20th anniversary of the open-access database of transcription factor binding profiles. Nucleic Acids Research , 52(D1):D174–D182, 2024. Reuven Y. Rubinstein. The cross-entropy method for combinatorial and continuous optimization. In Methodology and Computing in Applied Probability , pages 127–190, 1999. Anita Sarkar et al. Designing dna with tunable regulatory activity using discrete diffusion. bioRxiv , 2024. The ENCODE Project Consortium, Jill E. Moore, Michael J. Purcaro, Henry E. Pratt, Charles B. Epstein, Noam Shoresh, Jessika Adrian, Trupti Kawli, Carrie A. Davis, Alexander Dobin, et al. Expanded encyclopaedias of DNA elements in the human and mouse genomes. Nature , 583(7818):699–710, 2020. Emanuel Todorov. Efficient computation of optimal actions. Proceedings of the National Academy of Sciences ,106(28):11478–11483, 2009. 
+
+10 Masatoshi Uehara, Xingyu Su, Yulai Zhao, Xiner Li, Aviv Regev, Shuiwang Ji, Sergey Levine, and Tommaso Biancalani. Reward-guided iterative refinement in diffusion models at test-time with applications to protein and dna design. arXiv preprint arXiv:2502.14944 , 2025. Chenyu Wang, Masatoshi Uehara, Yichun He, Amy Wang, Tommaso Biancalani, Avantika Lal, Tommi Jaakkola, Sergey Levine, Aviv Regev, and Hanchen Wang. Fine-tuning discrete diffusion models via reward optimization with applications to dna and protein design. In International Conference on Learning Representations , 2025. Nick Whiteley and Anthony Lee. Twisted particle filters. Annals of Statistics , 42(1):115–141, 2014. Luhuan Wu, Brian L. Trippe, Christian A. Naesseth, David M. Blei, and John P. Cunningham. Practical and asymptotically exact conditional sampling in diffusion models. In Advances in Neural Information Processing Systems , 2023. Weimin Wu, Jiunhau Chen, Xuefeng Song, Jerry Yao-Chieh Hu, and Han Liu. DREAM-DNA: Controlled design via reasoning and matched-flows for DNA. In Machine Learning for Genomics Explorations Workshop at ICLR , 2026. Zhao Yang, Hengchang Liu, Chuan Cao, and Bing Su. D3lm: A discrete dna diffusion language model for bidirectional dna understanding and generation. arXiv preprint arXiv:2603.01780 , 2026. Brian D. Ziebart. Modeling Purposeful Adaptive Behavior with the Principle of Maximum Causal Entropy . PhD thesis, Carnegie Mellon University, 2010. 
+
+11 Appendices 
+
+The appendix provides formal statements for LPDP, diagnostic definitions for same-type candidate rules, dataset and metric details, additional ablations, and reproducibility settings. We keep notation consistent with the main text. 
+
+A Proofs 
+
+A.1 Proof of Lemma 1 
+
+Proof. By definition, 
+
+Bδ (x) = {a : qt(x, a ) ≥ q⋆t (x) − δ}. (16) Therefore, if a / ∈ B δ (x), then 
+
+qt(x, a ) < q ⋆t (x) − δ. (17) Thus any action outside the uncapped root band is at least δ worse than the exact one-step optimum in immediate root score. This proves the claim. The top-Kroot cap used in Eq. (6) is a separate computational cap applied after forming the band. 
+
+A.2 Theorem 1: LPDP-LSE as a local path-space partition function Theorem 1 (LPDP-LSE is a local path-space partition function) . Assume γ = 1 . For any local state z, previous edit aprev , and horizon h, let Th(z, a prev ) be the set of all length-h local edit paths obtained by repeatedly choosing continuation edits from the local candidate rule C. A path is written as 
+
+ξ = ( b0, . . . , b h−1),
+
+with state sequence z0 = z and zi+1 = f (zi, b i). Define its cumulative local score by 
+
+Gh(ξ; z, a prev ) = 
+
+> h−1
+
+X
+
+> i=0
+
+q(zi, b i).
+
+Then the LSE value satisfies 
+
+V lse  
+
+> h
+
+(z, a prev ) = τ log X 
+
+> ξ∈T h(z,a prev )
+
+exp 
+
+ Gh(ξ; z, a prev )
+
+τ
+
+
+
+. (18) 
+
+Proof. We prove the claim by induction on the local planning horizon h. For compactness, define the local path partition function 
+
+Zh(z, a prev ) := X 
+
+> ξ∈T h(z,a prev )
+
+exp 
+
+ Gh(ξ; z, a prev )
+
+τ
+
+
+
+. (19) The theorem is equivalent to showing that 
+
+V lse  
+
+> h
+
+(z, a prev ) = τ log Zh(z, a prev )
+
+for every h.
+
+Base case. When h = 0 , the path set T0(z, a prev ) contains only the empty path. This path applies no continuation edits, so its cumulative score is G0 = 0 . Therefore 
+
+Z0(z, a prev ) = exp(0 /τ ) = 1 .
+
+Taking τ log gives 
+
+τ log Z0(z, a prev ) = τ log 1 = 0 .
+
+This matches the terminal condition of the LSE recursion, 
+
+V lse 0 (z, a prev ) = 0 .
+
+Thus the claim holds for h = 0 .12 Inductive step. Assume the claim holds for horizon h − 1, for every possible local state z′ and previous edit a′:
+
+V lse 
+
+> h−1
+
+(z′, a ′) = τ log Zh−1(z′, a ′).
+
+We prove the statement for horizon h.Consider any path ξ ∈ T h(z, a prev ). By definition, its first edit must be some 
+
+b ∈ C (z, a prev ).
+
+After applying b, the next local state is f (z, b ), and the previous edit for the suffix becomes b. The remaining h − 1 edits therefore form a suffix path 
+
+ξ′ ∈ T h−1(f (z, b ), b ).
+
+Thus every length-h path can be uniquely decomposed as 
+
+ξ = ( b, ξ ′),
+
+where b ∈ C (z, a prev ) and ξ′ ∈ T h−1(f (z, b ), b ). Conversely, every such pair (b, ξ ′) defines a valid length-h path. This one-to-one decomposition lets us rewrite the sum over paths as a sum over first edits and suffix paths. Since γ = 1 , the cumulative score decomposes additively: 
+
+Gh(ξ; z, a prev ) = q(z, b ) + Gh−1(ξ′; f (z, b ), b ). (20) Substituting this decomposition into the partition function gives 
+
+Zh(z, a prev ) = X 
+
+> ξ∈T h(z,a prev )
+
+exp 
+
+ Gh(ξ; z, a prev )
+
+τ
+
+
+
+(21) 
+
+= X 
+
+> b∈C (z,a prev )
+
+X 
+
+> ξ′∈T h−1(f(z,b ),b )
+
+exp 
+
+ q(z, b ) + Gh−1(ξ′; f (z, b ), b )
+
+τ
+
+
+
+(22) 
+
+= X 
+
+> b∈C (z,a prev )
+
+exp 
+
+ q(z, b )
+
+τ
+
+ X 
+
+> ξ′∈T h−1(f(z,b ),b )
+
+exp 
+
+ Gh−1(ξ′; f (z, b ), b )
+
+τ
+
+
+
+. (23) The inner sum is precisely the suffix partition function 
+
+Zh−1(f (z, b ), b ).
+
+By the induction hypothesis, 
+
+Zh−1(f (z, b ), b ) = exp V lse 
+
+> h−1
+
+(f (z, b ), b )
+
+τ
+
+!
+
+.
+
+Therefore 
+
+Zh(z, a prev ) = X 
+
+> b∈C (z,a prev )
+
+exp 
+
+ q(z, b )
+
+τ
+
+
+
+exp V lse 
+
+> h−1
+
+(f (z, b ), b )
+
+τ
+
+!
+
+(24) 
+
+= X 
+
+> b∈C (z,a prev )
+
+exp q(z, b ) + V lse 
+
+> h−1
+
+(f (z, b ), b )
+
+τ
+
+!
+
+. (25) Taking τ log on both sides yields 
+
+τ log Zh(z, a prev ) = τ log X 
+
+> b∈C (z,a prev )
+
+exp q(z, b ) + V lse 
+
+> h−1
+
+(f (z, b ), b )
+
+τ
+
+!
+
+(26) 
+
+= V lse  
+
+> h
+
+(z, a prev ), (27) where the last equality is exactly the LSE backup recursion in Eq. (13) with γ = 1 . This completes the induction. 13 Remark on discounted lookahead. The theorem above states the exact path-partition interpretation for γ = 1 . When γ < 1, Eq. (13) is still a valid soft Bellman recursion, but it is no longer equal to a simple log-partition over additively discounted path scores with a fixed temperature. The reason is that the recursive term appears as 
+
+γV lse 
+
+> h−1
+
+(f (z, b ), b ),
+
+and exponentiating it gives 
+
+exp γV lse 
+
+> h−1
+
+(f (z, b ), b )
+
+τ
+
+!
+
+=
+
+"
+
+exp V lse 
+
+> h−1
+
+(f (z, b ), b )
+
+τ
+
+!# γ
+
+.
+
+Thus the suffix partition function is raised to the power γ, rather than simply contributing an additive discounted path score inside one global partition function. Equivalently, γ < 1 can be viewed as a heuristic local discount or risk/temperature modulation of future path mass. In our use of LPDP, the partition-function statement is therefore used to interpret the undiscounted LSE backup, while the discounted case is treated as the corresponding soft dynamic-programming variant with attenuated future correction. 
+
+A.3 Theorem 2: LPDP-Max as the low-temperature limit Theorem 2 (LPDP-Max is the low-temperature limit) . Assume all local candidate sets are finite and nonempty along the depth-h local graph. For any fixed horizon h, local state z, and previous edit 
+
+aprev ,
+
+lim   
+
+> τ→0+
+
+V lse  
+
+> h
+
+(z, a prev ) = V max  
+
+> h
+
+(z, a prev ).
+
+Moreover, when γ = 1 ,
+
+0 ≤ V lse  
+
+> h
+
+(z, a prev ) − V max  
+
+> h
+
+(z, a prev ) ≤ τ log |T h(z, a prev )|.
+
+Proof. We use the elementary finite-dimensional bound: for any finite vector u = ( u1, . . . , u m),
+
+max  
+
+> i
+
+ui ≤ τ log 
+
+> m
+
+X
+
+> i=1
+
+exp( ui/τ ) ≤ max  
+
+> i
+
+ui + τ log m. (28) In particular, for fixed u, the middle term converges to max i ui as τ → 0+.We first prove the low-temperature limit by induction on h. For h = 0 , both V lse 0 and V max 0 are zero, so the claim is immediate. Assume the claim holds for horizon h − 1. For each candidate 
+
+b ∈ C (z, a prev ), define 
+
+ub(τ ) = q(z, b ) + γV lse 
+
+> h−1
+
+(f (z, b ), b ).
+
+By the induction hypothesis, 
+
+ub(τ ) → u0 
+
+> b
+
+:= q(z, b ) + γV max  
+
+> h−1
+
+(f (z, b ), b ) as τ → 0+.
+
+Because the candidate set is finite, 
+
+max  
+
+> b
+
+ub(τ ) → max  
+
+> b
+
+u0 
+
+> b
+
+.
+
+Applying Eq. (28) to the finite vector {ub(τ )}b∈C (z,a prev ), we obtain 
+
+max  
+
+> b
+
+ub(τ ) ≤ V lse  
+
+> h
+
+(z, a prev ) ≤ max  
+
+> b
+
+ub(τ ) + τ log |C (z, a prev )|.
+
+Taking τ → 0+ gives 
+
+lim   
+
+> τ→0+
+
+V lse  
+
+> h
+
+(z, a prev ) = max  
+
+> b∈C (z,a prev )
+
+q(z, b ) + γV max  
+
+> h−1
+
+(f (z, b ), b ) = V max  
+
+> h
+
+(z, a prev ).
+
+This proves the first claim. For the finite-gap bound, assume γ = 1 . By Theorem 1, the LSE value can be written as the log-partition function over local path scores: 
+
+V lse  
+
+> h
+
+(z, a prev ) = τ log X 
+
+> ξ∈T h(z,a prev )
+
+exp( Gh(ξ; z, a prev )/τ ).
+
+14 Under the same unrestricted-temperature path view, the Max value is the maximum path score: 
+
+V max  
+
+> h
+
+(z, a prev ) = max   
+
+> ξ∈T h(z,a prev )
+
+Gh(ξ; z, a prev ).
+
+Applying Eq. (28) to the finite vector of path scores {Gh(ξ; z, a prev ) : ξ ∈ T h(z, a prev )} yields 
+
+0 ≤ V lse  
+
+> h
+
+(z, a prev ) − V max  
+
+> h
+
+(z, a prev ) ≤ τ log |T h(z, a prev )|.
+
+This proves the gap bound. 
+
+A.4 Proof of Proposition 1 
+
+The ST-after set Cafter is a subset of eC by definition. The set eC is exactly the top-Kloc set under 
+
+p0(b | z, t ) among all actions in Nr (z, a prev ). Therefore every element of Cafter has mixed-type local rank at most Kloc . In contrast, ST-first applies top-K only after restricting to the same-type subset, so an action may be high-ranked within the same-type subset while having mixed-type rank greater than Kloc . ST-first is therefore the more aggressive typed rule: it can bring in candidates whose mixed-type rank lies outside the base shortlist. 
+
+A.5 Same-type diagnostics at the 256/16 operating point 
+
+We diagnose same-type restrictions as typed approximations to mixed local DP. The goal is to measure whether a typed local graph can reduce the local search space while preserving the root decisions and base-shortlist faithfulness of the mixed graph. 
+
+Branch reduction. Let Cmixed = Cnone and let Cρ be the candidate set induced by a typed rule 
+
+ρ ∈ { after , first }. We report the relative candidate size 
+
+CandRatio ρ = |C ρ(z, a prev )||C mixed (z, a prev )| , (29) and the analogous enumerated local path-count ratio. Values below one indicate that the typed rule shrinks the local search space. 
+
+Root-decision agreement with mixed local DP. For a set of retained root edits, define mixed and typed LPDP scores 
+
+Smixed (xt, a ) = qt(xt, a ) + λV mixed  
+
+> H−1
+
+(f (xt, a ), a ), (30) 
+
+Sρ(xt, a ) = qt(xt, a ) + λV ρH−1(f (xt, a ), a ). (31) We report the top-1 agreement 
+
+1
+
+h
+
+arg max  
+
+> a
+
+Sρ(xt, a ) = arg max  
+
+> a
+
+Smixed (xt, a )
+
+i
+
+(32) for both Max and LSE backups. This measures whether typed local re-solving preserves the root decision of mixed local DP. 
+
+Mixed-rank faithfulness. For each candidate retained by a typed rule, we compute its rank under the mixed local base-prior ordering in Nr (z, a prev ). The mixed-rank tail is 
+
+Pr [rank mixed (b) > K loc ] . (33) For ST-after, this value is zero by construction. For ST-first, it can be positive because type filtering happens before ranking. 
+
+LSE mass efficiency. For ST-after, the typed graph is a subset of the mixed local top-K graph. We therefore define the relative soft path-mass efficiency 
+
+MassEff after = Zafter /Z mixed 
+
+|T after |/|T mixed | . (34) Values above one indicate that the retained typed paths carry more LSE mass than expected from their path-count fraction. For ST-first, this ratio is a relative soft-value diagnostic rather than a subset coverage guarantee, because ST-first can introduce candidates outside the mixed top-K shortlist. 15 after-top-K same-type          
+
+> first
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> 3.5
+> 4.0
+> LSE mass efficiency
+> 1.27
+> 3.57
+> 1.43 1.27
+> A. LSE mass efficiency
+> Enhancer Splice
+> Enh
+> after
+> Enh
+> first
+> Splice
+> after
+> Splice
+> first
+> del
+> ins
+> sub
+> 0.00 0.00 0.00 0.00
+> 0.00 0.43
+> 0.00 0.38 0.00 0.57
+> B. Root-type breakdown: mixed-rank tail
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+
+Figure 5: Additional same-type diagnostics. LSE mass efficiency measures retained soft path mass normalized by retained local path count. The mixed-rank tail heatmap shows where typed rules select candidates outside the mixed local top-K shortlist. ST-after has zero tail by construction, while ST-first can introduce lower mixed-rank candidates in a root-type-dependent way. 
+
+A.6 Same-type pruning under Max and LSE Proposition 2 (Exact recovery under harmless same-type pruning) . Fix a local state z, previous edit aprev , and horizon h. Let Cmixed be a mixed-type local candidate rule and Csame ⊆ C mixed 
+
+be a same-type restricted rule at every local state. For the Max backup, suppose there exists an optimal length-h local path under Cmixed whose every edit remains feasible under Csame . Then 
+
+V max ,same  
+
+> h
+
+(z, a prev ) = V max ,mixed  
+
+> h
+
+(z, a prev ).
+
+Proposition 3 (Soft pruning gap) . Assume γ = 1 and finite local path sets. Let T mixed  
+
+> h
+
+and T same 
+
+> h
+
+be the path sets induced by a mixed-type rule and a same-type restricted rule, with T same  
+
+> h
+
+⊆ T mixed  
+
+> h
+
+.Define Zmixed = P 
+
+> ξ∈T mixed
+> h
+
+exp( Gh(ξ)/τ ) and Zsame analogously. Then 
+
+0 ≤ V lse ,mixed  
+
+> h
+
+(z, a prev ) − V lse ,same  
+
+> h
+
+(z, a prev ) = τ log Zmixed 
+
+Zsame 
+
+. (35) This subset statement applies directly to ST-after, whose candidate graph is contained in the mixed local top-K graph. For ST-first, the analogous relative LSE value is a comparison between two different local graphs, because ST-first can select candidates outside the mixed local top-K shortlist. 
+
+Proof of Proposition 2. Because 
+
+Csame (z′, a ′) ⊆ C mixed (z′, a ′) (36) for every local state and previous edit in the recursion, the feasible path set under same-type pruning is a subset of the feasible path set under the mixed-type local graph. Therefore, 
+
+V max ,same  
+
+> h
+
+(z, a prev ) ≤ V max ,mixed  
+
+> h
+
+(z, a prev ). (37) By assumption, there exists a mixed-type optimal path ξ⋆ = ( b⋆
+
+> 0
+
+, . . . , b ⋆h−1) whose every edit remains feasible under the same-type restricted candidate sets. Hence ξ⋆ is feasible for the same-type problem. Let Gh(ξ⋆) be its local path score. Then 
+
+V max ,same  
+
+> h
+
+(z, a prev ) ≥ Gh(ξ⋆) = V max ,mixed  
+
+> h
+
+(z, a prev ). (38) Combining the two inequalities gives equality. 
+
+Proof of Proposition 3. By Theorem 1, the LSE values can be written as local path partition functions: 
+
+V lse ,mixed  
+
+> h
+
+(z, a prev ) = τ log Zmixed , V lse ,same  
+
+> h
+
+(z, a prev ) = τ log Zsame . (39) Since T same  
+
+> h
+
+⊆ T mixed  
+
+> h
+
+and every term exp( Gh(ξ)/τ ) is nonnegative, we have 
+
+Zmixed ≥ Zsame > 0. (40) Therefore, 
+
+V lse ,mixed  
+
+> h
+
+(z, a prev ) − V lse ,same  
+
+> h
+
+(z, a prev ) = τ log Zmixed − τ log Zsame (41) 
+
+= τ log Zmixed 
+
+Zsame 
+
+≥ 0. (42) This proves the stated identity and nonnegativity. 16 B Task-specific instantiations 
+
+Across tasks, LPDP uses the same root re-solving recursion. What changes is the conditioning context, the frozen oracle used to score candidate sequences, and the rollout window where reward guidance is applied. This section clarifies these task-level choices so that the method section can remain task-agnostic. 
+
+Enhancer LPDP-Edit. For enhancer optimization, the state is a variable-length DNA sequence and the action is an explicit edit 
+
+a = ( s, e, v ), (43) where s is the site, e ∈ { sub , ins , del } is the edit type, and v is the inserted or substituted nucleotide when applicable. The frozen gReLU-based oracle scores predicted HepG2 regulatory activity [Lal et al., 2025, Wang et al., 2025]. We apply guidance in the first 16 steps of the 256-step edit-flow schedule because early edits have the largest opportunity to shape the global regulatory sequence pattern before later steps perform local refinements. 
+
+Splice LPDP-Inpaint. For exon–intron–exon inpainting, the generator is conditioned on left and right exon contexts and generates the intervening intron through the same substitution, insertion, and deletion actions. The frozen SpliceAI oracle scores the intended donor and acceptor junctions [Ja-ganathan et al., 2019]. We apply guidance in the last 16 steps of the 256-step schedule because the splice reward becomes most actionable once a coarse intron context and candidate donor/acceptor boundary neighborhoods have formed. At each guided step, the algorithm is unchanged: LPDP scores root edits, retains a root band, and solves the bounded typed local graph around each retained root. 
+
+C Data and metric definitions 
+
+C.1 Enhancer data construction 
+
+The enhancer benchmark is constructed from GRCh38-derived candidate regulatory intervals. The sequence pool contains variable-length DNA sequences of 200–400 bp, including dELS-derived candidates and background regions. dELS and background annotations are derived from ENCODE candidate cis-regulatory element resources [The ENCODE Project Consortium et al., 2020]. Back-ground intervals exclude annotated cCREs, promoters, and blacklist regions so that they provide a broad non-enhancer reference set. For each candidate sequence, five 200-bp windows are extracted. If the sequence is longer than 200 bp, windows are placed at uniformly spaced positions and clamped to remain inside the sequence; if the sequence is exactly 200 bp, the same window is repeated. Each window is evaluated by the frozen gReLU activity oracle [Lal et al., 2025]. The final sequence-level label is the mean of the top two window predictions. The reported enhancer benchmark optimizes the HepG2 activity output. 
+
+C.2 Splice inpainting data construction 
+
+The splice inpainting dataset is constructed from exon–intron–exon triplets extracted from the GRCh38 primary assembly using GENCODE gene annotations [Frankish et al., 2021]. For each annotated transcript, consecutive exon pairs and their intervening intron are extracted as 
+
+(Exon 5′ , Intron , Exon 3′ ) triplets and oriented to the coding strand. Triplets are filtered to retain canonical GT donor and AG acceptor junctions and introns in the target length range used by the edit-flow inpainting model. Each example provides a left exon context, an intron to be generated, and a right exon context; generated introns are inserted back between the two exons for oracle evaluation. For reward evaluation, each exon–intron–exon sequence is placed into the input window required by the frozen SpliceAI backend [Jaganathan et al., 2019]. We extract the donor probability at the intended donor junction and the acceptor probability at the intended acceptor junction. The primary scalar reward is the geometric mean of the two intended junction scores, 
+
+Rsplice (x) = pD(x)A(x), (44) where D(x) and A(x) denote donor and acceptor probabilities returned by the frozen oracle. 17 C.3 Enhancer metrics Predicted activity. Predicted activity is the held-out evaluation score of a generated sequence under the frozen HepG2 activity oracle. If Reval is the evaluation oracle and {xi}Ni=1 are generated sequences, we report N −1 P 
+
+> i
+
+Reval (xi).
+
+Calls/sample. Calls/sample denotes the average number of uncached reward-oracle evaluations required to produce one final sample, i.e., oracle cache misses rather than total oracle requests. Because repeated queries can be served from cache, this quantity is a cost descriptor rather than an optimization objective and need not increase monotonically with deeper lookahead or larger search trees. In the main benchmark, baseline widths, particle counts, and search depths are chosen to keep methods at a broadly comparable oracle-computation scale, although exact request counts and cache-hit behavior may still vary across methods. 
+
+Base trajectory log-likelihood. Base trajectory log-likelihood measures how likely the selected edit trajectory is under the frozen base edit-flow model: 
+
+BaseTrajLL = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+1
+
+TiTi−1X
+
+> t=0
+
+log p0(ai,t | xi,t , t ). (45) Higher values indicate trajectories that remain closer to the base generator’s edit distribution. This metric complements reward: a method can obtain high activity while moving far away from the base flow, or obtain a more moderate reward gain with higher trajectory plausibility. 
+
+3-mer JSD. Let P3 and Q3 be normalized 3-mer count distributions for generated and reference sequences, and let M3 = ( P3 + Q3)/2. We compute 
+
+JSD 3(P3, Q 3) = 12 KL( P3∥M3) + 12 KL( Q3∥M3). (46) Lower values indicate smaller global 3-mer composition drift. This is the primary quantitative distributional metric for enhancer experiments. 
+
+Pooled reference support. For the UMAP visualization in Figure 3, sequences are embedded using normalized 3-mer frequency vectors followed by a fixed two-dimensional UMAP projection [McInnes et al., 2018]. We fit one density model to the union of top-dELS and background reference embeddings and report the average log density of generated samples under this pooled reference model. This score is a qualitative support diagnostic: it asks whether generated samples occupy high-support regions of the combined reference manifold, not whether they are specifically top-dELS-like. The primary quantitative distributional comparison remains 3-mer JSD in the original 3-mer space. 
+
+JASPAR correlation. JASPAR correlation compares motif-scan statistics between generated and reference sequences across a panel of transcription-factor motifs [Rauluseviciute et al., 2024]. Higher values indicate stronger motif-level similarity to the reference distribution. 
+
+C.4 Splice metrics Splice geomean. Splice geomean is the primary scalar splice-quality metric: 
+
+SpliceGeomean( x) = pD(x)A(x). (47) It rewards sequences for which both intended junctions receive high SpliceAI scores. A method must improve both donor and acceptor probabilities to obtain a high geomean. 
+
+Splice minimum. Splice minimum records the weaker of the two intended splice-site scores, 
+
+SpliceMin( x) = min {D(x), A (x)}. (48) It penalizes one-sided solutions where only the donor or only the acceptor becomes strong. 
+
+Donor and acceptor scores. When detailed tables are shown, we also report N −1 P 
+
+> i
+
+D(xi) and 
+
+N −1 P 
+
+> i
+
+A(xi) to show whether a method improves both splice junctions or only one side. 18 Donor GT rate. Donor GT rate is the fraction of generated introns whose intended donor boundary has the canonical GT dinucleotide. This is a sequence-level sanity metric complementary to the SpliceAI donor and acceptor probabilities. 
+
+Base trajectory log-likelihood. Splice base trajectory log-likelihood is computed under the frozen conditional edit-flow inpainting model: 
+
+BaseTrajLL splice = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+1
+
+TiTi−1X
+
+> t=0
+
+log p0(ai,t | xi,t , c i, t ), (49) where ci is the exon context. It should be compared only among splice methods because the conditioning context differs from the enhancer setting. 
+
+Calls/sample. Calls/sample denotes the average number of uncached frozen SpliceAI reward evaluations required to produce one generated intron, i.e., cache misses rather than total oracle requests. As in enhancer optimization, we report it as a cost descriptor rather than as an objective, and use it to check that methods are compared at a broadly similar oracle-computation scale. 
+
+D Appendix experiment suites 
+
+This section reports targeted operating-point ablations for LPDP. We keep the LPDP operator fixed— exact root scoring, root-band selection, bounded local graph construction, the Mixed/ST-after/ST-first candidate rules, and the Max/LSE backups—and vary only inference-time choices. Rather than exhaustively tuning LPDP, these ablations test whether the main operating point is an isolated choice and examine three claims used in the main text: enhancer rewards are most useful in a front-loaded guidance window, splice rewards are most useful in a back-loaded guidance window, and H = 2 is the smallest nontrivial root-local re-solving horizon beyond one-step root scoring. Across tasks, the defaults remain competitive under the chosen oracle budget, while the trends reveal reward–compute trade-offs. Calls/sample is reported as a cost descriptor throughout. 
+
+D.1 Guidance-window position 
+
+The first ablation varies where the 16 guided rollout steps are placed within the 256-step edit-flow schedule. For enhancer optimization, the main text uses a front-loaded window because early edits can shape global regulatory sequence structure. For splice inpainting, the main text uses a back-loaded window because the splice oracle is most informative after an intron context and donor/acceptor boundary candidates have formed. Table 3: Guidance-window position ablation. The LPDP operator and hyperparameters are fixed; only the location of the 16-step guided window changes. For enhancer, the main reward is predicted HepG2 activity. For splice, the main reward is Splice-Geomean. 
+
+Task LPDP variant Guided window Main reward ↑ Calls/sample Enhancer LPDP-ST-after-LSE First-16 7.964 39,581 Enhancer LPDP-ST-after-LSE Middle-16 7.577 39,329 Enhancer LPDP-ST-after-LSE Last-16 7.473 34,370 Splice LPDP-ST-first-Max Early-16 0.614 36,648 Splice LPDP-ST-first-Max Middle-16 0.756 31,243 Splice LPDP-ST-first-Max Late-16 0.834 24,350 
+
+Interpretation. The default window positions match the reward geometry of each task. Enhancer guidance is most effective in the first 16 steps, consistent with early edits shaping global regulatory structure. Splice guidance is strongest in the late window, when a coarse intron and candidate donor/acceptor neighborhoods are already present. This supports using task-dependent guidance windows while keeping the LPDP operator itself fixed. 19 D.2 Guidance-window length 
+
+The second ablation varies how long reward guidance is applied while keeping the task-default position fixed: front-loaded for enhancer and back-loaded for splice. This tests whether the main 16-step guidance window is a stable operating point rather than a single arbitrary schedule choice. Table 4: Guidance-window length ablation. LPDP uses the task-default window position: front-loaded guidance for enhancer and back-loaded guidance for splice.                              
+
+> Task LPDP variant Guided steps Main reward ↑Calls/sample Enhancer LPDP-ST-after-LSE First-8 6.661 19,690 Enhancer LPDP-ST-after-LSE First-16 7.964 39,581 Enhancer LPDP-ST-after-LSE First-32 9.044 78,979 Splice LPDP-ST-first-Max Late-8 0.637 10,615 Splice LPDP-ST-first-Max Late-16 0.834 24,350 Splice LPDP-ST-first-Max Late-32 0.835 40,545
+
+Interpretation. Increasing the guidance window improves enhancer reward, but also increases oracle cost almost proportionally; the 16-step window is therefore used as a cost-controlled main operating point rather than the maximum-reward setting. For splice inpainting, the reward saturates from 16 to 32 late guided steps, so the 16-step window achieves nearly the same splice score with substantially fewer uncached oracle calls. These trends suggest that the default guided windows are not arbitrary single points, but practical reward–compute trade-offs. 
+
+D.3 Future-correction strength 
+
+The LPDP score adds a local future correction to the one-step root score, scaled by λ. We vary λ
+
+while keeping the root band, local graph, candidate rule, backup, and guided window fixed. This tests whether the reported operating point is robust to the relative weight assigned to the local continuation value. Table 5: LPDP future-correction strength ablation. The LPDP operator is fixed and only the strength 
+
+λ of the local future correction is varied.                              
+
+> Task LPDP variant λMain reward ↑Calls/sample Enhancer LPDP-ST-after-LSE 0.25 7.747 38,851 Enhancer LPDP-ST-after-LSE 0.5 7.964 39,581 Enhancer LPDP-ST-after-LSE 1.0 7.781 39,455 Splice LPDP-ST-first-Max 0.25 0.825 26,753 Splice LPDP-ST-first-Max 0.5 0.834 24,350 Splice LPDP-ST-first-Max 1.0 0.653 23,176
+
+Interpretation. Moderate future-correction strength is the most reliable setting across tasks. Setting 
+
+λ = 0 .5 improves over a weaker correction in both tasks, while λ = 1 .0 can over-trust the truncated local graph, especially in splice inpainting. This supports interpreting λ as a damping coefficient for an approximate local future value rather than as an independent reward scale. 
+
+D.4 Local lookahead horizon 
+
+The final ablation varies the LPDP horizon H. At H = 1 , the local continuation term is zero and LPDP reduces to exact one-step root scoring over the retained root band. At H = 2 , each retained root receives one local continuation step, which is the main setting and the smallest nontrivial re-solving horizon. Larger H values test whether deeper local lookahead improves reward enough to justify the additional oracle cost. 20 Table 6: Local lookahead horizon ablation. H = 1 reduces LPDP to one-step root scoring, while 
+
+H = 2 is the main minimal nontrivial root-local re-solving horizon.                               
+
+> Task LPDP variant Horizon HMain reward ↑Calls/sample Enhancer LPDP-ST-after-LSE 17.762 38,909 Enhancer LPDP-ST-after-LSE 27.964 39,581 Enhancer LPDP-ST-after-LSE 37.839 39,421 Splice LPDP-ST-first-Max 10.761 21,293 Splice LPDP-ST-first-Max 20.834 24,350 Splice LPDP-ST-first-Max 30.859 24,154
+
+Interpretation. The horizon ablation separates one-step root scoring from local re-solving. Moving from H = 1 to H = 2 improves the main reward in both tasks, showing that the local future correction contributes beyond exact one-step scoring. Deeper lookahead is not uniformly better: 
+
+H = 3 slightly improves splice reward but does not improve enhancer reward in this diagnostic, and it introduces a larger local search tree whose realized uncached call count depends on cache reuse. We therefore use H = 2 as the main minimal nontrivial horizon, while viewing deeper budget-aware re-solving as a natural extension. 
+
+E Design assumptions and negative ablations 
+
+LPDP deliberately uses a small amount of structured lookahead rather than a large global trajectory search. This section records the main design assumptions and the negative ablations that shaped the final method. 
+
+Root-band approximation. LPDP allocates local lookahead only to roots whose exact one-step tilted score lies near the best root. This does not assert that the globally best finite-horizon trajectory must start inside the band. Instead, it is an oracle-allocation rule: exact root scoring identifies competitive edits, and the expensive local DP is spent only around those roots. 
+
+Root-band truncation. The root band is a budgeted approximation: LPDP spends local lookahead only on roots that are competitive under exact one-step tilted scoring. This may miss a root with low immediate score but unusually favorable long-range continuation value. We therefore interpret the horizon and guidance-window ablations as operating-point diagnostics rather than as a global optimality guarantee. 
+
+Locality assumption. The local perturbation graph assumes that the most informative short con-tinuations of a retained root are found near the most recent edit site. This is an action-geometry assumption of edit flows, not a guarantee about long-horizon global optimality. The operating-point ablations above keep this local graph construction fixed and vary when, how long, and how strongly the local re-solving correction is applied. 
+
+Minimal nontrivial horizon. The main LPDP setting uses local depth H = 2 . At H = 1 , LPDP reduces to exact one-step root selection. At H = 2 , each retained root receives one local continuation step, which is the smallest setting that can re-rank roots using future information. Beam baselines use depth 2, giving them a broader sequence-level frontier over the same two-edit horizon, while LPDP restricts the second step to a root-conditioned local graph. 
+
+Aggressive future twists. We tested increasingly aggressive online twist and lookahead variants in enhancer sanity checks. Conservative settings often tied exact one-step planning, whereas aggressive twists degraded reward or cost-efficiency. These results motivated the final emphasis on root-band selection plus bounded local graph DP rather than more elaborate future-twist heuristics. 21 F Reproducibility details 
+
+All experiments use frozen base edit-flow generators and frozen reward oracles. Main tables use 
+
+N = 500 generated samples per method, while appendix ablations use smaller sample counts when only diagnostic trends are needed. 
+
+Compute resources. All base edit-flow generators and inference experiments were run on a single NVIDIA RTX 3090 GPU. Training the enhancer edit-flow generator for 5,000 steps took approximately 48 hours, and training the splice edit-flow generator for 5,000 steps took approximately 72 hours. After training, all reward-guided experiments use frozen generators and frozen reward oracles. For inference, the main enhancer setting takes approximately 1 minute per generated sample, while the main splice setting takes approximately 3 minutes per generated sample, with variation across baselines depending on oracle-call count and caching. We report calls/sample as the average number of uncached reward-oracle evaluations used to generate one final sample. 
+
+Comparable search budgets. Baseline parameters are selected to match the LPDP horizon and oracle-call scale as closely as possible rather than to tune an oracle-call Pareto frontier. Beam uses depth 2 to match LPDP’s two-edit lookahead horizon H = 2 ; CEM, TDS, and SMC use population or particle counts chosen to yield comparable calls/sample in the main tables. Calls/sample is therefore reported as a cost descriptor for each method. 
+
+Enhancer defaults. The main enhancer LPDP setting uses reward weight β = 20 .0, root-band width δ = 2 .0, root cap Kroot = 16 , local depth H = 2 , local radius r = 1 , local cap Kloc = 8 , LSE temperature τ = 1 .0, discount γ = 1 .0, and future-correction strength λ = 0 .5. The default guided schedule is 256 /16 : 256 base edit-flow steps with reward guidance applied during the first 16 rollout steps. 
+
+Splice defaults. The splice experiments use the same LPDP recursion, candidate rules, and backup definitions, but with exon-conditioned edit-flow states and a frozen SpliceAI reward. The default guided schedule is also based on a 256-step edit-flow rollout, with reward guidance applied during the last 16 rollout steps. This late window is used because donor/acceptor boundary candidates are more meaningful once a coarse intron context has formed. Table 7: Default LPDP and baseline settings for the enhancer benchmark. 
+
+## Parameter Value Samples per method 500 Total edit-flow steps 256 Reward-guided rollout steps 16 Reward weight β 20.0 Root-band width δ 2.0 Root cap Kroot 16 Local depth H 2Local radius r 1Local cap Kloc 8LSE temperature τ 1.0 Discount γ 1.0 LPDP strength λ 0.5 CEM samples / elites / rounds 64 /8/2
+
+## Beam width / depth 8/2
+
+## TDS temperature / support top-K 1.0/8
+
+## SMC particles / depth / proposal top-K 64 /2/32 
+
+22

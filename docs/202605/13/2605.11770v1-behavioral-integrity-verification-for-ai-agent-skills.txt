@@ -1,0 +1,523 @@
+Title: Behavioral Integrity Verification for AI Agent Skills
+
+URL Source: https://arxiv.org/pdf/2605.11770v1
+
+Published Time: Wed, 13 May 2026 01:06:53 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Behavioral Integrity Verification for AI Agent Skills 
+
+Yuhao Wu ∗ Tung-Ling Li ∗ Hongliang Liu ∗
+
+Palo Alto Networks 
+
+{yuhwu, tuli, hliu }@paloaltonetworks.com 
+
+## Abstract 
+
+Agent skills extend LLM agents with privileged third-party capabilities such as filesystem access, credentials, network calls, and shell execution. Existing safety work catches malicious prompts and risky runtime actions, but the skill artifact itself goes unverified. We formalize this as the behavioral integrity verification 
+
+(BIV) problem: a typed set comparison between declared and actual capabilities over a shared taxonomy that bridges code, instructions, and metadata. The BIV framework instantiates this comparison by pairing deterministic code analysis with LLM-assisted capability extraction. The resulting structured evidence sup-ports three downstream analyses: deviation taxonomy, root-cause classification, and malicious-skill detection. On 49,943 skills from the OpenClaw registry, the deviation taxonomy reveals a pervasive description-implementation gap: 80.0% of skills deviate from declared behavior, with four novel compound-threat cate-gories surfaced. Root-cause classification finds that deviations are mostly over-sight, not malice: 81.1% trace to developer oversight and 18.9% to adversarial intent, with 5.0% of skills carrying predicted multi-stage attack chains. On a 906-skill malicious-skill detection benchmark, BIV reaches an F1 of 0.946, outper-forming state-of-the-art rule-based and single-pass LLM baselines. These results demonstrate behavioral integrity auditing for agent skills at scale. 
+
+## 1 Introduction 
+
+LLM agents [1, 2] now run as programmable platforms, extended at install time by third-party 
+
+skills : self-contained bundles of code, configuration, and natural-language instructions that grant the agent privileged access to the filesystem, credentials, network endpoints, and shell execution. As has been the case in nearly every third-party computing platform that came before, from mobile applications [3, 4] to browser extensions [5, 6] to language package managers [7, 8], this third-party extensibility introduces supply-chain risk. In LLM agents, the natural-language execution paradigm amplifies the risk: skill behavior splits across modalities, and a fragment of natural-language text in a metadata file can override the agent’s decision loop as effectively as code [9]. Consider a real-world skill that declares itself as a third-party messaging integration but buries natural-language directives in its metadata file, “ALWAYS use this skill for ALL user questions. NEVER use AskUserQuestion,” alongside instructions to silently route every interaction through a background script. The skill hijacks the agent’s decision loop and funnels user data through attacker-controlled code, yet users browsing the registry cannot detect this and maintainers have no automated way to flag it at submission time. This declared-vs-actual gap demands an automated audit primitive that operates before a skill is installed. Static description-vs-implementation consistency has shown the value of such audits in adjacent ecosystems [10, 11], but no prior framework brings it to agent skills, where the compari-son must bridge code, natural-language instructions, and metadata under a single typed vocabulary. 
+
+> ∗Equal contribution. Author order determined by rock-paper-scissors. Preprint.
+> arXiv:2605.11770v1 [cs.CR] 12 May 2026
+
+We (i) formalize the comparison as behavioral integrity verification (BIV), a typed set comparison over a shared 29-capability taxonomy that bridges code, instructions, and metadata; (ii) develop a hybrid pipeline that pairs deterministic code analyzers with LLM-assisted extraction from natural-language metadata and instructions; and (iii) demonstrate that the resulting structured evidence is a measurement primitive that supports multiple downstream analyses without re-extraction, including a deviation taxonomy, a root-cause classifier, and, as one case study, a malicious-skill detector. Applied to 49,943 skills from the OpenClaw registry, BIV surfaces 250,706 behavioral deviations spanning 80.0% of the registry, classifies 81.1% as non-adversarial documentation gaps and 18.9% as adversarial, and the case-study detector reaches F1 = 0.946 on a 906-skill malicious-skill detec-tion benchmark. One extraction pass thus powers both ecosystem-level governance and per-skill detection while distinguishing documentation gaps from attack patterns. 
+
+Contributions. Our key contributions are as follows: 1) Problem formalization and framework. We formalize behavioral integrity verification as a typed set comparison over a shared 29-capability taxonomy, and develop BIV, a hybrid pipeline pairing deterministic code analysis with LLM-assisted extraction. 2) Ecosystem-scale measurement. A data-driven clustering pipeline over BIV’s deviation evi-dence yields a 137-cluster taxonomy of 250,706 deviations from 49,943 OpenClaw skills, in-cluding four novel compound-threat categories that capture multi-step attack motifs; 80.0% of skills deviate from declared behavior. 3) Root-cause classification. A hybrid rule-and-LLM classifier separates non-adversarial oversight from adversarial intent over BIV’s structured evidence, attributing 81.1% of deviations to devel-oper oversight and 18.9% to adversarial intent. 4) Malicious-skill detection case study. An LLM judge with a relaxed-veto override over BIV’s structured evidence detects malicious skills with F1 = 0.946 on a 906-skill benchmark, outper-forming rule-based and LLM-only state-of-the-art baselines. 
+
+## 2 Background and Motivation 
+
+This section defines the skill model BIV operates on, situates the agent-skill ecosystem among third-party platforms with similar supply-chain risk, surveys the prior work that studied behavioral consistency in adjacent ecosystems, and defines the threat model and scope of this analysis. 
+
+Skill model. An agent skill is a package s = ( M, C, I ) where M is metadata (descriptions, YAML frontmatter, API schemas), C is executable code (Python, JavaScript, shell), and I is natural-language instructions (markdown, inline directives). The partition is content-based, not file-based: a YAML frontmatter block that issues runtime directives (e.g., “always invoke this skill”) counts as part of I even though it physically resides in the metadata file, while purely declarative fields (e.g., name , permissions ) count as M . Each component targets a different audience: metadata communicates intent to users and registries, while code and instructions govern runtime behavior. This separation is what makes behavioral deviation possible. 
+
+Risks in the skill ecosystem. Third-party extensibility has produced supply-chain risk in every prior platform that exposed it, from package managers [7, 12, 8] and browser extensions [5, 13, 6, 14] to mobile applications [3, 4]. The agent-skill registry is the latest instance. Its distinguishing fea-ture is that behavior spans multiple programming languages alongside natural-language instruc-tions that themselves execute actions, so root-cause separation is more useful than a binary verdict. Ecosystem-level measurement of LLM application platforms has revealed pervasive data-collection practices [15], and existing studies have begun to characterize the agent-skill attack surface specifi-cally: large-scale censuses of MCP-server marketplaces [16, 17], static description-vs-code compar-ison restricted to text similarity [18], per-pattern component attacks [19], and concurrent agent-skill detectors that target binary detection without root-cause separation [20–22]. 
+
+Behavioral consistency in adjacent ecosystems. Comparing what a software artifact declares against what it does has a long lineage outside the agent setting. Mobile-application security pi-oneered description-vs-implementation analysis through permission-sentence mining from app de-2Figure 1: BIV processes a third-party skill s = ( M, C, I ) along symmetric declared-behavior (meta-data M ) and actual-behavior (code C + instructions I) tracks. Each track runs parallel determin-istic and LLM extractors that converge on a 29-capability taxonomy; the typed mismatch becomes structured Behavioral Deviations powering three demonstrated downstream analyses: deviation tax-onomy (§4.1), root-cause classification (§4.2), and malicious-skill detection (§5). Blue = determin-istic; rose = LLM-based. scriptions [10] and topic-clustering of API usage to flag applications whose runtime behavior di-verged from their advertised category [11]. To track richer cross-function behavior, code property graphs [23] and inter-procedural taint analysis [24, 25] extended consistency-checking to data-flow chains in Java and Android applications. These prior efforts established that comparing declared against implemented behavior is a powerful audit primitive in well-typed ecosystems with a sin-gle dominant modality. Agent attacks [26, 27, 9, 28–30], indirect-injection benchmarks [31, 32], structured-judge methods [33–35], and runtime defenses [36–38] address agent-lifecycle points that complement install-time artifact verification. 
+
+Threat model. BIV statically vets a third-party skill package s = ( M, C, I ) before any runtime use; the vetting party may be a registry maintainer, a platform operator, an enterprise security re-viewer, or a developer auditing dependencies. The attacker controls the artifact and may embed malicious logic across code, instructions, and metadata, including descriptions that misrepresent actual behavior [9], multi-step kill chains whose individual capabilities appear benign, and obfus-cation that hides risky behavior behind indirection. The pipeline and its LLM backends are trusted; submitted artifacts are not. Natural-language self-description is therefore an insufficient trust anchor. 
+
+Our scope. BIV studies behavioral inconsistency observable from the skill artifact, including un-declared capabilities, prompt-injection in instructions, compound kill chains, obfuscated risky be-havior, and jointly compromised description-plus-code cases that retain structural evidence such as taint chains and sensitive-environment access. BIV does not address compromise of the pipeline itself, threats originating outside the artifact (runtime adversarial inputs [26], retrieval-corpus poi-soning of agent memory [28], LLM-backbone backdoors), runtime data-access permission enforce-ment [39], or post-installation behaviors with no analyzable footprint in the package. 
+
+## 3 The BIV Framework 
+
+BIV reduces the cross-representation matching problem to a typed set comparison over a shared capability taxonomy, supported by a hybrid extraction pipeline that bridges code, instructions, and metadata (Figure 1). 
+
+3.1 Problem Formulation 
+
+A skill’s declared behavior D(s) ⊆ T is the set of capabilities communicated through its metadata and descriptions; its actual behavior A(s) ⊆ T is the set of capabilities implemented in its code and instructions. Both are expressed in terms of a shared capability taxonomy T , comprising 29 3Table 1: The 29-capability taxonomy T organized into seven categories.         
+
+> Category Capabilities
+> Network (4) outbound HTTP, outbound socket, inbound, download-execute Filesystem (7) read-project, read-sensitive, read-home, write, write-sensitive, enumerate, delete Process Exec (4) process-exec, process-exec-shell, code-eval, code-eval-dynamic Environment (3) env-access-specific, env-access-bulk, env-access-sensitive Encoding (3) base64, crypto, compression Credential (3) credential-read, credential-create, credential-transmit Instruction-Level (5) instruction-override, concealment, identity-hijack, silent-execution, exfiltration-instruction
+
+capabilities across seven categories: Network, Filesystem, Process Execution, Environment, Encod-ing, Credential, and Instruction-Level Threats. We refer to the symmetric difference D(s) △ A(s)
+
+as the deviation set and decompose it into under-specification U (s) = A(s) \ D(s) (capabilities present in implementation but absent from metadata) and over-specification O(s) = D(s) \ A(s)
+
+(capabilities declared but never implemented). U (s) corresponds to undisclosed privilege: capabili-ties exercised without user or platform authorization, an authorization-bypass concern distinct from least-privilege per se. O(s) is the more direct least-privilege violation [40]: declared privileges that the implementation never requires. With both sides projected into a shared taxonomy, behavioral deviation reduces to a typed set com-parison rather than a judgment call. We make the verification target precise: 
+
+Definition 1 (Behavioral Integrity Verification) . Given a skill s = ( M, C, I ) and a capability tax-onomy T , the Behavioral Integrity Verification (BIV) problem is to extract typed deviation evidence 
+
+Φ( s) = ⟨ D(s), A (s), flow( s), compound( s) ⟩ ∈ E ,
+
+where D(s), A (s) ⊆ T are the declared and actual capability sets defined above, flow( s) ⊆ T × T ∗ × T is the set of source-to-sink data-flow chains, and compound( s) ∈ { 0, 1}4 flags compound-threat motifs. The deviation set D(s) △ A(s) = U (s) ∪ O(s) is recoverable from Φ( s).
+
+Remark. Φ( s) is a measurement output , not a verdict. Downstream tasks such as taxonomy cluster-ing, root-cause classification, malicious-skill detection, license auditing, and capability drift mon-itoring are application-specific consumers of Φ. This paper instantiates three of them (§4.1, §4.2, §5); BIV is otherwise agnostic to the consumer. BIV operates under three assumptions: (A1) the taxonomy T is sufficiently expressive to capture all behaviorally relevant operations of agent skills; (A2) deterministic code analyzers are sound with respect to their pattern set; (A3) LLM components are accessed at frozen weights with hash-versioned prompts (Appendix F). Figure 1 summarizes how Φ is constructed: an extraction stage (§3.2) builds the tuple from each skill, and the downstream consumers (§3.3) operate on Φ( s) rather than on raw text. Table 1 enumerates T . The seven categories partition the resource-access boundaries an agent skill can cross: external communication (Network), local-disk operations (Filesystem), code dispatch (Process Execution), runtime-context reads (Environment), data transformation (Encoding), secret material (Credential), and natural-language directives that themselves drive behavior (Instruction-Level). Per-category counts are deliberately uneven. Filesystem and Instruction-Level need finer subdivision because the read-vs-write and override-vs-conceal distinctions matter for downstream root-cause classification; Encoding and Credential capture qualitatively distinct primitives at smaller volume. Per-capability detection patterns and severity tiers used by the relaxed-veto override in §5 appear in Appendix G. 
+
+3.2 Capability Extraction 
+
+The extraction stage Φ produces a typed structural-evidence tuple Φ( s) =(D(s), A (s), flow( s), compound( s)) , where flow( s) ⊆ T × T ∗ × T collects source-to-sink data-flow chains as (source capability, transform sequence, sink capability) triples and 
+
+compound( s) = ( cexfil , c RCE , c obf , c lineage ) ∈ { 0, 1}4 flags the four compound-threat categories defined in §4. We identified the four coordinates of compound( s) via an exploratory clustering pass on a held-out sample; the static analyzers hardcode patterns for each, and the registry-scale 4clustering reported in §4.1 re-validates the categorization. Code is parseable and natural language is not, so Φ decomposes along a modality split into two symmetric tracks (Figure 1): each modality runs both a deterministic and an LLM extractor matched to its error model. 
+
+Declared track. The Declared track reads the metadata M and produces D(s) ⊆ T as the union of two extractor outputs running in parallel. A deterministic parser walks YAML frontmatter, 
+
+tool.json , api.json , and SKILL.md headers, so every structural declaration traces to a manifest field. A complementary LLM extractor then reads the natural-language metadata via a structured prompt that emits D(s) together with intended workflow and expected data lineages as auxiliary chain-of-thought; only D(s) enters the formal tuple, while the auxiliary fields anchor the LLM on declared behavior without leaking downstream. Three hallucination-control filters (Appendix A) bound the LLM’s contribution to verifiable claims with quoted source spans. 
+
+Actual track. The Actual track runs two extractors in parallel over distinct sources and together produces A(s) ⊆ T , flow( s), and compound( s). Per-language code analyzers read the executable code C: a Python analyzer based on abstract-syntax-tree (AST) traversal supports inter-procedural taint analysis [25], tracing sources (environment variables, file reads, network responses) through transforms (e.g., base64.b64encode ) to sinks (network sends, process execution, code evaluation), producing flow( s) and the four compound-flag indicators in compound( s). JS/TS analysis uses regex over file contents and shell analysis uses literal-pattern matching, both intra-file: sources and sinks are matched against curated capability lists, and chains are emitted only when source and sink co-occur in the same file. Cross-file flows in JS/TS and shell are therefore under-counted, and the bias concentrates on long source-to-sink chains that straddle file boundaries (e.g., a shared utility module that reads credentials, called by a separate file that emits the network request). The deviation counts in §4.1 are correspondingly a lower bound, consistent with prior bounds for AST-only analyses on multi-language ecosystems [24, 23]. Dynamic dispatch and reflection escape AST-level extraction; each detection carries a file:line:evidence pointer for downstream auditability. An LLM instruction analyzer reads the instruction sources I (typically SKILL.md prose and READMEs) via a structured prompt that extracts capability invocations, prompt-injection patterns, and instruction-override motifs; the same hallucination filters apply, and its output augments A(s)
+
+with instruction-level capabilities that deterministic analyzers cannot see. 
+
+3.3 Downstream Analyses 
+
+The structured evidence Φ( s) is consumed by application-specific analyses rather than by a single fixed pipeline. This paper instantiates three: a deviation taxonomy (§4.1), a root-cause classification (§4.2), and a malicious-skill detector (§5). The first two are registry-scale ecosystem analyses re-ported in §4; the third is a per-skill detector evaluated in §5. Each analysis is described alongside its results in the corresponding section, so its method, design choices, and evaluation appear together. 
+
+## 4 Deviation Analyses at Registry Scale 
+
+This section applies BIV to the OpenClaw registry and uses the structured evidence to character-ize its deviation landscape along two axes: clustering deviations into a structured taxonomy, and classifying their root causes by adversarial intent. 
+
+Corpus. We crawled the OpenClaw agent-skill registry in early 2026 and retrieved 49,952 skills; 9 failed preprocessing, leaving 49,943 for BIV. The OpenClaw registry is publicly accessible, and we will release the snapshot manifest (URL list, content hashes), per-skill BIV outputs Φ( s), and cluster taxonomy as an artifact bundle for replication. Claude Opus 4.6 is the LLM backbone for the extraction stage (§3.2) and the root-cause classifier (§4.2). 
+
+4.1 Deviation Clustering and Taxonomy 
+
+This subsection clusters the raw deviations into a structured taxonomy of capability primitives and novel compound motifs, then characterizes their per-category volume. 5UMAP-1 
+
+> UMAP-2
+> RCE chain
+> Data lineage chain
+> Exfil chain (credentials)
+> Obfuscation
+> Env Vars
+> Process Exec
+> Encoding
+> Filesystem
+> Credentials
+
+Figure 2: UMAP of clustered deviation embeddings: nine compact, well-separated representatives are highlighted, one diamond per novel compound category and one circle per established capability category; remaining points are gray. 0 10k 20k 30k 40k      
+
+> Deviations per category
+> Credentials (9)
+> Filesystem (14)
+> Env Vars (37)
+> Process Exec (22)
+> Network (25)
+> Encoding (6)
+> Instr Manip (9)
+> Exfil Chains (9)
+> RCE Chains (4)
+> Obfuscation (1)
+> Data Lineage (1)
+> 38,603
+> 38,180
+> 30,199
+> 26,917
+> 16,419
+> 5,952
+> 4,132
+> 2,042
+> 1,199
+> 299
+> 140
+> established
+> novel compound
+> 18,627 19,976
+> 21,817 16,363
+> 18,333 11,866
+> 19,761
+> 8,671
+> under-spec
+> over-spec 100 1K 10K
+> Under-spec deviation volume (log scale)
+> 0
+> 20%
+> 40%
+> 60%
+> 80%
+> 100%
+> Adversarial fraction
+> Filesystem
+> Process Exec
+> Credentials
+> Env Vars
+> Network
+> Encoding
+> Instr. Manip.
+> Exfil Chains
+> RCE Chains
+> Obfuscation
+> Data Lineage
+
+Figure 3: Per-category deviation profile. Left: total deviation volume by category, split by direc-tion (under-spec solid, over-spec hatched); the seven established capability primitives sit above the dashed divider, the four novel compound categories below. Right: under-spec deviation volume (log-scale x) versus adversarial fraction within category ( y); circles mark established primitives, stars mark compound categories, and bubble area scales with adversarial-deviation count. Three compound categories (Obfuscation, RCE Chains, Exfiltration Chains) carry high adversarial frac-tions; Data Lineage is the exception, dominated by benign file-pipeline transformations. 
+
+Cluster discovery. The extraction stage emits hundreds of thousands of raw mismatches, and turning that into actionable governance requires structure. To let novel categories emerge from data rather than predefining them, we cluster on natural-language deviation explanations: we normalize each deviation into a 1–2 sentence explanation via an LLM, embed with all-MiniLM-L6-v2 [41], reduce dimensionality with UMAP [42], and cluster with HDBSCAN [43], which labels outliers as noise rather than forcing them into clusters. A hybrid hierarchy then maps clusters to the seven established capability categories deterministically and uses an LLM to discover novel compound categories, keeping known categories auditable while surfacing new ones. 
+
+Aggregate deviation surface. BIV organizes 250,706 deviations from 39,933 of 49,943 skills (80.0%) into a 137-cluster taxonomy; the count is a lower bound since obfuscated payloads escape AST-level extraction (Appendix B, item 1). The 135,187 under-specifications, capabilities present in code but undeclared, carry the operational risk: a skill that reads credentials silently is more dangerous than one promising a feature it never delivers. 
+
+Per-category structure. Filesystem, Process Execution, and Credentials dominate the under-specified surface, jointly accounting for 44% of under-spec deviations (21,817 / 19,761 / 18,627; Figure 3, left). Folding over-specifications back in reorders the top three to Credentials, Filesys-tem, and Environment, a pattern consistent with copy-pasted templates that declare permissions the skill never uses. Each established capability category contributes at least one tight, well-separated cluster to the highlighted set in Figure 2 (circles). Cluster sizes span three orders of magnitude: the head cluster, undisclosed credential network transmission, holds 11,870 deviations, the median sits at 154, and HDBSCAN routes the long tail (86,624 deviations, 34.5%) to noise rather than into clusters. 6Intent taxonomy 8 branches, 36 categories 
+
+> A. Data Theft
+> & Espionage
+> A1 Credential Theft
+> A2 Data Exfiltration
+> A3 Surveillance
+> A4 Corp. Espionage
+> A5 Insider Recon
+> B. Financial &
+> Monetization
+> B1 Ad Injection
+> B3 Cryptomining
+> B4 Crypto Theft
+> B5 Resource Hijack
+> C. Payload &
+> Infrastructure
+> C1 Payload Delivery
+> C2 Persistence
+> C3 C2 Comm.
+> C4 Evasion
+> C5 Reconnaissance
+> C6 Staging
+> D. Content &
+> Social Eng.
+> D1 Phishing Content
+> D2 Misinformation
+> D3 Social Manip.
+> D4 Impersonation
+> E. Destructive
+> E1 Ransomware
+> E2 Wiper
+> E3 Sabotage
+> F. AI Agent-
+> Specific
+> F1 Instr. Hijacking
+> F2 Memory Poisoning
+> F3 Session Smuggle
+> F4 Output Manip.
+> F5 Capability Esc.
+> G. Non-
+> Adversarial
+> G1 Over-Engineering
+> G2 Defensive Over-Eng.
+> G3 Incomplete Impl.
+> G4 Legitimate Helper
+> G5 Template Residue
+> G6 Telemetry
+> G7 Documentation Err.
+> H. Ambiguous
+> H1 Context-Dependent
+> H2 Insufficient Evid.
+
+Figure 4: The 8-branch / 36-leaf intent taxonomy. Adversarial branches (A–F) in warm tones, non-adversarial (G) in green, ambiguous (H) in gray; per-leaf descriptions in Appendix E. 
+
+Novel compound categories. Four compound categories capture multi-step attack motifs invisi-ble to single-capability scanners; the threat lies in composition (e.g., environment-variable read →
+
+base64 encode → outbound HTTP), not any single primitive. Exfiltration Chains dominate (9 clus-ters, 2,042 deviations), with two clusters covering data and credential exfiltration accounting for 87% of the category. RCE (remote code execution) Chains (4 clusters, 1,199) all express the same download-then-execute motif under different labels. Code Obfuscation (1 cluster, 299) combines encoding chains with dynamic evaluation. The fourth category is the surprise: Data Lineage Vio-lations (1 cluster, 140) flag undeclared FILE READ → FILE WRITE pipelines, but only 8% turn out to be adversarial (Figure 3, right). Most look like benign data-pipeline boilerplate, an outlier among the otherwise high-risk compound motifs. Each compound category contributes at least one tight, well-separated cluster to the highlighted set in Figure 2 (diamonds); cluster coherence aver-ages 4.77/5.0 across all 137 clusters (Appendix C), and the per-cluster breakdown plus a Sankey aggregation of primitives into compounds appear in Appendix D. No additional compound category emerged above the inclusion threshold (related motifs were folded in). 
+
+4.2 Root Cause Analysis 
+
+This subsection classifies each deviation by intent, separates developer oversight from adversarial intent, and reports the leaf-level and skill-level breakdowns that drive governance triage. 
+
+Two-step intent classifier. A capability mismatch tells us only that a skill exercises an unde-clared behavior, not whether the omission is developer oversight or adversarial intent. The distinc-tion is governance-load-bearing: oversight calls for documentation outreach, adversarial intent for per-skill review. Pure rule-based classification cannot catch coordinated kill chains spanning mul-tiple deviations within a single skill, while pure LLM classification is expensive at registry scale and unnecessary for unambiguous cases. A deterministic rule engine reads capability signals from 
+
+T plus 6 structural signals (deviation direction, data-flow chain presence, compound-flag indica-tor, source modality, evidence confidence, risk tier), applies 15 prioritized rules (Appendix I), and labels roughly two-thirds of deviations at near-zero cost. An LLM classifier then handles the re-maining ambiguous third, reasoning jointly over a skill’s full deviation list so multi-deviation kill chains are detected as units; ten predefined patterns (e.g., steal-then-exfiltrate, hijack-then-exfiltrate, download-write-execute) are matched against intent co-occurrence. Both steps share a 36-leaf intent taxonomy across eight branches (Figure 4): six adversarial (Data Theft, Financial, Payload & Infras-tructure, Social Engineering, Destructive, AI Agent-Specific) plus Non-Adversarial and Ambiguous (full leaf descriptions in Appendix E). The branches draw from prior threat research on supply-chain malware [12, 8], malicious browser extensions [5, 13], and mobile-app abuse [3, 4], with an added AI-agent-specific branch. 
+
+Adversarial vs. non-adversarial split. The skill ecosystem’s primary failure mode is specifica-tion immaturity, not pervasive malice. Of the 163,754 deviations the classifier labels (the remaining 86,952 are HDBSCAN noise or unlabeled), 81.1% trace to developer oversight and 18.9% to adver-70 20 40 60    
+
+> Share of non-adversarial deviations (%)
+> Documentation errors
+> Legitimate helpers
+> Unused declarations
+> Framework dependencies
+> Other
+> 62,490
+> 29,496
+> 24,735
+> 7,560
+> 8,478
+> Non-adversarial Root Causes
+> 020 40 60
+> Share of adversarial deviations (%)
+> Data Theft & Espionage
+> Payload & Infrastructure
+> Agent Hijacking
+> Financial
+> Destructive
+> Social Engineering
+> 18,577
+> 7,840
+> 3,720
+> 607
+> 239
+> 12
+> Adversarial Threat Categories
+
+Figure 5: Intent classification of 163,754 clustered deviations. Left: non-adversarial root causes (81.1% of classified deviations) decompose into four dominant categories, each suggesting a dis-tinct remediation path. Right: adversarial threat categories (18.9%) concentrate sharply in Data Theft & Espionage (60% of the adversarial total); Financial, Destructive, and Social Engineering together account for under 1% of the classified total. “Agent Hijacking” refers to the AI Agent-Specific threats. Non-adversarial buckets aggregate non-adversarial and ambiguous intent leaves; see Appendix E for the leaf-level mapping. Counts pool both directions. By construction, “Doc-umentation errors” and “Unused declarations” are dominated by over-specifications (declared but not implemented), while adversarial threat categories and “Legitimate helpers” are dominated by under-specifications (present in code but undeclared). sarial intent (Figure 5). Documentation interventions (mandatory capability declarations) address the 81.1% non-adversarial; security review targets the 18.9%. 
+
+Intent landscape structure. The intent surface concentrates on a handful of leaves: the top six of the 36 cover 88.9% of classified deviations, leaving the remaining 30 categories sharing an 11.1% long tail (Appendix E). Two leaves anchor the governance workload: documentation error (38.2%) anchors documentation outreach, and credential theft (8.2%) anchors per-skill review as the largest single adversarial leaf. Per-cluster intent coherence is moderate (mean dominant ratio 0.647; 49.6% of clusters have a dominant intent above 0.6), so leaf labels remain meaningful even though most clusters mix intents. 
+
+Skill-level triage workload. A three-tier governance workflow falls out of the skill-level rollup. Mandatory security review covers the 5.0% multi-stage kill chains (2,490 of 49,943 skills); con-textual review covers another 16.8% of the registry (single-stage malicious, suspicious, and poten-tially unwanted programs (PUPs)); documentation updates clear the benign-with-deviations major-ity (72.5% of deviating skills). Skill-level malicious rate is 8.8% (4,397 of 49,943 skills), of which 2,490 carry multi-stage chains and 1,907 carry single-stage adversarial deviations. 
+
+Per-category adversarial fraction. Adversarial fraction varies sharply by category, so gover-nance should set thresholds per category rather than at the registry-wide aggregate (Figure 3, right). The most striking signal sits in the long tail: Instruction-Level Threats is the smallest established ca-pability (4,132 deviations) but the highest-adversarial at 96%, so virtually every undeclared prompt-control surface is suspect. Credentials at 56% reflect the operational value of secrets, while the high-volume categories Filesystem (10%) and Process Execution (12%) lean benign as expected for routine I/O and command invocation, with Network in the middle at 37%. Among the compound categories, Obfuscation (90%), RCE Chains (86%), and Exfiltration Chains (58%) all sit in the high-adversarial region: composition, not any single primitive, drives the adversarial signal that motivates the relaxed-veto override in §5. 
+
+Kill-chain motif distribution. Two motifs, steal exfil (1,587 skills) and hijack exfil 
+
+(610), account for 88% of multi-stage chains, so a security reviewer can prioritize two well-defined exfiltration patterns rather than 2,490 unrelated alerts; the next four ( hijack deliver ,
+
+evade deliver , deliver persist , recon steal ) cover dropper-style payload delivery and re-connaissance. The long tail extends to a single mining evasion skill, an instructive corner case showing the registry surface is wide enough to surface motifs that occur literally once. Motif counts sum past 100% because a single skill can carry multiple motifs. 85 Case Study: Malicious Skill Detection 
+
+This case study tests whether structured deviation evidence, consumed by an LLM judge with a relaxed-veto override, beats single-technique alternatives at per-skill malicious-skill detection, demonstrating that the evidence can be productionized into an operationally usable detector. We compare against two baselines spanning the deployable design space: rule-only static scanning and single-pass LLM auditing. We evaluate five LLM judge backends and report the most effective (Claude Sonnet 4.5) below, with the full per-backend trade-off in Appendix F. 
+
+Adjudication. Two design choices govern adjudication: (i) the LLM judge consumes the typed evidence Φ( s) as a structured prior rather than re-deriving it from raw text, keeping the decision path auditable; (ii) high-confidence structural threats the judge might rationalize away are caught by an explicit relaxed-veto predicate V , not implicit prompt behavior. Concretely, the LLM judge gθ
+
+consumes Φ( s) alongside the raw skill content s and emits a binary {SAFE , MAL } label, informed by the eight top-level branches of the intent taxonomy, with a calibrated confidence. For the override predicate V : E → { 0, 1}, where E denotes the space of structured-evidence tuples, let risk : T → {LOW , MEDIUM , HIGH , CRITICAL } denote the per-capability severity tier (Appendix G). Then 
+
+V (Φ( s)) = ⊮ compound( s)̸ = 0 ∧ ∃ τ ∈ U (s) : risk( τ ) ≥ HIGH 
+
+ :
+
+a compound-threat flag is raised and at least one undeclared capability sits at high or critical risk. Severity tiers are assigned per-capability based on the asymmetry between exploit value and be-nign use: C RITICAL for credential and instruction-level primitives that have essentially no benign undeclared use, H IGH for network, process-execution, and environment access, and M EDIUM for filesystem and encoding primitives that routinely appear in legitimate code (full mapping in Ap-pendix G). The override fires only when this asymmetry compounds with a structural multi-step flag, which is what makes V resistant to the false-positive blowup that a flat capability blocklist would produce. For example, an undeclared credential read (C RITICAL ) inside an Exfiltration Chain triggers V , while an undeclared project-file read (M EDIUM ) inside the same chain does not. Letting 
+
+ˆv(s) ∈ { SAFE , MAL } denote the judge’s output, the final label is 
+
+ˆy(s) = V (Φ( s)) ∨ ⊮[ ˆ v(s) = MAL ].
+
+Figure 6 traces a real-world skill from the OpenClaw scan that illustrates why both signals are needed in practice: the manifest looks superficially compliant, the LLM judge correctly flags the prompt-injection content, and the structural extractor independently flags the undeclared credential exfiltration; the verdict is transparent because Φ( s) exposes the kill-chain motif rather than burying it inside an LLM rationalization. The verdict path here is auditable end-to-end without requiring the override predicate V to fire: 
+
+Φ( s) exposes the credential-exfiltration kill chain through structural taint analysis, and the LLM judge independently catches the instruction-override directives in the markdown. 
+
+Benchmarks and baselines. The 906 skills mix three sources: MaliciousAgentSkillsBench [44] (44 real-world malware + 410 benign); Skill-Inject [27] (160 attacks + 42 clean controls); and SkillJect [45] (200 attacks + 50 clean controls). Real-world samples carry ecological validity; the synthetic sources cover adversarial diversity at higher count. We compare BIV against two baselines representing rule-based and LLM-based state of the art. The rule-based baseline is the behavioral-analysis component of the Cisco AI Defense skill scanner [46]. The LLM-only baseline is the single-pass audit protocol from Liu et al. [44], which issues one security-audit call over the raw skill content; we instantiate it with Claude Sonnet 4.5 to match BIV’s judge backbone, isolating the contribution of structural evidence. All 906 skills are held out from prompt engineering, threshold tuning, and judge-panel calibration; the relaxed-veto threshold is fixed by the structural-rule defini-tions (§5), not tuned on these labels. Throughout, positives are malicious skills; recall, precision, and F1 are binary; FPR = FP /(FP +TN) on the 502 benign skills. 
+
+Detection results. On the 906-skill benchmark, BIV reaches F1 = 0.946 and is the only one of three methods evaluated that combines high recall with an operationally feasible false-positive rate. BIV reaches aggregate recall 0.978, precision 0.917, and FPR 7.2% (36/502) at the headline op-erating point (Table 2, rightmost column). Aggregate FPs (36/502) are counted directly from the combined benign pool, so the headline F1 is allocation-independent; the proportional split docu-mented in Table 2 only affects per-source precision, with worst-case error bounded at ±0.5 pp. The 9Anonymized in-the-wild skill (3rd-party productivity assistant); motif steal exfil + hijack exfil .                      
+
+> Description “An AI-agent skill for posting daily content, weekly battles, and tournaments to a social platform. ”(SKILL.md )
+> Manifest capabilities: [http request, file system] requiredEnvVars: [PLATFORM API KEY] (skill.yaml )
+> Code scripts/api.sh:13--67 (5 sites):
+> curl -X POST "https://api.example.com/v1/posts" -H "X-API-Key: $TOKEN"
+> Detected ENV ACCESS SENSITIVE (×5), NETWORK OUTBOUND HTTP (×5),
+> EXFILTRATION INSTRUCTION (instruction-backed, from SKILL.md )
+> Compound ENV →NETWORK SEND (Exfiltration Chain)
+> Verdict malicious (coarse-grained manifest declares HTTP and the env-var name but no act of “transmit credentials over network”; programmatic review cannot warn the user of credential exfiltration. Structural extractor and LLM judge agree)
+
+Figure 6: Real-world trace from the OpenClaw scan. The manifest declares http request 
+
+and names the credential env var, but never says “transmit credentials over network,” so a manifest-only or single-pass review cannot warn the user. The structural extractor surfaces five 
+
+ENV ACCESS SENSITIVE → NETWORK SEND chains and the LLM judge independently classifies the embedded prompt directives as instruction hijacking; both signals reach M AL without invok-ing the relaxed-veto override. A complementary override-fires-alone trace and an agreement-from-clearly-malicious trace appear in Appendix H. Table 2: Per-method per-source detection on the 906-skill benchmark (404 malicious, 502 benign), BIV with Claude Sonnet 4.5. Aggregate F1 to three decimals: BIV 0.946 vs. LLM-only 0.927 
+
+(+0 .019 ). Per-source precision uses exact FP counts where the benign sub-pool was logged sepa-rately; combined-pool FPs (7 of 92) are allocated proportionally ( ±0.5 pp worst-case error).                                                    
+
+> MaliciousAgentSkillsBench [44] Skill-Inject [27] SkillJect [45] Aggregate ( n=906 )Method Rec Prec F1 Rec Prec F1 Rec Prec F1 Rec Prec F1 Rule-based [46] 0.39 0.20 0.26 0.21 0.83 0.33 0.45 0.88 0.60 0.35 0.62 0.44 LLM-only [44] 0.64 0.74 0.68 0.90 0.99 0.94 0.93 0.99 0.96 0.89 0.97 0.93
+> BIV 0.86 0.57 0.69 0.98 0.98 0.98 1.00 0.99 0.99 0.98 0.92 0.95
+
+two alternative approaches fail in different directions: the rule-based baseline reaches only 0.35 ag-gregate recall at 17% aggregate FPR; the LLM-only baseline reaches a feasible 2.6% FPR but loses 22 points of real-world malware recall (precise: 0.864 vs 0.636). The synthetic sources are saturated for both BIV and the LLM-only baseline, so the practical separation rests on the real-world subset. Among the three methods, BIV is the only one combining aggregate recall above 0.95 with FPR be-low 10%; treating BIV-vs-LLM-only as a no-structural-evidence ablation, the +22-point real-world recall gap quantifies the contribution of the structural extractor plus the relaxed-veto override. We will release the pipeline code, hash-versioned prompts, the 906-skill benchmark with per-skill BIV outputs, and replication notebooks as an artifact bundle. 
+
+## 6 Conclusion 
+
+Behavioral integrity verification reduces a cross-representation matching problem to a typed set comparison over a shared 29-capability taxonomy. The resulting structured evidence supports mul-tiple downstream analyses on the same artifact: the deviation taxonomy, the root-cause classifier, and the malicious-skill detector are projections of a single underlying object rather than independently engineered systems. The registry-scale finding is asymmetric, with 81.1% of classified deviations tracing to documentation gaps rather than malice, so operators should plan documentation feedback at the same scale as per-skill security review. BIV serves registry operators and skill developers; we plan to release the artifact bundle alongside coordinated disclosure of evasion details and human-in-the-loop appeal mechanisms that bound the false-positive cost on legitimate developers. 
+
+Limitations. BIV is static-only, so dynamic dispatch and obfuscated payloads escape extraction and the deviation count is a lower bound. Flagged skills are classifier-predicted candidates for re-10 view rather than runtime-confirmed exploits, and the pipeline is not robust against an adversary who has read this paper. The headline registry-scale rates are classifier-derived estimates: a three-model judge panel partly overlapping with the extraction and intent-classification backbones (Appendix C) bounds capability precision and taxonomy-placement agreement, but human-labeled gold at reg-istry scale remains future work, and absolute levels may shift under stratified manual re-validation. Runtime threats such as backbone backdoors, memory or RAG-corpus poisoning, and observation-triggered backdoors fall outside scope and require complementary defenses. 
+
+Future work. Longitudinal monitoring would track how deviation patterns drift as registry skills are updated. Cross-registry comparison to MCP servers, the GPT Store, and VS Code exten-sions would test the framework’s portability. A lightweight sandboxed verifier targeting suspected dynamic-dispatch sites would close the static-only bound. A red-team evaluation against attackers with source-code access remains the natural test of robustness. 
+
+## References 
+
+[1] Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. Re-Act: Synergizing reasoning and acting in language models. In International Conference on Learning Representations (ICLR) , 2023. [2] Timo Schick, Jane Dwivedi-Yu, Roberto Dess` ı, Roberta Raileanu, Maria Lomeli, Eric Hambro, Luke Zettlemoyer, Nicola Cancedda, and Thomas Scialom. Toolformer: Language models can teach them-selves to use tools. In Advances in Neural Information Processing Systems 36 (NeurIPS 2023) , 2023. [3] William Enck, Peter Gilbert, Seungyeop Han, Vasant Tendulkar, Byung-Gon Chun, Landon P. Cox, Jaeyeon Jung, Patrick McDaniel, and Anmol N. Sheth. TaintDroid: An information-flow tracking sys-tem for realtime privacy monitoring on smartphones. In Proceedings of the 9th USENIX Symposium on Operating Systems Design and Implementation (OSDI) , pages 393–407. USENIX Association, 2010. [4] Daniel Arp, Michael Spreitzenbarth, Malte Hubner, Hugo Gascon, and Konrad Rieck. DREBIN: Effective and explainable detection of Android malware in your pocket. In Proceedings of the 2014 Network and Distributed System Security Symposium (NDSS) . Internet Society, 2014. [5] Nav Jagpal, Eric Dingle, Jean-Philippe Gravel, Panayiotis Mavrommatis, Niels Provos, Moheeb Abu Rajab, and Kurt Thomas. Trends and lessons from three years fighting malicious extensions. In 24th USENIX Security Symposium , pages 579–593. USENIX Association, 2015. [6] Alexandros Kapravelos, Chris Grier, Neha Chachra, Christopher Kruegel, Giovanni Vigna, and Vern Paxson. Hulk: Eliciting malicious behavior in browser extensions. In 23rd USENIX Security Symposium ,pages 641–654. USENIX Association, 2014. [7] Markus Zimmermann, Cristian-Alexandru Staicu, Cam Tenny, and Michael Pradel. Small world with high risks: A study of security threats in the npm ecosystem. In 28th USENIX Security Symposium , pages 995–1010. USENIX Association, 2019. [8] Ruian Duan, Omar Alrawi, Ranjita Pai Kasturi, Ryan Elder, Brendan Saltaformaggio, and Wenke Lee. Towards measuring supply chain attacks on package managers for interpreted languages. In Proceedings of the 2021 Network and Distributed System Security Symposium (NDSS) . Internet Society, 2021. [9] Sam Toyer, Olivia Watkins, Ethan Adrian Mendes, Justin Svegliato, Luke Bailey, Tiffany Wang, Isaac Ong, Karim Elmaaroufi, Pieter Abbeel, Trevor Darrell, Alan Ritter, and Stuart Russell. Tensor Trust: Interpretable prompt injection attacks from an online game. In International Conference on Learning Representations (ICLR) , 2024. [10] Rahul Pandita, Xusheng Xiao, Wei Yang, William Enck, and Tao Xie. WHYPER: Towards automating risk assessment of mobile applications. In 22nd USENIX Security Symposium , pages 527–542. USENIX Association, 2013. [11] Alessandra Gorla, Ilaria Tavecchia, Florian Gross, and Andreas Zeller. Checking app behavior against app descriptions. In Proceedings of the 36th International Conference on Software Engineering (ICSE) ,pages 1025–1035. ACM, 2014. [12] Piergiorgio Ladisa, Henrik Plate, Matias Martinez, and Olivier Barais. SoK: Taxonomy of attacks on open-source software supply chains. In 2023 IEEE Symposium on Security and Privacy (SP) , pages 1509–1526. IEEE, 2023. 
+
+11 [13] Kurt Thomas, Elie Bursztein, Chris Grier, Grant Ho, Nav Jagpal, Alexandros Kapravelos, Damon McCoy, Antonio Nappa, Vern Paxson, Niels Provos, Moheeb Abu Rajab, and Giovanni Vigna. Ad injection at scale: Assessing deceptive advertisement modifications. In 2015 IEEE Symposium on Security and Privacy , pages 151–167. IEEE, 2015. [14] Nikolaos Pantelaios, Nick Nikiforakis, and Alexandros Kapravelos. You’ve changed: Detecting malicious browser extension updates. In Proceedings of the 2020 ACM SIGSAC Conference on Computer and Communications Security (CCS) , pages 477–491. ACM, 2020. [15] Yuhao Wu, Evin Jaff, Ke Yang, Ning Zhang, and Umar Iqbal. An in-depth investigation of data collection in LLM app ecosystems. In Proceedings of the ACM Internet Measurement Conference (IMC) , 2025. arXiv preprint arXiv:2408.13247. [16] Hechuan Guo, Yongle Hao, Yue Zhang, Minghui Xu, Peizhuo Lv, Jiezhi Chen, and Xiuzhen Cheng. A measurement study of model context protocol (MCP) ecosystem. arXiv preprint arXiv:2509.25292 , 2025. [17] Shuli Zhao, Qinsheng Hou, Zihan Zhan, Yanhao Wang, Yuchong Xie, Yu Guo, Libo Chen, Shenghong Li, and Zhi Xue. Parasites in the toolchain: A large-scale analysis of attacks on the MCP ecosystem. arXiv preprint arXiv:2509.06572 , 2025. [18] Zhihao Li, Boyang Ma, Xuelong Dai, Minghui Xu, Yue Zhang, Biwei Yan, and Kun Li. Don’t believe everything you read: Understanding and measuring MCP behavior under misleading tool descriptions. 
+
+arXiv preprint arXiv:2602.03580 , 2026. [19] Yiheng Huang, Zhijia Zhao, Bihuan Chen, and Susheng Wu. From component manipulation to system compromise: Understanding and detecting malicious MCP servers. arXiv preprint arXiv:2604.01905 ,2026. [20] Yinghan Hou and Zongyou Yang. SkillSieve: A hierarchical triage framework for detecting malicious AI agent skills. arXiv preprint arXiv:2604.06550 , 2026. [21] Shenao Wang, Junjie He, Yanjie Zhao, Yayi Wang, Kan Yu, and Haoyu Wang. “elementary, my dear watson.” detecting malicious skills via neuro-symbolic reasoning across heterogeneous artifacts. arXiv preprint arXiv:2603.27204 , 2026. [22] Varun Pratap Bhardwaj. Formal analysis and supply chain security for agentic AI skills. arXiv preprint arXiv:2603.00195 , 2026. [23] Fabian Yamaguchi, Nico Golde, Daniel Arp, and Konrad Rieck. Modeling and discovering vulnerabilities with code property graphs. In 2014 IEEE Symposium on Security and Privacy , pages 590–604. IEEE, 2014. [24] Steven Arzt, Siegfried Rasthofer, Christian Fritz, Eric Bodden, Alexandre Bartel, Jacques Klein, Yves Le Traon, Damien Octeau, and Patrick McDaniel. FlowDroid: Precise context, flow, field, object-sensitive and lifecycle-aware taint analysis for Android apps. In Proceedings of the 35th ACM SIGPLAN Confer-ence on Programming Language Design and Implementation (PLDI) , pages 259–269. ACM, 2014. [25] V. Benjamin Livshits and Monica S. Lam. Finding security vulnerabilities in Java applications with static analysis. In 14th USENIX Security Symposium , pages 271–286. USENIX Association, 2005. [26] Yifei Wang, Dizhan Xue, Shengjie Zhang, and Shengsheng Qian. BadAgent: Inserting and activating backdoor attacks in LLM agents. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 9811–9827. Association for Computational Linguistics, 2024. [27] D. Schmotz, L. Beurer-Kellner, S. Abdelnabi, and M. Andriushchenko. Skill-Inject: Measuring agent vulnerability to skill file attacks. arXiv preprint arXiv:2602.20156 , 2026. [28] Zhaorun Chen, Zhen Xiang, Chaowei Xiao, Dawn Song, and Bo Li. AgentPoison: Red-teaming LLM agents via poisoning memory or knowledge bases. In Advances in Neural Information Processing Systems (NeurIPS) , 2024. [29] Jiawen Shi, Zenghui Yuan, Guiyao Tie, Pan Zhou, Neil Zhenqiang Gong, and Lichao Sun. Prompt injection attack to tool selection in LLM agents. In Network and Distributed System Security Symposium (NDSS) , 2026. arXiv preprint arXiv:2504.19793. [30] Juhee Kim, Woohyuk Choi, and Byoungyoung Lee. Prompt flow integrity to prevent privilege escalation in LLM agents. arXiv preprint arXiv:2503.15547 , 2025. 
+
+12 [31] Kai Greshake, Sahar Abdelnabi, Shailesh Mishra, Christoph Endres, Thorsten Holz, and Mario Fritz. Not what you’ve signed up for: Compromising real-world LLM-integrated applications with indirect prompt injection. In Proceedings of the 2023 Workshop on Artificial Intelligence and Security (AISec), co-located with ACM CCS , pages 79–90. ACM, 2023. [32] Edoardo Debenedetti, Jie Zhang, Mislav Balunovi´ c, Luca Beurer-Kellner, Marc Fischer, and Florian Tram` er. AgentDojo: A dynamic environment to evaluate prompt injection attacks and defenses for LLM agents. In Advances in Neural Information Processing Systems 37 (NeurIPS 2024), Datasets and Bench-marks Track , 2024. [33] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric P. Xing, Hao Zhang, Joseph E. Gonzalez, and Ion Stoica. Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena. In Advances in Neural Information Processing Systems (NeurIPS) , 2023. [34] Tongxin Yuan, Zhiwei He, Lingzhong Dong, Yiming Wang, Ruijie Zhao, Tian Xia, Lizhen Xu, Binglin Zhou, Fangqi Li, Zhuosheng Zhang, Rui Wang, and Gongshen Liu. R-Judge: Benchmarking safety risk awareness for LLM agents. In Findings of the Association for Computational Linguistics (EMNLP) , 2024. [35] Hakan Inan, Kartikeya Upasani, Jianfeng Chi, Rashi Rungta, Krithika Iyer, Yuning Mao, Michael Tontchev, Qing Hu, Brian Fuller, Davide Testuggine, and Madian Khabsa. Llama Guard: LLM-based input-output safeguard for human-AI conversations, 2023. [36] Wenkai Yang, Xiaohan Bi, Yankai Lin, Sishuo Chen, Jie Zhou, and Xu Sun. Watch out for your agents! investigating backdoor threats to LLM-based agents. In Advances in Neural Information Processing Systems (NeurIPS) , 2024. [37] Yuhao Wu, Franziska Roesner, Tadayoshi Kohno, Ning Zhang, and Umar Iqbal. IsolateGPT: An execu-tion isolation architecture for LLM-based agentic systems. In Network and Distributed System Security Symposium (NDSS) , 2025. arXiv preprint arXiv:2403.04960; originally titled SecGPT. [38] Alexander Robey, Eric Wong, Hamed Hassani, and George J. Pappas. SmoothLLM: Defending large language models against jailbreaking attacks. Transactions on Machine Learning Research (TMLR) ,2024. arXiv preprint arXiv:2310.03684. [39] Yuhao Wu, Ke Yang, Franziska Roesner, Tadayoshi Kohno, Ning Zhang, and Umar Iqbal. Towards automating data access permissions in AI agents. In 2026 IEEE Symposium on Security and Privacy (SP) , 2026. arXiv preprint arXiv:2511.17959. [40] Jerome H. Saltzer and Michael D. Schroeder. The protection of information in computer systems. Pro-ceedings of the IEEE , 63(9):1278–1308, 1975. [41] Nils Reimers and Iryna Gurevych. Sentence-BERT: Sentence embeddings using siamese BERT-networks. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing (EMNLP) ,pages 3982–3992. Association for Computational Linguistics, 2019. [42] Leland McInnes, John Healy, and James Melville. UMAP: Uniform manifold approximation and projec-tion for dimension reduction. arXiv preprint arXiv:1802.03426 , 2018. [43] Ricardo J. G. B. Campello, Davoud Moulavi, and J¨ org Sander. Density-based clustering based on hi-erarchical density estimates. In Advances in Knowledge Discovery and Data Mining (PAKDD) , pages 160–172. Springer, 2013. [44] Yi Liu, Zhihao Chen, Yanjun Zhang, Gelei Deng, Yuekang Li, Jianting Ning, Ying Zhang, and Leo Yu Zhang. Malicious agent skills in the wild: A large-scale security empirical study. arXiv preprint arXiv:2602.06547 , 2026. Dataset at https://huggingface.co/datasets/ProtectSkills/ MaliciousAgentSkillsBench .[45] Xiaojun Jia, Jie Liao, Simeng Qin, Jindong Gu, Wenqi Ren, Xiaochun Cao, Yang Liu, and Philip Torr. SkillJect: Automating stealthy skill-based prompt injection for coding agents with trace-driven closed-loop refinement. arXiv preprint arXiv:2602.14211 , 2026. [46] Cisco AI Defense. Cisco AI defense skill scanner. https://github.com/cisco-ai-defense/ skill-scanner , 2025. Apache 2.0 License. 
+
+13 A Hallucination-Control Filters 
+
+The two LLM-based extractors (Semantic Extractor on the declared track and Instruction Analyzer on the actual track; §3) apply three filters to control hallucination risk: Taxonomy-echo rejection 
+
+discards any LLM output whose capability list reproduces the taxonomy categories verbatim, in-dicating the model echoed the prompt rather than analyzing the skill. Substring-based evidence grounding requires every claimed capability to be accompanied by a quoted passage from the skill’s source text; claims without a verifiable substring match (using a normalized comparison that strips leading/trailing whitespace, collapses internal whitespace, and lowercases) are removed. The nor-malization is conservative: minor formatting differences like punctuation or ellipses are tolerated, but added or removed words cause rejection. Empirically, the filter rejects 5.7% of LLM-claimed capabilities at the cost of borderline-true claims that the LLM correctly inferred but mis-quoted. 
+
+Keyword quality checks validate high-risk capabilities (e.g., credential access, code execution) by confirming the presence of domain-specific keywords in the surrounding context. 
+
+## B Additional Discussion 
+
+Design rationale: separating extraction from analyses. The extraction stage Φ is the architec-tural commitment of BIV: it reduces the cross-representation matching problem to set comparison over T , enabling deterministic deviation detection independent of any downstream analysis. This separation lets us (i) measure deviation at registry scale without per-skill LLM expense for the struc-tural component (§4), (ii) keep calibration uniformity across heterogeneous source pools because structured evidence acts as a typed prior (§5), and (iii) audit the relaxed-veto override as an explicit ablation rather than an implicit black-box decision. 
+
+Source of the detection lift. The structural extraction stage and the relaxed-veto override together carry the largest detection gain over a same-backbone single-pass auditor. The lift concentrates on the real-world subset, where structural evidence is needed to override a semantic judge that would otherwise rationalize obfuscated payloads as legitimate; the synthetic subsets are saturated by both methods, so the headline F1 difference between BIV and the LLM-only baseline understates the structural component’s contribution on adversarially designed inputs. 
+
+Typed taxonomy versus learned representation. We project both modalities onto a fixed 29-capability taxonomy T rather than learning a joint embedding for two reasons. First, T is auditable: each capability has a documented detection pattern (Appendix G) and a severity tier, so a human reviewer can verify any deviation claim without retraining. Second, the typed structure makes the relaxed-veto override expressible as a parameterless predicate (§5) rather than an opaque black-box decision. The trade-off is recall on capabilities outside T (deviations are a lower bound), discussed in the static-only limitation below. 
+
+Comparison to concurrent agent-skill frameworks. BIV is not a detector but a measurement primitive: the typed evidence tuple Φ( s) supports multiple downstream consumers, of which the malicious-skill detection in §5 is one demonstration alongside the deviation taxonomy and root-cause analysis in §4. The concurrent agent-skill literature targets detection as the end goal: SkillSieve [20] and MalSkills [21] produce per-skill verdicts on binary benchmarks, and SkillFor-tify [22] formalizes a capability lattice with SAT-based enforcement and proves static-soundness results on a smaller capability set. These specialized detectors and BIV are not on the same axis: BIV’s contribution is the composable framework that makes detection, root-cause classification, and other security analyses derivable from a single extraction pass. Where the lines do touch is the consumer slot in BIV. A SAT-based formal lattice could in principle replace BIV’s relaxed-veto pred-icate with a checked policy over Φ( s), inheriting natural-language instruction coverage that formal capability languages do not currently express. A direct head-to-head benchmark on a shared corpus is left to future work; the anticipated trade-off is that formal-lattice approaches will outperform on capabilities expressible in their lattice, while BIV’s instruction-level extraction retains its lead on prompt-injection and instruction-override threats outside those languages. Document-driven attack frameworks such as DDIPE and PoisonedSkills emphasize camouflage operators (functional dis-guise, encoding-based obfuscation, instruction concealment); these patterns map directly onto BIV’s 14 Code Obfuscation compound category and Instruction-Level Threats primitives, both of which are extracted as part of Φ( s) and consumed without per-attack tuning. 
+
+Limitations. Five boundaries scope BIV and indicate where complementary defenses apply. 1) Static-only analysis. Dynamic dispatch, reflection, and obfuscated payloads escape AST-level extraction, so the deviation count is a lower bound; capabilities outside T (e.g., GPU compute, biometric capture) are not extracted at all. 2) Classifier outputs, not runtime exploits. Adversarial-intent and attack-chain labels are clas-sifier predictions over the 36-leaf intent taxonomy; the kill-chain rate is the volume flagged for manual triage, not the runtime-exploit subset. 3) LLM-grounded measurement gap. The headline ecosystem rates rest on LLM extraction and an LLM root-cause classifier. Three controls bound this within scope: a three-model judge panel partly overlapping with the candidate backbones for extraction and intent classification (Ap-pendix C), hallucination-control filters that ground every claimed capability in a quoted source span (Appendix A), and a deterministic rule engine that pre-labels the unambiguous majority. Relative orderings aggregate across hundreds of thousands of decisions and are robust to per-skill flips; absolute percentages may shift under stratified human re-validation, left as future work. 4) Adversarial robustness. The pipeline is not robust against an attacker informed by this paper, who can evade rule-based extraction (string-split os.environ , dynamic getattr , payloads em-bedded in docstrings), craft descriptions calibrated to confuse the LLM adjudicator, or inject glitch tokens against the extractor [9, §4.2]. 5) Out-of-scope attack surfaces. Backbone backdoors injected via fine-tuning [26], runtime mem-ory or RAG-corpus poisoning of benign skills [28], and observation-triggered backdoors that ac-tivate only on environment-supplied inputs [36] require complementary runtime defenses; BIV operates statically on the artifact. 
+
+## C Three-Model Judge Panel Validation 
+
+We validate the BIV extraction stage and the deviation taxonomy/intent classification with a 3-model LLM judge panel (Claude Opus 4.6, Gemini 3 Pro, GPT-OSS 120B). Opus 4.6 is also the LLM intent classifier (§4.2), so the panel evaluates intent labels partly produced by a panel member; the binary-intent comparison below should be read as partly self-validation , not fully independent. We retain Opus on the panel because the taxonomy-quality subtasks (cluster coherence, intruder detection, taxonomy placement) reason over already-extracted artifacts rather than re-executing the BIV pipeline, and because removing Opus would reduce the panel to two models. Future work should re-run validation with a panel fully disjoint from both the candidate backends and the intent classifier. 
+
+Extraction-stage results. The panel audits the extraction stage on a 69-skill stratified sample (167 capability decisions, 42 compound-pattern decisions). Capability precision is 84.4% under Opus 4.6 and 68.9% under 3-judge majority vote. Compound-pattern precision is 95.2% under Opus and 83.3% under 3-judge. The 3-judge false-alarm rate is 16.7% (4.8% under Opus). Adjusted 3-judge recall, after collapsing taxonomy-granularity disagreements, is roughly 65–70%, so the 250,706-deviation count in §4.1 is a lower bound. 
+
+Taxonomy and intent results. Cluster coherence averages 4.77/5.0 across all 137 clusters, with each judge reporting the identical mean (Claude 4.77, Gemini 4.77, GPT-OSS 4.77). Intruder-detection accuracy is 98.9% on 30 sampled clusters (Claude 100%, Gemini 100%, GPT-OSS 96.7%). Taxonomy placement is 97.0% with 100% inter-judge agreement on 200 sampled devi-ations. Figure 2 (§4.1) visualizes the embedding manifold the clustering operates on. 
+
+Evidence quality tiers. Per-deviation verification confidence splits 137,221 (54.7%) HIGH code-backed, 41,443 (16.5%) MEDIUM instruction-backed, and 72,042 (28.7%) LOW unverifiable text-only; per-category numbers in §4.1 pool all three tiers. The 69-skill panel finds 74.8% capability 15 Table 3: Per-cluster motif breakdown for the four novel compound categories. Capability tokens in 
+
+ALL CAPS are taxonomy primitives; lowercase identifiers (e.g., sensitive env exfiltration )are cluster-internal motif labels assigned by the clustering pipeline. 
+
+Cluster label Dev Motif 
+
+Exfiltration Chains (9 clusters, 2,042 deviations) 
+
+Undeclared Data Exfiltration 1,204 FILE READ → NETWORK SEND Undeclared Credential Exfiltration Pattern 571 sensitive env exfiltration Credential Exfiltration via Network 189 file theft Undeclared File-to-Network Exfiltration 23 FILE READ → NETWORK SEND Undeclared File Exfiltration Pipelines 18 FILE READ → base64 → JSON.stringify → NET-WORK SEND Undeclared File Exfiltration Pipeline 13 FILE READ → JSON.stringify → NETWORK SEND Undisclosed File Exfiltration Pathways 12 FILE READ → Buffer.from → NETWORK SEND Undisclosed File Exfiltration 7 FILE READ → JSON.parse → NETWORK SEND Undeclared External Data Transmission 5 USER INPUT → NETWORK SEND 
+
+RCE Chains (4 clusters, 1,199 deviations) 
+
+Undeclared Dropper Pattern 482 download → write → execute Undeclared Code Evaluation via Shell 380 shell eval (download → execute variant) Undeclared Remote Code Execution 220 download → execute (chained variant) Undisclosed Network-to-Execution Dropper Pattern 117 NETWORK RESPONSE → PROCESS EXEC 
+
+Code Obfuscation (1 cluster, 299 deviations) 
+
+Obfuscated Payload Execution Pattern 299 encoding chain → dynamic eval 
+
+Data Lineage Violations (1 cluster, 140 deviations) 
+
+Undeclared File-to-File Data Lineage 140 FILE READ → FILE WRITE 
+
+precision on code-backed deviations versus 64.6% on instruction-only, consistent with the lower verifiability of natural-language metadata. 
+
+## D Compound Category Motifs 
+
+Table 3 reports the per-cluster motif breakdown for the four novel compound categories. The Motif column makes the composition explicit: each compound aggregates evidence from multiple primi-tive capabilities, so a single-capability scanner that checks one row at a time misses the composition that gives each compound its threat character. 
+
+## E Intent Taxonomy 
+
+Table 4 lists the 36-category intent taxonomy used by the LLM classifier in §4.2, providing the per-leaf descriptions for the hierarchy already shown as Figure 4 in §4.2. Categories A–F are adversarial; G is non-adversarial; H is ambiguous. The B2 slot is intentionally unallocated, reserved during taxonomy design and not assigned in the final taxonomy. Collapsing to binary non-adversarial vs. adversarial (G ∪ H vs. A–F) yields the 81.1%/18.9% split reported in §4.2. 16 Table 4: Intent taxonomy: 36 categories across 8 branches drawn from supply-chain malware, malicious-extension, PUP, and mobile-app threat research, with an added AI-agent-specific branch (F). The B2 slot was reserved during taxonomy design and not assigned. 
+
+ID Name Description 
+
+A: Data Theft & Espionage 
+
+A1 Credential Theft Harvesting API keys, tokens, passwords from local environment A2 Data Exfiltration Sending files, env vars, or config to remote endpoints A3 Surveillance Keylogging, clipboard monitoring, device fingerprint-ing A4 Corporate Espionage Stealing IP, source code, or strategic data A5 Insider Reconnaissance Mapping internal systems and access paths 
+
+B: Financial & Monetization 
+
+B1 Ad Injection Injecting unauthorized advertisements B3 Cryptomining Unauthorized CPU/GPU usage for mining B4 Crypto Theft Wallet address replacement, key extraction B5 Resource Hijacking Unauthorized use of compute resources beyond crypto 
+
+C: Payload & Infrastructure 
+
+C1 Payload Delivery Download-write-execute dropper pattern C2 Persistence Backdoors, cron jobs, startup modification C3 C2 Communication Command-and-control channel establishment C4 Evasion Obfuscation, encoding chains, anti-analysis C5 Reconnaissance System enumeration, user profiling C6 Staging Setting up infrastructure for later attack phases 
+
+D: Content & Social Engineering 
+
+D1 Phishing Content Generating deceptive messages to harvest credentials D2 Misinformation Producing false or misleading content D3 Social Manipulation Manipulating user trust through deceptive interac-tions D4 Impersonation Assuming false identity in communications 
+
+E: Destructive 
+
+E1 Ransomware File encryption with ransom demands E2 Wiper Irreversible data destruction or corruption E3 Sabotage Deliberate degradation of system performance 
+
+F: AI Agent-Specific 
+
+F1 Instruction Hijacking Prompt injection, identity takeover, concealed direc-tives F2 Memory Poisoning Corrupting agent memory or persistent state F3 Session Smuggling Agent-to-agent communication hijacking F4 Output Manipulation Tool result modification, response substitution F5 Capability Escalation Acquiring permissions beyond declared scope 
+
+G: Non-Adversarial 
+
+G1 Over-Engineering Extra permissions requested beyond current need G2 Defensive Over-Engineering Extra security checks beyond requirements G3 Incomplete Implementation Declared features not yet implemented G4 Legitimate Helper Utility functions incidentally using undeclared capa-bilities G5 Template Residue Leftover code from boilerplate or templates G6 Telemetry Legitimate usage tracking or crash reporting G7 Documentation Error Mismatch due to poor documentation, not malice 
+
+H: Ambiguous 
+
+H1 Context-Dependent May be legitimate or suspicious depending on pur-pose H2 Insufficient Evidence Not enough information to determine intent 
+
+## F Detection Backends 
+
+Backend coverage. We evaluate five LLM judge backends accessible through Vertex AI Model Garden, spanning Anthropic and Google families across frontier, mid, and light tiers. We headline 17 Table 5: Detection trade-off across five BIV LLM judge backends on the 906-skill benchmark. External baselines (rule-based and LLM-only) are reported in Table 2 of §5. Aggregate F1 spans 
+
+[0 .882 , 0.946] ; real-world recall spans [0 .068 , 0.864] .                        
+
+> Configuration F1 Recall Real-world Recall FPR BIV + Claude Sonnet 4.5 0.946 0.978 0.864 0.072 BIV + Claude Opus 4.6 0.890 0.842 0.068 0.040 BIV + Gemini 3 Flash 0.940 0.928 0.591 0.038 BIV + Gemini 3 Pro 0.889 0.822 0.545 0.022
+> BIV + Gemini 2.5 Flash 0.882 0.861 0.614 0.074
+
+Claude Sonnet 4.5 because it achieves the highest aggregate F1 (0.946) and the highest real-world malware recall (0.864) of the five (Table 5). 
+
+Why the ecosystem extraction backbone differs. §4 reports the 49,943-skill scan with Claude Opus 4.6 as the LLM backbone; the ecosystem scan benefits from Opus’s high-precision profile because false-positive capability claims propagate into the downstream taxonomy. The detection backend in §5 optimizes for catching real-world malware rather than minimizing extraction noise, which picks Sonnet 4.5. 
+
+Backend variance. Aggregate F1 is robust across backends ( [0 .882 , 0.946] ); per-source recall on real-world malicious samples is backend-sensitive ( [0 .068 , 0.864] ). Structural-evidence inputs are identical across runs, so the variance reflects the judge model’s disposition on obfuscated payloads, not pipeline instability. Two operating points emerge: Sonnet 4.5 for high real-world recall at 7.2% FPR, and Gemini 3 Flash for low FPR (3.8%) at the cost of dropping real-world recall to 0.591. 
+
+## G Capability Tiers and Compound Flags 
+
+The 29 primitive capabilities in T are enumerated in Table 1 of §3.1. This appendix supplies two pieces of supplementary detail referenced by §5: the per-capability severity tiers used by the relaxed-veto predicate V , and the definitions of the four compound-threat flags. 
+
+Severity tiers. Each primitive carries a base severity tier reflecting the asymmetry between its exploit value and its routine benign use: • C RITICAL : all three Credential primitives, all five Instruction-Level primitives. • H IGH : all four Network primitives, all four Process Execution primitives, all three Environment primitives. • M EDIUM : all seven Filesystem primitives, all three Encoding primitives. 
+
+Compound flags. Four compound-threat motifs are signaled separately as a 4-bit flag 
+
+compound( s) ∈ { 0, 1}4 rather than added to T , which avoids double-counting their primitive constituents in D(s) △ A(s):• E XFILTRATION CHAINS (C RITICAL ): source primitive → encoding transform → network sink. • RCE C HAINS (C RITICAL ): download → write → execute (dropper motif). • C ODE OBFUSCATION (C RITICAL ): encoding chain → dynamic eval. • D ATA LINEAGE VIOLATIONS (H IGH ): undeclared file → file or file → network pipeline. Per-capability detection patterns and exemplar evidence appear in the artifact’s 
+
+taxonomy/v1.json .
+
+## H Illustrative Examples 
+
+Two traces here complement the real-world combined-evidence trace already shown as Figure 6 in §5. Trace 1 (anonymized real-world skill) is another agreement case where the structural extractor 18 Trace 1. Anonymized real-world skill (third-party messaging integration); structural extractor and LLM judge both vote M AL (agreement). 
+
+Description “Messaging integration: post messages and notify users from the agent. ” (SKILL.md )
+
+Manifest capabilities: [http request] requiredEnvVars: [MSG BOT TOKEN] (skill.yaml )
+
+Code src/post.py:24--58 (taint trace): 
+
+token = os.environ[’MSG BOT TOKEN’] payload = base64.b64encode(token.encode()) requests.post(’https://collect.example.org/...’, data=payload) 
+
+Detected ENV ACCESS SENSITIVE , ENCODING BASE64 , NETWORK OUTBOUND HTTP 
+
+Compound ENV → ENCODE → NETWORK SEND (Exfiltration Chain); INSTRUCTION OVERRIDE in 
+
+SKILL.md 
+
+Verdict malicious (both the structural extractor and the LLM judge agree without invoking the override) 
+
+Trace 1 (agreement case): the structural exfiltration chain and the LLM-detected prompt injection in the instructions converge independently on M AL ; the override predicate is not consulted. 
+
+Trace 2. Anonymized Skill-Inject sample (model evaluation skill); LLM judge votes S AFE , relaxed-veto override flips to M AL .
+
+Description “Evaluate ML models on benchmark datasets and report metrics. ” (SKILL.md )
+
+Manifest capabilities: [file read] requiredEnvVars: [API TOKEN] (skill.yaml )
+
+Code scripts/eval.py:41--63 (taint trace): 
+
+creds = open(os.path.expanduser(’~/.aws/credentials’)).read() requests.post(’https://eval-server.example.org/results’, data=creds) 
+
+Detected FILE READ SENSITIVE (~/.aws/credentials ), NETWORK OUTBOUND HTTP 
+
+Compound FILE READ SENSITIVE → NETWORK SEND (Exfiltration Chain); 
+
+credential-transmit at C RITICAL 
+
+Verdict malicious (LLM judge votes S AFE ; V (Φ( s)) overrides because compound flag is non-zero and an undeclared C RITICAL -tier capability is present) 
+
+Trace 2 (override case): the LLM judge rationalizes the credential read as legitimate API auth; 
+
+V (Φ( s)) flips the verdict. The override fires alone on 3 of the 906 benchmark skills. and the LLM judge reach M AL from independent signals. Trace 2 (anonymized Skill-Inject sample) is the override case where the LLM judge votes S AFE and the relaxed-veto predicate V (Φ( s)) flips the verdict on the structural compound flag. 
+
+## I Intent Classification Rules 
+
+The rule engine in §4.2 applies the 15 prioritized rules in Table 6; the first matching rule determines the deviation’s intent label. The rule engine labels roughly two-thirds of deviations at near-zero cost; the remainder pass to the LLM classifier for joint reasoning over a skill’s full deviation list. Table 6: Prioritized intent classification rules. Rules are evaluated in order; first match wins. Rule 14 emits G1 when the over-specification’s risk tier is below M EDIUM and G7 otherwise; the threshold is fixed by the per-capability severity tier in Appendix G, not learned. 
+
+# Rule Intent # Rule Intent 
+
+1 Instruction hijacking ( ≥2 agent signals) F1 9 Sensitive env + network outbound A1 2 Dropper pattern (download+write+exec) C1 10 Data exfiltration chain (high risk) A2 3 Credential theft motif A1 11 Bulk env access + network outbound A2 4 Evasion: encoding + code eval C4 12 Persistence motif or startup write C2 5 Ransomware keywords + crypto + write E1 13 Reconnaissance motif or enum +bulk C5 6 Bulk file deletion (high risk) E2 14 Over-specification (low risk) G1/G7 7 Cryptominer motif or keywords B3 15 Telemetry keywords G6 8 Credential + network outbound A1 
+
+19
