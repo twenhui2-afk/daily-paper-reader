@@ -6,61 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-13
-- 运行时间：2026-05-14 04:22:26 UTC+8
+- 最新运行日期：2026-05-14
+- 运行时间：2026-05-15 04:33:11 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Probability of Root Cause: A Counterfactual Definition and Its Identification》（8.3/10）, 《Diagonal parity and loop toggling for symmetric matrices over $\mathbb F_2$》（8.0/10）
-- 速读：《Balanced subsets in root systems》（7.8/10）, 《LPDP: Inference-Time Reward Control for Variable-Length DNA Generation with Edit Flows》（7.8/10）, 《ReplaySCM: A Benchmark for Executable Causal Mechanism Induction from Interventions》（7.4/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《Insecure Despite Proven Updated: Extracting the Root VCEK Seed on EPYC Milan via a Software-Only Attack》（8.2/10）
+- 速读：《Variance-Aware Estimation and Inference for Michaelis--Menten Models with Heteroscedastic Errors and Clustered Measurements》（6.9/10）, 《Large Language Models for Agentic NetOps and AIOps: Architectures, Evaluation, and Safety》（6.8/10）, 《Componentwise height bounds for polynomial value-set lifting》（6.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/13/README](/202605/13/README)
+- 详情：[/202605/14/README](/202605/14/README)
 
 ### 精读区论文标签
-1. [Probability of Root Cause: A Counterfactual Definition and Its Identification](/202605/13/2605.11776v1-probability-of-root-cause-a-counterfactual-definition-and-its-identification)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-2. [Diagonal parity and loop toggling for symmetric matrices over $\mathbb F_2$](/202605/13/2605.11056v1-diagonal-parity-and-loop-toggling-for-symmetric-matrices-over-mathbb-f2)  
-   标签：评分：8.0/10
+1. [Insecure Despite Proven Updated: Extracting the Root VCEK Seed on EPYC Milan via a Software-Only Attack](/202605/14/2605.12990v1-insecure-despite-proven-updated-extracting-the-root-vcek-seed-on-epyc-milan-via-a-software-only-attack)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Balanced subsets in root systems](/202605/13/2605.11219v1-balanced-subsets-in-root-systems)  
-   标签：评分：7.8/10
+1. [Variance-Aware Estimation and Inference for Michaelis--Menten Models with Heteroscedastic Errors and Clustered Measurements](/202605/14/2605.13168v1-variance-aware-estimation-and-inference-for-michaelis--menten-models-with-heteroscedastic-errors-and-clustered-measurements)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-2. [LPDP: Inference-Time Reward Control for Variable-Length DNA Generation with Edit Flows](/202605/13/2605.11368v1-lpdp-inference-time-reward-control-for-variable-length-dna-generation-with-edit-flows)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-3. [ReplaySCM: A Benchmark for Executable Causal Mechanism Induction from Interventions](/202605/13/2605.08197v1-replayscm-a-benchmark-for-executable-causal-mechanism-induction-from-interventions)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-4. [Representations of Hecke-Clifford superalgebras at roots of unity](/202605/13/2605.11778v1-representations-of-hecke-clifford-superalgebras-at-roots-of-unity)  
+2. [Large Language Models for Agentic NetOps and AIOps: Architectures, Evaluation, and Safety](/202605/14/2605.12729v1-large-language-models-for-agentic-netops-and-aiops-architectures-evaluation-and-safety)  
    标签：评分：6.8/10
    evidence：检索回退候选
-5. [Weyl Groups and the Modified Kostant Game](/202605/13/2605.11449v1-weyl-groups-and-the-modified-kostant-game)  
+3. [Componentwise height bounds for polynomial value-set lifting](/202605/14/2605.12903v1-componentwise-height-bounds-for-polynomial-value-set-lifting)  
    标签：评分：6.8/10
    evidence：检索回退候选
-6. [Automorphism Groups of Reductive and Root Monoids](/202605/13/2605.11207v1-automorphism-groups-of-reductive-and-root-monoids)  
-   标签：评分：6.7/10
-   evidence：检索回退候选
-7. [Behavioral Integrity Verification for AI Agent Skills](/202605/13/2605.11770v1-behavioral-integrity-verification-for-ai-agent-skills)  
+4. [Bridging Generation and Training: A Systematic Review of Quality Issues in LLMs for Code](/202605/14/2605.05267v1-bridging-generation-and-training-a-systematic-review-of-quality-issues-in-llms-for-code)  
    标签：评分：6.6/10
    evidence：检索回退候选
-8. [PriorZero: Bridging Language Priors and World Models for Decision Making](/202605/13/2605.12289v1-priorzero-bridging-language-priors-and-world-models-for-decision-making)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-9. [Characterizing the Failure Modes of LLMs in Resolving Real-World GitHub Issues](/202605/13/2605.12270v1-characterizing-the-failure-modes-of-llms-in-resolving-real-world-github-issues)  
+5. [EMRGF: A Practitioner Framework for Governance-Driven Enterprise Technology Modernization](/202605/14/2605.06703v1-emrgf-a-practitioner-framework-for-governance-driven-enterprise-technology-modernization)  
    标签：评分：6.5/10
    evidence：检索回退候选
-10. [Nature of magnetism in bilayer nickelate La3Ni2O7 single crystals](/202605/13/2605.03448v1-nature-of-magnetism-in-bilayer-nickelate-la3ni2o7-single-crystals)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-11. [A Separator for Minor-Free Graphs Beyond the Flow Barrier](/202605/13/2605.05494v1-a-separator-for-minor-free-graphs-beyond-the-flow-barrier)  
+6. [PhysForge: Generating Physics-Grounded 3D Assets for Interactive Virtual World](/202605/14/2605.05163v1-physforge-generating-physics-grounded-3d-assets-for-interactive-virtual-world)  
    标签：评分：6.4/10
+   evidence：检索回退候选
+7. [Toward a Risk Assessment Framework for Institutional DeFi: A Nine-Dimension Approach](/202605/14/2605.05145v1-toward-a-risk-assessment-framework-for-institutional-defi-a-nine-dimension-approach)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+8. [How Many Iterations to Jailbreak? Dynamic Budget Allocation for Multi-Turn LLM Evaluation](/202605/14/2605.06605v1-how-many-iterations-to-jailbreak-dynamic-budget-allocation-for-multi-turn-llm-evaluation)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+9. [MedHorizon: Towards Long-context Medical Video Understanding in the Wild](/202605/14/2605.06537v1-medhorizon-towards-long-context-medical-video-understanding-in-the-wild)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+10. [Constraint Decay: The Fragility of LLM Agents in Backend Code Generation](/202605/14/2605.06445v1-constraint-decay-the-fragility-of-llm-agents-in-backend-code-generation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [A Separator for Minor-Free Graphs Beyond the Flow Barrier](/202605/14/2605.05494v2-a-separator-for-minor-free-graphs-beyond-the-flow-barrier)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 

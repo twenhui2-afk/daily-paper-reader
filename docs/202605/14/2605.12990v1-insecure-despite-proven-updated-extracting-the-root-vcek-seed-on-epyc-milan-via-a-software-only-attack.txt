@@ -1,0 +1,423 @@
+Title: Insecure Despite Proven Updated: Extracting the Root VCEK Seed on EPYC Milan via a Software-Only Attack
+
+URL Source: https://arxiv.org/pdf/2605.12990v1
+
+Published Time: Thu, 14 May 2026 00:37:53 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Insecure Despite Proven Updated: Extracting the Root VCEK Seed on EPYC Milan via a Software-Only Attack 
+
+# Muyan Shen †‡ , Yu Qin ‡†University of Chinese Academy of Sciences 
+
+> ‡
+
+# Institute of Software, Chinese Academy of Sciences 
+
+# Abstract 
+
+In the official whitepaper of Secure Encrypted Virtualization with Secure Nested Paging (SEV-SNP), AMD explicitly em-phasizes the capability to prevent Trusted Computing Base (TCB) rollback attacks. Cryptographically, this is realized by signing attestation reports with the Versioned Chip En-dorsement Key ( VCEK ), which is derived by incorporating the TCB version into the hardware root seed. In this architecture, safeguarding the hardware root seed is the ultimate line of defense. However, our research reveals that this protection is insufficient on EPYC Milan by present-ing a software-only exploit. Specifically, we firstly introduce MilanLaunchy attack, an exploit that achieves code execution on the AMD secure processor. Building on this foundation, we develop the BadFuse attack, which extracts the hardware root seed by exploiting a lack of write restrictions in the fuse controller. This end-to-end attack chain enables an adversary to forge valid attestation reports for any firmware version, thereby effectively undermining the security model of SEV-SNP. 
+
+# 1 Introduction 
+
+The paradigm of confidential computing (CC) relies on trusted execution environments (TEEs) to protect data in use from completely untrusted hypervisors. Leading archi-tectures, such as AMD Secure Encrypted Virtualization with Secure Nested Paging ( SEV-SNP ) [44], Intel Trust Domain Extensions ( TDX ) [29], and ARM Confidential Compute Ar-chitecture (CCA) [14], all leverage robust hardware-backed isolation to shield guest virtual machines (VMs). Within these diverse ecosystems, remote attestation serves as the founda-tional pillar of trust. This cryptographic mechanism allows cloud tenants to verify attestation reports, enabling them to irrefutably confirm the initial state of their VMs and the un-derlying platform’s firmware security. Within AMD SEV-SNP, the architecture delegates attesta-tion reporting to the AMD Secure Processor (ASP) [20,21,37], an embedded ARM core executing with the highest system privileges. The ASP firmware constitutes a fundamental com-ponent of the SEV-SNP Trusted Computing Base (TCB) and is a primary focus of remote attestation. Crucially, it is im-perative that the firmware version reported in the attestation cannot be misrepresented or spoofed, even if an adversary achieves arbitrary code execution on an outdated/vulnera-ble ASP firmware version. Consequently, AMD explicitly emphasizes the architecture’s ability to defend against TCB rollback attacks in the official SEV-SNP whitepaper [44], highlighting the prevention of reverting the ASP firmware to older versions, which is a critical protection notably absent in its predecessors, Secure Encrypted Virtualization ( SEV ) and SEV Encrypted State (SEV-ES) [1]. To cryptographically enforce this anti-rollback policy, AMD fundamentally redesigned the hardware root of trust. In earlier SEV iterations, attestation reports were signed using a static Chip Endorsement Key ( CEK ). Since the CEK did not evolve with firmware updates, versions were only differ-entiated by a metadata field in the report. Consequently, an adversary could downgrade the firmware, obtain code exe-cution on the ASP to extract the CEK, and forge reports for any version [17]. To address this, AMD introduced the Ver-sioned Chip Endorsement Key ( VCEK ) [4, 6] alongside the SEV-SNP architecture. Instead of exposing the root seed, the VCEK mechanism is supposed to provide the ASP firmware with a derived key. This key is the product of sequentially hashing the root seed via a one-way "hashstick," where the number of hash iterations is inversely correlated with the firmware’s Security Version Number (SVN). Consequently, the one-way property of the hash function ensures that older firmware cannot derive the cryptographic keys of newer ver-sions. Under this architecture, safeguarding the root VCEK seed is of paramount importance. If an adversary successfully ex-tract this root seed, the entire anti-rollback mechanism would be rendered useless, as they could trivially forge attestation reports for any updated firmware version. However, AMD provides no public documentation regarding the mechanisms 1
+
+> arXiv:2605.12990v1 [cs.CR] 13 May 2026
+
+protecting this seed; both the ASP and the underlying proces-sor hardware operate as completely proprietary black boxes. This raises a critical question: 
+
+Is the VCEK root seed protection securely imple-mented? 
+
+In this paper, we answer this question in the negative at least for the first-generation SEV-SNP processors (EPYC Milan) by demonstrating a software-only root VCEK extraction attack. Specifically, the foundational step of our attack requires achieving software-only arbitrary code execution within the Milan ASP firmware stack. As no prior work has demon-strated such a capability, we introduce a novel exploit method-ology termed the MilanLaunchy attack. This technique tar-gets a firmware decryption flaw in the Milan ASP BootROM. While this flaw was briefly acknowledged in an official secu-rity bulletin in 2021, it completely lacked technical details and its practical exploitability remained unknown. We achieved the first successful exploitation of this vulnerability, enabling us to load and execute arbitrary custom firmware. Second, equipped with code execution on an older firmware version, we deeply reverse-engineered the protection mech-anisms securing the VCEK root seed. We discovered that although AMD applies read protections to security-critical fuses, they failed to correctly implement write protections. Based on this architectural oversight, we propose the BadFuse attack, demonstrating that an adversary with code execution on an outdated firmware can successfully extract the root VCEK seed. We detail two distinct extraction methods. The first technique enables us to burn a custom public key into the silicon, allowing the platform to load and execute a malicious firmware image configured with a higher SVN. The second technique constructs a side-channel oracle to recover the root seed bit by bit. Executing either of these independent methods successfully yields the VCEK root seed. By chaining the MilanLaunchy and BadFuse attacks, we accomplish the complete, software-only extraction of the root VCEK seed. We have responsibly disclosed all our findings and vulnerabilities to AMD. 
+
+Contributions. Our key contributions are as follows: • We introduce the MilanLaunchy attack, which is the first software-based exploit achieving code execution on an legacy ASP firmware. • We introduce the BadFuse attack, demonstrating how code execution within the ASP enables the extraction of the hardware root seed and subsequently forge attestation reports. • We responsibly disclosed the attack chain to AMD and discussed potential mitigation strategies. 
+
+Responsible Disclosure. We responsibly disclosed the Mi-lanLaunchy attack to the AMD on January 6, 2026. AMD acknowledged the vulnerability, requested an embargo until May 12, 2026, and issued a corresponding security brief [13]. We responsibly disclosed the BadFuse attack to the AMD on April 8, 2026. The official AMD response concerning this specific vulnerability is provided in Appendix A.3. A detailed source code for a complete end-to-end exploit is publicly available at https://github.com/muyan29 .
+
+# 2 Background 2.1 AMD SEV-SNP 
+
+To address the growing security demands of cloud computing, AMD introduced its SEV [1] architecture across successive EPYC processor generations. The foundational Naples and Rome series introduced initial SEV support and its enhanced version SEV-ES. Specifically, the original SEV ensures mem-ory confidentiality by transparently encrypting VM memory using ephemeral keys, while SEV-ES extends this protection by encrypting CPU register states during VM Exits, prevent-ing a compromised hypervisor from reading or altering the VM’s execution state. While SEV and SEV-ES provide strong confidentiality, they did not fully guarantee memory integrity. A malicious hypervisor could still launch advanced attacks by manipulating the nested page tables (e.g., remapping memory, replaying old data, or creating memory aliases). Starting with the third-generation EPYC architecture, Mi-lan, AMD processors begin supporting the SEV-SNP fea-ture [44]. SEV-SNP introduces the Reverse Map Table (RMP), a hardware-enforced data structure that strictly tracks and ver-ifies the ownership of every physical memory page, provid-ing strict hypervisor isolation to guarantee memory integrity. Subsequent architectures have maintained the foundational SEV-SNP framework while integrating additional security features like Trusted I/O and advanced hardware capabilities like segmented RMP, and ciphertext hiding [12]. 
+
+SEV-SNP Remote Attestation. To verify that the VM is gen-uinely secure, SEV-SNP utilizes a hardware-rooted remote attestation mechanism. During the boot process, the guest VM initiates a request to the ASP via the SNP_GUEST_REQUEST 
+
+Application Binary Interface (ABI) [3] command. In response, the ASP generates a cryptographically signed attestation re-port that encapsulates the VM’s precise configuration, initial memory measurement, and the system’s TCB version. This report is authenticated using either the VCEK [4] or the Ver-sioned Loaded Endorsement Key (VLEK) [3]. The VCEK is a machine-unique ECDSA key pair derived from the hardware’s unique secret and its TCB version; we provide a comprehen-sive analysis of its derivation in Section 2.3. The VLEK uti-lizes the VCEK as a secure transport channel to enable Cloud Service Providers ( CSP s) to deploy customized keys, thereby inheriting the same foundational security guarantees as the VCEK. To trust this report, the guest owner verifies the hard-2ware signature against a certificate chain that is anchored to the AMD Root Key (ARK). These certificates are securely fetched and distributed via the AMD Key Distribution Ser-vice (KDS). By validating the attestation report using the KDS-provided certificate chain, the guest owner can crypto-graphically prove the VM is running in a pristine state on genuine AMD hardware before provisioning it with sensitive decryption keys or data. 
+
+SEV-SNP Firmware Updates. Across successive EPYC processor generations, AMD proactively addresses security vulnerabilities and delivers feature enhancements through continuous firmware updates that encompass both the ASP firmware stack and x86 CPU microcode. These updates can be deployed via two distinct mechanisms: cold up-dates and hot (live) updates. Cold updates involve updat-ing the BIOS firmware image stored in the motherboard’s SPI-Flash memory, which automatically loads the new ASP firmware and microcode during the subsequent system boot sequence. Alternatively, hot updates leverage the dedicated 
+
+SNP_DOWNLOAD_FIRMWARE(_EX) ABI to dynamically inject new SEV-SNP firmware [2], or concurrently utilize special-ized microcode update instructions to patch the CPU mi-crocode after the system has fully booted. 
+
+# 2.2 AMD Secure Processor 
+
+The ASP, formerly known as the Platform Security Processor (PSP), serves as the hardware-based root of trust for AMD EPYC platforms. It is an integrated ARM-based microcon-troller that operates independently from the main x86 cores. In the context of the SEV-SNP architecture, the ASP is the central orchestrator responsible for managing the lifecycle of Confidential Virtual Machines (CVMs). Its primary duties in-clude the implementation of the ABI, which encompasses crit-ical security operations such as generating hardware-backed remote attestation reports, managing memory encryption keys, and enforcing guest-host isolation. To manage various on-chip hardware, the ASP employs the System Management Network (SMN) as its primary com-munication fabric, allowing it to interface with the external SPI-Flash, control memory controllers, and access internal fuses. The ASP also includes a Cryptographic Co-processor (CCP) to ensure high-performance security operations, ex-ecuting cryptographic tasks such as AES encryption, SHA hashing, and RSA signatures [22]. Additionally, a Local Stor-age Block (LSB) is built into the CCP, providing a secure, internal memory region used to store sensitive data such as active encryption keys. 
+
+Boot Process. The security of the ASP is rooted in a multi-stage boot sequence that establishes a verifiable chain of trust. The process originates from the on-chip BootROM, which serves as the immutable root of trust. Operating at the EL1 privilege level, the BootROM’s initial task is to locate, au-thenticate, and load the off-chip bootloader from the external ASP  
+
+> X86 Hypervisor
+> Off-Chip BootLoader
+> SEV-SNP
+> Firmware
+> On-Chip BootROM
+> SPI-Flash BMC
+> Update BIOS Update BIOS Load & Verify ASP Firmware
+> BIOS MailBox Commands
+> SEV-SNP ABI Commands
+
+Figure 1: The software-based attack surface of the ASP. SPI-Flash. Furthermore, the BootROM is responsible for fa-cilitating other security-critical operations associated with the on-chip fuses. Once the off-chip bootloader is verified and executed, it proceeds to load and authenticate various AMD Generic En-capsulated Software Architecture (AGESA) modules. These modules are responsible for the fundamental initialization of the system hardware, including memory training. Following the completion of these tasks, the memory space previously occupied by these modules is overwritten by the final SEV-SNP firmware. In its final operational state, the SEV-SNP firmware runs at the unprivileged EL0 level, communicating with the resident privileged bootloader via Supervisor Calls (SVCs) to execute these sensitive operations. 
+
+Attack Surface. The ASP presents a complex attack surface that can be categorized into software-based and physical at-tack vectors. As illustrated in Figure 1, the software-based threats primarily revolve around two major interfaces [19]: The first is the security of the firmware loading process. The ASP retrieves its firmware and microcode from the BIOS image residing in the SPI-Flash, which creates a potential at-tack vector for adversaries who gain write access to the flash memory. For instance, an attacker could attempt to flash a ma-licious BIOS image via the x86 UEFI Shell or the Baseboard Management Controller ( BMC ) while the system is powered down. Prior research has demonstrated that insecure firmware loading sequences on Zen 1 processors could lead to the ASP executing unauthorized firmware code that lacks a valid AMD signature [15, 32]. The second is the security of communication interfaces. Post-initialization, the ASP maintains several active interfaces with the x86 host. These include the BIOS Mailbox, used for handling platform events such as S3 sleep and wake transi-tions, and the SEV-SNP command interface, which processes management commands issued by the hypervisor. This area has similarly been the focus of prior security studies [25, 32]. Existing physical attacks primarily focus on fault injection techniques, such as voltage or clock glitching. Research has demonstrated that precisely timed fault injections can be used 3to bypass signature verification checks during the ASP’s boot process, allowing the loading of malicious firmware [16, 30]. While these attacks highlight significant hardware vulnerabil-ities, it is important to note that physical access attacks are generally considered out-of-scope for the standard security model of confidential computing [44], which primarily aims to protect against malicious software. 
+
+# 2.3 VCEK Architecture in AMD SEV-SNP 
+
+In SEV-SNP, the endorsement key is specifically known as the VCEK . Its version designation reflects the TCB version, which primarily consists of the firmware levels running on the ASP. To remediate emerging threats, AMD issues periodic ASP firmware updates, which in turn increment the TCB version reflected in the attestation process. 
+
+Minimizing Access to the Root Seed. Similar to the Device Identifier Composition Engine ( DICE ) [27] architecture, the VCEK mechanism in SEV-SNP is supposed to isolate the root seed to the BootROM. Notably, the lack of this isolation in earlier iterations (SEV and SEV-ES) enabled practical attacks. In those versions, the static CEK remained accessible to sub-sequent boot stages. Consequently, adversaries could extract the CEK or the underlying root seed from a compromised platform. Because the CEK was statically bound and could not be rotated, firmware updates were ineffective in mitigating such breaches. As illustrated in Figure 2, the VCEK mechanism exposes only a derived value to the off-chip bootloader. This is achieved by applying a specific number of hash iterations to the root seed. This derivation process cryptographically guarantees that obtaining an older version of the VCEK seed poses no security threat to newer VCEK seed versions. It is worth noting that SEV-SNP-capable EPYC processors retain the CEK to maintain compatibility with legacy SEV/SEV-ES virtual machines. Furthermore, the public key derived from the static CEK acts as the Chip-ID. This identifier allows ver-ifiers to fetch the appropriate VCEK-signed certificate from the KDS based on the platform’s TCB version. 
+
+VCEK Layering Architecture. In the AMD EPYC Milan SEV-SNP implementation, the operational TCB hierarchy is structured into four distinct layers: • Layer 0: On-chip BootROM (ASP, EL1). • Layer 1: Off-chip Bootloader (ASP, EL1). • Layer 2: SEV Firmware (ASP, EL0). • Layer 3: CPU Microcode (x86). While the Layer 0 BootROM remains immutable post fab-rication, Layers 1 through 3 are each characterized by an 8 bit Security Version Number (SVN) ranging from 0 to 255. These individual SVNs are aggregated to define the platform TCB version, which is subsequently used to request the corre-sponding VCEK certificate. VCEK Seed  (ver=255) VCEK Root Seed 
+
+CEK Root Seed 
+
+VCEK Seed  (ver=254) 
+
+VCEK Seed  (ver=cur) 
+
+CEK Root Seed VCEK Seed  (ver=cur) 
+
+Asymmetric Keys for SEV(-ES) 
+
+Asymmetric Keys for SEV-SNP 
+
+Chip-ID 
+
+> KDF KDF
+
+Bootloader Accessible BootROM Accessible 
+
+> KDF Hash
+> Hash
+
+··· 
+
+Figure 2: A comparison of key derivation flows for CEK and VCEK (simplified). Algorithm 1 details the per layer seed derivation process within the firmware architecture. This hash chain architec-ture cryptographically ensures that possessing a seed from an older version cannot lead to the derivation of a newer version’s seed. As an inherent byproduct of this design, a newer seed can deterministically compute the seeds of older versions. This specific property is intentionally leveraged to facilitate TCB Rollback attestation support [3]. During the cross layer transfer of the hash chain, a constant zero padding is prepended to the input. This structure ensures that the final output seed is distinct from the versioning chain, preventing cross layer interference. 
+
+# 3 Threat Model 
+
+Confidential computing aims to completely decouple the host’s privileged software stack (e.g., hypervisor) from the guest’s TCB via hardware-backed isolation mechanisms. Our adversary model strictly aligns with the standard confiden-tial computing threat model [44]. Specifically, we assume an adversary with the following capabilities: 1. The adversary possesses complete root-level control over the host environment. This includes the assumption that the hypervisor and host BIOS are fully untrusted and potentially malicious. 2. The adversary has the capability to arbitrarily update, downgrade, or modify the firmware contents stored in the SPI-Flash. In practical server environments, this can be achieved via software-accessible interfaces such as the BMC or the UEFI Shell. 4Algorithm 1 VCEK-Style Per-Layer Seed Derivation 
+
+Require: Seed for Layer l SeedLayer l or VCEK Root Seed 
+
+RootSeed , Layer l + 1 Firmware SVN cur ;
+
+Ensure: Seed for Layer l + 1 SeedLayer l+1; 
+
+> 1:
+
+if l = 0 then  
+
+> 2:
+
+T mpSeed 255 ← RootSeed  
+
+> 3:
+
+else  
+
+> 4:
+
+T mpSeed 255 ← SeedLayer l 
+
+> 5:
+
+end if  
+
+> 6:
+
+for i ← 255 down to 0 do  
+
+> 7:
+
+T mpSeed i−1 ← Hash (T mpSeed i) 
+
+> 8:
+
+end for  
+
+> 9:
+
+if l = 0 then  
+
+> 10:
+
+Lock RootSeed , Erase {T mpSeed i | cur < i ≤ 255 } 
+
+> 11:
+
+end if  
+
+> 12:
+
+Transfer T mpSeed cur −1 to Layer l + 1 for TCB Rollback  
+
+> 13:
+
+return SeedLayer l+1:= Hash (′00000000 ′|| T mpSeed cur )
+
+# 4 Experimental Setup 
+
+We conducted our experiments (including the MilanLaunchy and the BadFuse attack) on AMD EPYC 7413 (Milan) pro-cessors paired with a TYAN S8036GM2NE motherboard. To flash the SPI-Flash firmware, we utilized the onboard BMC. Our software environment consisted of Ubuntu 22.04 running Linux kernel version 6.12. 
+
+# 5 MilanLaunchy Attack 
+
+The first step of our attack methodology requires arbitrary code execution on any accessible firmware version, including outdated legacy releases. Given the absence of known, purely software based code execution vulnerabilities on EPYC Mi-lan, our primary strategy is to mine historical AMD security bulletins for potential ASP vulnerabilities [5,7,10]. It is worth noting that unlike flaws disclosed at academic venues, most vulnerabilities listed in these security bulletins lack actionable technical details. Therefore, identifying a viable attack vector demands extensive reverse engineering of the target firmware to extract the exact root cause and determine if the underlying flaw can be leveraged into a stable, real world exploit. In this section, we first present our comprehensive analysis including reverse engineering of a firmware decryption vul-nerability (CVE-2021-26315 [5]) disclosed for EPYC Milan in 2021 (Section 5.1). Subsequently, we introduce a novel exploit that achieves stable arbitrary code execution within the ASP without disrupting the normal boot sequence of the x86 operating system (Section 5.2). Finally, we evaluate the security mitigations deployed by AMD in 2021 to address this flaw (Section 5.3). BootROM Key     
+
+> AES128-ECB
+> Wrapped IKEK
+> IKEK Wrapped MEK
+> MEK IV Firmware Body
+> Decrypted Firmware Body
+> AES128-ECB
+> AES128-CBC
+> Wrapped IKEK
+> Signature (opt)
+> WP_IKEK Entry Firmware Entry
+> Header
+> (Encrypted) Firmware Body
+> Signature
+
+Figure 3: The specific cryptographic loading and decryption workflow for encrypted ASP firmware residing in the SPI-Flash. 
+
+# 5.1 Flaw Investigation 
+
+ASP Firmware Decryption Architecture. Figure 3 illus-trates the hierarchical decryption workflow for ASP firmware, detailing the derivation and utilization of the Intermediate Key Encryption Key (IKEK) and the Module Encryption Key (MEK) [22, 37]. The root of this decryption chain relies on the BootROM Key, which is stored within the BootROM itself. During early system initialization, this key is loaded into the Local Storage Block (LSB) of the CCP to facilitate subsequent decryption operations. The encrypted counterpart to the first-stage key, known as the Wrapped IKEK, resides in the off-chip SPI-Flash and is retrieved from the ASP firmware directory via entry type 0x21. During the BootROM execution phase, the ASP utilizes the BootROM Key to decrypt the Wrapped IKEK via AES-128-ECB, yielding the plaintext IKEK. This inter-mediate key is then temporarily cached in the secure ASP SRAM. The second stage of the pipeline occurs whenever the ASP needs to load a specific encrypted firmware module. The boot sequence first parses the firmware’s header to extract the Wrapped MEK alongside its corresponding Initialization Vector (IV). The ASP then uses the previously cached IKEK to decrypt the Wrapped MEK via AES-128-ECB, successfully recovering the plaintext MEK. Finally, the derived MEK and the IV are used in an AES-128-CBC operation to decrypt the encrypted firmware body, producing the fully decrypted firmware ready for execution. 
+
+ASP Firmware Authentication Mechanisms. Although AMD employs an identical decryption methodology for en-crypted firmware across various processor architectures in-cluding both the Ryzen and EPYC series, our reverse engi-neering reveals that the authentication mechanisms applied 5Table 1: Comparison of ASP Encrypted Firmware Authentication Schemes across AMD Architectures. 
+
+Architecture WP_IKEK Auth Firmware Auth Vulnerable 
+
+Zen 1-style None {Header ∥ Decrypt (Body )} with RSA-PSS No Zen 3-style (Milan) with HMAC {Header ∥ Body } with RSA-PSS Yes Zen 4/5-style with HMAC {Header ∥ Body } with RSA-PSS + {Decrypt (Body )} with SHA256 No to the decrypted payload vary significantly across genera-tions. Crucially, the approach implemented on the Milan ar-chitecture introduces a severe vulnerability. Table 1 illus-trates a comparative analysis of encrypted firmware samples across these architectures. In the Zen 1 ASP architecture, the cryptographic signature is computed over the combination of the header and the decrypted firmware body. Although there is no explicit authentication for the Wrapped IKEK entry, it remains structurally secure because any tampering with the Wrapped IKEK inherently alters the resulting de-crypted firmware. Since the RSA signature strictly validates the combination of the header and the decrypted payload, such modifications inevitably cause the verification process to fail. Conversely, on the Milan architecture, the target of the RSA-PSS signature shifted to the combination of the header and the original encrypted firmware body. This architectural decision is fundamentally flawed. If adversaries can manipu-late the decryption key, they can arbitrarily alter the final de-cryption output, coercing the ASP into executing unintended code. It is worth noting that Milan introduces an HMAC val-idation for the Wrapped IKEK. However, this addition fails to mitigate the underlying vulnerability. Because HMAC re-lies on a symmetric algorithm, the identical key is utilized for both tag generation and verification. Furthermore, since the firmware is uniformly distributed, this BootROM Key remains identical across all Milan machines. Consequently, if we manage to extract this BootROM Key from any Milan processor by any means, we can compromise the decryption key and ultimately control the decrypted payload. In the more recent Zen 4 and Zen 5 architectures, while the signature still covers the header and the encrypted body, AMD introduced an additional integrity validation step. Specifically, the processor computes the hash SHA256 or SHA384 of the decrypted firmware and compares it against a reference hash stored directly within the header. Because the integrity of the header itself is strictly guaranteed by the RSA PSS signature, this comprehensive scheme effectively secures the decrypted payload. 
+
+# 5.2 Exploit Development 
+
+Analyzing the Exploitable Execution Space. Decrypting valid firmware using an arbitrary incorrect key inherently yields non executable garbage data. However, by meticulously searching the decryption key space, we can deterministically control a specific number of bits within the decrypted output. Specifically, if we treat the multiple AES rounds entirely as a random permutation, controlling the initial n bits of the decrypted firmware requires a brute force complexity of ap-proximately 2 n operations. In the ARM execution state, a standard instruction occu-pies exactly 4 bytes. Consequently, dictating the very first executed instruction necessitates a brute force effort on the order of 232 operations. This represents a highly practical and entirely acceptable computational threshold. In stark con-trast, attempting to control a second consecutive instruction escalates the complexity to an infeasible 264 operations. In practice, this search process averages only a few minutes to complete. Fortunately, a 4 byte execution window is fully sufficient to harbor a single branch instruction. This provides the neces-sary initial foothold to redirect the execution flow to the actual payload sequence, thereby achieving full arbitrary code exe-cution. Within the ARM architecture, candidate instructions for this pivotal jump include b, bl, and bx. 
+
+Payload Injection. To introduce a sufficiently large and con-trollable payload, we exploit the recovery mechanism utilized by the BootROM when loading the off-chip bootloader. As illustrated in Figure 4, our reverse engineering reveals that after completing the fuse preprocessing, the BootROM ini-tially attempts to load the primary bootloader identified by entry type 0x1. It copies the firmware content into the internal SRAM based on the load address and firmware size specified in the header. Subsequently, it performs signature verification and on demand decryption. If any of these verification steps fail, the BootROM automatically attempts to load the fallback recovery bootloader corresponding to entry type 0x3 using an identical procedure. A critical observation is that even if the signature verifica-tion for the primary bootloader fails, the content previously copied to the SRAM is never cleared. This architectural over-sight provides the exact primitive required to inject arbitrary code into the SRAM. Finally, we construct a malicious firmware image by care-fully combining an invalid primary bootloader with a legiti-mate recovery bootloader. We begin by replacing the standard bootloader with a specially crafted image and deliberately modify its target load address to 0x20000. This specific off-set ensures that our injected data remains stale and persists 6② Apply Hardware Latch       
+
+> Signature Valid?
+> ③Verify Public Key
+> ①Read Seed from Fuse
+> ④Load Bootloader
+> ⑤Load Rec_Bootloader
+> Signature Valid?
+> Derive VCEK & Jump to Off-Chip Bootloader Halt System
+> Yes Yes No No
+
+Figure 4: The BootROM execution sequence illustrating the off-chip bootloader verification and VCEK derivation. in the SRAM without being overwritten by the subsequent loading of the recovery bootloader. At the very beginning of this crafted image, we embed an extra loader designed to relocate the full custom bootloader to its proper execution address. Correspondingly, the metadata of signed firmware size and image size fields are adjusted to accommodate this added payload. Next, we replace the recovery bootloader with an extracted version from Milan-PI-1.0.0.1. Crucially, this legacy version retains a valid AMD signature, allowing it to successfully pass the initial BootROM verification. Finally, the Wrapped IKEK entry is overwritten with the precise colli-sion value calculated during our earlier brute force key search phase. 
+
+Custom Bootloader Design. Our exploit is strategically de-signed to execute a complete custom bootloader capable of fully booting the underlying x86 operating system. As shown in Figure 5, our methodology stably loads this custom boot-loader as if it were a legitimate cryptographic image, it pre-serves the integrity of the ASP stack avoiding the corruption issues prevalent in prior Zen 1 stack overflow exploits [15]. Furthermore, it ensures all critical initialization sequences are executed compared with the incomplete state limitations typi-cal of fault injection attacks [16]. This unprecedented stability guarantees a smooth x86 system boot. Consequently, we can execute the actual payload on the ASP for instance, extracting internal hardware secrets and seamlessly write the resulting output directly into the x86 DRAM. The operating system can then read these compromised values natively from memory, entirely eliminating the reliance on physical hardware moni-tors like SPI-Flash bus analyzer. This capability solidifies our methodology as a purely software based end to end attack. In our specific instantiation, the custom bootloader is engi-neered to mirror the exact functionality of the standard boot-loader, with one vital modification: it hooks the SEV-SNP firmware loading sequence to authorize the execution of arbi-memcpy (0x100,cus_bl); b 0x100; 
+
+b 0x20000; 
+
+Garbage Code 
+
+Custom 
+
+Bootloader (cus_bl) 
+
+ASP Stack 
+
+Custom 
+
+Bootloader (cus_bl)  
+
+> ①③
+> ②
+
+ASP Stack 
+
+Figure 5: The memory layout and PC trajectory within the ASP SRAM during the vulnerability exploitation. trary SEV-SNP firmware. This architectural choice grants us the tactical flexibility to embed our ultimate payloads directly within the SEV-SNP firmware image. We can then leverage the standard Linux SEV-SNP firmware management interface to dynamically load and execute the targeted payloads on demand. 
+
+# 5.3 Mitigation Evaluation 
+
+Because the ASP BootROM is physically immutable and the Milan architecture lacks an anti-rollback mechanism for the off-chip bootloader, the foundational vulnerability remains permanently exploitable. An adversary can reliably down-grade to the legacy firmware and trigger the exploit at will. To neutralize this threat within the SEV-SNP trust model, AMD deployed a critical update beginning with Milan-PI-1.0.0.3. Specifically, our reverse engineering found that they ceased the distribution of encrypted firmware payloads and concurrently incremented the SVN of the off-chip bootloader, aiming to cryptographically isolate the vulnerable execution state. From a cryptographic perspective, this mitigation strategy is effective. While our method still successfully grants arbi-trary code execution on the downgraded firmware, the attack is intrinsically bound to the security state of that specific legacy version. The exploit operates by hijacking the initial instruc-tion execution such as an unconditional branch to 0x20000 immediately after the deliberate misdecryption of the lowest SVN firmware. Consequently, as shown in Figure 4, the hard-ware derives a VCEK seed that is tied to this minimum SVN. Due to the irreversible nature of the hardware derivation hash functions, attackers are cryptographically trapped and can-not compute the VCEK seeds corresponding to any updated firmware versions, as detailed in Figure 2. 76 BadFuse Attack 
+
+This section details the BadFuse attack, a software based attack that exploits the ASP fuse controller by abusing pre-existing arbitrary code execution. If the initial code execution on the ASP is achieved via a pure software exploit (e.g. the MilanLaunchy attack in Section 5), the complete attack chain remains entirely software only. To illustrate this, we first present our reverse engineering of the ASP fuse space, mapping the VCEK seed storage, key security fuses, and the firmware level fuse programming inter-faces (Section 6.1). We then demonstrate how a lack of access control during fuse programming allows attackers to extract the VCEK seed (Section 6.2). We present two independent attack methods. Either approach successfully recovers the VCEK seed, allowing us to forge arbitrary SEV-SNP attesta-tion reports, including those representing unreleased versions. 
+
+# 6.1 Reverse Engineering the Fuse Controller 
+
+Hardware Fuse Access and Layout. Within the ASP archi-tecture, the security fuses are mapped into the SMN address space from 0x5D000 to 0x5E000 for read access. Table 2 details the security critical fuse layout uncovered during our reverse engineering phase. As indicated, both the CEK and VCEK root seeds occupy exactly 32 bytes. Notably, AMD implemented an optional redundancy validation mechanism specifically for the VCEK seed. This mechanism leverages ECC bits to correct bit flips in the raw seed and employs a Fletcher-32 checksum to guarantee absolute integrity. If the hardware detects uncorrectable errors or if the Fletcher-32 validation fails, the execution aborts immediately during the BootROM phase. The activation of this redundancy feature is entirely optional and is dictated by a specific bit within the metadata security control bitmap (Table 3). A widely recognized function associated with the hardware fuses is the AMD Platform Secure Boot (PSB) [31, 36]. This feature allows Original Equipment Manufacturers (OEMs) to irreversibly restrict the processor to execute only BIOS or UEFI firmware cryptographically signed by that specific manufacturer. As the enforcement of PSB is primarily im-plemented within the off-chip bootloader and is orthogonal to our SEV-SNP attack vectors, we leave additional details regarding the PSB mechanism to Appendix A.1. Beyond these configurations, we discovered a previously undisclosed capability which we denote as the Custom_PK feature. During a standard secure boot sequence correspond-ing to Step 3 in Figure 4, the BootROM authenticates the AMD public key residing in the SPI-Flash by comparing its SHA384 digest against a hardcoded value embedded within the BootROM itself. This comparison establishes the foun-dational root of trust for the entire platform. However, if the Custom_PK feature is activated meaning the fuse region des-ignated for its SHA384 digest contains non zero data the Table 2: Fuse Memory Map on EPYC Milan                           
+
+> Address Data Size Core Function & Security Description
+> 0x5D044 32 Bytes CEK Hardware Root Seed
+> 0x5D06C 3 Bits PSB Commit flags
+> 0x5D074 48 Bytes SHA-384 Hash of Custom_PK
+> 0x5D0A4 30 Bytes Dedicated ECC for Custom_PK
+> 0x5D0C4 32 Bytes VCEK Hardware Root Seed
+> 0x5D0E4 20 Bytes Dedicated ECC for VCEK Hardware Root Seed
+> 0x5D0F8 3 Bytes Metadata Security Control Bitmap
+> 0x5D0FC 4 Bytes Fletcher-32 Checksum for Custom_PK
+> 0x5D100 4 Bytes Fletcher-32 Checksum for VCEK Seed
+> 0x5D108 4 Bits Platform Model ID for PSB
+> 0x5D109 8 Bits Platform Vendor ID for PSB
+> 0x5D10C 1 Bit PSB Enable Flag
+
+system preemptively prioritizes this custom digest. From an adversarial standpoint, exploiting this feature enables a com-plete displacement of the hardware root of trust, effectively transferring it from the legitimate AMD public key to an arbitrary adversary controlled key. 
+
+Hardware Fuse-Blowing Process. We discovered a dedi-cated function within the ASP firmware responsible for fuse programming, which executes physical fuse-blowing through strict Memory-Mapped I/O (MMIO) interactions. Upon ex-ecution, it initially validates the target index and reads the shadow register at SMN address 0x5d000 to prevent redun-dant burning. It then polls the busy bit of the control status register at 0x5e000 to ensure the hardware is in an abso-lute idle state. Subsequently, it writes specific control bits to 0x5e014 and configures the target address selector in 0x5e004. The actual physical burn is triggered by precisely toggling the control bit in 0x5e004, which instructs the hardware to release an instantaneous high-voltage pulse, permanently blowing the designated fuse. Finally, the function verifies the success of the operation by checking specific hardware status bits. We discovered that this function encapsulated within the off-chip bootloader was originally intended to execute OEM specific PSB fuse programming operations. Crucially, how-ever, this same interface can be exploited to program other secret fuses. 
+
+Redundancy Mechanisms in fuse Programming. To en-sure the structural integrity and physical reliability of critical hardware configurations against silicon degradation and po-tential programming failures, the ASP firmware implements optional redundancy programming mechanisms during the fuse blowing process. For extended data payloads, the firmware guarantees data fidelity by coupling Error Correction Code (ECC) encoding with a Fletcher-32 checksum. A remarkable feature of this architecture is its extremely high ECC redundancy ratio: it generates 5 bits of ECC for every 8 bits (1 byte) of payload data. For example, when provisioning a 48-byte SHA-384 8Secret Fuse 
+
+> Read-Only Mapper
+> Fuse Burner Hardware Latch
+> ON
+> Access Control
+> OFF
+
+Figure 6: Secret fuse access permissions for the off-chip boot-loader. Custom_PK hash, the system simultaneously programs a pro-portionally massive 30-byte ECC payload (48 bytes × 5 bit-s/byte) alongside a 32-bit (4-byte) Fletcher checksum. This allows the hardware to not only detect integrity violations but also seamlessly correct minor physical bit-flips on the fly. Conversely, for critical single-bit control flags, the firmware utilizes a triple modular redundancy strategy through repeated programming. Instead of relying on a single fuse, a crit-ical logical flag is repeatedly burned into multiple, physi-cally dispersed fuse locations. During runtime evaluation, the firmware derives the final authoritative state by executing bitwise logic operations across these redundant bits. 
+
+Protection Mechanisms for the Secret Fuse. Through re-verse engineering, we confirmed that AMD correctly imple-mented a hardware latch defense mechanism. Specifically, as illustrated in Figure 4, immediately after the BootROM loads the secret fuse contents into SRAM, it asserts a hardware latch to block any subsequent read access to this specific memory region. This latching operation is strictly unidirectional; once engaged, it cannot be reversed without a complete system power cycle. Our experiments verify that any attempt to di-rectly read these protected SMN addresses simply returns null bytes. This architectural design successfully prevents the off-chip bootloader from extracting the root seeds directly. However, as previously discussed, the fuse programming process utilizes discrete MMIO registers and is managed by a completely independent hardware component. Crucially, we discovered that under factory default configurations, the off-chip bootloader retains full capability to issue write operations via this dedicated fuse burner (Figure 6). This vulnerability suggests either a fundamental omission of write protection for the secret fuse region at the hardware level, or the existence of a protection mechanism that remains disabled by default. In the subsequent section, we detail how an adversary can exploit this critical absence of write protection to successfully extract the foundational VCEK root seed. 
+
+# 6.2 Attack Methodology 
+
+Attack I: Manipulating the Custom Public Key Hash. This attack is based on the following observations: 1. We can write the Custom_PK fuse region, effectively transferring the foundational AMD root of trust to an adversary controlled counterpart. 2. As depicted in Figure 2, extracting the VCEK seed asso-ciated with an SVN of 255 is cryptographically equiva-lent to obtaining the absolute root VCEK seed under the existing VCEK derivation architecture. These two observations empower us to first overwrite the hardware public key hash with the digest of our custom public key. Since we control the corresponding private key, we can cryptographically sign a malicious firmware payload explic-itly configured with an SVN of 255 and subsequently flash it onto the SPI-Flash. Finally, this methodology allows us to extract the same seed utilizing a strictly software based attack vector, an achieve-ment that previously required complex physical attacks as detailed in [16]. By acquiring this root seed, we can trivially derive the VCEK seed for any arbitrary firmware version by traversing the established hash chain. 
+
+Attack II: Direct Extraction of the VCEK Seed. This attack is based on the following observations: 1. We can do write operations to the fuse region housing the VCEK seed. Critically, we can manipulate this target fuse area with a precise 1 bit granularity. 2. We found that attempting to re-blow a fuse bit that is already set to 1 does not brick or damage the underlying hardware. 3. We discovered that although ECC and Fletcher-32 vali-dation mechanisms were architecturally designed for the VCEK fuse region, they remain disabled in practice. These observations collectively enable us to systematically recover the entire VCEK seed bit by bit through an iterative trial writing process. As shown in Algorithm 2, the attack initiates by targeting a specific bit within the root VCEK fuse region. By interacting directly with the SMN controller, the attacker can blindly assert the target fuse bit to ’1’. Because this physical state alteration does not automatically update the runtime keys residing in memory, the system must undergo a power cycle. This cold reboot clears the hardware latches and forces the ASP BootROM, the first component to execute upon startup, to fetch the newly modified physical fuses and execute the complete key derivation process from scratch. Upon successful initialization, the adversary observes the oracle’s output by retrieving the newly generated VCEK. The final VCEK seed is the product of multiple cryptographic hashes originating from the root seed. If the targeted fuse bit was originally ’0’ and was successfully blown to ’1’, this sin-gle physical alteration will propagate through the derivation chain, resulting in a completely distinct final VCEK. Con-versely, if the bit was already ’1’, the blind write operation has no physical consequence, and the newly derived VCEK will perfectly match the baseline. By evaluating the presence or absence of a change in the derived seed, the attacker can 9Algorithm 2 Bit-by-Bit VCEK Root Seed Extraction via Fuse Oracle 
+
+Require: N = 256: Length of the VCEK seed in bits 
+
+Ensure: S: The recovered original VCEK root seed array  
+
+> 1:
+
+S ← Initialize array of size N 
+
+> 2:
+
+Vbase ← Fetch_Current_VCEK()  
+
+> 3:
+
+for i ← 0 to 255 do  
+
+> 4:
+
+Program_Fuse_Bit(i)  
+
+> 5:
+
+Cold_Reboot_System()  
+
+> 6:
+
+Vcurr ← Fetch_Current_VCEK()  
+
+> 7:
+
+if Vcurr ̸ = Vbase then  
+
+> 8:
+
+S[i] ← 0 ▷ Fuse was intact (0)  
+
+> 9:
+
+Vbase ← Vcurr  
+
+> 10:
+
+else  
+
+> 11:
+
+S[i] ← 1 ▷ Fuse already blown (1)  
+
+> 12:
+
+end if  
+
+> 13:
+
+end for  
+
+> 14:
+
+return S
+
+reliably deduce the physical state of the unreadable root fuses, achieving full extraction of the 256-bit secret. 
+
+# 7 Mitigation 
+
+To effectively disrupt this comprehensive attack chain, the pri-mary defensive priority is mitigating the underlying BadFuse vulnerability. Therefore, the mitigation strategies detailed be-low focus on securing the hardware fuse controller against the BadFuse attack vectors. 
+
+Enhancing BootROM Security. As an immutable part post fabrication, the security of the BootROM is paramount. Under the SEV-SNP security model, particularly following the intro-duction of the VCEK, processors should not support custom root public key hashing functionalities. Disabling this feature effectively neutralizes BadFuse Attack I. Furthermore, the BootROM code, especially its cryptographic security mod-ules, requires rigorous auditing to eliminate exploitable vul-nerabilities similar to MilanLaunchy. 
+
+Modifying the VCEK Derivation Mechanism. An alterna-tive approach to mitigate BadFuse Attack I involves mod-ifying how the VCEK is derived. For instance, incorporat-ing the public key into the VCEK root secret derivation would successfully isolate different execution branches. An-other potential mitigation is to adopt a DICE like derivation scheme [27]. Instead of relying solely on the SVN, this ap-proach incorporates actual firmware content measurements into the derivation process, ensuring that any tampered or malicious firmware yields incorrect cryptographic keys. How-ever, as discussed in [16], this strategy introduces a structural compromise: it sacrifices the TCB rollback functionality in-trinsic to SEV-SNP and prevents the deployment of multiple firmware releases under a single SVN. 
+
+Hardware Level Defenses for Fuse Controllers. To address BadFuse Attack II, hardware designers must implement dedi-cated write protection control bits specifically for the VCEK fuse arrays to prevent any post fabrication modifications. An-other viable defense mechanism is the mandatory enforce-ment of ECC and Fletcher-32 validation. Activating these error correction features and enforcing strict plaintext binding limits the number of bits an adversary can successfully manip-ulate. Introducing excessive errors during an attack would be definitively detected by the ECC and Fletcher-32 validation, thereby thwarting the complete extraction of the VCEK seed. 
+
+# 8 Related Work 
+
+Software Attacks on the Hypervisor-Guest Boundary. The interface between the untrusted hypervisor and the confiden-tial guest has historically been a primary attack surface. Early implementations like SEV and SEV-ES suffered from incom-plete state protection, allowing malicious hypervisors to ma-nipulate execution flows or abuse nested page tables to corrupt guest data [28, 35]. In SEV-SNP, these issues are effectively addressed by the RMP table. However, as the hypervisor retains partial control over the VM’s nested page tables, ad-versaries can potentially single-step the execution of the VM using external APIC timers (e.g. SEV-Step [48]). Furthermore, as the untrusted hypervisor can inject interrupts into the guest VM during runtime, an attacker can maliciously exploit the interrupt handlers within the guest kernel to compromise the integrity of the confidential VM, as seen in the Heckler [40] and WESEE [39] attacks. More recently, Takekoshi et al. [46] demonstrated that because ACPI tables are excluded from static boot attestation, a malicious host can leverage ACPI Ma-chine Language (AML) to inject arbitrary code into the guest kernel. To mitigate these threats, a fundamental approach is to leverage Virtual Machine Privilege Levels (VMPLs) to enforce finer-grained isolation within the guest VM [45, 53]. Another active line of research focuses on side-channel vulnerabilities. Specifically, the hypervisor can exploit the XEX encryption mode of guest memory to mount ciphertext side-channel attacks [33, 34, 41, 49, 50]. Because this mode deterministically encrypts the same plaintext at the same phys-ical address into identical ciphertext, adversaries can monitor memory write patterns to recover partial or complete confiden-tial information. Similarly, attackers can leverage CPU per-formance counters and power monitoring interfaces to extract cryptographic secrets [26, 47]. To mitigate both ciphertext and performance counter side-channel attacks, AMD has in-troduced Ciphertext Hiding and Performance Counter (PMC) Virtualization technologies in its recent architectures [12]. 
+
+Software Attacks on ASP Firmware and X86 Microcode. 
+
+Vendor-specific implementations, primarily the ASP firmware and x86 microcode on AMD processors, constitute another critical attack surface. Prior to the initial release of SEV-SNP, an early security audit of the ASP firmware conducted by AMD and Google revealed multiple vulnerabilities [19]. Fol-10 lowing AMD’s partial open-sourcing of the ASP firmware in 2023 [6], Dohrmann identified several implementation-level flaws, including typographical errors and insufficient input validation [8]. More recently, sophisticated vulnerabilities tar-geting the underlying architectural initialization have been discovered. The Rmpocalypse attack [38] demonstrates that an untrusted hypervisor can exploit a synchronization gap between the x86 cores and the ASP to maliciously control the initial RMP state, ultimately compromising the integrity of confidential VMs. Similarly, the FABRICKED attack [42] manipulates AMD’s Data Fabric routing during system initial-ization to bypass SEV-SNP hardware protections, enabling practical end-to-end attacks. Flawed x86 microcode implementations also compromise the security of SEV-SNP. For instance, the Cachewarp at-tack [51] exploits faulty INVD instruction implementations, enabling attackers to roll back and subsequently corrupt the execution state of a guest VM. Furthermore, the EntrySign attack [11] directly targets insecure cryptographic implemen-tations within the microcode update mechanism. This allows adversaries to load arbitrary microcode patches and com-pletely subvert the microcode root of trust. More recently, the Stackwarp attack [52] exploited the improper synchronization of the stack engine across logical cores, leading to unautho-rized control flow hijacking or data corruption within guest VMs. To mitigate these vulnerabilities, AMD has issued cor-responding ASP firmware and x86 microcode updates with bumped SVNs. 
+
+Physical Attacks on the ASP Firmware. Physically attack-ing the ASP to extract the VCEK root seed represents the most direct method to compromise SEV-SNP. Buhren et al. demonstrated the first fault injection attack against the ASP, leveraging anomalous voltage packets injected over the SVI2 bus to bypass the firmware’s signature verification during the BootROM phase [16]. This manipulation allowed for the load-ing of a malicious ASP firmware image with the maximum SVN, consequently enabling attackers to extract the CEK or VCEK seeds across Zen 1 to Zen 3 architectures. Similar tech-niques have also been applied to compromise the firmware Trusted Platform Module (fTPM) on consumer-grade proces-sors [30]. Although fault injection typically requires opening the chassis and therefore falls outside the standard confidential computing threat model, it remains a highly potent physical attack vector. 
+
+Physical Attacks on the Memory Subsystem. Attacks tar-geting the memory subsystem enable adversaries to bypass the memory controller, allowing direct physical read and write access to otherwise protected memory regions. The BadRAM attack [24] achieves this by modifying the Serial Presence Detect ( SPD ) data on physical DIMMs to report double the actual memory capacity, enabling attackers to create memory aliases and access protected memory, which facilitates var-ious subsequent exploits. Building upon this, the Battering RAM attack [23] introduces dynamic runtime aliasing via a low-cost DDR4 interposer, successfully evading static boot-time alias detection. More recently, TEE.fail [18, 43] utilizes physical probing of the DDR5 memory bus to monitor fluc-tuations in encrypted memory data. The leaked side-channel information allows attackers to extract the complete provi-sioning certification key on Intel TDX, and bypass ciphertext hiding mechanisms to re-enable ciphertext side-channel at-tacks on AMD SEV-SNP. Compared to fault injection, attacks on the memory subsystem generally require weaker adver-sarial capabilities, with some attack vectors even achievable via software in some cases [9]. Consequently, AMD has se-lectively introduced mitigations to address certain aspects of these vulnerabilities. 
+
+# 9 Conclusion 
+
+In this paper, we demonstrate a software-based attack chain to extract the VCEK root seed on EPYC Milan processors. We first introduce the MilanLaunchy attack, which achieves arbitrary code execution on the ASP through a novel exploita-tion of the firmware decryption vulnerability. Subsequently, we present the BadFuse attack, which leverages access con-trol vulnerabilities within the fuse controller to successfully extract the VCEK seed. Our attack highlights that protecting foundational root secrets is the absolute cornerstone of con-fidential computing. Ultimately, our research demonstrates that strict cryptographic and access control models, alongside rigorous secure implementation, are critical for defending the TCB against advanced exploitation. 
+
+# References 
+
+[1] Inc. Advanced Micro Devices. Amd secure encrypted virtualization api version 0.24, 2020. [2] Advanced Micro Devices, Inc. Using SEV with AMD EPYC Processors, 2023. https://www.amd.com/co ntent/dam/amd/en/documents/epyc-technical -docs/tuning-guides/58207-using-sev-with-a md-epyc-processors.pdf .[3] Advanced Micro Devices, Inc. SEV Secure Nested Paging - Firmware ABI Specification Revision 1.58, 2025. https://www.amd.com/content/dam/amd/en /documents/epyc-technical-docs/specificat ions/56860.pdf .[4] Advanced Micro Devices, Inc. Versioned Chip Endorse-ment Key (VCEK) Certificate and KDS Interface Spec-ification, 2025. https://www.amd.com/content/da m/amd/en/documents/epyc-technical-docs/sp ecifications/57230.pdf .11 [5] AMD. Amd server vulnerabilities – november 2021, 2021. https://www.amd.com/en/resources/produ ct-security/bulletin/amd-sb-1021.html .[6] AMD. Amd-aspfw, 2023. https://github.com/amd /AMD-ASPFW .[7] AMD. Amd server vulnerabilities – nov 2023, 2023. 
+
+https://www.amd.com/en/resources/product-s ecurity/bulletin/amd-sb-3002.html .[8] AMD. Guest memory vulnerabilities, 2024. https: //www.amd.com/en/resources/product-securit y/bulletin/amd-sb-3011.html .[9] AMD. Undermining integrity features of sev-snp with memory aliasing, 2024. https://www.amd.com/en /resources/product-security/bulletin/amd-s b-3015.html .[10] AMD. Amd server vulnerabilities – august 2025, 2025. 
+
+https://www.amd.com/en/resources/product-s ecurity/bulletin/amd-sb-3014.html .[11] AMD. Amd sev confidential computing vulnerability, 2025. https://www.amd.com/en/resources/produ ct-security/bulletin/amd-sb-3019.html .[12] AMD. Amd secure encrypted virtualization (sev). http s://www.amd.com/en/developer/sev.html , 2026. [13] AMD. Milanlaunchy firmware loader, 2026. https: //www.amd.com/en/resources/product-securit y/bulletin/amd-sb-3045.html .[14] ARM. Arm confidential compute architecture (cca). 
+
+https://www.arm.com/architecture/securit y-features/arm-confidential-compute-archi tecture , 6 2023. [15] Robert Buhren, Alexander Eichner, and Christian Wer-ling. Uncover, Understand, Own - Regaining Control Over Your AMD CPU. https://media.ccc.de/v/3 6c3-10942-uncover_understand_own_-_regain ing_control_over_your_amd_cpu , 2019. [16] Robert Buhren, Hans-Niklas Jacob, Thilo Krachenfels, and Jean-Pierre Seifert. One glitch to rule them all: Fault injection attacks against amd’s secure encrypted virtualization. In Proceedings of the 2021 ACM SIGSAC Conference on Computer and Communications Security ,pages 2875–2889, 2021. [17] Robert Buhren, Christian Werling, and Jean-Pierre Seifert. Insecure until proven updated: analyzing amd sev’s remote attestation. In Proceedings of the 2019 ACM SIGSAC Conference on Computer and Communi-cations Security , pages 1087–1099, 2019. [18] J Chuang, A Seto, N Berrios, S van Schaik, C Garman, and D Genkin. Tee. fail: Breaking trusted execution environments via ddr5 memory bus interposition. In 
+
+2026 IEEE Symposium on Security and Privacy (SP). Los Alamitos, CA, USA: IEEE Computer Society , pages 1894–1912, 2026. [19] Cfir Cohen, James Forshaw, Jann Horn, and Mark Brand. Amd secure processor for confidential computing secu-rity review. Technical report, Technical Report. Google Project Zero and Google Cloud Security, 2022. [20] Coreboot. Amd platform security processor (psp) firmware integration guide. https://doc.corebo ot.org/soc/amd/psp_integration.html , 6 2023. [21] dayzerosec. Reversing the amd secure processor (psp)-part 1: Design and overview, 2023. https://dayzer osec.com/blog/2023/04/17/reversing-the-amd -secure-processor-psp.html .[22] dayzerosec. Reversing the amd secure processor (psp)-part 2: Cryptographic co-processor (ccp), 2023. https: //dayzerosec.com/blog/2023/04/22/reversing -the-amd-secure-processor-psp-part-2-crypt ographic-co-processor-ccp.html .[23] Jesse De Meulemeester, David Oswald, Ingrid Ver-bauwhede, and Jo Van Bulck. Battering ram: Low-cost interposer attacks on confidential computing via dynamic memory aliasing. In 47th IEEE Symposium on Security and Privacy (S&P) , 2026. [24] Jesse De Meulemeester, Luca Wilke, David Os-wald, Thomas Eisenbarth, Ingrid Verbauwhede, and Jo Van Bulck. Badram: Practical memory aliasing at-tacks on trusted execution environments. In 46th IEEE Symposium on Security and Privacy . IEEE, 2024. [25] Tom Dohrmann. All your secrets belong to us: Leverag-ing firmware bugs to break tees. BlackHat USA, 2024. [26] Stefan Gast, Hannes Weissteiner, Robin Leander Schröder, and Daniel Gruss. Counterseveillance: Performance-counter attacks on amd sev-snp. In Net-work and Distributed System Security Symposium 2025: NDSS 2025 , 2025. [27] Trusted Computing Group. Tcgtrusted platform ar-chitecturehardware requirements for a device identifier composition engine. https://www.trustedcomputi nggroup.org/wp-content/uploads/Device-Ide ntifier-Composition-Engine-Rev69_Public-R eview.pdf , 2021. [28] Felicitas Hetzelt and Robert Buhren. Security analysis of encrypted virtual machines. ACM SIGPLAN Notices ,52(7):129–142, 2017. 12 [29] Intel. Intel® Trust Domain Extensions (Intel TDX). 
+
+https://www.intel.com/content/www/us/en/de veloper/articles/technical/intel-trust-dom ain-extensions.html , 2 2023. [30] Hans Niklas Jacob, Christian Werling, Robert Buhren, and Jean-Pierre Seifert. faultpm: Exposing amd ftpms’ deepest secrets. In 2023 IEEE 8th European Symposium on Security and Privacy (EuroS&P) , pages 1128–1142. IEEE, 2023. [31] Michał Kope´ c. Psb status. https://github.com/mko pec/psb_status , 2023. [32] CTS Labs. Severe security advisory on amd processors. 
+
+https://safefirmware.com/amdflaws_whitepap er.pdf , 2018. [33] Mengyuan Li, Luca Wilke, Jan Wichelmann, Thomas Eisenbarth, Radu Teodorescu, and Yinqian Zhang. A systematic look at ciphertext side channels on amd sev-snp. In 2022 IEEE Symposium on Security and Privacy (SP) , pages 337–351. IEEE, 2022. [34] Mengyuan Li, Yinqian Zhang, Huibo Wang, Kang Li, and Yueqiang Cheng. {CIPHERLEAKS }: Breaking constant-time cryptography on {AMD }{ SEV } via the ciphertext side channel. In 30th USENIX Security Sym-posium (USENIX Security 21) , pages 717–732, 2021. [35] Mathias Morbitzer, Sergej Proskurin, Martin Radev, Marko Dorfhuber, and Erick Quintanar Salas. Sever-ity: Code injection attacks against encrypted virtual ma-chines. In 2021 IEEE Security and Privacy Workshops (SPW) , pages 444–455. IEEE, 2021. [36] Krzysztof Okupski. Exploring amd platform secure boot. https://www.ioactive.com/exploring-amd -platform-secure-boot/ , 2024. [37] PSPTool Contributors. PSPTool: Display, extract, and manipulate PSP firmware inside UEFI images. https: //github.com/PSPReverse/PSPTool , 2025. [38] Benedict Schlüter and Shweta Shinde. Rmpocalypse: How a catch-22 breaks amd sev-snp. In Proceedings of the 2025 ACM SIGSAC Conference on Computer and Communications Security , pages 3840–3854, 2025. [39] Benedict Schlüter, Supraja Sridhara, Andrin Bertschi, and Shweta Shinde. Wesee: using malicious# vc inter-rupts to break amd sev-snp. In 2024 IEEE Symposium on Security and Privacy (SP) , pages 4220–4238. IEEE, 2024. [40] Benedict Schlüter, Supraja Sridhara, Mark Kuhne, An-drin Bertschi, and Shweta Shinde. {HECKLER }: Break-ing confidential {VMs } with malicious interrupts. In 
+
+33rd USENIX Security Symposium (USENIX Security 24) , pages 3459–3476, 2024. [41] Benedict Schlüter, Christoph Wech, and Shweta Shinde. Heracles: Chosen plaintext attack on amd sev-snp. In 
+
+Proceedings of the 2025 ACM SIGSAC Conference on Computer and Communications Security , pages 3810– 3824, 2025. [42] Benedict Schlüter, Christoph Wech, and Shweta Shinde. Fabricked: Misconfiguring infinity fabric to break amd sev-snp. 2026. [43] Alex Seto, Oytun Kuday Duran, Samy Amer, Jalen Chuang, Stephan van Schaik, Daniel Genkin, and Christina Garman. Wiretap: Breaking server sgx via dram bus interposition. In Proceedings of the 2025 ACM SIGSAC Conference on Computer and Communications Security , pages 708–722, 2025. [44] AMD Sev-Snp. Strengthening vm isolation with in-tegrity protection and more. White Paper, January ,53(2020):1450–1465, 2020. [45] Coconut SVSM. Coconut secure vm service module. 
+
+https://github.com/coconut-svsm/svsm , 2026. [46] Satoru Takekoshi, Manami Mori, Takaaki Fukai, and Takahiro Shinagawa. Badaml: Exploiting legacy firmware interfaces to compromise confidential virtual machines. In Proceedings of the 2025 ACM SIGSAC Conference on Computer and Communications Security ,pages 4469–4483, 2025. [47] Wubing Wang, Mengyuan Li, Yinqian Zhang, and Zhiqiang Lin. Pwrleak: Exploiting power reporting interface for side-channel attacks on amd sev. In In-ternational Conference on Detection of Intrusions and Malware, and Vulnerability Assessment , pages 46–66. Springer, 2023. [48] Luca Wilke, Jan Wichelmann, Anja Rabich, and Thomas Eisenbarth. Sev-step: A single-stepping framework for amd-sev. arXiv preprint arXiv:2307.14757 , 2023. [49] Yuqin Yan, Wei Huang, Ilya Grishchenko, Gururaj Saileshwar, Aastha Mehta, and David Lie. {Relocate-Vote }: Using sparsity information to exploit ciphertext 
+
+{Side-Channels }. In 34th USENIX Security Symposium (USENIX Security 25) , pages 5699–5717, 2025. [50] Yuanyuan Yuan, Zhibo Liu, Sen Deng, Yanzuo Chen, Shuai Wang, Yinqian Zhang, and Zhendong Su. Ci-phersteal: Stealing input data from tee-shielded neural networks with ciphertext side channels. In 2025 IEEE Symposium on Security and Privacy (SP) , pages 4136– 4154. IEEE, 2025. 13 [51] Ruiyi Zhang, Lukas Gerlach, Daniel Weber, Lorenz Hetterich, Youheng Lü, Andreas Kogler, and Michael Schwarz. {CacheWarp }: Software-based fault injection using selective state reset. In 33rd USENIX Security Symposium (USENIX Security 24) , pages 1135–1151, 2024. [52] Ruiyi Zhang, Tristan Hornetz, Daniel Weber, Fabian Thomas, and Michael Schwarz. Stackwarp: Breaking amd sev-snp integrity via deterministic stack-pointer manipulation through the cpu’s stack engine. 2026. [53] Ziqiao Zhou, Weiteng Chen, Sishuai Gong, Chris Haw-blitzel, Weidong Cui, et al. {VeriSMo }: A verified se-curity module for confidential {VMs }. In 18th USENIX Symposium on Operating Systems Design and Imple-mentation (OSDI 24) , pages 599–614, 2024. 14 A Appendix 
+
+Table 3: Metadata Header Fuse Bit-map 
+
+Address Bit 7 Bit 6 Bit 5 Bit 4 Bit 3 Bit 2 Bit 1 Bit 0 
+
+0x5d0F8 Custom PK Revocation (R2) PK Revocation Index 3 (R2) PK Revocation Index 2 (R2) PK Revocation Index 1 (R2) Custom PK Revocation (R1) PK Revocation Index 3 (R1) PK Revocation Index 2 (R1) PK Revocation Index 1 (R1) 
+
+0x5d0F9 Custom PK Fletcher Enable (R1) Custom PK ECC Enable (R3) Custom PK ECC Enable (R2) Custom PK ECC Enable (R1) Custom PK Revocation (R3) PK Revocation Index 3 (R3) PK Revocation Index 2 (R3) PK Revocation Index 1 (R3) 
+
+0x5d0FA VCEK Fletcher Enable (R3) VCEK Fletcher Enable (R2) VCEK Fletcher Enable (R1) VCEK ECC Enable (R3) VCEK ECC Enable (R2) VCEK ECC Enable (R1) Custom PK Fletcher Enable (R3) Custom PK Fletcher Enable (R2) * (R1), (R2), (R3) denote triple modular redundancy slots. 
+
+15 A.1 AMD Platform Secure Boot 
+
+Overview and Hardware Binding. AMD introduced PSB [31, 36] to allow OEMs to enforce a hardware-level root of trust, ensuring that a processor will only execute BIOS/UEFI firmware cryptographically signed by that specific manufac-turer. Fresh out of the factory, AMD processors are shipped in an unfused state with PSB disabled. During the initial deployment, the PSB fuses can be permanently blown via specific BIOS commands. Once fused, the chip becomes cryp-tographically bound to the motherboard manufacturer. The blown fuses record critical data, including the OEM’s ID and the hash of the public key used to verify the manufacturer’s BIOS signatures. By design, this hardware lock prevents the processor from being detached and repurposed on a mother-board from a different vendor. The core functionality of PSB is orchestrated by the off-chip bootloader executing on the ASP. During the boot sequence, the ASP inspects the x86 BIOS/UEFI Pre-EFI Initialization (PEI) firmware volumes stored in the SPI-Flash. 
+
+Real-World Adoption and SEV-SNP Impact. Aside from a select few vendors selling highly customized, pre-built OEM machines, the vast majority of motherboard manufacturers leave PSB unconfigured. Crucially, regarding the AMD SEV-SNP threat model, whether PSB is enabled or disabled has no impact on the security guarantees of the confidential comput-ing environment. PSB is designed to verify the integrity of the x86 BIOS/UEFI image. Because the foundational threat model of SEV-SNP explicitly assumes that the x86 BIOS, UEFI, and hypervisor are entirely untrusted and potentially malicious, the architectural security of SEV-SNP is indepen-dent of the platform’s PSB configuration. 
+
+# A.2 Mitigating Potential Supply Chain Attacks from MilanLaunchy 
+
+This section discusses the potential implications of the Mi-lanLaunchy vulnerability on users who don’t care about SEV-SNP. As discussed in Section 5.3, the specific SEV-SNP attack vector was addressed in the MilanPI-1.0.0.3 update through the VCEK mechanism, allowing SEV-SNP users to lever-age remote attestation to verify their genuinely executing firmware version. However, because the BootROM is im-mutable and fundamentally lacks rollback protection, adver-saries can still target users who operate outside the SEV-SNP threat model. By exploiting MilanLaunchy, attackers can by-pass the PSB and implant arbitrary code while ensuring the underlying x86 system boots successfully. Consequently, this creates a supply chain attack surface for EPYC users who don’t know SEV-SNP and Threadripper PRO 59x5WX users (the Threadripper PRO 59x5WX series shares the identical vulnerable BootROM architecture and lacks the VCEK mech-anism). As recommended in the official AMD security brief [13], effectively mitigating this specific threat requires securing the SPI-Flash environment, which can be achieved by manually reflashing the SPI-Flash component with an official firmware image. 
+
+# A.3 Responsible Disclosure and Vendor Re-sponse 
+
+• January 6, 2026: We responsibly disclosed the Milan-Launchy attack to AMD via email with a PoC. • January 20, 2026: AMD established the embargo date for the MilanLaunchy attack to February 24, 2026. • January 30, 2026: AMD requested an embargo extension for the MilanLaunchy attack to May 12, 2026 due to its impaction on Threadripper PRO series [13]. • April 8, 2026: We responsibly disclosed the BadFuse attack to AMD via email with a PoC. • April 29, 2026: AMD issued their response addressing the BadFuse attack, stating the following: 
+
+The internal SME stated that he doesn’t be-lieve any action is necessary on this ticket. To carry out the attacks, the attacker needs first exploit a prior attack vector (Milan-Launchy). This dependency was confirmed by the researcher. MilanLaunchy itself exploits previously disclosed vulnerability. The over-all scenario constitutes a chain attack. 
+
+16
