@@ -6,55 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-17
-- 运行时间：2026-05-18 04:17:47 UTC+8
+- 最新运行日期：2026-05-18
+- 运行时间：2026-05-19 04:43:57 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Regularity, Phase Transitions, and Uniform Inference for Proximal Counterfactual Quantile Processes》（7.2/10）, 《PolarNet: Single-Minima Neural Network for Modeling Lyapunov Functions》（7.2/10）, 《An Elastic Shape Variational Autoencoder for Skeleton Pose Trajectories》（7.1/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Estimating Association Between Paired Outcomes in Clustered Data with Informative Subgroup Size》（8.6/10）, 《From Full and Partial Intraoral Scans to Crown Proposal: A Classification-Guided Restoration Assistance Pipeline》（8.5/10）
+- 速读：《Runtime-Structured Task Decomposition for Agentic Coding Systems》（7.9/10）, 《AnchorRoute: Human Motion Synthesis with Interval-Routed Sparse Contro》（7.8/10）, 《Bailey pairs, Eichler integrals and unified Witten-Reshetikhin-Turaev invariants》（7.7/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/17/README](/202605/17/README)
+- 详情：[/202605/18/README](/202605/18/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Estimating Association Between Paired Outcomes in Clustered Data with Informative Subgroup Size](/202605/18/2605.16108v1-estimating-association-between-paired-outcomes-in-clustered-data-with-informative-subgroup-size)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
+2. [From Full and Partial Intraoral Scans to Crown Proposal: A Classification-Guided Restoration Assistance Pipeline](/202605/18/2605.15241v1-from-full-and-partial-intraoral-scans-to-crown-proposal-a-classification-guided-restoration-assistance-pipeline)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+3. [TopoEvo: A Topology-Aware Self-Evolving Multi-Agent Framework for Root Cause Analysis in Microservices](/202605/18/2605.15611v1-topoevo-a-topology-aware-self-evolving-multi-agent-framework-for-root-cause-analysis-in-microservices)  
+   标签：评分：8.0/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Regularity, Phase Transitions, and Uniform Inference for Proximal Counterfactual Quantile Processes](/202605/17/2605.09257v1-regularity-phase-transitions-and-uniform-inference-for-proximal-counterfactual-quantile-processes)  
-   标签：评分：7.2/10
+1. [Runtime-Structured Task Decomposition for Agentic Coding Systems](/202605/18/2605.15425v1-runtime-structured-task-decomposition-for-agentic-coding-systems)  
+   标签：评分：7.9/10
    evidence：检索回退候选
-2. [PolarNet: Single-Minima Neural Network for Modeling Lyapunov Functions](/202605/17/2605.09546v1-polarnet-single-minima-neural-network-for-modeling-lyapunov-functions)  
-   标签：评分：7.2/10
+2. [AnchorRoute: Human Motion Synthesis with Interval-Routed Sparse Contro](/202605/18/2605.14716v2-anchorroute-human-motion-synthesis-with-interval-routed-sparse-contro)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-3. [An Elastic Shape Variational Autoencoder for Skeleton Pose Trajectories](/202605/17/2605.09231v1-an-elastic-shape-variational-autoencoder-for-skeleton-pose-trajectories)  
-   标签：评分：7.1/10
+3. [Bailey pairs, Eichler integrals and unified Witten-Reshetikhin-Turaev invariants](/202605/18/2605.15740v1-bailey-pairs-eichler-integrals-and-unified-witten-reshetikhin-turaev-invariants)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-4. [Large Spectrum Models (LSMs): Decoder-Only Transformer-Powered Spectrum Activity Forecasting via Tokenized RF Data](/202605/17/2605.10825v1-large-spectrum-models-lsms-decoder-only-transformer-powered-spectrum-activity-forecasting-via-tokenized-rf-data)  
-   标签：评分：7.1/10
+4. [Epstein vector zeta functions related to the ADE Lie algebras](/202605/18/2605.16042v1-epstein-vector-zeta-functions-related-to-the-ade-lie-algebras)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-5. [TMPO: Trajectory Matching Policy Optimization for Diverse and Efficient Diffusion Alignment](/202605/17/2605.10983v1-tmpo-trajectory-matching-policy-optimization-for-diverse-and-efficient-diffusion-alignment)  
-   标签：评分：7.0/10
+5. [STAR: A Stage-attributed Triage and Repair framework for RCA Agents in Microservices](/202605/18/2605.15581v1-star-a-stage-attributed-triage-and-repair-framework-for-rca-agents-in-microservices)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-6. [Tokens-per-Parameter Coverage Is Critical for Robust LLM Scaling Law Extrapolation](/202605/17/2605.08541v1-tokens-per-parameter-coverage-is-critical-for-robust-llm-scaling-law-extrapolation)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-7. [Dynamic Edge Coloring of Forests](/202605/17/2605.09711v1-dynamic-edge-coloring-of-forests)  
+6. [Commutators of finite multiplicative order](/202605/18/2605.09451v1-commutators-of-finite-multiplicative-order)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Semi-Supervised Neural Super-Resolution for Mesh-Based Simulations](/202605/17/2605.09284v1-semi-supervised-neural-super-resolution-for-mesh-based-simulations)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-9. [Memorize Theorems, Not Instances: Probing SFT Generalization through Mathematical Reasoning](/202605/17/2605.09270v1-memorize-theorems-not-instances-probing-sft-generalization-through-mathematical-reasoning)  
+7. [Toward AI-Driven Digital Twins for Metropolitan Floods: A Conditional Latent Dynamics Network Surrogate of the Shallow Water Equations](/202605/18/2605.13761v1-toward-ai-driven-digital-twins-for-metropolitan-floods-a-conditional-latent-dynamics-network-surrogate-of-the-shallow-water-equations)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Chain-of-Thought Reasoning Enhances In-Context Learning for LLM-Based Mobile Traffic Prediction](/202605/17/2605.09260v1-chain-of-thought-reasoning-enhances-in-context-learning-for-llm-based-mobile-traffic-prediction)  
+8. [Self-Consistent Latent Reasoning: Long Latent Sequence Reasoning for Vision-Language Model](/202605/18/2605.12163v1-self-consistent-latent-reasoning-long-latent-sequence-reasoning-for-vision-language-model)  
    标签：评分：6.8/10
    evidence：检索回退候选
-11. [An Elastic Shape Variational Autoencoder for Skeleton Pose Trajectories](/202605/17/2605.09231v2-an-elastic-shape-variational-autoencoder-for-skeleton-pose-trajectories)  
+9. [Robust and Explainable Bicuspid Aortic Valve Diagnosis Using Stacked Ensembles on Echocardiography](/202605/18/2605.13730v1-robust-and-explainable-bicuspid-aortic-valve-diagnosis-using-stacked-ensembles-on-echocardiography)  
    标签：评分：6.8/10
+   evidence：检索回退候选
+10. [Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers](/202605/18/2605.13246v2-automatic-detection-of-reference-counting-bugs-in-linux-kernel-drivers)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+11. [Assessment of cloud and associated radiation fields from a GAN stochastic cloud subcolumn generator](/202605/18/2605.11968v1-assessment-of-cloud-and-associated-radiation-fields-from-a-gan-stochastic-cloud-subcolumn-generator)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 

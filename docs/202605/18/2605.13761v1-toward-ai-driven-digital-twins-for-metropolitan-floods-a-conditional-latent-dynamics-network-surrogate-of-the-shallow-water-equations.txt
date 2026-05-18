@@ -1,0 +1,746 @@
+Title: Toward AI-Driven Digital Twins for Metropolitan Floods: A Conditional Latent Dynamics Network Surrogate of the Shallow Water Equations
+
+URL Source: https://arxiv.org/pdf/2605.13761v1
+
+Published Time: Thu, 14 May 2026 01:47:00 GMT
+
+Number of Pages: 32
+
+Markdown Content:
+# Toward AI-Driven Digital Twins for Metropolitan Floods: A Conditional Latent Dynamics Network Surrogate of the Shallow Water Equations 
+
+Phillip Si a, Yuan Qiu a, Omar Sallam b, Jeremy Feinstein b, Ziang He b, Eugene Yan b, Peng Chen a, ∗
+
+> aSchool of Computational Science and Engineering, Georgia Institute of Technology, 756 West Peachtree Street Northwest, Atlanta, 30308, GA, USA
+> bEnvironmental Science Division, Argonne National Laboratory, 9700 S Cass Ave, Lemont, 60439, IL, USA
+
+Abstract 
+
+AI-driven flood digital twins demand fast hydrodynamic surrogates for ensemble forecasting and observation assimilation. Yet even GPU-accelerated two-dimensional shallow water equation (SWE) solvers still require 
+
+∼ 55 minutes per 96 -hour run on a ∼ 4.2-million-active-cell metropolitan basin (the Des Plaines River basin at 30 m resolution), making such workloads prohibitive at native resolution. We present the Conditional Latent Dynamics Network (CLDNet): a low-dimensional latent neural ODE driven by rainfall, paired with a coordinate-based decoder conditioned on static terrain (elevation, slope, Manning roughness) that recon-structs depth and discharge at arbitrary query points. Pointwise decoding decouples memory from grid size and handles irregular watersheds natively, enabling metropolitan-scale training on a single compute node and direct queries at exact gauge coordinates without raster snapping. We evaluate CLDNet on a synthetic 
+
+250 ,000 -cell Texas benchmark and on a new Des Plaines case study of 114 real-rainfall Stage IV storms whose reference simulator we validate against United States Geological Survey (USGS) gauges at the April 2013 flood-of-record (Nash–Sutcliffe efficiency 0.57 –0.94 on mean-recentered water-surface elevation). CLDNet roughly halves the relative root-mean-squared error of an unconditional baseline, outperforms regular-grid VAE–ConvLSTM and FNO baselines on the Texas benchmark (both presuppose a Cartesian grid and do not apply to the irregular Des Plaines watershed), reaches a critical success index of ≈ 86% at the 0.5 m 
+
+inundation threshold, and produces a full 96 -hour basin-wide forecast in ∼ 29 seconds—a ∼ 115 × speedup. 
+
+Keywords: AI-driven digital twins, neural surrogate modeling, shallow water equations, conditional latent dynamics networks, terrain conditioning, real-time flood forecasting 
+
+1. Introduction 
+
+1.1. Motivation 
+
+Urban and regional flooding is among the most costly and disruptive natural hazards, with 1.81 billion people, roughly 23% of the world’s population, directly exposed to 1-in-100 -year flood events [1] greater than 0.15 m , and satellite observations document that the proportion of the global population exposed to floods grew by roughly 20 –24% between 2000 and 2015, an order of magnitude faster than population growth alone [2]. Continued urbanization of floodplains and climate-driven intensification of extreme precipitation are projected to amplify these trends further [2]. Physics-based hydrodynamic solvers based on the two-dimensional shallow water equations (SWEs), from the LISFLOOD-FP inertial formulation [3] to modern GPU-accelerated Godunov schemes, have become the workhorse for producing high-fidelity flood forecasts at city and basin scale [4, 5, 6]. Modern GPU implementations such as SynxFlow achieve significant com-putational efficiency on metropolitan domains, integrating the SWE system at speeds orders of magnitude   
+
+> ∗Corresponding author
+> Email address: pchen402@gatech.edu (Peng Chen )
+> arXiv:2605.13761v1 [cs.LG] 13 May 2026
+
+faster than real time: a single 96 -hour forecast for the 4,188 ,840 -active-cell Des Plaines River basin studied in this work completes in ∼ 55 minutes of GPU wall time at 30 m resolution (Section 2). This is already fast enough for a single deterministic forecast, but the cost scales linearly with the number of runs, so workflows that require many forecasts per basin—rainfall-forecast ensembles, what-if and scenario-screening sweeps for flood-risk management, and climate-projection downscaling—remain slow and expensive at na-tive resolution. Closing this gap calls for fast surrogate models that (i) reproduce simulator-level accuracy at orders-of-magnitude lower per-trajectory cost, (ii) retain a memory footprint small enough to admit many concurrent inferences on a single GPU, and (iii) scale to metropolitan domains without coarsening or cropping. Delivering all three is the central objective of this work. Operational flood prediction at metropolitan scale is moving toward AI-driven digital twins : living, observation-coupled models of a basin that ingest precipitation, stream-stage, and inundation observations while maintaining a fast representation of the underlying hydrodynamics that can be queried for ensemble forecasts, scenario screens, and water-management decisions. Such a twin requires at least three compo-nents: (i) a high-fidelity physical simulator anchored to observations; (ii) a fast surrogate that reproduces the simulator’s dynamics at much lower per-run cost so that many forecasts and assimilation cycles can run on routine hardware; and (iii) a compact state representation of the basin that can be updated from sparse observations. This work delivers the second component and part of the third for the Des Plaines basin: CLDNet provides a fast SWE surrogate with a low-dimensional latent state and a meshless decoder that can be queried at exact gauge coordinates without raster snapping. We position CLDNet as a hydrodynamic surrogate layer toward AI-driven flood digital twins, rather than as a complete operational twin; the cor-responding online observation-assimilation step is articulated as a contribution-level extension (C5 below) rather than demonstrated here. 
+
+1.2. Data-driven flood surrogates: state of the art and open gaps 
+
+Recent data-driven flood surrogates include five broad families; while each has significantly advanced the state of the art, scaling these approaches to metropolitan areas remains an active area of development. 
+
+Graph neural networks (GNN) exploit the unstructured nature of hydrodynamic meshes and the local character of SWE flux computations. SWE-GNN [7] uses an encoder-processor-decoder GNN with message-passing layers designed to mimic wet-to-dry flux propagation; it was demonstrated on synthetic dike-breach events over Perlin-noise topographies with grids of up to 128 × 128 = 16 ,384 cells at 100 m resolution and generalized to unseen topographies and breach locations. A multi-scale SWE-GNN [8] (mSWE-GNN) variant extends this formulation with a multi-resolution processor that demonstrates applicability on real topographies. ComGNN [9] converts the digital elevation model (DEM) into a directed flow-direction graph and runs a two-stage message-passing scheme that respects mass and momentum conservation for pluvial flood emulation. Both methods scale with the number of mesh edges and are challenged by flat urban terrain, backwater effects, and dense metropolitan meshes with millions of nodes. We do not include a GNN baseline in our experiments because (i) ComGNN’s two-stage formulation predicts only water depth in a short 200 -minute forecast horizon using 5-minute time steps, and (ii) message-passing at 4.2 million active nodes exceeds the GPU memory in current implementations of SWE-GNN and ComGNN. 
+
+Convolutional / U-Net architectures treat the flood field as an image and benefit from large-receptive-field encoder-decoder backbones. U-FLOOD [10] predicts maximum pluvial flood depth maps over the city of Odense using a ∼ 28 M-parameter U-Net, achieving second-scale inference at unseen locations and rain events. However, it predicts only the maximum depth (no temporal dynamics), was designed for a single pluvial catchment, and the memory of its dense decoder scales with the output resolution, limiting deployment on metropolitan meshes. 
+
+Recurrent / hybrid deep learning stacks a Convolutional Long Short-Term Memory network (ConvLSTM) or similar sequence model on top of a convolutional encoder of the flood state. The Hydro-Y-Net of Yang et al. [11] couples a physics-informed ConvLSTM to a hydrodynamic model, issuing 12 -step forecasts in ∼ 12 
+
+seconds on a ∼ 250 ,000 -cell Nan’gang River Basin in Guangzhou city. The approach generalizes well within-district, but the ConvLSTM recurrence and dense grid representation have memory footprints that scale with the full spatial grid at every time step, making them impractical to push to the 4.2 million active-cell scale and beyond. 2Physics-informed neural networks (PINNs) enforce the SWE residual as a soft constraint on a coordinate Multilayer Perceptron (MLP). The physics-information-fused model of Li et al. [12] combines a PINN with a subregion-specific collocation sampling scheme that concentrates residual points near high-gradient regions, achieving orders-of-magnitude speedups over 2D SWE solvers on dam-break benchmarks. A broader body of work on PINN-based SWE solvers has emerged in recent years [13, 14]. However, standard coordinate-input PINNs must be retrained per geometry and per event, do not accept rainfall or DEM as distributed input fields, and have not been demonstrated on realistic rainfall-driven urban domains. 
+
+Neural operators learn the solution map of a parametric partial differential equation (PDE) family directly. The Fourier Neural Operator (FNO) [15] parameterizes an integral kernel in Fourier space; Deep-ONet [16] uses a branch–trunk decomposition and is a universal approximator of operators between Banach spaces; physics-informed variants further constrain the operator with PDE residuals [17]. In the data-limited regime, sample efficiency on high-dimensional parameter inputs can be improved by adding a parameter-Jacobian loss, as in derivative-informed neural operators [18, 19], the derivative-enhanced DeepONet vari-ant [20], and the latent attention neural operator that fuses derivative-informed dimension reduction with attention in latent space [21]; reduced-basis neural operator training with a first-order system least-squares objective yields a loss provably equivalent to the PDE-induced solution error norm, thus serving as a rigor-ous a posteriori error estimator [22]. In this work, we select FNO as a representative baseline for the Texas dataset (Section 4.2), as in [23], owing to the flexibility of its conditioning mechanism. The global spectral parameterization that gives FNO its sample efficiency on smooth problems is, however, challenged by the sharp wet/dry interfaces of metropolitan flood fields (Section 4.8). Against this digital-twin target, existing flood surrogates still leave several requirements underserved. Fast SWE surrogates such as the one developed here can provide the hydrodynamic-replication layer of a flood digital twin, but the surrogate must also scale to operational domains, preserve terrain-controlled temporal dynamics, and expose a state/query interface that can ultimately be connected to sparse ob-servations. This view is consistent with recent hydrological digital-twin studies, which emphasize the same three-pillar structure—physics-anchored simulation, hybrid physics + AI dynamics replication, and real-time data assimilation from gauges and remote sensing—in support of water-system monitoring and management decisions [24, 25, 26, 27]. A recent comprehensive review [28] catalogues over 50 machine-learning flood-depth estimators and confirms the picture above: the largest reported demonstrations for end-to-end neural flood surrogates remain well below metropolitan scale (Table 1). Three requirements for operational flood digital twins remain underserved: 1. Metropolitan scalability. Existing surrogates have been demonstrated on domains mostly below metropolitan/million-cell scale cells, roughly two orders of magnitude smaller than a metropolitan watershed at 30 m resolution. Memory costs in grid-based architectures (GNN, CNN, U-Net, ConvL-STM, FNO) typically scale with the full grid size, which forces coarsening or cropping of operationally realistic domains. 2. Terrain-aware temporal dynamics validated against real events. Flood dynamics are jointly governed by time-varying rainfall and spatially heterogeneous static terrain (elevation, slope, rough-ness). Most published surrogates either predict static inundation maxima (losing dynamics) or handle terrain only implicitly through the convolutional inductive bias, and event-level validation against real gauge observations is rare. All five representative surrogates in Table 1 are in fact simulator-only :their ML targets are outputs of a companion hydrodynamic solver: Delft3D-FM for SWE-GNN [7], MIKE 21 for U-FLOOD [10], a 2-D SWE code for Li et al. [12], an internal 2-D hydrodynamic model for Hydro-Y-Net [11], and LISFLOOD-FP for ComGNN [9]. None of them compare predicted depth, stage, or discharge to observations via gauge time series, high-water marks, or remote-sensing extents. Hydro-Y-Net ingests real gauge water level as an input but not as a validation target. Consequently, none of these demonstrations provides an end-to-end accuracy bound anchored to real-world observa-tions at gauge cross-sections. 3. Observation-compatible state and query interface. A flood digital twin must eventually update 3its basin state from sparse gauge and remote-sensing observations. Most grid-based surrogates expose only raster outputs tied to the simulation mesh, requiring nearest-neighbor or interpolation steps for sensor-coordinate queries and off-grid cross-section evaluation, and providing no compact latent state amenable to data assimilation. A surrogate intended as a digital-twin component should therefore provide both a compact dynamical state and a flexible, mesh-free observation/query operator. 
+
+1.3. Contributions of this work 
+
+We address these gaps by developing and evaluating a conditional latent dynamics network (CLDNet) surrogate for SWE-based regional flood forecasting. Our starting point is the Latent Dynamics Network (LDNet) of Regazzoni et al. [29], a meshless surrogate paradigm that factorizes a spatio-temporal PDE solution into (i) a low-dimensional latent neural dynamical system driven by time-varying inputs and (ii) a coordinate-based reconstruction MLP that decodes the field at arbitrary query points. LDNets were originally demonstrated on synthetic PDE benchmarks (advection-diffusion, Navier-Stokes, cardiac electro-physiology) on non-dimensional unit-square domains with no terrain or land-surface forcing. We show that, with the right conditioning mechanism and a training recipe designed around the coordinate-based decoder, this paradigm scales to real regional flood modeling at metropolitan resolution. Concretely, contributions C1 and C2 address the metropolitan-scalability gap (1) by combining a meshless decoder with terrain con-ditioning; contributions C2 and C3 address the terrain-dynamics-and-real-event-validation gap (2) through the terrain-aware decoder and the USGS-validated Des Plaines benchmark; and contribution C5 addresses the observation-interface gap (3) by exposing a compact, gauge-queryable latent state, with C4 providing the multi-metric evaluation that ties them together. Concretely, our contributions are: 
+
+(C1) Meshless decoder at metropolitan scale. CLDNet’s coordinate-based decoder decouples both training and inference memory from the simulation-grid size. Combined with a training recipe built around this property, including spatial subsampling per step and distributed training over events (Section 3.4), the method enables 4,188 ,840 -active-cell training on a single dual-GPU node and a ∼ 29 s full 96 -hour Illinois forecast at inference, a ∼ 115 × end-to-end speedup over SynxFlow (Section 4.7). The same model returns a 48 -hour 250 ,000 -cell Texas forecast in 4.3 s .
+
+(C2) Terrain-conditioned decoder. We augment the LDNet reconstruction network with a static terrain feature vector consisting of standardized elevation, slope magnitude, and scaled Manning roughness, concatenated with the (Fourier-embedded) spatial coordinate at every query point. The conditioning is parameter-cheap and is the single architectural change responsible for the headline accuracy gains (31 .09% → 14 .44% test relative root-mean-squared error (rRMSE) on Texas; 35 .04% → 17 .79% on held-out Illinois events; CSI = 86 .04% at the 0.5 m threshold on Illinois; Section 3.3, Section 4.3). 
+
+(C3) Metropolitan-scale Des Plaines benchmark with shape-level USGS water surface elevation (WSE) val-idation. We curate a regional-flood dataset of 114 real-rainfall storm forcings drawn from the NCEP Stage IV archive (2002–2024) and applied to the Des Plaines River basin (HUC8 07120004, greater Chicago), with 4,188 ,840 active watershed cells embedded in a 5,075 × 1,661 = 8 ,429 ,575 raster at 
+
+30 m resolution and spatially heterogeneous precipitation on a ∼ 4 km grid. Among these 114 storms, the April 17–21, 2013 flood-of-record corresponds to a physically consistent triplet of precipitation, basin topography, and observed gauge stages from the same storm; we use it to validate the underly-ing SynxFlow simulator against USGS water-surface-elevation observations at six basin gauges (four mainstem Des Plaines and two tributary). The validation uses a per-gauge mean-recentered WSE series so that Nash-Sutcliffe Efficiency (NSE) reports timing-and-shape agreement after removing a systematic datum/bed-elevation offset; on this metric all six gauges have NSE in the 0.57 –0.94 range with an average of 0.81 (Section 2.4.4), establishing the simulator as a credible shape-level reference target for the surrogate. The dataset and trained checkpoints will be released publicly (Section 5) to serve as a community benchmark for metropolitan-scale flood surrogates. 4(C4) Comprehensive multi-metric evaluation against three baselines. We evaluate CLDNet against the unconditional LDNet (ablation of terrain conditioning), a VAE–ConvLSTM latent-dynamics baseline, and a Fourier Neural Operator along complementary axes (Section 4): aggregate rRMSE over valid evaluation points, water-depth time-series fidelity at high-impact flooded sites, flood-extent metrics (CSI, F1), and wall-clock efficiency. CLDNet improves the reported accuracy and extent metrics on both datasets while retaining second-scale inference at the full Illinois resolution. 
+
+(C5) Assimilation-compatible latent state and meshless query interface. The CLDNet latent state provides a compact dynamical representation of basin evolution, while the coordinate-based decoder can be queried at arbitrary locations, including the exact (lon , lat) of USGS gauges (Section 4.4), without raster snapping. These demonstrated properties make the architecture structurally compatible with established latent ensemble-score-filter and differentiable-variational data-assimilation methods [30, 31, 32], with the validation pipeline of Section 2.4.4 supplying the natural observation locations at the six basin gauges. We therefore position CLDNet as a fast hydrodynamic surrogate layer toward AI-driven flood digital twins; online observation assimilation and time-varying antecedent state are immediate next experimental steps rather than demonstrated components of the present study. 
+
+1.4. Scale context and outline 
+
+Table 1 places the present work in context: the Illinois dataset has 4,188 ,840 active watershed cells, roughly 6.9× larger than the largest previously reported active- or area-equivalent flood-surrogate domain (ComGNN’s Greens Bayou watershed, approximately 610 ,000 cells at 30 m resolution). The Texas dataset (250 ,000 cells) is sized comparably to Hydro-Y-Net’s Nan’gang River Basin test bed and serves as a controlled benchmark for comparing different surrogate-model families. 
+
+Method Largest reported spatial size Forcing 
+
+SWE-GNN [7] 16 ,384 cells ( 128 × 128 ) Boundary inflow (dike breach) mSWE-GNN [8] 22 ,881 cells Boundary inflow/outflow (dike breach) U-FLOOD [10] 65 ,536 patch pixels ( 256 × 256 ) Uniform event hyetograph Li et al. [12] 93 ,123 space–time reference points Initial/boundary conditions Hydro-Y-Net [11] 250 ,000 grid cells Spatiotemporal rainfall ComGNN [9] 610 ,000 area-equivalent cells Spatiotemporal rainfall Texas benchmark (this work) 250 ,000 cells ( 500 × 500 ) Scalar hyetograph Illinois / Des Plaines (this work) 4,188 ,840 active cells Spatiotemporal rainfall                               
+
+> Table 1: Largest active/computational cell counts or closest reported spatial extents in representative prior flood-surrogate studies and in the datasets introduced in this work. SWE-GNN and mSWE-GNN report computational cells; U-FLOOD reports 256 ×256 neural-network patches rather than active pixels; Li et al. report space–time reference points rather than active spatial cells; Hydro-Y-Net reports a 250 ,000 -grid forecasting region. For ComGNN, the largest Harris County region reported by Kazadi et al. is Greens Bayou: its watershed area is 549 km 2, corresponding to roughly 610 ,000 physical 30 m cells, while its bounding raster is 1,512 ×1,032 pixels. The Illinois / Des Plaines watershed contains 4,188 ,840 active cells embedded in a 5,075 ×1,661 raster, making the active watershed domain roughly 6.9×larger than ComGNN’s area-equivalent watershed cell count; furthermore, the 96 -hour prediction horizon represents a 28 .8×extension over the 200 -minute windows in ComGNN.
+
+The remainder of the paper is organized as follows. Section 2 states the governing SWEs, describes the SynxFlow simulator, and introduces the Texas benchmark and the Des Plaines / Illinois case study with its USGS WSE validation. Section 3 presents the CLDNet architecture, the terrain-conditioning mechanism, and the scalable training recipe. Section 4 evaluates CLDNet against LDNet, VAE–ConvLSTM, and FNO baselines along the axes above. Section 5 summarizes the contributions and discusses dataset release and future directions toward operational and probabilistic flood forecasting. 52. Problem setup and dataset generation 
+
+This section describes the high-fidelity flood datasets used to train and evaluate the proposed surrogate. We first state the governing shallow water equations (Section 2.1) and the numerical solver used to generate reference trajectories (Section 2.2). We then introduce two datasets of increasing realism: a synthetic Texas benchmark designed to isolate the effect of terrain conditioning under controlled rainfall variability (Section 2.3) and a metropolitan-scale Illinois / Des Plaines case study driven by real-rainfall stress-test forcings, whose simulator we validate against USGS gauge observations for the physically observed 2013 flood-of-record (Section 2.4). A consolidated summary is given in Section 2.5. 
+
+2.1. Governing equations 
+
+Numerical hydrodynamic models simulate surface-water dynamics by solving the two-dimensional shallow water equations (SWEs) in conservative form, 
+
+∂tq + ∇ · F (q) = R + Sb + Sf , (t, (x, y )) ∈ [0 , T ] × Ω, (1) with conserved variables, fluxes, and source terms 
+
+q =
+
+
+
+hhu hv 
+
+ , F =
+
+
+
+uh vh u2h + 12 gh 2 uvh uvh v2h + 12 gh 2
+
+ ,R =
+
+r
+
+00
+
+ , Sb =
+
+ 0
+
+−gh∂ xb
+
+−gh∂ y b
+
+ , Sf =
+
+
+
+0
+
+−Cf u√u2 + v2
+
+−Cf v√u2 + v2
+
+ ,
+
+where Cf = gn 2h−1/3 is the Manning friction coefficient. The divergence ∇· acts row-wise on F with respect to ξ = ( x, y ). We work throughout in the conservative variables (h, hu, hv ) (water depth and unit-width discharges), which are what the simulator outputs and what the surrogate in Section 3 predicts; primitive velocities u, v are recovered by u = hu/h and v = hv/h in wet cells. Because the friction coefficient Cf is singular as h → 0 and the velocity recovery u = hu/h is ill-conditioned in shallow cells, SynxFlow regularizes the wet/dry treatment by using a small-depth threshold hmin = 10 −10 m: in the friction operator, cells with 
+
+h ≤ hmin are assigned u = 0 so the friction source term Sf vanishes; in the HLLC/augmented-Riemann interface fluxes, faces with both side depths ≤ hmin produce zero flux, and a one-sided dry-front Riemann state is used when only one side is dry. The implicit friction update of [5] additionally clips the friction force at the magnitude that would exactly cancel the cell’s discharge over the time step, preventing momentum sign-flips in marginally wet cells. Notation is summarized in Table 2. The two datasets differ in the forcing 
+
+r(t, ξ ), the terrain b(ξ) and Manning coefficient n(ξ), and the computational domain Ω, while sharing the same solver. 
+
+2.2. High-fidelity simulator: SynxFlow 
+
+Reference trajectories are produced with the open-source SynxFlow solver [4, 5, 6], a first-order Godunov-type finite-volume method for (1) on structured rectangular grids. The key ingredients are: the surface reconstruction method (SRM) for well-balanced bed-elevation treatment, the HLLC Riemann solver for interface fluxes, a minmod-limited reconstruction of bed gradients, an explicit discretization of the flux and bed-slope terms, and an implicit treatment of the stiff friction term [5]. The time step is chosen adaptively from the CFL condition on gravity-wave and advective speeds. A self-contained description of the scheme is reported in Algorithm 1. 
+
+Hardware and runtime. All SynxFlow simulations are performed on a single NVIDIA L40S GPU and AMD EPYC 9334 CPU (unless stated otherwise in Section 3.4). The average wall-clock time per (96-hour) Illinois trajectory is approximately 55 minutes (see Section 2.4) whereas each (48-hour) Texas trajectory requires about 2 minutes (see Section 2.3). 6Symbol Description 
+
+h Water depth 
+
+u, v Depth-averaged velocities in the x- and y-directions 
+
+hu, hv Unit-width discharges in the x- and y-directions 
+
+g Gravitational acceleration ( 9.81 m /s2)
+
+b Bed elevation 
+
+n Manning roughness coefficient 
+
+Cf = gn 2h−1/3 Friction coefficient 
+
+r Rainfall rate 
+
+q, F Conserved state and interface flux 
+
+Sb, S f Bed-slope and friction source terms 
+
+> Table 2: Notation for the shallow water equations (1).
+
+Algorithm 1 Godunov-type finite-volume method for the shallow water equations  
+
+> 1:
+
+Discretize the rectangular computational domain into Ncell non-overlapping uniform rectangular cells {Ωi}. 
+
+> 2:
+
+Integrate Equation (1) over each cell and apply the divergence theorem to obtain the semi-discrete finite-volume form dqi
+
+dt + 1
+
+|Ωi|
+
+X
+
+> k∈N i
+
+Fk(q) lk = Ri + Sb,i + Sf,i ,
+
+where qi denotes the cell-averaged conserved variables, Ni is the set of faces of cell Ωi, and lk is the length of face k. 
+
+> 3:
+
+At time level n, reconstruct the bed elevation and water-surface states at each cell interface using the surface reconstruction method (SRM); compute the limited bed gradients with the minmod limiter.  
+
+> 4:
+
+Construct the left and right Riemann states at each interface from the reconstructed quantities.  
+
+> 5:
+
+Evaluate the numerical fluxes F nk at all cell interfaces using the HLLC Riemann solver.  
+
+> 6:
+
+Compute the bed-slope source term Snb,i from the reconstructed interface states.  
+
+> 7:
+
+Choose the time step from the CFL condition 
+
+∆t = CFL min 
+
+> i
+
+di
+
+pu2 
+
+> i
+
++ v2 
+
+> i
+
++ √gh i
+
+, 0 < CFL ≤ 1,
+
+where di is the minimum distance from the cell center to its edges.  
+
+> 8:
+
+Update the conserved variables by 
+
+qn+1  
+
+> i
+
+= qni − ∆t
+
+|Ωi|
+
+X
+
+> k∈N i
+
+F nk lk + ∆ t
+
+
+
+Rni + Snb,i + S n+1 
+
+> f,i
+
+
+
+,
+
+where the flux and bed-slope terms are discretized explicitly, while the friction contribution S n+1  
+
+> f,i
+
+is evaluated implicitly using the scheme of [5].  
+
+> 9:
+
+Impose the prescribed physical boundary conditions through ghost-cell or interface states.  
+
+> 10:
+
+Advance to the next time step until the final simulation time is reached. 
+
+2.3. Synthetic Texas benchmark 
+
+The Texas dataset is a controlled benchmark for evaluating rainfall-driven flood surrogates on a fixed but nontrivial real-terrain domain, isolating the effect of terrain conditioning under rainfall variability while avoiding the confounding factors of real-world forcing heterogeneity and channel-network complexity. It uses a single real-terrain DEM with spatially uniform, time-varying rainfall over a 15 km × 15 km domain 7(500 × 500 = 250 ,000 cells). The grid size is chosen near the upper limit at which the regular-grid baselines remain trainable on a single high-end GPU, so that all models can be compared on the same domain. 
+
+Domain and terrain. The DEM used for this dataset is derived from the USGS 3D Elevation Program (3DEP). The center of the sampled domain is located in Bell County, central Texas, with coordinates at approximately 30.9883 degrees North, 97.7274 degrees West. It represents a square domain at 30 m 
+
+resolution, giving 500 × 500 = 250 ,000 grid cells (see Figure 2a). The elevation spans 190 m − 334 m 
+
+(mean: 245 m ) with a mean slope of 0.04, yielding terrain heterogeneity sufficient to produce nontrivial flow patterns under spatially uniform forcing. All cells are assigned a single Manning coefficient n = 0 .035 , and open boundary conditions are imposed so that water exiting the domain is removed without reflection. 
+
+Precipitation forcing. A spatially uniform precipitation rate r(t) is prescribed. A total of 120 hyetographs are generated, of which half are time-reversed copies of the other half; this construction exposes the surrogate to both rising-limb-dominated and recession-dominated rainfall shapes. Each of the 120 hyetographs is simulated over the terrain by SynxFlow independently and yields a distinct flood trajectory. The 100 -train / 20 -test split is over these trajectories. Six examples are shown in Figure 1. 
+
+Simulation output. Each trajectory is integrated over T = 48 h with output snapshots saved every hour, giving NT = 49 snapshots of (h, hu, hv ) on the full 500 × 500 grid. 
+
+> Figure 1: Representative spatially uniform precipitation hyetographs for the Texas benchmark. Six randomly selected events demonstrate the temporal rainfall variability and intensity ranges within the dataset.
+
+2.4. Des Plaines River basin case study, Illinois 
+
+The Illinois dataset anchors the paper in a realistic, operationally relevant setting. It targets the Des Plaines River basin in northeastern Illinois, an eight-digit Hydrologic Unit Code (HUC8 07120004) watershed that drains the greater Chicago metropolitan area, and is driven by real Stage IV rainfall fields used as stress-test forcings. Two aspects distinguish it from prior flood surrogate benchmarks. First, the computational domain contains 4,188 ,840 active watershed cells at 30 m resolution, roughly 6.9× larger than the largest prior active- or area-equivalent domain in Table 1. Second, for the physically observed 2013 flood-of-record, we validate the underlying SynxFlow simulator against USGS gauge observations, establishing that the surrogate’s reference data are credible at event scale for that event. 82.4.1. Domain and static inputs 
+
+The Illinois dataset uses a non-rectangular active computational domain with 4,188 ,840 watershed cells embedded in a 5, 075 × 1, 661 raster at 30 m resolution. Cells outside the basin are excluded from the active domain and masked with NaN (Figure 2b). The DEM is derived from USGS 3DEP, and the drainage area of the basin is approximately 3, 814 km 2. Two Manning coefficients are used to encode first-order land-cover heterogeneity: n = 0 .02 for water-covered cells and n = 0 .05 for land-covered cells, classified from NLCD year of 2021. Open boundary conditions are imposed at the downstream outlet and along the domain edge.             
+
+> (a) Texas DEM (b) Des Plaines / Illinois DEM
+> Figure 2: Digital elevation models used in the Texas benchmark and the Des Plaines / Illinois case study at 30 m resolution. (a) Square 15 km ×15 km domain in Bell County, Texas ( 500 ×500 = 250 ,000 cells). (b) Des Plaines River basin (HUC8 07120004) featuring 4,188 ,840 active watershed cells derived from USGS 3DEP.
+
+2.4.2. Precipitation forcing and storm events 
+
+Precipitation is spatially heterogeneous and is provided on a coarser 39 × 13 grid of about 4 km × 4 km 
+
+pixels, resampled onto the computational grid during simulation. The dataset contains 114 storm events drawn from NCEP Stage IV Quantitative Precipitation Estimates (QPE) between 2002 and 2024. The 114 events are not all storms that historically struck the Des Plaines basin. Instead, we treat the Stage IV archive as a library of high-intensity rainfall fields that we apply as forcing on the Des Plaines DEM, in order to obtain a diverse set of stress-test trajectories well beyond what the basin’s own 22-year record would yield. Sampling proceeds in two steps. First, candidate centroids are drawn uniformly at random within each of twelve Midwestern states (Illinois, Indiana, Iowa, Kansas, Michigan, Minnesota, Missouri, Nebraska, North Dakota, Ohio, South Dakota, and Wisconsin), and the candidates with the highest cumulative 2002–2024 rainfall are retained. Second, for each retained centroid, we extracted the top ten events based on peak rainfall intensity. This yielded a total of 114 events, noting that six additional events were unavailable for download. The April 17–21, 2013 flood-of-record (Section 2.4.4) provides a physically consistent observation cross-check, in which the rainfall, topography, and observed gauge stages all correspond to the same physical storm and the rainfall field is a Stage IV product covering the actual Des Plaines basin during that storm. 9Figure 3 shows the two-dimensional precipitation field for a representative event at selected times. Event-severity statistics (total depth, peak hourly intensity, event duration) are summarized in Figure 4.          
+
+> Figure 3: Two-dimensional precipitation field for one representative storm event at t= 0 ,20 ,22 ,24 ,26 ,28 ,48 ,96 h .
+> Figure 4: Storm-event severity distribution and summary statistics across the 114 Illinois events.
+
+2.4.3. Simulation protocol and computational cost 
+
+To avoid a cold-start bias across all 114 events, we use a two-stage spin-up procedure. The long 2013-04-10 to 2013-04-23 storm is first simulated from a dry-bed initial condition. The resulting flow state at t = 175 h 
+
+is used as the shared initial condition for all 114 forecast windows, including the held-out 2013 event and the 
+
+113 stress-test events. For each event, we extract the window containing the bulk of the precipitation and integrate the system for 96 h with an output interval of 1 h , yielding NT = 97 snapshots per trajectory. Each snapshot stores (h, hu, hv ) on the in-domain cells, giving a tensor of shape (97 , 3, 5075 , 1661) per trajectory. The 114 trajectories are split into 100 training, 10 validation, and 4 test trajectories. The 2013-04-17 to 2013-04-21 flood-of-record event used for USGS WSE validation in Section 2.4.4 is one of the four held-out test trajectories; it never appears in the training or validation splits, so all surrogate-level metrics reported on it (Table 7) are evaluated on a strictly held-out event. The remaining three test trajectories are reported in aggregate as “Non-2013 held-out test average” and are similarly excluded from training and validation. The average wall-clock cost per trajectory is about 55 minutes on the hardware reported in Section 2.2, for a cumulative simulation budget of 105 GPU hours across all events. 
+
+2.4.4. Validation of the simulator against USGS observations 
+
+To establish that the SynxFlow outputs are a credible training target for the surrogate, we validate the simulator against USGS stream-gauge observations during the 2013-04-17 to 2013-04-21 Des Plaines flood 10 event, one of the most recent destructive events in the basin. 
+
+Gauge set. We use six USGS stream gauges in the Des Plaines basin for simulator validation (Fig-ure 5): four mainstem Des Plaines River gauges (05527800 At Russell, 05528000 Near Gurnee, 05529000 Near Des Plaines, 05532500 At Riverside) and two tributary gauges (05531500 Salt Creek At Western Springs, 05540130 West Branch Du Page River Near Naperville). These gauges are selected because their channels are sufficiently resolved at 30 m DEM resolution that local hydraulic controls (weirs, culverts, urban channels) do not dominate the comparison. 
+
+Cross-section construction. At each gauge, we generate a perpendicular cross-section along the associated NHDPlus flowline with a width of 60 m (extended to 90 m for four wider-channel gauges) and map the cross-section onto the simulation raster. For validation we compare water-surface elevation (WSE), computed from the SynxFlow water-depth and bed-elevation fields at the raster cells intersected by each cross-section. 
+
+Reference data. Stage data are retrieved from the USGS National Water Information System (NWIS) using the pygeohydro python library [33]. We use the Instantaneous Value (IV) web service to retrieve high-resolution sub-hourly stage observations and convert them to WSE for comparison against SynxFlow. 
+
+Visual comparison. Figure 5 overlays SynxFlow, CLDNet, and USGS WSE time series for the six gauges, alongside aerial photographs of flooded reaches at the corresponding locations during the 2013 event. The CLDNet curve is included for context only; the validation claim in this section concerns the SynxFlow reference simulator. To make the WSE-shape agreement visible despite a residual datum/bed-elevation offset between the simulator and the gauge, the simulated WSE has been recentered on the observed mean: at each gauge, we subtract the simulator’s mean WSE over the comparison window and add the observed (USGS) mean WSE over the same window, so that the shifted simulated series and the observed series share the same temporal mean by construction. The metrics in Table 3 below are computed on this recentered series. After this correction, SynxFlow tracks the temporal shape and peak timing of both the rising limb and the peak closely; residual discrepancies are most visible in the recession phase at the two tributary gauges, where local hydraulic controls not represented in the DEM (small weirs, culverts) modulate the observed stage. 
+
+Quantitative WSE metrics. For the simulator validation, we report Nash–Sutcliffe efficiency (NSE) on a per-gauge mean-recentered simulated WSE series. The recentering removes a systematic datum/bed-elevation offset between the simulated and observed water surfaces. The simulator’s per-cross-section WSE is constructed as WSE sim = max ξ∈CS h(ξ) + bCS , i.e., the maximum simulated water depth across the cross-section pixels plus the mean DEM elevation along the same cross-section, while the observed WSE is the USGS gauge stage plus the gauge’s published altitude datum, WSE obs = stage USGS +alt _datum . Differences between bCS (a 30 m DEM average) and the gauge’s surveyed reference datum produce a per-gauge constant offset that is removed by the recentering described above, so what we report is timing-and-shape agreement rather than agreement on raw absolute WSE. Table 3 summarizes the six gauges. All six show consistently positive shape-level WSE skill, with NSE ranging from 0.566 to 0.944 , with an average of 0.815 . We do not report raw WSE NSE because it is dominated by the constant offset and is not a meaningful measure of dynamic agreement at this scale. 
+
+Implication for the surrogate. The surrogate developed in Section 3 is trained against the SynxFlow refer-ence; all surrogate-level error metrics reported in Section 4 are therefore measured relative to a simulator that itself has been validated against independent USGS observations at event scale. Residual simulator biases (e.g., sub-grid hydraulic structures) propagate into both the training target and the test target, so surrogate errors near those gauges should be interpreted as errors with respect to SynxFlow rather than with respect to ground truth. 11 Figure 5: Validation of the SynxFlow simulator against USGS WSE observations for the 2013-04-17 to 2013-04-21 Des Plaines flood event. Left: aerial photographs of flooded reaches at the six gauge locations. Center: watershed map with NHDPlus flowlines and USGS gauge markers; red dashed lines link photographs to gauge locations. Right: WSE time series at each gauge from SynxFlow (red), USGS (black), and CLDNet (blue) for visual reference; full surrogate evaluation in Section 4. 
+
+USGS ID Station NSE (WSE) 
+
+05527800 Des Plaines River At Russell, IL 0.910 
+
+05528000 Des Plaines River Near Gurnee, IL 0.944 
+
+05529000 Des Plaines River Near Des Plaines, IL 0.867 
+
+05531500 Salt Creek At Western Springs, IL 0.566 
+
+05532500 Des Plaines River At Riverside, IL 0.746 
+
+05540130 West Branch Du Page River Near Naperville, IL 0.854 
+
+Table 3: SynxFlow vs. USGS WSE validation at the six Des Plaines basin gauges (four mainstem, two tributary) for the April 17–21, 2013 event. NSE is computed on a per-gauge mean-recentered simulated WSE series (simulated mean replaced with the observed mean over the comparison window) so that it reflects temporal-shape agreement after removing the systematic datum/bed-elevation offset; values are not directly comparable to literature NSE on raw WSE. 
+
+2.5. Summary of datasets 
+
+Table 4 consolidates the properties of the two datasets for reference. 12 Texas (synthetic) Illinois / Des Plaines (real-rainfall) 
+
+Domain shape Square Non-rectangular ( NaN -masked) Grid size 500 × 500 5,075 × 1,661 
+
+Active in-domain cells 250 ,000 4,188 ,840 
+
+Spatial resolution 30 m 30 m 
+
+DEM source USGS 3DEP USGS 3DEP Manning coefficient Uniform 0.035 0.02 (water) / 0.05 (land) Precipitation forcing Scalar, spatially uniform 39 × 13 field, ∼ 4 km 
+
+Precipitation source Synthetic hyetographs Stage IV QPE, 2002–2024 # trajectories 120 114 
+
+Simulation horizon 48 h 96 h 
+
+Output time interval 1 h 1 h 
+
+Snapshots per trajectory NT = 49 NT = 97 
+
+Boundary condition Open Open Wall-clock time/trajectory 2 min 55 min 
+
+Simulator validation N/A (synthetic) 6 USGS gauges (4 mainstem, 2 tributary), 2013 event  
+
+> Table 4: Comparative overview of dataset characteristics: the synthetic Texas benchmark (spatially uniform forcing on a square domain) and the Des Plaines, Illinois case study (real-rainfall stress-test forcings on a 30 m -resolution, complex basin geometry).
+
+3. Methodology 
+
+3.1. Problem statement 
+
+We seek a surrogate for the shallow-water system of Section 2 that maps rainfall forcing and static terrain descriptors to the space–time evolution of the conserved flow state. Let Ω ⊂ R2 denote the physical domain and let [0 , T ] be the simulation horizon discretized into NT uniform snapshots {t0, t 1, . . . , t NT −1} with step 
+
+∆t. At each spatial location ξ ∈ Ω and time tk, let 
+
+q(tk, ξ ) =  h(tk, ξ ), hu (tk, ξ ), hv (tk, ξ ) ∈ R3 (2) denote the conserved variables (water depth and unit-width discharges), matching the notation of Section 2.1, and let rtk denote the rainfall forcing at time tk. The forcing is a scalar for the Texas dataset (spatially uniform precipitation) and a 39 × 13 coarse-grid field for the Illinois dataset (spatially heterogeneous pre-cipitation); in both cases it is resampled onto a shared temporal grid with the simulation snapshots. Static terrain information is summarized by the bed elevation b(ξ) and the Manning roughness n(ξ), which are available on the fine simulation grid. Given a set of training trajectories 
+
+Dtrain =
+
+n r(i)0: NT −1, q (i)(t0: NT −1, Ωh)oNtraj 
+
+> i=1
+
+, (3) where Ωh ⊂ Ω is the discrete simulation grid, our goal is to learn a surrogate map 
+
+Sθ :  r0: NT −1, b, n  7 −→ ˜q(tk, ξ ) k=0 ,...,N T −1, ξ ∈Ωquery (4) that, at inference time, can be queried at an arbitrary set of spatial points Ωquery ⊆ Ω and is substantially cheaper to evaluate than the high-fidelity simulator. The map (4) assumes a fixed basin initial condition: on Texas this is a dry bed, and on Illinois this is the shared post-spin-up state described in Section 2.4.3. Conditioning on a varying antecedent flow state q0 to support, e.g., operational forecasting from current basin conditions is a natural extension that we leave to future work (Section 5.2). The surrogate should (i) respect terrain heterogeneity that controls local flood dynamics, (ii) scale to metropolitan-size grids with millions of cells, and (iii) support fast, memory-efficient inference for large ensemble and scenario-screening workflows. The remainder of this section develops a conditional latent-dynamics architecture that meets these requirements. 13 3.2. Latent Dynamics Networks 
+
+Latent Dynamics Networks (LDNet), originally introduced by Regazzoni et al. [29] and subsequently re-fined by Xiao et al. [31] in the context of ensemble-score-filter data assimilation, provide a compact, meshless surrogate paradigm that decouples temporal evolution from spatial decoding. Rather than propagating the full field forward in time, an LDNet advances a low-dimensional latent state st ∈ Rds through a learned neu-ral dynamical system and reconstructs the physical field on demand at arbitrary query coordinates through a coordinate-based decoder. This factorization yields two structural advantages that are particularly at-tractive for regional flood modeling: the memory cost of a forward pass scales with the number of query points rather than the full grid size, and the decoder is naturally positioned to accept additional spatial conditioning signals (Section 3.3). The same latent-state paradigm has subsequently been extended to high-dimensional data assimilation [30, 31, 32] and to coordinate-based reconstruction from sparse sensors [34], establishing it as a general framework for spatiotemporal surrogate modeling under partial observations. Concretely, the model consists of two neural networks: a dynamics network Fθ1 that estimates the tempo-ral derivative of the latent state given the current latent state and the external forcing, and a reconstruction network Rθ2 that maps a latent state and a query coordinate to the corresponding field value. Given a forcing sequence {rtk }NT −1 
+
+> k=0
+
+, the latent state is initialized one step before the first snapshot, st−1 = 0 , and evolved by an explicit forward-Euler step of a neural ordinary differential equation (ODE) 
+
+stk = stk−1 + ∆ t F θ1
+
+ stk−1 , r tk
+
+, k = 0 , 1, . . . , N T − 1. (5) The shift from the st0 = 0 initialization of the original formulation [29] to st−1 = 0 follows the refinement in [31], which observed that initializing the latent at st0 = 0 prevents the first decoding at t0 from depending on the forcing and, consequently, fails to capture problems with varying initial conditions or strong early-time response — a regime that applies to flood events with early rising-limb dynamics. At any time tk and query coordinate ξ ∈ Ω, the field is reconstructed as 
+
+˜q(tk, ξ ) = Rθ2
+
+ stk , γ (ξ), (6) where γ(ξ) is a Fourier feature mapping of the normalized coordinate that mitigates spectral bias of coor-dinate MLPs [35, 31]. Both Fθ1 and Rθ2 are multilayer perceptrons. Architectural details are reported in Section 4. 
+
+Forcing representation. For the Texas dataset the forcing rtk ∈ R is the instantaneous scalar precipitation rate and is passed directly to the dynamics network. For the Illinois dataset the forcing is the 39 × 13 
+
+precipitation field, which we flatten into a 507 -dimensional vector and concatenate with the latent state before passing to the dynamics network Fθ1 .
+
+3.3. Conditional Latent Dynamics Networks for Flooding 
+
+Local flood dynamics are strongly controlled by static terrain characteristics: elevation gradients set the direction and speed of overland flow, slope magnitude modulates momentum transfer, and Manning roughness controls bottom friction. Under a plain LDNet decoder (6), this information is available only implicitly through the latent state stk and the raw coordinate ξ. Empirically (Section 4), this is insufficient at a regional scale: the decoder must effectively memorize a 4.2M-active-cell terrain field through the coordinate input alone, which the latent state cannot disambiguate. We therefore introduce an explicit static spatial conditioning vector ϕ(ξ) ∈ Rdϕ that is concatenated with the (Fourier-embedded) coordinate before being passed to the decoder. The conditional decoder reads 
+
+˜q(tk, ξ ) = Rθ2
+
+
+
+stk , γ(ξ), ϕ (ξ)
+
+, k = 0 , 1, . . . , N T − 1, ξ ∈ Ω, (7) where [ · , · ] denotes concatenation along the feature dimension. This preserves the latent evolution (5) unchanged while enriching the spatial input of the decoder with terrain-derived features. 14 Static conditioning features. Our default choice is ϕ(ξ) =  bz(ξ), b g (ξ), ˜n(ξ) ∈ R3, consisting of a stan-dardized elevation, the slope magnitude, and a scaled Manning coefficient. The standardized elevation is 
+
+μb = 1
+
+|Ωh|
+
+X
+
+> ξ∈Ωh
+
+b(ξ), σb =
+
+s 1
+
+|Ωh|
+
+X
+
+> ξ∈Ωh
+
+ b(ξ) − μb
+
+2, bz(ξ) = b(ξ) − μb
+
+σb
+
+, (8) which removes the large mean elevation offset that otherwise dominates the decoder input. The slope magnitude is 
+
+bg (ξ) = ∇b(ξ) 2 =
+
+q ∂xb(ξ)2 +  ∂y b(ξ)2, (9) computed on the fine simulation grid via centered finite differences. The scaled Manning coefficient ˜n(ξ) = 100 n(ξ) simply rescales the small Manning values to order-one magnitudes so that they are comparable to the other entries of ϕ(ξ); on the Illinois dataset the two Manning values ( 0.02 for water-covered cells and 
+
+0.05 for land cells) map to ˜n ∈ { 2, 5}. Section 4 quantifies the effect of this conditioning by comparing CLDNet against the unconditional LDNet baseline on both datasets. Figure 6 summarizes the full CLDNet forward pass. The dynamics network rolls the latent state forward over the full trajectory in a single autoregressive pass; for each queried (tk, ξ ) pair, the reconstruction network consumes the corresponding latent state, the Fourier-embedded coordinate, and the static conditioning vector to produce ˜q(tk, ξ ).                           
+
+> Figure 6: Conditional LDNet (CLDNet). Starting from an initial zero latent state, at each time step tk, rainfall forcing rtk
+> and the previous latent state stk−1drive a latent neural ODE (5) via the dynamics network (Dyn net) to produce the updated latent state stk. The reconstruction network (Rec net) (7) then consumes the tuple (stk,[γ(ξ), ϕ (ξ)]) to decode the flow field of water depth ˜hand unit discharges fhu, fhv at an arbitrary query coordinate ξ∈Ω. The spatial conditioning relies on a Fourier feature embedding γ(ξ)and a static terrain feature vector ϕ(ξ) = ( bz, b g,˜n)derived from DEM and Manning data.
+
+3.4. Training strategy and scalability 
+
+The decoder (7) is evaluated pointwise, so training cost and memory scale with the number of query points used for the loss rather than with the full simulation-grid size |Ωh|. We exploit this property to train 15 at a metropolitan scale on a single compute node. 
+
+Loss. Let {ξm}Mm=1 ⊂ Ωh denote a set of M query points used for a given training step. The training objective is a spatially subsampled mean-squared error over the full trajectory, 
+
+L(θ) = 1
+
+NT M 
+
+> NT−1
+
+X
+
+> k=0
+> M
+
+X
+
+> m=1
+
+˜qθ (tk, ξ m) − q(tk, ξ m) 22. (10) The surrogate inherits physical structure from the latent state evolution in (5) and the terrain conditioning of (7), while the subsampled loss ensures that the gradient remains dominated by active flood zones rather than dry cells. 
+
+Spatial subsampling. For the Illinois dataset, propagating gradients through the decoder at all |Ωh| =4,188 ,840 active watershed cells for every time step of every trajectory is infeasible on commodity GPUs. We therefore draw M ≪ | Ωh| query points per training step, resampled at every minibatch. We employ uniform random sampling across all valid in-domain cells, defined as those whose maximum water depth over time (across any training trajectory) exceeds 0.1 m, resulting in 1,408 ,587 valid union cells. Unless otherwise stated, we use uniform sampling with M = 7 × 10 4 on Illinois and M = 2 × 10 4 on Texas, distributed as 
+
+3.5 × 10 4 and 1 × 10 4 points per GPU across a dual-GPU setup on a single compute node. Critically, the latent state {stk } is shared across all query points within a step, so the cost of the dynamics rollout is amortized over the full sampled batch. 
+
+Input/output normalization. Only the rainfall forcing is standardized to zero mean and unit variance before entering the network; the outputs (h, hu, hv ) are trained and evaluated in their original physical units. The VAE–ConvLSTM and FNO baselines follow the same convention so that all error metrics reported in Section 4 are directly comparable across methods. 
+
+3.5. Inference and evaluation metrics 
+
+At inference time, the latent state is rolled out once per trajectory via (5) and the decoder (7) is queried at whatever spatial resolution is required by the downstream task. Because the decoder is meshless, the same trained model can be evaluated on a coarse grid for fast visualization, on the native 30 m simulation grid for validation against SynxFlow, or at off-grid coordinates such as exact USGS gauge locations that need not lie on the raster. We exercise this off-grid capability empirically in Section 4.4 by querying the trained model directly at the recorded (lon , lat) of each gauge. Generalization to query resolutions finer than the training grid (super-resolution evaluation) is supported by the architecture. The off-grid query capability is structural (not shared by VAE–ConvLSTM, or FNO baselines). The latent state {stk } acts as a compact dynamical state of the basin, while the meshless decoder provides a flexible observation operator that maps this state to arbitrary sensor or forecast locations. The implications of this property for online data assimilation and operational deployment are revisited in the limitations and outlook (Sections 5.2–5.3). We assess the model performance along four complementary axes. 1. Aggregate accuracy. We report the relative root-mean-squared error (rRMSE), averaged over all valid time–space evaluation points, for the full state vector and for each conserved variable separately. For a held-out/test trajectory, rRMSE c =
+
+q 1 
+
+> NT|Ωeval |
+
+P
+
+> k,ξ ∈Ωeval
+
+ ˜qc(tk, ξ ) − qc(tk, ξ )2
+
+q 1 
+
+> NT|Ωeval |
+
+P 
+
+> k,ξ ∈Ωeval
+
+qc(tk, ξ )2
+
+, c ∈ { h, hu, hv }. (11) Here Ωeval denotes the valid evaluation set: all in-domain cells on Texas and the valid union cells on Illinois. 16 2. Event-level hydrograph metrics at USGS gauges. At each USGS gauge we additionally compute the Nash–Sutcliffe efficiency (NSE), Kling–Gupta efficiency (KGE), and peak-depth relative error εhpeak 
+
+on the predicted water-depth time series. We evaluate these on water depth rather than water-surface elevation because NSE is invariant to the constant bed-elevation shift while the KGE bias ratio 
+
+β = μsim /μ obs is dominated by the ∼ 200 m bed elevation when computed on WSE. We query the meshless decoder at the exact (lon , lat) of each gauge rather than at the nearest raster cell, exercising a structural capability not shared by grid-based baselines. 3. Flood-extent metrics. For a prescribed depth threshold τ we convert both predicted and reference depth fields to binary inundation masks Mτ (t, ξ ) = 1[h(t, ξ ) > τ ] and report the critical success index (CSI, also known as intersection-over-union), F1, precision, and recall, aggregated over time and space. 4. Computational efficiency. For each model, we report the wall-clock time per predicted trajectory and the peak training memory, and compare against the SynxFlow simulator to quantify the speedup achieved by the learned surrogate. 
+
+4. Results 
+
+This section evaluates the CLDNet of Section 3 on the two datasets introduced in Section 2. We structure the evaluation along four complementary axes defined in Section 3.5: aggregate reconstruction accuracy av-eraged over valid evaluation points; event-level fidelity at high-water-level sites selected from the SynxFlow reference where peak inundation is most severe; flood-extent agreement under depth thresholds; and compu-tational efficiency relative to the SynxFlow reference. The Illinois reference simulator is separately validated against USGS WSE observations in Section 2.4.4. Throughout, we compare against the unconditional LDNet baseline to isolate the contribution of terrain conditioning, and against two data-driven baselines, a VAE– ConvLSTM model and a FNO model, to position CLDNet against established flood-surrogate paradigms. 
+
+4.1. Experimental setup Architectures and training. For both datasets we instantiate CLDNet (Section 3.3) with a dynamics network of depth 8 and width 50 and a reconstruction network of depth 10 and width 300 . The latent dimensionality reflects the complexity of the target dynamics. Specifically, ds = 30 suffices on the Texas benchmark with scalar forcing, whereas the spatially heterogeneous Illinois forcing and substantially larger active-cell domain require ds = 200 . The Fourier-feature frequency count ( m = 10 for Texas and m = 32 for Illinois) of the coordinate embedding γ(ξ) is scaled similarly. We tested a range of latent dimensions on both datasets and used the values that gave the best validation rRMSE at fixed wall-clock budget. All models are trained with the Adam optimizer at an initial learning rate of 10 −3, cosine-decayed to 10 −6 over the full schedule, with gradient clipping at norm 1. Training uses PyTorch Distributed Data Parallel across multiple GPUs on a single node, with spatial decoding carried out in chunks to respect per-GPU memory limits. Spatial subsampling follows Section 3.4: M = 2 × 10 4 query points per step on Texas and M = 7 × 10 4 on Illinois, drawn uniformly from in-domain cells unless otherwise noted. 
+
+Evaluation. Unless otherwise stated, aggregate accuracy is reported as relative root-mean-squared error (rRMSE, Eq. 11) in percent, averaged over all valid time–space evaluation points and computed per conserved variable ( h, hu , hv ) and as an aggregate over all three. On Illinois, rRMSE is evaluated over the wet-union cell set used for spatial sampling, i.e., in-domain cells whose maximum water depth over the training trajectories exceeds 0.1 m (Section 3.4); flood-extent metrics are computed over the same wet-union mask. Flood-extent metrics use the depth thresholds τ ∈ { 0.1, 0.5} m. All surrogate errors are relative to SynxFlow, which is itself validated against USGS WSE observations (Section 2.4.4). 17 4.2. Baselines Unconditional LDNet. As a direct ablation of the terrain-conditioning mechanism, we train a vanilla LD-Net (6) with the same dynamics-network and reconstruction-network architecture, training procedure, and hyperparameters as CLDNet. Any difference in performance between the two models is therefore attributable to the inclusion of the static feature vector in the decoder input. 
+
+VAE–ConvLSTM. We adapt the encoder–decoder architecture of [36] to map flow snapshots into a 25 ×25 ×8
+
+latent grid, and model the latent temporal dynamics with a Convolutional LSTM [37]. The VAE and ConvLSTM are jointly trained with full teacher forcing for 1200 epochs using the SOAP optimizer [38] at learning rate 3 × 10 −3, momentum (β1, β 2) = (0 .95 , 0.95) , weight decay 0.01 , and a step LR scheduler that decays by 0.1 every 100 steps; the preconditioner is updated every 10 steps. The ConvLSTM is then fine-tuned on latent trajectories alone for 300 epochs at an initial learning rate of 10 −4, with a teacher-forcing ratio decayed to zero so that the final 100 epochs are fully autoregressive. 
+
+Fourier Neural Operator. We train an FNO autoregressively with a 10-step rollout horizon to stabilize training and control error accumulation. We find that using a short rollout horizon (e.g., 1 step) can cause error blow-up in autoregressive prediction on test data, even though the training loss decays nicely. Scalar precipitation is z-score normalized and replicated as a spatially constant channel. The coordinates (x, y ) of grid points are linearly scaled to [0 , 1] 2. The inputs are (x, y, b, ∂ xb, ∂ y b, r, h, hu, hv ) and the outputs are the next-step (h, hu, hv ). Considering the constraints of GPU memory and computational cost, we configure the architecture with 32 × 32 Fourier modes, 64 hidden channels, and 4 Fourier layers, with 9 input channels and 3 output channels. The model is trained using the MSE loss with a batch size of 2 over 100 trajectories for 50 epochs. We use the AdamW optimizer with a learning rate of 10 −3 and a weight decay of 10 −9. The training takes approximately 33 hours. The FNO baseline is trained with a modest hyperparameter sweep over the number of Fourier modes {16 , 32 }, hidden channels {32 , 64 }, and rollout horizon {1, 3, 5, 10 }.
+
+Resource comparison. Table 5 compares model size, total peak training memory, training time, and per-trajectory inference time. Inference time is measured on the same single NVIDIA L40S GPU for every model and is directly comparable across rows; training time and total memory mix GPU generations and reflect each method’s practical training setup rather than an apples-to-apples architectural cost. On Texas, CLDNet is roughly 17 × smaller than VAE–ConvLSTM and about 10 × smaller than FNO in parameter count, and its per-trajectory inference is faster than VAE–ConvLSTM ( 4.3 s vs. 7.4 s /traj ); FNO achieves the fastest Texas inference ( 1.0 s /traj ). The same CLDNet design is also trained at Illinois scale (last two rows), where VAE–ConvLSTM and FNO are not tractable at our available batch sizes on the hardware we had access to (see Scaling behavior below). For CLDNet/LDNet, training memory is set by the number of spatial query points M rather than by the simulation grid (Section 3.4), so the Texas-to-Illinois jump from 
+
+≈ 30 .5 to ≈ 133 .7 GiB ( ∼ 4.4×) primarily reflects our choice of M = 2 × 10 4 vs M = 7 × 10 4 together with the wider latent state and Fourier embedding required by the spatially heterogeneous Illinois forcing, rather than the ∼ 33 .7× embedded-raster expansion itself. The architecture therefore decouples training memory from grid size: M is a free knob the practitioner can tune to match any GPU budget without changing the network. The negligible differences between LDNet and CLDNet within a dataset ( 30 .4 vs 30 .5 GiB on Texas; 133 .3 vs 133 .7 GiB on Illinois) reflect only the three extra static-conditioning inputs concatenated to each query coordinate; otherwise the dynamics and reconstruction networks are identical. 
+
+Scaling behavior. Training memory is the binding constraint for the regular-grid baselines, because the activations, optimizer state, and gradient buffers required by backpropagation through a full-resolution convolutional pipeline grow rapidly with grid size. On the Texas 250 ,000 -cell domain, training the FNO baseline at batch size 2 on a single A6000 ( 48 GB) consumes ≈ 35 .1 GiB, and training the VAE–ConvLSTM at batch size 1 on a single L40S ( 48 GB) consumes ≈ 40 .8 GiB — both saturating the envelope of these single-GPU configurations on the smaller benchmark. Both architectures store activations at full grid resolution and therefore scale at least linearly with the number of grid cells [39]. The Illinois embedded raster ( ≈ 8.43 M 
+
+18 Dataset Model # parameters Training Memory Training time Inference time 
+
+Texas VAE–ConvLSTM 14 ,557 ,515 1× L40S 40 .8 GiB 5 h 7.4 s/traj FNO 8,965 ,059 1× A6000 35 .1 GiB 33 h 1.0 s/traj LDNet 849 ,903 2× V100 30 .4 GiB 12 h 4.3 s/traj CLDNet (ours) 849 ,923 2× V100 30 .5 GiB 12 h 4.3 s/traj Illinois LDNet 956 ,617 2× H100 133 .3 GiB 17 h 28 .8 s/traj CLDNet (ours) 956 ,713 2× H100 133 .7 GiB 17 h 28 .8 s/traj                  
+
+> Table 5: Resource comparison. Training hardware lists the GPU configuration used to train each model (FNO at batch size 2, all other models at batch size 1); for the two-GPU runs, the latent dynamics rollout is replicated and spatial query points are sharded across GPUs (Section 3.4). Memory (total) reports the aggregate peak GPU memory across all training devices used by that run. Inference time is measured for every model on the same single NVIDIA L40S GPU (the SynxFlow reference hardware of Section 2.2) and is therefore directly comparable across rows; the training-time and memory columns mix GPU generations and reflect each method’s practical setup rather than an apples-to-apples architectural cost. Texas rows compare VAE–ConvLSTM, FNO, LDNet, and CLDNet on the 250 ,000 -cell domain; the Illinois rows report LDNet/CLDNet on the full 4,188 ,840 -active-cell domain (the 5,075 ×1,661 embedded raster).
+
+cells) is roughly 33 .7× larger than the Texas grid; under this linear scaling, FNO training at batch size 2
+
+would require ≈ 1,183 GiB of GPU memory (or ≈ 592 GiB at batch size 1), and VAE–ConvLSTM training at batch size 1 would require ≈ 1.34 TiB. These figures are conservative lower bounds, since deeper or wider channels are typically needed to retain accuracy at higher spatial resolution, and they exclude the additional overhead of model and data parallelism. Consequently, neither baseline is tractable at Illinois scale on the hardware available to us, and even a moderate multi-GPU cluster would be insufficient for either model at the batch sizes we use. By contrast, CLDNet’s neural-field decoder decouples training memory from grid size: spatial query points are sharded across GPUs and chunked within each GPU, so the per-iteration memory cost is set by the number of subsampled query points M and the latent/Fourier widths, not by the simulation grid (Section 3.4). The Texas (2 × V100) and Illinois (2 × H100) rows of Table 5 ( ≈ 30 .5 and 
+
+≈ 133 .7 GiB) therefore differ because we deliberately chose M = 2 × 10 4 vs M = 7 × 10 4 together with a wider latent state and Fourier embedding to give the dense Illinois domain richer spatial coverage and absorb its spatially heterogeneous forcing — not because the architecture’s memory scales with the ∼ 33 .7×
+
+raster. With M held at the Texas value, CLDNet could in principle have been trained on Illinois at roughly Texas-level memory at the cost of fewer spatial samples per step. The same knob lets the practitioner match any fixed GPU budget without changing the network, and the two-GPU spatial-point sharding used here extends straightforwardly to more GPUs for larger M or wider networks. 
+
+Domain geometry. Beyond memory, a second, independent constraint is domain geometry. Both VAE– ConvLSTM and FNO operate on a regular Cartesian grid: the convolutional encoder–decoder of VAE– ConvLSTM presupposes a fixed-resolution rectangular tensor, and the FFT at the heart of FNO requires a uniformly sampled tensorial grid. The Texas benchmark fits this assumption because its computational domain coincides with a 250 ,000 -cell rectangular patch. The Illinois domain, by contrast, is geometrically irregular: only 4,188 ,840 of the ≈ 8.43 M cells in the embedding raster 5,075 × 1,661 are in-domain, and the wet-union mask used for evaluation is non-convex and topologically complex, following the Des Plaines river network and floodplain. Applying VAE–ConvLSTM or FNO would require padding all out-of-domain cells with sentinel values and either masking the loss or accepting predictions on regions that have no physical meaning; the convolution and Fourier kernels still spend representational capacity and compute on those cells. CLDNet’s coordinate-based decoder, in contrast, evaluates the field only at in-domain query points, so irregular geometry is handled natively without any masking or padding. 
+
+Training and validation behavior. Figure 7 shows the training and validation losses for the unconditional LDNet and CLDNet on the larger Des Plaines / Illinois dataset. Both curves decrease steadily and remain well aligned between training and validation, indicating stable optimization without severe overfitting despite 19 the 4,188 ,840 -active-cell target. CLDNet achieves significantly lower training and validation losses compared to the LDNet baseline from epoch one, consistent with the design hypothesis that explicit terrain conditioning aids representation.       
+
+> (a) Train loss (b) Validation loss
+> Figure 7: Training and validation losses for the unconditional LDNet and CLDNet on the Des Plaines dataset. The x-axis is the epoch number; the y-axis is log-scaled loss on held-out trajectories computed once per ∼10 steps.
+
+4.3. Aggregate prediction accuracy 4.3.1. Texas benchmark 
+
+Table 6 reports rRMSE on the Texas benchmark. Terrain conditioning yields a 2.15 × reduction in the aggregate test rRMSE (from 31 .09% for LDNet to 14 .44% for CLDNet), with consistent improvements across all three conserved variables. CLDNet also improves aggregate rRMSE by 2.22 × relative to VAE– ConvLSTM and by 1.25 × relative to FNO. 
+
+Model All (%) h (%) hu (%) hv (%) 
+
+VAE–ConvLSTM 32 .04 26 .87 36 .33 32 .91 
+
+FNO 18 .10 12 .78 21 .51 19 .65 
+
+LDNet 31 .09 23 .72 35 .37 33 .88 
+
+CLDNet (ours) 14 .44 9.90 17 .17 15 .84        
+
+> Table 6: Relative RMSE (%) on the Texas benchmark, per split and per conserved variable; bold entries are the column best within each split. The discharge errors on hu and hv are systematically larger than those on water depth hbecause the discharge magnitude vanishes in dry or near-dry cells, so small absolute errors at wet/dry fronts inflate the relative metric.
+
+4.3.2. Illinois / Des Plaines case study 
+
+On the Illinois dataset, CLDNet roughly halves the per-trajectory error of the unconditional LDNet on both the average of the held-out test trajectories and the April 17–21, 2013 flood-of-record trajectory used for USGS WSE validation (Table 7). The improvement is largest for water depth h (−57% on the test trajectory) and smaller but still substantial for the two discharge components. The absolute rRMSE on the unit-width discharges (hu, hv ) remains high ( ∼ 40 –50% ) on Illinois, reflecting the well-known difficulty of predicting vector fluxes near wet/dry interfaces; we revisit this gap in the limitations (Section 5.2). The conditional architecture delivers the same qualitative benefit across both datasets: roughly halving the error on the metropolitan Des Plaines case study and cutting it by about two-thirds on the controlled synthetic benchmark. This consistency across regimes is consistent with the design hypothesis of Section 3.3 that terrain-derived static features disambiguate spatial heterogeneity that the latent state cannot encode. 20 Trajectory Model All (%) h (%) hu (%) hv (%) 
+
+Non-2013 held-out test average ( n = 3 ) LDNet 35 .04 32 .28 64 .44 55 .88 
+
+CLDNet (ours) 17 .79 13 .47 48 .49 41 .88 
+
+2013 USGS-validated event LDNet 32 .88 30 .17 55 .96 48 .33 
+
+CLDNet (ours) 17 .73 13 .31 43 .11 37 .14  
+
+> Table 7: Relative RMSE (%) on the Illinois dataset: the average over the three non-2013 held-out test trajectories, and the April 17–21, 2013 Des Plaines flood-of-record used for USGS WSE validation in Section 2.4.4. VAE–ConvLSTM and FNO are not included here because their training is not tractable (in memory and computation) at Illinois scale on the hardware available to us.
+
+4.4. Event-level evaluation at high-impact flooded sites Gauge-level hydrograph metrics. At the six Des Plaines-basin USGS gauges, we compare each surrogate’s water-depth time series directly against the USGS observation-derived reference and report standard hy-drograph metrics: Nash–Sutcliffe efficiency (NSE), Kling–Gupta efficiency (KGE), and peak-depth relative error εhpeak . The USGS observations are recorded as stage / WSE; for these depth-based metrics we convert them to gauge water-depth anomalies using the same local datum treatment as in the WSE validation of Section 2.4.4. We work in water depth h rather than WSE because (i) NSE is invariant to a constant bed-elevation shift applied to both sim and obs, so NSE(depth) = NSE(WSE) and the two labelings are in-terchangeable, while (ii) the KGE bias ratio β = μsim /μ obs is dominated by the ∼ 200 m bed elevation when computed on WSE and is only informative when computed on depth, where μ is of order a few meters. The meshless decoder is queried at the exact (lon , lat) of each USGS gauge rather than at the nearest raster cell, exercising the off-grid-evaluation capability described in Section 3.5. Results are expected to be bounded from above by the simulator’s own agreement with USGS at the same gauges (Section 2.4.4). 
+
+Gauge Model NSE KGE εhpeak (%) 
+
+05527800 (mainstem) LDNet 0.608 0.794 7.26 
+
+CLDNet (ours) 0.817 0.858 4.54 
+
+05528000 (mainstem) LDNet 0.922 0.865 1.39 
+
+CLDNet (ours) 0.893 0.902 1.78 
+
+05529000 (mainstem) LDNet 0.838 0.713 6.74 
+
+CLDNet (ours) 0.861 0.702 0.39 
+
+05532500 (mainstem) LDNet 0.543 0.738 13 .10 
+
+CLDNet (ours) 0.534 0.678 2.97 
+
+05531500 (Salt Creek tributary) LDNet −0.542 0.680 44 .32 
+
+CLDNet (ours) 0.401 0.610 26 .64 
+
+05540130 (W. Br. DuPage tributary) LDNet 0.767 0.783 22 .29 
+
+CLDNet (ours) 0.758 0.857 21 .69 
+
+Average LDNet 0.523 0.762 15 .85 
+
+CLDNet (ours) 0.711 0.768 9.67  
+
+> Table 8: Per-gauge depth-based hydrograph metrics against USGS observation-derived water-depth references for the 2013-04-17 to 2013-04-21 Des Plaines flood-of-record event, with the bottom rows showing averages over the six gauges. Bold marks the better of LDNet vs. CLDNet within each gauge and for the averages.
+
+At individual gauges, the comparison is mixed (Table 8). CLDNet substantially improves NSE at the two upstream gauges (05527800: 0.608 → 0.817 ; 05531500 Salt Creek: −0.542 → 0.401 , crossing from unsat-isfactory to satisfactory), matches LDNet to within ∼ 0.03 NSE at three of the four mainstem Des Plaines gauges, and shows a small regression at 05528000 ( 0.922 → 0.893 ). The mean over the six gauges (NSE 21 0.523 → 0.711 ) is dominated by the rescue of 05531500, where the unconditional decoder fails outright. The pattern is consistent with the design hypothesis: terrain conditioning helps most where the unconditional latent state cannot disambiguate morphologically distinct channels, and helps less where LDNet was already accurate. Aggregated over all the gauges, CLDNet improves the mean NSE from 0.523 to 0.711 and roughly halves the peak-depth error ( 15 .85% → 9.67% ). 
+
+High-water-level/variation site evaluation. Surrogate accuracy matters most where the flood signal is largest. We therefore rank in-domain cells by their peak SynxFlow water depth and the largest depth variation during the 2013 event and select a representative subset of high-water-level sites spread across the basin. Because the decoder is meshless, we can query CLDNet at each selected site without materializing the full grid in memory and compare the predicted depth time series to the SynxFlow reference. Figure 8 compares water-depth time series aggregated over the selected sites for a representative Illinois test trajec-tory: CLDNet tracks both the timing and magnitude of the SynxFlow reference substantially more faithfully than the unconditional LDNet.   
+
+> Figure 8: Water-depth time series aggregated over high-water-level sites on a representative Des Plaines test trajectory. The plots compare the baseline LDNet and CLDNet against the SynxFlow reference. Test sites are selected by pre-selecting points at even intervals along the y-axis, then identifying the x-location with the largest peak depth (left column) and total variation (right column) over time. CLDNet demonstrates significantly improved alignment with the reference.
+
+4.5. Flood-extent evaluation 
+
+Continuous-variable rRMSE is complemented by the binary flood-extent metrics defined in Section 3.5. Given a depth threshold τ , we convert predicted and reference depth fields into binary inundation masks 
+
+Mτ (t, ξ ) = 1[h(t, ξ ) > τ ] and compare them via the Critical Success Index (CSI, also known as intersection-over-union), F1, precision, and recall. F1 measures overall overlap, precision and recall capture over- and under-prediction biases, and CSI is the operational flood-mapping standard. 22 Table 9 shows that CLDNet improves the headline operational metrics (CSI and F1) over LDNet across both datasets and both thresholds. The improvement is driven primarily by precision: in every cell of the table, CLDNet’s precision is higher than LDNet’s, indicating fewer false positives. Recall behavior is mixed: CLDNet’s recall increases on Texas at both thresholds and on Illinois at τ = 0 .5 m , but decreases slightly on Illinois at τ = 0 .1 m (85 .74% → 83 .50% ); this is consistent with CLDNet making slightly more conservative shallow-inundation predictions on the metropolitan domain, with the precision gain ( 82 .94% → 92 .31% )more than offsetting the recall cost in CSI/F1. The largest absolute CSI gain is on Texas at τ = 0 .1 m (CSI from 54 .65% to 69 .26% ), where the challenging signal is the detection of thin, terrain-controlled sheet flow. On Illinois at τ = 0 .5 m , CLDNet reaches CSI = 86 .04% and F1 = 92 .50% , corresponding to a well-localized prediction of the severely inundated footprint. 
+
+Dataset Model τ CSI F1 Precision Recall 
+
+Texas LDNet 0.1 m 54 .65 70 .67 80 .81 62 .79 
+
+Texas CLDNet (ours) 0.1 m 69 .26 81 .84 96 .13 71 .25 
+
+Texas LDNet 0.5 m 74 .64 85 .48 91 .77 79 .92 
+
+Texas CLDNet (ours) 0.5 m 82 .67 90 .51 99 .20 83 .23 
+
+Illinois LDNet 0.1 m 72 .88 84 .31 82 .94 85 .74 
+
+Illinois CLDNet (ours) 0.1 m 78 .07 87 .68 92 .31 83 .50 
+
+Illinois LDNet 0.5 m 74 .45 85 .35 87 .94 82 .91 
+
+Illinois CLDNet (ours) 0.5 m 86 .04 92 .50 95 .78 89 .43    
+
+> Table 9: Flood-extent metrics (%) at two depth thresholds, for LDNet and CLDNet.
+> (a) Texas Trajectory (b) Illinois Trajectory
+> Figure 9: Per-timestep CSI for a representative Texas trajectory ( τ= 0 .5 m ) and a representative Illinois trajectory ( τ= 0 .1 m ). The lower panel of each subfigure shows the scalar precipitation rate (Texas) or the spatial mean of the precipitation field (Illinois) at each step, so drops in CSI can be read against the rainfall forcing.
+
+CSI curves in Figure 9 indicate strong overall model performance, especially when considering the rela-tionship with rainfall-driven dynamics. For the lower threshold ( h ≥ 0.1 m), CSI remains relatively stable in the ∼ 0.75 –0.85 range, reflecting good agreement even when including shallow and more uncertain in-undation areas. Notably, temporary drops in CSI for the Illinois trajectory align with periods of intense rainfall, suggesting that the model finds it more challenging to capture rapidly evolving flood fronts during storm events; however, performance recovers quickly afterward, indicating robustness during recession and steady-flow phases. Overall, the model performs strongly across time, with only modest degradation during peak rainfall when system dynamics are most complex. Figure 10 shows the peak-inundation maps for the SynxFlow reference and the CLDNet prediction, together with the absolute-error map. The mainstem channel and the major tributary structure align between the two maps, and the overbank floodplain extent is recovered to within the same depth threshold. 23 (a) Held-out test trajectory (b) USGS-validated 2013 event 
+
+> Figure 10: Peak water-depth maps on two representative Des Plaines / Illinois trajectories. Each subfigure shows three panels: SynxFlow reference (left), CLDNet prediction (center), and absolute error (right).
+
+The absolute-error map is dominated by errors near wet/dry interfaces and at sharp channel banks, where small horizontal misalignments translate into apparent depth differences; errors in channel interiors and on broad floodplains are smaller. Quantitative flood-extent metrics for these maps are reported in Table 9. 
+
+4.6. Spatial diagnostics at representative flood stages 
+
+To reveal the spatial distribution of errors rather than only their aggregate magnitude, we plot the reference depth, the CLDNet prediction, and the absolute error at three canonical stages of a flood event, namely the rising limb, the peak inundation, and the recession, for both Texas (Figure 11) and Illinois (Figure 12). These visualizations are designed to reveal (i) whether the model tracks flood-front propagation, (ii) whether errors concentrate near wet/dry interfaces or in channel interiors, and (iii) whether the recession phase is systematically biased. Figure 13 shows that the model’s absolute error is generally low across all water depths, with most predictions falling below about 0.5 m error, indicating overall good performance. At shallow depths (roughly 
+
+0–2 m ), where the data is most concentrated, errors are tightly clustered near zero, suggesting the model is both accurate and consistent in these conditions, although occasional large outliers still occur. As depth increases into the mid-range ( 2–4 m ), the spread of errors becomes slightly wider, indicating a modest reduction in reliability. At greater depths ( > 4 m ), the number of samples drops significantly, and while errors appear more dispersed, the limited data makes firm conclusions difficult; however, it suggests increased uncertainty in deeper water. 
+
+4.7. Computational efficiency 
+
+Computational efficiency is decisive for real-time forecasting and ensemble applications. Table 10 reports wall-clock time per predicted trajectory for SynxFlow and CLDNet on both datasets. Against the ∼ 55 -minute Illinois SynxFlow trajectory (Section 2.4.3), CLDNet delivers an end-to-end speedup of ∼ 115 ×,producing a full 96 -hour forecast in tens of seconds at 30 m resolution over 4,188 ,840 active watershed cells. The corresponding Texas speedup ( ∼ 28 ×) is smaller in relative terms because each SynxFlow trajectory there already costs only ∼ 2 minutes. Training cost is amortized faster on the more expensive simulator: solving the break-even condition N · (tsim − tinf ) = ttrain gives roughly 19 SynxFlow runs to pay for the Illinois surrogate ( ttrain = 17 h, tsim = 55 min, tinf = 28 .8 s), versus about 377 runs on the cheaper Texas simulator ( ttrain = 12 h, tsim = 2 min, tinf = 4 .3 s) — i.e., the case for surrogate replacement strengthens as the underlying simulator becomes more expensive. 24 Figure 11: Water-depth snapshots at three stages of a representative flood event on the Texas benchmark: rising limb, peak inundation, and recession. Columns show the SynxFlow reference, the CLDNet prediction, and the absolute error. 
+
+What does the speedup unlock? The ∼ 115 × Illinois speedup is the cost-reduction factor that makes the digital-twin workflows of Section 1 tractable at native metropolitan resolution: repeated rainfall-driven forecast cycles, ensemble forecasting, what-if scenario screening for water management, climate-projection 25 (a) Held-out test trajectory (b) USGS-validated 2013 event 
+
+Figure 12: Water-depth snapshots at three stages (rising limb, peak inundation, recession) of two representative flood events on the Illinois benchmark. In each subfigure the rows correspond to the three stages and the columns show the SynxFlow reference, the CLDNet prediction, and the absolute error. 
+
+Method Texas (s/traj) Illinois (s/traj) 
+
+SynxFlow ∼ 120 ∼ 3300 
+
+CLDNet (ours) 4.3 28 .8
+
+Speedup ∼ 28 × ∼ 115 ×
+
+Table 10: Wall-clock time per predicted trajectory and end-to-end speedup of CLDNet over SynxFlow. 
+
+26 Figure 13: Binned scatter of CLDNet absolute water-depth error |˜h − h| versus the SynxFlow reference depth h, aggregated over all in-domain cells and all NT = 97 snapshots of a representative Des Plaines / Illinois test trajectory. Color encodes sample count (log-scale, over 7 orders of magnitude). Orange line denotes the median and interquartile range of the absolute error with respect to the reference depth. 
+
+downscaling, and the assimilation cycles that an observation-coupled twin would require. Two concrete budget cases illustrate the implication. A 1000 -member rainfall-forecast ensemble at Des Plaines requires 
+
+∼ 917 GPU-hours with SynxFlow (roughly $ 730 at current commercial cloud rates 1), compared with ∼ 8
+
+GPU-hours with CLDNet ($ 6); on a single GPU this collapses turnaround from about 38 days to about 
+
+8 hours — short enough to fit inside a typical operational forecast cycle. A 30 -year RCP 8.5 climate-downscaling sweep at one representative event per day ( ∼ 10 ,000 runs) decreases from ∼ 9,170 to ∼ 80 
+
+GPU-hours, bringing metropolitan-resolution flood-risk downscaling within the budget of a single research project. More broadly, second-scale inference is the practical latency regime required for dynamic replication in an AI-driven flood digital twin. In a future observation-coupled system, this latency would make it practical to re-run basin-wide forecasts after new precipitation, gauge, or remote-sensing updates, which is the computational prerequisite for the observation-constrained nowcasting outlined in (C5) and Section 5.3. 
+
+4.8. Discussion: why does CLDNet outperform the baselines? 
+
+Three observations emerge from the results above. First, the consistent ∼ 2–3× rRMSE reduction from LDNet to CLDNet across Texas and Illinois supports the design hypothesis of Section 3.3: at regional scale, terrain heterogeneity is too informative to be recovered implicitly through the latent state and the raw coordinate alone, and explicit conditioning recovers it at negligible parameter cost. Second, the regular-grid baselines (VAE–ConvLSTM and FNO) are inapplicable at Illinois scale on two independent grounds (Section 4.1, Scaling behavior): they presuppose a Cartesian tensor and cannot natively represent the irregular Des Plaines domain, and their grid-proportional training memory exceeds single-GPU and even moderate multi-GPU budgets at ≈ 8.43 M cells. Both points directly illustrate the advantage of the meshless decoder for metropolitan-scale problems. Third, on the Texas benchmark, increasing model parameters (e.g., more Fourier modes or wider channels) may further reduce the error. However, within the explored range, the   
+
+> 1Cost estimates assume an AWS on-demand NVIDIA L40S-class instance at ∼$0 .80 /GPU-hour; they scale proportionally for other providers or on-premises allocations.
+
+27 best configuration ( 32 modes, 64 channels, horizon = 10 ) does not eliminate the gap. Moreover, enlarging the model incurs significantly higher computational cost while yielding only marginal error reduction, suggesting that capacity alone may not resolve the challenge posed by sharp wet/dry interfaces and strongly non-stationary terrain features. 
+
+5. Conclusion 
+
+5.1. Summary 
+
+We presented the Conditional Latent Dynamics Network (CLDNet) — a fast, scalable, meshless neural surrogate for the two-dimensional shallow water equations and a candidate building block for AI-driven digital twins of metropolitan flood basins — that scales regional flood prediction to metropolitan-resolution domains and turns a ∼ 55 -minute, 4,188 ,840 -active-cell SynxFlow simulation into a ∼ 29 -second inference. CLDNet factorizes the spatio-temporal flood state into a low-dimensional latent neural ODE driven by rainfall forcing (Section 3.2) and a coordinate-based reconstruction network that decodes the depth and dis-charge fields at arbitrary query points (Section 3.3). The reconstruction network is explicitly conditioned on a static terrain feature vector comprising standardized elevation, slope magnitude, and Manning roughness, which supplies the spatial heterogeneity that the latent state alone cannot encode at regional scale. Because the decoder is pointwise, training and inference memory are decoupled from the full grid size. This enables a training recipe that includes spatial subsampling and distributed training across events (Section 3.4), making 4,188 ,840 -active-cell training tractable on a single dual-GPU node. We evaluated CLDNet on two complementary datasets: a controlled 250 ,000 -cell Texas benchmark, and a new 4,188 ,840 -active-cell Des Plaines / Illinois case study comprising 114 real-rainfall storm forcings whose underlying SynxFlow simulator was validated at shape level against USGS WSE observations for the phys-ically observed 2013 flood-of-record (Section 2.4.4). The Illinois domain is roughly 6.9× larger than the largest previously reported active- or area-equivalent flood-surrogate domain. Against the unconditional LDNet baseline, CLDNet reduced aggregate relative RMSE from 31 .09% to 14 .44% on Texas and from 
+
+35 .04% to 17 .79% on three non-2013 held-out trajectories; on Texas, it also improved aggregate rRMSE by 
+
+2.22 × relative to VAE–ConvLSTM and 1.25 × relative to FNO. CLDNet reached CSI = 86 .04% at the 0.5 m 
+
+inundation threshold on Illinois and delivered an end-to-end speedup of ∼ 115 × over SynxFlow on the 4.2M-active-cell domain. The transition to the Illinois / Des Plaines domain resulted in only a modest increase in training time (from 12 to 17 hours, noting that the two runs used different GPU generations as detailed in Table 5), consistent with the meshless coordinate-based architecture’s favorable memory scaling as spatial complexity increases by an order of magnitude. Beyond accuracy and speed, the latent state and meshless decoder give CLDNet a compact, gauge-queryable state interface that is structurally compatible with es-tablished latent data-assimilation methods, making the architecture a candidate hydrodynamic-replication layer for future AI-driven flood digital twins (Section 5.3). 
+
+5.2. Limitations 
+
+A few limitations should be kept in mind when interpreting the results and motivate the directions in Section 5.3. First, the Illinois experiments are conducted on a single basin (Des Plaines) under a fixed antecedent flow state shared across all 114 forecast windows. The surrogate map (4) does not currently take an initial condition q0 as input, so transfer to a basin in a different antecedent state requires extending the architecture. The present system also does not assimilate observations online; CLDNet should therefore be viewed as a hydrodynamic surrogate component of a flood digital twin rather than a complete operational twin. Coupling the surrogate to a real-time observation stream requires the data-assimilation extensions discussed in (C5) and Section 5.3. Second, the surrogate accuracy metrics are reported against SynxFlow. The SynxFlow validation against USGS at the 2013 flood-of-record is itself shape-level (per-gauge mean-recentered WSE), so any residual datum/bed-elevation bias in the simulator propagates into both training and validation targets. Third, the predicted unit-width discharges (hu, hv ) remain less accurate than the predicted water depth h, and improving discharge accuracy is the natural target before the surrogate can support a discharge-aware operational flood twin. We report (hu, hv ) accuracy explicitly because most 28 published flood surrogates target water depth alone and do not benchmark vector discharges, so this gap cannot yet be situated against a community baseline and remains an open target for future research. 
+
+5.3. Outlook 
+
+Several extensions follow naturally from the architecture and results, each of which we view as directly enabled by the scalability and cost reduction demonstrated here but not itself demonstrated in this work. 
+
+• Probabilistic forecasting could be obtained by replacing the latent neural ODE with a latent stochastic differential equation or by distilling a score / diffusion prior over the latent state — an approach already demonstrated for high-dimensional data assimilation in [30, 31]. The coordinate-based decoder makes this transition cheap because it admits arbitrary spatial queries with negligible marginal cost. 
+
+• Observation-constrained nowcasting via latent data assimilation. Building on contribution (C5), the immediate next experimental step is to couple CLDNet to real-time USGS gauge stages and remote-sensing inundation extents using the latent ensemble score filters [30, 31] or differentiable variational filters [32] that the latent state stk is structurally compatible with. Concrete sub-questions include the assimilation cadence (per-snapshot vs. per-event), the choice of observation operator (raster cell vs. exact gauge (lon , lat) ), and the trade-off between filter ensemble size and per-step latency for an operational digital twin. 
+
+• Optimal sensor placement and adaptive observation design. The same latent state and meshless de-coder also enable principled selection of where new gauges, remote-sensing footprints, or temporary deployments would most reduce posterior uncertainty about basin-wide flood state, by casting the question as Bayesian optimal experimental design with a derivative-informed neural-operator surro-gate [40, 21] or as a sequential-design problem solved by policy-gradient reinforcement learning [41]. 
+
+• Multi-basin transfer is natural given the meshless decoder: pretraining on the Illinois dataset and fine-tuning on a new basin with a few tens of simulated events could reduce the simulation budget required to stand up a surrogate for a new jurisdiction. 
+
+• Operational coupling with hydrologic upstream models (e.g., NWM or WRF-Hydro streamflow fore-casts) and with precipitation nowcasts would close the loop toward an end-to-end forecasting pipeline whose latency is dominated by data ingest rather than simulation. Finally, CLDNet’s ∼ 115 × simulator speedup lowers the per-run cost of metropolitan flood modeling by two orders of magnitude, which is a prerequisite for the large multi-run workflows, including rainfall-ensemble forecasting, what-if scenario screening, and climate-projection downscaling, that currently limit metropolitan flood-risk analysis; demonstrating such workflows end-to-end is a natural next step. 
+
+Data and code availability 
+
+We will release a reproducibility package alongside the published version of this paper, comprising: (i) the Des Plaines / Illinois dataset ( 114 real-rainfall storm forcings at 30 m resolution, including the 2013 flood-of-record used for USGS WSE validation), deposited on Zenodo with a DOI; (ii) preprocessing scripts for assembling the DEM, NLCD-derived Manning field, Stage IV precipitation, and USGS gauge stage data; (iii) the exact 100 /10 /4 training/validation/test trajectory split, including the index of the 2013 event within the test split; (iv) training and inference code, model configuration files, and random seeds used for the reported runs; and (v) trained CLDNet, LDNet, VAE–ConvLSTM, and FNO checkpoints. Code will be released on GitHub under a permissive open-source license. 29 Acknowledgments 
+
+This work was supported in part by the Office of Cybersecurity, Energy Security, and Emergency Re-sponse, Department of Energy under interagency agreement through the U.S. Department of Energy contract DEAC02-06CH11357, the National Science Foundation under Grant No. 2325631 and 2245111, as well as the 2025 IDEaS + Cloud Hub with support from Microsoft at Georgia Institute of Technology. The authors would like to thank Prof. Barnali Dixon (University of South Florida), Prof. Subhrajit Guhathakurta and Prof. John E. Taylor (Georgia Tech), and Dr. Guannan Zhang (Oak Ridge National Laboratory) for helpful discussions in the development of this work. 
+
+References 
+
+[1] J. Rentschler, M. Salhab, B. A. Jafino, Flood exposure and poverty in 188 countries, Nature Commu-nications 13 (1) (2022) 3527. doi:10.1038/s41467-022-30727-4 .[2] B. Tellman, J. A. Sullivan, C. Kuhn, A. J. Kettner, C. S. Doyle, G. R. Brakenridge, T. A. Erickson, D. A. Slayback, Satellite imaging reveals increased proportion of population exposed to floods, Nature 596 (7870) (2021) 80–86. doi:10.1038/s41586-021-03695-w .[3] P. D. Bates, M. S. Horritt, T. J. Fewtrell, A simple inertial formulation of the shallow water equations for efficient two-dimensional flood inundation modelling, Journal of Hydrology 387 (1–2) (2010) 33–45. 
+
+doi:10.1016/j.jhydrol.2010.03.027 .[4] X. Xia, Q. Liang, X. Ming, J. Hou, An efficient and stable hydrodynamic model with novel source term discretization schemes for overland flow and flood simulations, Water resources research 53 (5) (2017) 3730–3759. doi:10.1002/2016WR020055 .[5] X. Xia, Q. Liang, A new efficient implicit scheme for discretising the stiff friction terms in the shallow water equations, Advances in water resources 117 (2018) 87–97. doi:10.1016/j.advwatres.2018.05. 004 .[6] X. Xia, Q. Liang, X. Ming, A full-scale fluvial flood modelling framework based on a high-performance integrated hydrodynamic modelling system (HiPIMS), Advances in Water Resources 132 (2019) 103392. 
+
+doi:10.1016/j.advwatres.2019.103392 .[7] R. Bentivoglio, E. Isufi, S. N. Jonkman, R. Taormina, Rapid spatio-temporal flood modelling via hydraulics-based graph neural networks, Hydrology and Earth System Sciences 27 (23) (2023) 4227– 4246. doi:10.5194/hess-27-4227-2023 .[8] R. Bentivoglio, E. Isufi, S. N. Jonkman, R. Taormina, Multi-scale hydraulic graph neural networks for flood modelling, Natural Hazards and Earth System Sciences 25 (1) (2025) 335–351. doi:10.5194/ nhess-25-335-2025 .[9] A. N. Kazadi, J. Doss-Gollin, A. Silva, Pluvial flood emulation with hydraulics-informed message pass-ing, in: Proceedings of the 41st International Conference on Machine Learning (ICML), Vol. 235 of Proceedings of Machine Learning Research, PMLR, 2024, pp. 23367–23390. [10] R. Löwe, J. Böhm, D. G. Jensen, J. Leandro, S. H. Rasmussen, U-FLOOD — topographic deep learning for predicting urban pluvial flood water depth, Journal of Hydrology 603 (2021) 126898. doi:10.1016/ j.jhydrol.2021.126898 .[11] F. Yang, W. Ding, J. Zhao, L. Song, D. Yang, X. Li, Rapid urban flood inundation forecasting using a physics-informed deep learning approach, Journal of Hydrology 643 (2024) 131998. doi:10.1016/j. jhydrol.2024.131998 .30 [12] C. Li, Z. Han, Y. Li, M. Li, W. Wang, J. Dou, L. Xu, G. Chen, Physical information-fused deep learning model ensembled with a subregion-specific sampling method for predicting flood dynamics, Journal of Hydrology 620 (2023) 129465. doi:10.1016/j.jhydrol.2023.129465 .[13] A. Bihlo, R. O. Popovych, Physics-informed neural networks for the shallow-water equations on the sphere, Journal of Computational Physics 456 (2022) 111024. doi:10.1016/j.jcp.2022.111024 .[14] R. Brecht, E. Cardoso-Bihlo, A. Bihlo, Physics-informed neural networks for tsunami inundation mod-eling, Journal of Computational Physics 536 (2025) 114066. doi:10.1016/j.jcp.2025.114066 .[15] Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar, Fourier neural operator for parametric partial differential equations, in: International Conference on Learning Representations (ICLR), 2021. arXiv:2010.08895 .[16] L. Lu, P. Jin, G. Pang, Z. Zhang, G. E. Karniadakis, Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators, Nature Machine Intelligence 3 (3) (2021) 218–229. 
+
+doi:10.1038/s42256-021-00302-5 .[17] Z. Li, H. Zheng, N. Kovachki, D. Jin, H. Chen, B. Liu, K. Azizzadenesheli, A. Anandkumar, Physics-informed neural operator for learning partial differential equations, ACM/IMS Journal of Data Science 1 (3) (2024) 1–27. doi:10.1145/3648506 .[18] T. O’Leary-Roseberry, U. Villa, P. Chen, O. Ghattas, Derivative-informed projected neural networks for high-dimensional parametric maps governed by PDEs, Computer Methods in Applied Mechanics and Engineering 388 (2022) 114199. doi:10.1016/j.cma.2021.114199 .[19] T. O’Leary-Roseberry, P. Chen, U. Villa, O. Ghattas, Derivative-informed neural operator: An efficient framework for high-dimensional parametric derivative learning, Journal of Computational Physics 496 (2024) 112555. doi:10.1016/j.jcp.2023.112555 .[20] Y. Qiu, N. Bridges, P. Chen, Derivative-enhanced deep operator network, in: Advances in Neu-ral Information Processing Systems (NeurIPS), 2024, pp. 20945–20981. arXiv:2402.19242 , doi: 10.52202/079017-0660 .[21] J. Go, P. Chen, Sequential infinite-dimensional Bayesian optimal experimental design with derivative-informed latent attention neural operator, Journal of Computational Physics 532 (2025) 113976. arXiv: 2409.09141 , doi:10.1016/j.jcp.2025.113976 .[22] Y. Qiu, W. Dahmen, P. Chen, Variationally correct operator learning: Reduced basis neural operator with a posteriori error estimation, arXiv preprint arXiv:2512.21319 (2025). arXiv:2512.21319 .[23] A. Y. Sun, Z. Li, W. Lee, Q. Huang, B. R. Scanlon, C. Dawson, Rapid flood inundation forecast using Fourier neural operator, in: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) Workshops, 2023, pp. 3733–3739. [24] L. Brocca, S. Barbetta, S. Camici, L. Ciabatta, J. Dari, P. Filippucci, C. Massari, S. Modanesi, A. Tarpanelli, et al., A digital twin of the terrestrial water cycle: a glimpse into the future through high-resolution Earth observations, Frontiers in Science 1 (2024) 1190191. doi:10.3389/fsci.2023. 1190191 .[25] Y. Yang, C. Xie, Z. Fan, Z. Xu, B. W. Melville, G. Liu, L. Hong, Digital twinning of river basins towards full-scale, sustainable and equitable water management and disaster mitigation, npj Natural Hazards 1 (1) (2024) 43. doi:10.1038/s44304-024-00047-2 .[26] L. M. C. Rápalo, M. N. Gomes Jr., E. M. Mendiondo, Developing an open-source flood forecasting sys-tem adapted to data-scarce regions: A digital twin coupled with hydrologic-hydrodynamic simulations, Journal of Hydrology 644 (2024) 131929. doi:10.1016/j.jhydrol.2024.131929 .31 [27] T. H. Nguyen, S. Bhattacharya, J. S. Wong, Y. Didry, D. L. Phan, T. Tamisier, P. Matgen, Towards digital twin in flood forecasting with data assimilation satellite earth observations — a proof-of-concept in the Alzette catchment, arXiv preprint arXiv:2505.08553 (2025). doi:10.48550/arXiv.2505.08553 .[28] B. Liu, Y. Li, M. Ma, B. Mao, A comprehensive review of machine learning approaches for flood depth estimation, International Journal of Disaster Risk Science 16 (3) (2025) 433–445. doi:10.1007/ s13753-025-00639-0 .[29] F. Regazzoni, S. Pagani, M. Salvador, L. Dede’, A. Quarteroni, Learning the intrinsic dynamics of spatio-temporal processes through latent dynamics networks, Nature Communications 15 (2024) 1834. 
+
+doi:10.1038/s41467-024-45323-x .[30] P. Si, P. Chen, Latent-EnSF: A latent ensemble score filter for high-dimensional data assimilation with sparse observation data, in: The Thirteenth International Conference on Learning Representations (ICLR), 2025. arXiv:2409.00127 .[31] P. Xiao, P. Si, P. Chen, LD-EnSF: Synergizing latent dynamics with ensemble score filters for fast data assimilation with sparse observations, in: International Conference on Learning Representations (ICLR), 2026. [32] P. Si, P. Chen, LEVDA: Latent ensemble variational data assimilation via differentiable dynamics, arXiv preprint arXiv:2602.19406 (2026). arXiv:2602.19406 .[33] T. Chegini, H.-Y. Li, L. R. Leung, HyRiver: Hydroclimate Data Retriever, Journal of Open Source Software 6 (66) (2021) 3175. doi:10.21105/joss.03175 .[34] Y. Tong, P. Chen, From sparse sensors to continuous fields: STRIDE for spatiotemporal reconstruction, arXiv preprint arXiv:2602.04201 (2026). arXiv:2602.04201 .[35] M. Tancik, P. P. Srinivasan, B. Mildenhall, S. Fridovich-Keil, N. Raghavan, U. Singhal, R. Ramamoor-thi, J. T. Barron, R. Ng, Fourier features let networks learn high frequency functions in low dimensional domains, in: Advances in Neural Information Processing Systems, Vol. 33, 2020, pp. 7537–7547. [36] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, B. Ommer, High-resolution image synthesis with latent diffusion models, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, 2022, pp. 10684–10695. [37] X. Shi, Z. Chen, H. Wang, D.-Y. Yeung, W.-K. Wong, W.-c. Woo, Convolutional LSTM network: A machine learning approach for precipitation nowcasting, Advances in neural information processing systems 28 (2015). [38] N. Vyas, D. Morwani, R. Zhao, I. Shapira, D. Brandfonbrener, L. Janson, S. Kakade, SOAP: Improving and stabilizing Shampoo using Adam, arXiv preprint arXiv:2409.11321 (2024). [39] M. Tan, Q. Le, EfficientNet: Rethinking model scaling for convolutional neural networks, in: Interna-tional conference on machine learning, PMLR, 2019, pp. 6105–6114. [40] J. Go, P. Chen, Accurate, scalable, and efficient Bayesian optimal experimental design with derivative-informed neural operators, Computer Methods in Applied Mechanics and Engineering 438 (2025) 117845. doi:10.1016/j.cma.2025.117845 .[41] K. Shen, P. Chen, Sequential Bayesian optimal experimental design in infinite dimensions via policy gradient reinforcement learning, arXiv preprint arXiv:2601.05868 (2026). arXiv:2601.05868 .32
