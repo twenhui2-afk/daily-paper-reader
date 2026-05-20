@@ -6,61 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-19
-- 运行时间：2026-05-20 04:36:46 UTC+8
+- 最新运行日期：2026-05-20
+- 运行时间：2026-05-21 05:50:35 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《An Efficient Approach for Calculating Free Energy in Molecular Dynamics: Demineralization of Hydroxyapatite as a Case Study》（8.5/10）, 《Rooted bicubic planar maps via Dyck paths》（8.4/10）
-- 速读：《FactorizedHMR: A Hybrid Framework for Video Human Mesh Recovery》（7.8/10）, 《Automated Root-Cause Subclassification and No-Code Fix Generation for Invalid Bug Reports》（7.6/10）, 《Nested nodal loops for sums of Laplace eigenfunctions》（7.5/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《CEER: Compliant End-Effector and Root Control as a Unified Interface for Hierarchical Humanoid Loco-Manipulation》（8.3/10）
+- 速读：《RooAgent: An LLM Agent for Root-Based High Energy Physics Analysis》（6.8/10）, 《Algebraic Resolutions of Seven Open Problems on Cyclic and Negacyclic Codes Supporting Designs》（6.7/10）, 《Characterizing Real-World Bugs in Tile Programs for Automated Bug Detection》（6.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/19/README](/202605/19/README)
+- 详情：[/202605/20/README](/202605/20/README)
 
 ### 精读区论文标签
-1. [An Efficient Approach for Calculating Free Energy in Molecular Dynamics: Demineralization of Hydroxyapatite as a Case Study](/202605/19/2605.16957v1-an-efficient-approach-for-calculating-free-energy-in-molecular-dynamics-demineralization-of-hydroxyapatite-as-a-case-study)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [Rooted bicubic planar maps via Dyck paths](/202605/19/2605.17515v1-rooted-bicubic-planar-maps-via-dyck-paths)  
-   标签：评分：8.4/10
+1. [CEER: Compliant End-Effector and Root Control as a Unified Interface for Hierarchical Humanoid Loco-Manipulation](/202605/20/2605.19981v1-ceer-compliant-end-effector-and-root-control-as-a-unified-interface-for-hierarchical-humanoid-loco-manipulation)  
+   标签：评分：8.3/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [FactorizedHMR: A Hybrid Framework for Video Human Mesh Recovery](/202605/19/2605.14854v2-factorizedhmr-a-hybrid-framework-for-video-human-mesh-recovery)  
-   标签：评分：7.8/10
+1. [RooAgent: An LLM Agent for Root-Based High Energy Physics Analysis](/202605/20/2605.17318v2-rooagent-an-llm-agent-for-root-based-high-energy-physics-analysis)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-2. [Automated Root-Cause Subclassification and No-Code Fix Generation for Invalid Bug Reports](/202605/19/2605.17561v1-automated-root-cause-subclassification-and-no-code-fix-generation-for-invalid-bug-reports)  
-   标签：评分：7.6/10
+2. [Algebraic Resolutions of Seven Open Problems on Cyclic and Negacyclic Codes Supporting Designs](/202605/20/2605.17371v2-algebraic-resolutions-of-seven-open-problems-on-cyclic-and-negacyclic-codes-supporting-designs)  
+   标签：评分：6.7/10
    evidence：检索回退候选
-3. [Nested nodal loops for sums of Laplace eigenfunctions](/202605/19/2605.18705v1-nested-nodal-loops-for-sums-of-laplace-eigenfunctions)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-4. [CurveBench: A Benchmark for Exact Topological Reasoning over Nested Jordan Curves](/202605/19/2605.14068v2-curvebench-a-benchmark-for-exact-topological-reasoning-over-nested-jordan-curves)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-5. [Positivity of arbitrary-order P-recursive sequences with a unique dominant root](/202605/19/2605.17013v1-positivity-of-arbitrary-order-p-recursive-sequences-with-a-unique-dominant-root)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-6. [Algebraic Resolutions of Seven Open Problems on Cyclic and Negacyclic Codes Supporting Designs](/202605/19/2605.17371v1-algebraic-resolutions-of-seven-open-problems-on-cyclic-and-negacyclic-codes-supporting-designs)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-7. [RooAgent: An LLM Agent for Root-Based High Energy Physics Analysis](/202605/19/2605.17318v1-rooagent-an-llm-agent-for-root-based-high-energy-physics-analysis)  
+3. [Characterizing Real-World Bugs in Tile Programs for Automated Bug Detection](/202605/20/2605.19652v1-characterizing-real-world-bugs-in-tile-programs-for-automated-bug-detection)  
    标签：评分：6.5/10
    evidence：检索回退候选
-8. [Beyond Square Roots: Explicit Memory-Efficient Factorization for Multi-Epoch Private Learning](/202605/19/2605.18379v1-beyond-square-roots-explicit-memory-efficient-factorization-for-multi-epoch-private-learning)  
+4. [MIST: Reliable Streaming Decision Trees for Online Class-Incremental Learning via McDiarmid Bound](/202605/20/2605.11617v1-mist-reliable-streaming-decision-trees-for-online-class-incremental-learning-via-mcdiarmid-bound)  
    标签：评分：6.5/10
    evidence：检索回退候选
-9. [MAGE-HEP: Monte Carlo Analysis and Graphical Environment for High-Energy Physics](/202605/19/2605.17871v1-mage-hep-monte-carlo-analysis-and-graphical-environment-for-high-energy-physics)  
+5. [A completion of reduced commutative rings](/202605/20/2605.12661v1-a-completion-of-reduced-commutative-rings)  
    标签：评分：6.4/10
    evidence：检索回退候选
-10. [Minimization of Streaming Transducers](/202605/19/2605.11190v2-minimization-of-streaming-transducers)  
+6. [Self-Consistent Latent Reasoning: Long Latent Sequence Reasoning for Vision-Language Model](/202605/20/2605.12163v2-self-consistent-latent-reasoning-long-latent-sequence-reasoning-for-vision-language-model)  
    标签：评分：6.4/10
    evidence：检索回退候选
-11. [Counting Spinal Tree-Child Networks via Word Encodings and Generating Functions](/202605/19/2605.10926v1-counting-spinal-tree-child-networks-via-word-encodings-and-generating-functions)  
+7. [Assessment of cloud and associated radiation fields from a GAN stochastic cloud subcolumn generator](/202605/20/2605.11968v2-assessment-of-cloud-and-associated-radiation-fields-from-a-gan-stochastic-cloud-subcolumn-generator)  
    标签：评分：6.3/10
+   evidence：检索回退候选
+8. [VideoSEAL: Mitigating Evidence Misalignment in Agentic Long Video Understanding by Decoupling Answer Authority](/202605/20/2605.12571v1-videoseal-mitigating-evidence-misalignment-in-agentic-long-video-understanding-by-decoupling-answer-authority)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+9. [Crash Assessment via Mesh-Based Graph Neural Networks and Physics-Aware Attention](/202605/20/2605.11784v1-crash-assessment-via-mesh-based-graph-neural-networks-and-physics-aware-attention)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+10. [Newton methods beyond Hessian Lipschitz continuity: A nonlinear preconditioning approach](/202605/20/2605.12666v1-newton-methods-beyond-hessian-lipschitz-continuity-a-nonlinear-preconditioning-approach)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+11. [MIST: Reliable Streaming Decision Trees for Online Class-Incremental Learning via McDiarmid Bound](/202605/20/2605.11617v2-mist-reliable-streaming-decision-trees-for-online-class-incremental-learning-via-mcdiarmid-bound)  
+   标签：评分：6.1/10
    evidence：检索回退候选
 
 
