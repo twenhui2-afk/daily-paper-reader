@@ -6,58 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-20
-- 运行时间：2026-05-21 05:50:35 UTC+8
+- 最新运行日期：2026-05-21
+- 运行时间：2026-05-22 05:39:43 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《CEER: Compliant End-Effector and Root Control as a Unified Interface for Hierarchical Humanoid Loco-Manipulation》（8.3/10）
-- 速读：《RooAgent: An LLM Agent for Root-Based High Energy Physics Analysis》（6.8/10）, 《Algebraic Resolutions of Seven Open Problems on Cyclic and Negacyclic Codes Supporting Designs》（6.7/10）, 《Characterizing Real-World Bugs in Tile Programs for Automated Bug Detection》（6.5/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《HyDAR-Pano3D: A Hybrid Disentangled Anatomical Recovery Framework for Panoramic-to-3D Reconstruction》（8.6/10）, 《From swept contact to pose: Probe-aware registration via complementary-shape docking》（8.4/10）
+- 速读：《Eigenvalue Distribution of $p$-adic Random Matrices Among Algebraic Extensions, with an Analogue for $p$-adic Random Polynomials》（6.8/10）, 《Cross-lingual robustness of LLM-brain alignment and its computational roots》（6.8/10）, 《Bad Seeing or Bad Thinking? Rewarding Perception for Vision-Language Reasoning》（6.7/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/20/README](/202605/20/README)
+- 详情：[/202605/21/README](/202605/21/README)
 
 ### 精读区论文标签
-1. [CEER: Compliant End-Effector and Root Control as a Unified Interface for Hierarchical Humanoid Loco-Manipulation](/202605/20/2605.19981v1-ceer-compliant-end-effector-and-root-control-as-a-unified-interface-for-hierarchical-humanoid-loco-manipulation)  
-   标签：评分：8.3/10
+1. [HyDAR-Pano3D: A Hybrid Disentangled Anatomical Recovery Framework for Panoramic-to-3D Reconstruction](/202605/21/2605.20827v1-hydar-pano3d-a-hybrid-disentangled-anatomical-recovery-framework-for-panoramic-to-3d-reconstruction)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
+2. [From swept contact to pose: Probe-aware registration via complementary-shape docking](/202605/21/2605.21398v1-from-swept-contact-to-pose-probe-aware-registration-via-complementary-shape-docking)  
+   标签：评分：8.4/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [RooAgent: An LLM Agent for Root-Based High Energy Physics Analysis](/202605/20/2605.17318v2-rooagent-an-llm-agent-for-root-based-high-energy-physics-analysis)  
+1. [Eigenvalue Distribution of $p$-adic Random Matrices Among Algebraic Extensions, with an Analogue for $p$-adic Random Polynomials](/202605/21/2605.20444v1-eigenvalue-distribution-of-p-adic-random-matrices-among-algebraic-extensions-with-an-analogue-for-p-adic-random-polynomials)  
    标签：评分：6.8/10
    evidence：检索回退候选
-2. [Algebraic Resolutions of Seven Open Problems on Cyclic and Negacyclic Codes Supporting Designs](/202605/20/2605.17371v2-algebraic-resolutions-of-seven-open-problems-on-cyclic-and-negacyclic-codes-supporting-designs)  
+2. [Cross-lingual robustness of LLM-brain alignment and its computational roots](/202605/21/2605.21049v1-cross-lingual-robustness-of-llm-brain-alignment-and-its-computational-roots)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+3. [Bad Seeing or Bad Thinking? Rewarding Perception for Vision-Language Reasoning](/202605/21/2605.14054v1-bad-seeing-or-bad-thinking-rewarding-perception-for-vision-language-reasoning)  
    标签：评分：6.7/10
    evidence：检索回退候选
-3. [Characterizing Real-World Bugs in Tile Programs for Automated Bug Detection](/202605/20/2605.19652v1-characterizing-real-world-bugs-in-tile-programs-for-automated-bug-detection)  
+4. [Fast Leaf-to-Ancestor Minimum Query in the Oracle Model](/202605/21/2605.14112v1-fast-leaf-to-ancestor-minimum-query-in-the-oracle-model)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+5. [Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers](/202605/21/2605.13246v1-automatic-detection-of-reference-counting-bugs-in-linux-kernel-drivers)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+6. [The Distribution of the Deepest Leaves in Binary Trees](/202605/21/2605.12821v1-the-distribution-of-the-deepest-leaves-in-binary-trees)  
    标签：评分：6.5/10
    evidence：检索回退候选
-4. [MIST: Reliable Streaming Decision Trees for Online Class-Incremental Learning via McDiarmid Bound](/202605/20/2605.11617v1-mist-reliable-streaming-decision-trees-for-online-class-incremental-learning-via-mcdiarmid-bound)  
+7. [Analytic local resolution of Medvedev's Morse index conjecture for the critical hyperbolic catenoid in $\mathbb{H}^3$](/202605/21/2605.13562v1-analytic-local-resolution-of-medvedevs-morse-index-conjecture-for-the-critical-hyperbolic-catenoid-in-mathbbh3)  
    标签：评分：6.5/10
    evidence：检索回退候选
-5. [A completion of reduced commutative rings](/202605/20/2605.12661v1-a-completion-of-reduced-commutative-rings)  
+8. [Nesterov acceleration for the Wasserstein minimization of displacement-convex free energies](/202605/21/2605.13186v1-nesterov-acceleration-for-the-wasserstein-minimization-of-displacement-convex-free-energies)  
    标签：评分：6.4/10
    evidence：检索回退候选
-6. [Self-Consistent Latent Reasoning: Long Latent Sequence Reasoning for Vision-Language Model](/202605/20/2605.12163v2-self-consistent-latent-reasoning-long-latent-sequence-reasoning-for-vision-language-model)  
+9. [Dean-Kawasaki Equation with Biot-Savart and Keller-Segel Interactions: Existence and Large Deviations](/202605/21/2605.13479v1-dean-kawasaki-equation-with-biot-savart-and-keller-segel-interactions-existence-and-large-deviations)  
    标签：评分：6.4/10
    evidence：检索回退候选
-7. [Assessment of cloud and associated radiation fields from a GAN stochastic cloud subcolumn generator](/202605/20/2605.11968v2-assessment-of-cloud-and-associated-radiation-fields-from-a-gan-stochastic-cloud-subcolumn-generator)  
+10. [Nesterov acceleration for the Wasserstein minimization of displacement-convex free energies](/202605/21/2605.13186v3-nesterov-acceleration-for-the-wasserstein-minimization-of-displacement-convex-free-energies)  
    标签：评分：6.3/10
    evidence：检索回退候选
-8. [VideoSEAL: Mitigating Evidence Misalignment in Agentic Long Video Understanding by Decoupling Answer Authority](/202605/20/2605.12571v1-videoseal-mitigating-evidence-misalignment-in-agentic-long-video-understanding-by-decoupling-answer-authority)  
+11. [Policy-DRIFT: Dynamic Reward-Informed Flow Trajectory Steering](/202605/21/2605.14022v1-policy-drift-dynamic-reward-informed-flow-trajectory-steering)  
    标签：评分：6.3/10
-   evidence：检索回退候选
-9. [Crash Assessment via Mesh-Based Graph Neural Networks and Physics-Aware Attention](/202605/20/2605.11784v1-crash-assessment-via-mesh-based-graph-neural-networks-and-physics-aware-attention)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-10. [Newton methods beyond Hessian Lipschitz continuity: A nonlinear preconditioning approach](/202605/20/2605.12666v1-newton-methods-beyond-hessian-lipschitz-continuity-a-nonlinear-preconditioning-approach)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-11. [MIST: Reliable Streaming Decision Trees for Online Class-Incremental Learning via McDiarmid Bound](/202605/20/2605.11617v2-mist-reliable-streaming-decision-trees-for-online-class-incremental-learning-via-mcdiarmid-bound)  
-   标签：评分：6.1/10
    evidence：检索回退候选
 
 

@@ -1,0 +1,306 @@
+Title: Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers
+
+URL Source: https://arxiv.org/pdf/2605.13246v1
+
+Published Time: Thu, 14 May 2026 01:08:03 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 
+
+Joe Hattori ⋆ , Naoki Kobayashi , and Ken Sakayori 
+
+The University of Tokyo {joe,koba,sakayori}@is.s.u-tokyo.ac.jp 
+
+Abstract. Reference counting bugs in Linux kernel drivers can lead to severe resource mismanagement and security vulnerabilities. We intro-duce DrvHorn , a novel automated tool to detect these bugs by reducing reference counting verification to an assertion checking problem leverag-ing the Linux driver interface. Through efficient modeling of the Linux kernel and aggressive program slicing, DrvHorn discovered 545 bugs, of which 424 were previously unknown, across all platform drivers in v6.6 Linux kernel, with a lower false positive rate of 29.9% compared to prior studies. To address the root causes of these newly discovered bugs, we submitted patches to the Linux kernel, and 45 of them were merged. 
+
+# 1 Introduction 
+
+In a monolithic OS kernel like Linux, device drivers operate at the same privilege level as the rest of the kernel, making any bugs in drivers a substantial security risk. This concern is amplified by the size of the driver codebase—approximately 66.5% of the entire kernel, 1—and by the fact that users can develop and load their own drivers at will. Given the above, static and automated verification of Linux drivers’ bug-freeness is crucial. The Linux kernel is predominantly written in C and reference counts (ref-counts) are extensively used to manually manage the lifecycle of kernel objects. A refcount tracks the number of references to an object, where a positive ref-count means the object is in use, and zero means it is no longer used and can be freed. Refcount mechanisms are used extensively across all parts of the kernel, including drivers. Refcount bugs occur when the refcount does not match the actual number of references. Excessive refcount causes memory leaks, and insufficient refcount leads to use-after-free (UAF). CVE-2023-7192 [4] is an example of a refcount bug that leaks memory, allowing a local attacker with CAP_NET_ADMIN to perform a DoS attack. Many other refcount bugs with varying impact have also been reported in the Linux kernel. We present DrvHorn , a novel tool to automatically detect refcount bugs in Linux drivers 2. By focusing on drivers, DrvHorn achieves scalable refcount  
+
+> ⋆
+
+now at Google  
+
+> 1
+
+Based on lines of code in the initial v6.6 release  
+
+> 2
+
+DrvHorn is available at https://github.com/joehattori/drvhorn    
+
+> arXiv:2605.13246v1 [cs.CR] 13 May 2026 2Joe Hattori , Naoki Kobayashi , and Ken Sakayori
+
+bug detection with high accuracy. DrvHorn utilizes the kernel-provided driver interface to reduce refcount verification into an assertion checking problem. 
+
+DrvHorn can be integrated with arbitrary tools that perform assertion checking on LLVM bitcode. In our evaluation, we employed SeaHorn [7], a state-of-the-art CHC-based verification framework, to analyze all platform drivers in x86-64 Linux v6.6. It reported 777 bugs, of which 545 bugs were real, showing a rela-tively low false positive rate of 29.9% compared to prior studies. Out of the real bugs, 424 were previously unknown, and 45 patches by us were merged into the Linux kernel to address the root causes of these newly discovered bugs. The structure of this paper is as follows. Section 2 provides an overview of 
+
+DrvHorn . Section 3 explains the key techniques of our approach. Section 4 presents the evaluation results. Section 5 discusses the related work, and Sec-tion 6 concludes the paper with future work. 
+
+# 2 Overview 
+
+This section provides a brief overview of DrvHorn and illustrates its capabilities with a concrete example. DrvHorn takes two inputs: the Linux kernel source code compiled to LLVM bitcode and the name of the target driver. The tool then analyzes the inputs fully automatically and outputs whether or not there may exist a refcount bug in the initialization phase of the target driver. 3 DrvHorn 
+
+requires only three kernel modifications: Makefile support for generating the LLVM bitcode, adding a dummy field to struct kref 4, and disabling inlining of refcount APIs such as kref_get and kref_put .Refcount manipulations primarily occur in initialization and cleanup func-tions. Since the main responsibility of cleanup functions is releasing resources while error paths of initialization functions are prone to missing it, any invalid refcount manipulation in the cleanup path would most likely also exist in the error path of the initialization function. Therefore, DrvHorn focuses on the ini-tialization phase, and our evaluation confirms the effectiveness of this approach by discovering 545 bugs including bugs in cleanup functions 5. The analysis of other parts is left for future work. Extending DrvHorn to termination/release functions should require only modest implementation effort because the same modeling, slicing, and assertion-checking pipeline can be reused. The main chal-lenge is that analyzing more driver code and more environment interaction can increase both false positives and false negatives. The practical benefit may also be limited, since many release-function refcount bugs would likely already be reflected in initialization error paths. DrvHorn is neither sound nor complete: it may miss a bug and also report a false bug. However, our evaluation suggests that the false negative/positive rates are small. Figure 1 shows an example of a real-world refcount bug found and fixed by using DrvHorn in commit e386209. bcm_sf2_mdio_register() iterates     
+
+> 3Producing a more informative report is left for future work.
+> 4This is done to prevent LLVM to merge structurally equivalent types
+> 5Commit 74adad5 found a refcount bug which also resided in a cleanup function Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 3
+
+over child nodes using for_each_available_child_of_node() . Within the loop, of_phy_find_device() increments the refcount of struct phy_device ,which is then removed by phy_device_remove() . However, the incremented refcount was not decremented, causing a memory leak that was fixed by adding 
+
+phy_device_free() . 
+
+> #define for_each_available_child_of_node(parent, child) \ for (child = of_get_next_available_child(parent, NULL); \ child != NULL; child = of_get_next_available_child(parent, child)) static int bcm_sf2_mdio_register(struct dsa_switch *ds) { struct device_node *dn, *child; ... for_each_available_child_of_node(dn, child) { ... struct phy_device *phydev = of_phy_find_device(child); if (phydev) { phy_device_remove(phydev); + phy_device_free(phydev); }}... }
+> Fig. 1. Commit e386209
+
+# 3 Proposed Method 
+
+Figure 2 shows the overall architecture of DrvHorn . DrvHorn transforms the refcount verification problem into an assertion problem (described in Sec-tion 3.1). This assertion problem can then be solved by arbitrary off-the-shelf solvers such as bounded model checkers and CHC solvers, as long as they ac-cept LLVM bitcode input. (A CHC solver SeaHorn was adopted as our backend solver; the reason for this choice is explained in sections 3.4 and 4.3.) However, naively applying these solvers to the refcount bug detection is infeasible due to the large size and the high complexity of the Linux kernel. To cope with this problem, DrvHorn takes two additional steps: modeling the Linux kernel 
+
+(described in Section 3.2) and program slicing (described in Section 3.3). The modeling phase replaces specific functions and instructions with simpler abstrac-tions that accurately capture the refcount behavior to mitigate the complexity of the Linux kernel. The slicing phase removes portions irrelevant to refcount veri-fication in order to reduce the verification size to a manageable level. With these two steps, DrvHorn achieves fully automated, scalable, and accurate refcount bug detection in Linux drivers. 4 Joe Hattori , Naoki Kobayashi , and Ken Sakayori LLVM bitcode of Linux kernel 
+
+> Target driver name
+> Linux Kernel Modeling
+> Slicing
+> Reduction to Assertion Problem
+> Solve Assertion Problem
+> Refcount Verification Result
+> Solver (CHC, BMC, etc)
+
+Fig. 2. Overall architecture of DrvHorn 
+
+3.1 Reduction to Assertion Checking Problem 
+
+This section describes how we reduce refcount verification to an assertion checking problem by exploiting the structure of the Linux kernel driver interface. In general, static refcount bug detection in the Linux kernel tends to lack scalability, accuracy, or both due to its vastness and complexity. However, refcount invariants in drivers are simpler than those in the entire kernel. The kernel provides data structures such as struct file_operations ,
+
+struct net_device_ops , and struct platform_driver , and device drivers implement instances of these structures based on the type of devices. Each data structure contains function pointers that are invoked by the kernel when certain events occur. In the initialization phase, for example, the kernel calls open() 
+
+for struct file_operations , ndo_init() for struct net_device_ops ,and probe() for struct platform_driver . To prevent memory leaks, all acquired resources must be released when the initialization fails. Based on this observation, we derive a refcount invariant applicable to all drivers: the refcount difference should be zero when initialization fails . We verify this invariant by automatic reduction to an assertion checking problem. Figure 3 abstracts the generated code for the assertion problem. It calls the driver’s initialization function and asserts whether all refcount differences are zero upon failure. The modeling of device, device tree node, and firmware node refcounts is detailed in Section 3.2. 
+
+int main(void) { int err = <initialization function>(); if (err) { assert( ∆(refcount of devices) == 0); assert( ∆(refcount of device tree nodes) == 0); assert( ∆(refcount of firmware nodes) == 0); ... }return 0; }
+
+Fig. 3. Abstract overview of the verification target. 
+
+The assertion checking problem is expressed in LLVM bitcode (Figure 3 is written in C-like syntax solely for readability). We chose LLVM bitcode as the intermediate representation because it is suited to modeling low-level details of Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 5
+
+drivers. This choice also allows us to leverage various existing tools that ac-cept LLVM bitcode as input, such as SeaHorn and SeaBMC [15]. However, these solvers do not support LLVM’s inline assembly instructions, which are commonly used in drivers. To address this limitation, we replace inline assembly instruc-tions with equivalent LLVM IR instructions in terms of the refcount invariant. Currently DrvHorn supports 105 kinds of x86-64 inline assembly instructions, covering all inline assembly instructions encountered in our evaluation. For un-supported ones, DrvHorn replaces them with non-deterministic values. This may cause false positives, but we expect minimal impact because our slicing typically removes most inline assembly instructions. 
+
+3.2 Linux Kernel Modeling 
+
+DrvHorn models key Linux kernel APIs to preserve refcount behavior while drastically reducing verification complexity; users do not need to implement any modeling themselves. We address the main categories of modeled APIs below. 
+
+Device Tree The device tree [2] describes hardware components in a tree struc-ture, where each node is represented by a struct device_node which is a ref-counted object. Since each node has pointers to other nodes, such as its parent, children, and siblings, direct translation to LLVM bitcode entails complicated pointer analysis, leading to time-consuming and inaccurate verification. We ad-dress this issue by modeling the device tree APIs [1] rather than the actual tree structure. Modeling the device tree APIs requires only minimal implementation effort by noting common patterns. All device tree APIs can be classified into four types, summarized in Table 1. As APIs of the same type are modeled in the same way, keeping up with the new API changes will be straightforward since the only required effort is to determine which type the new API belongs to.          
+
+> Table 1. Four types of device tree APIs and their examples
+> Returns NULL* Returns non-NULL* Decrements RC** of_get_next_child of_find_node_by_name of_get_next_available_child of_find_node_by_type
+> Does not of_get_parent of_find_next_cache_node
+> decrement RC** of_get_child_by_name of_graph_get_port_by_id
+> *when passed NULL as input. **RC = refcount of given node.
+
+Devices and Buses Many kernel APIs, such as bus_find_device() , return a refcount-incremented struct device embedded in a bus-specific object (for example, struct usb_interface ). If we pass these APIs directly to the backend solver, the returned device pointer is unconstrained and may alias unrelated objects, leading to spurious refcount violations. We therefore model such APIs 6 Joe Hattori , Naoki Kobayashi , and Ken Sakayori 
+
+so that each call returns a device embedded in a specific object determined by the bus argument, whose memory region does not alias other objects, as illustrated by our modeling of usb_find_interface() in Figure 4.   
+
+> const struct bus_type usb_bus_type = ...; struct usb_interface *usb_find_interface(...) { struct device *dev = bus_find_device(&usb_bus_type, ...); return dev ? container_of(dev, struct usb_interface, dev) : NULL; }
+> Fig. 4. Abstract implementation of usb_find_interface() .
+
+In this example, bus_find_device() returns a refcount-incremented 
+
+struct device embedded in a struct usb_interface , and the driver recovers the enclosing interface structure via container_of .
+
+Device Resource Management Devres provides a device-managed layer of cleanup. __devm_add_action() is the API that registers a devres entry by asso-ciating a cleanup function with a device. In our model we do not track the devres list explicitly; instead, we replace the return value of __devm_add_action() with 
+
+0 (success) and immediately insert a call to the given cleanup function after the call site. This simplification preserves the effect of releasing resources while keep-ing the encoding small for the backend solver. 
+
+3.3 Program Slicing 
+
+Reducing the code size is required to mitigate the Linux kernel’s vastness. A sim-ple approach is to use LLVM’s Dead Code Elimination (DCE) passes [3], which remove unnecessary instructions and functions. However, DCE passes alone are insufficient to reduce the code size to a manageable level, as shown in Section 4.1. Therefore, we implement a more aggressive slicing technique. The slicing consists of two steps. The first step is to collect the function argu-ments that are essential for refcount validation. A function argument is marked as essential if and only if it embeds struct kref and the function body can mod-ify the refcount. For example, arguments of get_device() and put_device() 
+
+are marked as essential because they embed struct kref and the function body can modify the refcount. The second step involves collecting necessary instruc-tions for each function. The necessity of an instruction is determined based on the following conditions: (here, P is considered an underlying object of Q when 
+
+P is obtained by llvm::getUnderlyingObject(Q) or similar LLVM API calls on Q. This means that when tracing back Q through pointer arithmetic and casts, P is identified as the original memory allocation or variable.) 
+
+– It is a br , ret , phi , switch , or alloca .
+
+– It is a call whose parameter’s underlying object is an essential argument. Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 7
+
+– It is a load reading from a memory location whose underlying object is the result of a necessary instruction. 
+
+– It is a store writing to a memory read by a necessary load instruction. 
+
+– All its operands are necessary instructions. This process starts from each function’s call and ret , recursively collecting necessary instructions. If an instruction is deemed necessary based on the above conditions, then the same process is applied to the terminator instructions of the predecessor basic blocks. Instructions marked as necessary are retained, and the rest are removed. If an operand of a retained instruction is removed, it is replaced with a non-deterministic value of the same type. Replacing function calls with non-deterministic values may drop critical side effects, and we miti-gate this problem by filling non-deterministic values to arguments with LLVM’s 
+
+writeonly attribute. An example of how the slicing works is shown in Figure 5. This is a sim-plified version of an actual code of tpm_bios_measurements_open() described in Figure 2. Instructions that are essential for our refcount verification, such as 
+
+get_device() and put_device() are retained as-is, while non-essential instruc-tions such as inode_lock and inode_unlock , highlighted in red, are removed. Note that seq_open() is replaced with a call to a non-deterministic function, as the function body is not relevant to refcount verification while its result is used to determine whether to call put_device() .    
+
+> static int tpm_bios_measurements_open(...) { inode_lock(inode); get_device(&chip->dev); inode_unlock(inode); err = seq_open(...) ; if (err) put_device(&chip->dev); return err; }extern int nondet(void); static int tpm_bios_measurements_open(...) { get_device(&chip->dev); err = nondet(); if (err) put_device(&chip->dev); return err; }
+> Fig. 5. Simplified version of tpm_bios_measurements_open() before (left) and after (right) slicing.
+
+3.4 CHC-based Verification 
+
+As described in Section 3.1, it suffices to solve the assertion checking problem to verify the refcount invariant. Arbitrary off-the-shelf solvers can be used to solve this problem if they can accept LLVM bitcode as the input. We adopted SeaHorn [7] as our backend solver since it is suited for verifying programs with loops, which are common in refcount manipulations in the Linux kernel as can be seen in Figure 1. After slicing, DrvHorn reduces much of the remaining interprocedural structure by using SeaHorn’s inlining option. Calls that remain, 8 Joe Hattori , Naoki Kobayashi , and Ken Sakayori 
+
+such as recursive calls, are handled by SeaHorn’s CHC-based verification. We do not add extra preprocessing specifically for interprocedural analysis beyond the slicing described above. We address the effectiveness of using CHC-based verification by comparing it with a bounded model checker in Section 4.3. 
+
+# 4 Evaluation 
+
+We evaluated DrvHorn by verifying all 3387 platform drivers in x86-64 Linux kernel v6.6, compiled with allyesconfig . Although DrvHorn can target other types of drivers, such as file_operations and i2c_driver , we chose platform drivers as the primary evaluation target due to their large number (3387 vs. 1017 file_operations and 1067 i2c_driver ), which provides better statistical significance for the evaluation. Our evaluation was done on an Ubuntu 24.04 machine with sixteen 2.30 GHz Intel Core i9 x86-64 cores and 64 GB of RAM. We set a 300-second timeout for each driver verification. 
+
+4.1 Overall Results 
+
+Table 2 summarizes the overall results of our evaluation. Out of 3387 platform drivers, DrvHorn timed out on 807 and reported refcount bugs in 777 of them. Manual inspection confirmed 545 as real bugs, resulting in 232 (29.9%) false positives. Among the confirmed bugs, 424 were previously unknown, and 45 of our submitted patches were merged into the Linux kernel. Out of the 232 false positives, 27 were caused by the unsoundness of our slicing policy.          
+
+> Table 2. Overall evaluation results on x86-64 Linux v6.6 platform drivers
+> Metric Value
+> Total drivers analyzed 3387 Bugs reported 777 Real bugs 545 False positives 232(29.9%) Previously unknown bugs 424 Patches merged 45 Drivers timed out (300s) 807
+
+We also tested the effectiveness of our slicing policy by comparing it with LLVM’s DCE passes [3]. For the 545 drivers in which DrvHorn found real refcount bugs, we ran the verification with DCE passes enabled but with our program slicing disabled. As a result, all the drivers exceeded the timeout limit of the verification. This is because sound slicing techniques such as DCE passes tend to be too conservative, leaving most of the code intact and leading to a state space explosion. Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 9
+
+4.2 Kernel Bug Fixes and Contributions 
+
+We classify the detected bugs into three categories: memory leak fixes, UAF fixes, and API misuse fixes. We briefly illustrate each category; simplified code exam-ples are deferred to the appendix. The most common category is memory leaks: 41 of our 45 accepted patches fix missing decrements on error paths, such as the added put_device() in tpm_bios_measurements_open() and the newly intro-duced cleanup path in q6v5_wcss_probe() (Appendix A.1 and Appendix A.2). else in q6v5_wcss_probe() . We found a UAF bug caused by a misunderstand-ing of device tree APIs: the driver calls of_find_node_by_name() and then 
+
+of_node_put() on dev->of_node in a loop even though the former already decrements the node’s refcount; the accepted fix for this specific case rewrites the loop to use for_each_child_of_node() and of_get_child_by_name() 
+
+and removes the extra of_node_put() (Appendix A.3). API misuse fixes cover cases where our modeling of some kernel APIs uncovers incorrect usage patterns: in commit 54a8cd0, the model exposes that the pointer returned by 
+
+device_link_add() with DL_FLAG_AUTOREMOVE_SUPPLIER should only be used for null checks, so we remove the stored struct device_link *link field from 
+
+struct qcom_ice and treat the return value as a boolean indicator instead (Appendix A.4). In addition to these bug fixes, we also contributed a new general API devm_device_init_wakeup() . Wakeup devices allow the system to resume from low-power states, and the existing device_init_wakeup() 
+
+API initializes a wakeup device but requires developers to manually pair each call with device_disable_wakeup() in all error and cleanup paths. 
+
+DrvHorn revealed that many drivers lacked this cleanup, making all of them leaking wakeup devices. Instead of fixing each driver separately, we introduced 
+
+devm_device_init_wakeup() , a device-managed variant that automatically disables wakeup when the device is detached, so developers can simply replace 
+
+device_init_wakeup() with the new API. This change was merged as commit b3172683 and is now used by 31 drivers. 
+
+4.3 Evaluation of a CHC Solver as the Backend Verifier 
+
+To evaluate whether CHC-based verification is well-suited for detecting refcount bugs, we conducted a comparative experiment with SeaBMC [15], the bounded model checking option of SeaHorn. For the 545 drivers in which DrvHorn found real refcount bugs, SeaBMC missed 215 (39.4%) and timed out on 132 (24.2%), including the bug in Figure 1. We ran SeaBMC with loop-unrolling bound 1, following prior Linux kernel model-checking work, because larger bounds timed out for most drivers in our setting. Although we did not perform a precise per-bug classification, insufficient loop unrolling explains many of SeaBMC’s missed bugs, including the bug in Figure 1. For the 807 drivers where DrvHorn timed out, SeaBMC also timed out on 372 and reported 37 refcount bugs, of which only 14 were real and their root causes had already been addressed by our patches. Overall, these results indicate that CHC-based verification is more effective than bounded model checking for our purpose of automatically finding refcount bugs in Linux drivers. 10 Joe Hattori , Naoki Kobayashi , and Ken Sakayori 
+
+4.4 Analysis on False Positives, False Negatives, and Timeouts 
+
+Our slicing policy does not consider indirect information flow. However, only 27 out of the 232 false positives were caused by this unsoundness, demonstrating the effectiveness of our slicing policy. One example of false positive is the 
+
+acer_platform_probe() described in Appendix B.1, where the real driver correctly balances initialization and cleanup, but the sliced program may not. The remaining 205 were caused by conservative pointer analysis inherited from SeaHorn’s memory model [7, 8], where certain aliasing patterns are over-approximated to keep verification scalable. To approximate the false negative rate, we tested whether DrvHorn could detect known refcount bugs since the initial Linux v6.6 release. We scanned com-mit messages in the drivers directory for refcount-related keywords 6, and found 22 bug-fix commits, 17 of which fixed bugs present in the x86-64 allyesconfig 
+
+kernel. Out of these 17 bugs, DrvHorn successfully detected 14, timed out on two, and missed one due to the unsoundness of our slicing policy, suggesting a low false negative rate despite the small sample size. The missed bug was fixed by commit d029ede: our slicing did not account for indirect information flow through fwnode_property_read_u32() , so the store to port_num was treated as unnecessary and the erroneous call to qca8k_parse_port_leds() became invisible to the verifier. Drivers with multiple/nested loops tend to time out. For example, 156 time-outs were caused by a kernel utility function __mtk_clk_simple_probe() . This function calls a number of mtk_clk_register_* functions that update multiple refcounts in loops, and most of its instructions survived slicing. The resulting CHC problem requires complex loop/refcount invariants, which can cause the solver to diverge or time out. Abstract interpretation could be viewed as a com-plementary technique for improving CHC solving or for supporting slicing, rather than as a DrvHorn -specific replacement. 
+
+# 5 Related Work 
+
+Previous work has explored static bug detection in OS drivers. However, fully automated and scalable Linux driver verification with high accuracy has been challenging due to its diversity, as opposed to the more uniform Windows driver framework. Slam [6] verifies conformance to API usage rules of Windows drivers, which formed the basis of Microsoft’s SDV [5], a static analyzer for Windows drivers. Avinux [13, 14] adapts SDV for verifying Linux drivers. It identified sev-eral known and six previously unknown bugs in Linux drivers, but considerable amount of manual effort was needed to address Linux’s flexible and diverse driver framework, making it not suitable for our goal of fully automated and scalable   
+
+> 6We used “refcount leak”, “reference leak”, “refcount bug”, “reference count bug”, “ref-erence count leak”, “refcount imbalance”, “reference count imbalance”, “node leak”, “leaked reference”, “leaked node”, “leaked OF node”, “leaks reference”, “leaks node”, and “leaks OF node” Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 11
+
+refcount bug detection in Linux drivers. Blast [9] discovered several bugs in Linux drivers and Windows drivers. However, it would face challenges in large scale automated verification for Linux drivers, as pointed out by Mühlberg et al. [12]: 
+
+“In our experience, Blast is rather difficult to apply by a practitioner during OS software development. [...] Especially in the case of mem-ory safety properties, massive changes to the source code were necessary which essentially requires one to know about a bug beforehand.” 
+
+While static refcount bug detection in the Linux kernel has been previously studied, the complexity of the Linux kernel makes deriving precise refcount in-variants challenging, as different subsystems follow different resource manage-ment patterns. RID [11] detects bugs by comparing execution paths in the same function with identical return values, reporting discrepancies in refcount changes. While RID identified 83 bugs in the DPM subsystem, it resulted in a false posi-tive rate of 76.6%, and does not generalize well to other subsystems as it focuses on verifying specific API usages in DPM. CID [16] and LinKRID [10] extend the scope of refcount analysis using symbolic execution, with LinKRID detect-ing 118 bugs across the kernel. However, the challenge of introducing accurate invariants across diverse kernel subsystems leads to false positive rates of 70.5% and 43.5%, respectively, which may limit practical adoption. In contrast, DrvHorn addresses this challenge by focusing on drivers and exploiting the kernel-provided driver interface to derive a simple, universal in-variant. This enables effective kernel modeling and aggressive program slicing, achieving both high accuracy and scalability. 
+
+# 6 Conclusion and Future Work 
+
+We presented DrvHorn , a static analysis tool for automated refcount bug detec-tion in Linux drivers. We introduced a refcount invariant: the refcount difference should be zero when the driver initialization fails. This invariant is applicable to all drivers and enables scalable and accurate detection. Our evaluation on all 3387 platform drivers of the x86-64 Linux v6.6 demonstrates the scalability and accuracy of DrvHorn . DrvHorn reported 777 bugs, out of which 545 were real, showing a relatively low false positive rate of 29.9%. 424 of them were pre-viously unknown, and 45 patches by us were merged into the Linux kernel to address the root causes. We also evaluated false negatives by testing whether 
+
+DrvHorn was able to detect known refcount bugs since the initial v6.6 release and found that DrvHorn missed only one bug out of 17. Verifying refcounts other than struct kref and extending the invariant to cover bugs during and after successful driver initialization are left for future work. 
+
+Acknowledgments. This work was supported by JSPS KAKENHI Grant Number JP20H05703 and JP26H02486. 12 Joe Hattori , Naoki Kobayashi , and Ken Sakayori 
+
+Disclosure of Interests All authors declare that they have no competing interests. 
+
+Data-Availability Statement All experimental results can be reproduced by the package https://zenodo.org/records/20082488 
+
+# References 
+
+1. Devicetree Kernel API, https://docs.kernel.org/devicetree/kernel-api. html 
+
+2. Linux and the Devicetree, https://docs.kernel.org/devicetree/usage-model. html 
+
+3. LLVM’s Analysis and Transform Passes, https://llvm.org/docs/Passes.html 
+
+4. MITRE. CVE-2023-7192, https://cve.mitre.org/cgi-bin/cvename.cgi?name= CVE-2023-7192 
+
+5. Ball, T., Bounimova, E., Cook, B., Levin, V., Lichtenberg, J., McGarvey, C., On-drusek, B., Rajamani, S.K., Ustuner, A.: Thorough static analysis of device drivers. ACM SIGOPS Operating Systems Review 40 (4), 73–85 (2006) 6. Ball, T., Levin, V., Rajamani, S.K.: A decade of software model checking with SLAM. Communications of the ACM 54 (7), 68–76 (2011) 7. Gurfinkel, A., Kahsai, T., Komuravelli, A., Navas, J.A.: The SeaHorn verification framework. In: International Conference on Computer Aided Verification. pp. 343– 361. Springer (2015) 8. Gurfinkel, A., Navas, J.A.: A context-sensitive memory model for verification of C/C++ programs. In: Static Analysis: 24th International Symposium, SAS 2017, New York, NY, USA, August 30–September 1, 2017, Proceedings 24. pp. 148–168. Springer (2017) 9. Henzinger, T.A., Jhala, R., Majumdar, R., Sutre, G.: Software verification with BLAST. In: Model Checking Software: 10th International SPIN Workshop Port-land, OR, USA, May 9–10, 2003 Proceedings 10. pp. 235–239. Springer (2003) 10. Liu, J., Yi, L., Chen, W., Song, C., Qian, Z., Yi, Q.: LinKRID: Vetting imbal-ance reference counting in linux kernel with symbolic execution. In: 31st USENIX Security Symposium (USENIX Security 22). pp. 125–142 (2022) 11. Mao, J., Chen, Y., Xiao, Q., Shi, Y.: RID: finding reference count bugs with in-consistent path pair checking. In: Proceedings of the Twenty-First International Conference on Architectural Support for Programming Languages and Operating Systems. pp. 531–544 (2016) 12. Mühlberg, J.T., Lüttgen, G.: Blasting linux code. In: International Workshop on Parallel and Distributed Methods in Verification. pp. 211–226. Springer (2006) 13. Post, H., Küchlin, W.: Integrated static analysis for linux device driver verification. In: International conference on integrated formal methods. pp. 518–537. Springer (2007) 14. Post, H., Sinz, C., Küchlin, W.: Towards automatic software model checking of thousands of linux modules—a case study with Avinux. Software Testing, Verifi-cation and Reliability 19 (2), 155–172 (2009) 15. Priya, S., Su, Y., Bao, Y., Zhou, X., Vizel, Y., Gurfinkel, A.: Bounded model check-ing for LLVM. In: 2022 Formal Methods in Computer-Aided Design (FMCAD). pp. 214–224. TU Wien Academic Press (2022) Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 13 16. Tan, X., Zhang, Y., Yang, X., Lu, K., Yang, M.: Detecting kernel refcount bugs with 
+
+{Two-Dimensional } consistency checking. In: 30th USENIX Security Symposium (USENIX Security 21). pp. 2471–2488 (2021) 14 Joe Hattori , Naoki Kobayashi , and Ken Sakayori 
+
+# Appendix A Patch 
+
+A.1 Commit 5d8e297 
+
+Related to Section 4.2 (Kernel Bug Fixes and Contributions). This example fixes a missing error-path put_device() in tpm_bios_measurements_open() 
+
+to balance refcounts.  
+
+> int tpm_bios_measurements_open(struct inode *inode, struct file *file) { struct tpm_chip *chip = inode->i_private->chip; get_device(&chip->dev); int err = seq_open(...); if (!err) file->private_data->private = chip; + else put_device(&chip->dev); return err; }
+> Fig. 6. Commit 5d8e297
+
+tpm_bios_measurements_open() is registered as the open operation for 
+
+tpm_bios_measurements_ops . It calls get_device() to increment the refcount of chip->dev , but the original code did not decrement it in the error path, leading to a memory leak. The patch adds put_device() in the error branch to balance the refcount. 
+
+A.2 Commit 60e7c43e 
+
+Related to Section 4.2 (Kernel Bug Fixes and Contributions). This example adds error-path cleanup for sub-devices allocated in q6v5_wcss_probe() .
+
+q6v5_wcss_probe() , the initialization function of the q6v5_wcss driver, adds several sub-devices by calling functions like qcom_add_glink_subdev() ,
+
+qcom_add_pdm_subdev() , qcom_add_ssr_subdev() , and qcom_add_sysmon_subdev() .However, these allocated sub-devices were not released in the error path, leading to memory leaks. Figure 7 shows a simplified version of our accepted patch 60e7c43e. It adds the full error handling code to fix this bug. 
+
+A.3 Commit b9784e5cd 
+
+Related to Section 4.2 (Kernel Bug Fixes and Contributions). This example fixes a device tree refcounting misuse that could lead to a use-after-free. The original code passes dev->of_node to of_find_node_by_name() 
+
+and then calls of_node_put() inside the loop, not accounting for the fact that of_find_node_by_name() already decrements the refcount of the given Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 15 
+
+static int q6v5_wcss_probe(struct platform_device *pdev) { struct q6v5_wcss *wcss; ... ret = qcom_q6v5_init(...); if (ret) return ret; qcom_add_glink_subdev(rproc, &wcss->glink_subdev, "q6wcss"); qcom_add_pdm_subdev(rproc, &wcss->pdm_subdev); qcom_add_ssr_subdev(rproc, &wcss->ssr_subdev, "q6wcss"); if (desc->ssctl_id) { wcss->sysmon = qcom_add_sysmon_subdev(...); + if (IS_ERR(wcss->sysmon)) { + ret = PTR_ERR(wcss->sysmon); + goto deinit_remove_subdevs; + } }ret = rproc_add(rproc); if (ret) - return ret; + goto remove_sysmon_subdev; ... return 0; +remove_sysmon_subdev: + if (desc->ssctl_id) + qcom_remove_sysmon_subdev(wcss->sysmon); +deinit_remove_subdevs: + qcom_q6v5_deinit(&wcss->q6v5); + qcom_remove_glink_subdev(rproc, &wcss->glink_subdev); + qcom_remove_pdm_subdev(rproc, &wcss->pdm_subdev); + qcom_remove_ssr_subdev(rproc, &wcss->ssr_subdev); + return ret; }
+
+Fig. 7. Commit 60e7c43e 
+
+node. This can lead to use-after-free bugs. The patch replaces the loop with 
+
+for_each_child_of_node() and of_get_child_by_name() , and removes the extra of_node_put() .
+
+A.4 Commit 54a8cd0 
+
+Related to Section 4.2 (Kernel Bug Fixes and Contributions). This example removes a stored device link pointer that should only be used for a null check. With the DL_FLAG_AUTOREMOVE_SUPPLIER flag, the device link created by 
+
+device_link_add() is automatically managed by the driver core, and the re-turned pointer is only intended for null checks. The original code stored this 16 Joe Hattori , Naoki Kobayashi , and Ken Sakayori 
+
+#define EMC_LABEL "emc-tables" #define LPDDR2 "lpddr2" static struct device_node *tegra_emc_find_node_by_ram_code( struct tegra_emc *emc) { struct device *dev = emc->dev; struct device_node *np; ... - for (np = of_find_node_by_name(dev->of_node, EMC_LABEL); np; - np = of_find_node_by_name(np, EMC_LABEL)) { + for_each_child_of_node(dev->of_node, np) { + if (!of_node_name_eq(np, EMC_LABEL)) continue; ... bool cfg_mismatches; - struct device_node *lpddr2_np = of_find_node_by_name(np, LPDDR2); + struct device_node *lpddr2_np = of_get_child_by_name(np, LPDDR2); ... if (cfg_mismatches) - of_node_put(np); continue; ... }... }
+
+Fig. 8. Commit b9784e5cd 
+
+struct qcom_ice { ... - struct device_link *link; }; struct qcom_ice *of_qcom_ice_get(struct device *dev) { struct qcom_ice *ice; + struct device_link *link; ... - ice->link = device_link_add(dev, ..., DL_FLAG_AUTOREMOVE_SUPPLIER); - if (!ice->link) + link = device_link_add(dev, ..., DL_FLAG_AUTOREMOVE_SUPPLIER); + if (!link) ... }
+
+Fig. 9. Commit 54a8cd0 
+
+pointer in a field struct device_link *link; of struct qcom_ice , which was unnecessary. The patch removes the field and uses a local variable solely for the null check. Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers 17 
+
+# B Additional Examples 
+
+B.1 False Positive Example: acer_platform_probe 
+
+Related to Section 4.4 (Analysis on False Positives, False Negatives, and Time-outs). This example has balanced cleanup paths, but our sliced program can obscure that balance and yield a false positive. 
+
+static int acer_platform_probe(struct platform_device *device) { int err; if (has_cap(ACER_CAP_MAILLED)) { err = acer_led_init(&device->dev); if (err) goto error_mailled; }... if (err) goto error_brightness; return err; error_brightness: if (has_cap(ACER_CAP_MAILLED)) acer_led_exit(); error_mailled: return err; }
+
+Fig. 10. Implementation of acer_platform_probe .
+
+# C Paper-Code Mapping 
+
+This section briefly explains where to look in the codebase. As already men-tioned, DrvHorn is availabe at github.com/joehattori/drvhorn . DrvHorn 
+
+is developed as a fork of SeaHorn, and most of the modifications are made in the directory lib/Transforms/Kernel/. The following table gives a mapping describing in which file the contents of the paper can be found. 
+
+Table 3. Correspondence between paper content and code implementation. 
+
+Functionality/Step Appearance in the paper Where it is implemented 
+
+Insertion of assertions on the refcount invariants Section 3.1 SetupEntrypoint.cc, AssertKrefs.cc Modelling of device tree and firmware nodes Section 3.2 Device.cc Modeling of devices, buses, and device classes Section 3.2 Device.cc Modeling of device resource management Section 3.2 Devm.cc Modeling of other APIs Section 3.2 Device.cc Program slicing Section 3.3 Slicer.cc Replacement of inline assemblies Section 3.1 HandleInlineAsm.cc
