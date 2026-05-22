@@ -6,61 +6,70 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-21
-- 运行时间：2026-05-22 05:39:43 UTC+8
+- 最新运行日期：2026-05-22
+- 运行时间：2026-05-23 05:11:40 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：16
+- 精读区：5
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《HyDAR-Pano3D: A Hybrid Disentangled Anatomical Recovery Framework for Panoramic-to-3D Reconstruction》（8.6/10）, 《From swept contact to pose: Probe-aware registration via complementary-shape docking》（8.4/10）
-- 速读：《Eigenvalue Distribution of $p$-adic Random Matrices Among Algebraic Extensions, with an Analogue for $p$-adic Random Polynomials》（6.8/10）, 《Cross-lingual robustness of LLM-brain alignment and its computational roots》（6.8/10）, 《Bad Seeing or Bad Thinking? Rewarding Perception for Vision-Language Reasoning》（6.7/10）
+- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
+- 精读：《LASAR: Towards Spatio-temporal Reasoning with Latent Cognitive Map》（8.2/10）, 《Model of Simplicial Complexes with dimension-wise preferential attachment》（8.2/10）
+- 速读：《A Weighted Spectral Quantum Fidelity》（7.9/10）, 《Theory of melting lines with a variable enthalpy of fusion》（7.9/10）, 《Benchmarking Mythos-Linked Bug Rediscovery》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/21/README](/202605/21/README)
+- 详情：[/202605/22/README](/202605/22/README)
 
 ### 精读区论文标签
-1. [HyDAR-Pano3D: A Hybrid Disentangled Anatomical Recovery Framework for Panoramic-to-3D Reconstruction](/202605/21/2605.20827v1-hydar-pano3d-a-hybrid-disentangled-anatomical-recovery-framework-for-panoramic-to-3d-reconstruction)  
-   标签：评分：8.6/10
+1. [LASAR: Towards Spatio-temporal Reasoning with Latent Cognitive Map](/202605/22/2605.16899v1-lasar-towards-spatio-temporal-reasoning-with-latent-cognitive-map)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-2. [From swept contact to pose: Probe-aware registration via complementary-shape docking](/202605/21/2605.21398v1-from-swept-contact-to-pose-probe-aware-registration-via-complementary-shape-docking)  
-   标签：评分：8.4/10
+2. [Model of Simplicial Complexes with dimension-wise preferential attachment](/202605/22/2605.17004v1-model-of-simplicial-complexes-with-dimension-wise-preferential-attachment)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+3. [Evidential Information Fusion on Possibilistic Structure](/202605/22/2605.17038v1-evidential-information-fusion-on-possibilistic-structure)  
+   标签：评分：8.1/10
+   evidence：检索回退候选
+4. [Conflict-Free Replicated Data Types for Neural Network Model Merging: A Two-Layer Architecture Enabling CRDT-Compliant Model Merging Across 26 Strategies](/202605/22/2605.19373v1-conflict-free-replicated-data-types-for-neural-network-model-merging-a-two-layer-architecture-enabling-crdt-compliant-model-merging-across-26-strategies)  
+   标签：评分：8.0/10
+   evidence：检索回退候选
+5. [Learning How to Cube](/202605/22/2605.16632v1-learning-how-to-cube)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Eigenvalue Distribution of $p$-adic Random Matrices Among Algebraic Extensions, with an Analogue for $p$-adic Random Polynomials](/202605/21/2605.20444v1-eigenvalue-distribution-of-p-adic-random-matrices-among-algebraic-extensions-with-an-analogue-for-p-adic-random-polynomials)  
+1. [A Weighted Spectral Quantum Fidelity](/202605/22/2605.17167v1-a-weighted-spectral-quantum-fidelity)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+2. [Theory of melting lines with a variable enthalpy of fusion](/202605/22/2605.17631v1-theory-of-melting-lines-with-a-variable-enthalpy-of-fusion)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+3. [Benchmarking Mythos-Linked Bug Rediscovery](/202605/22/2605.17416v1-benchmarking-mythos-linked-bug-rediscovery)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+4. [Exact solution and pair correlation functions for a generalized three-chain Ising tube with multispin interactions](/202605/22/2605.17600v1-exact-solution-and-pair-correlation-functions-for-a-generalized-three-chain-ising-tube-with-multispin-interactions)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+5. [Handling Control System Uncertainty](/202605/22/2605.17239v1-handling-control-system-uncertainty)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+6. [A Degree-Two Hilbert--Pólya Realisation by Causal Riemann-Surface Operators](/202605/22/2605.17645v1-a-degree-two-hilbert--plya-realisation-by-causal-riemann-surface-operators)  
+   标签：评分：7.7/10
+   evidence：检索回退候选
+7. [X-Ray cardiac angiographic vessel segmentation based on pixel classification using machine learning and region growing](/202605/22/2605.20073v1-x-ray-cardiac-angiographic-vessel-segmentation-based-on-pixel-classification-using-machine-learning-and-region-growing)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+8. [ELEMENT: Multi-Modal Retinal Vessel Segmentation Based on a Coupled Region Growing and Machine Learning Approach](/202605/22/2605.20458v1-element-multi-modal-retinal-vessel-segmentation-based-on-a-coupled-region-growing-and-machine-learning-approach)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+9. [MedCRP-CL: Continual Medical Image Segmentation via Bayesian Nonparametric Semantic Modality Discovery](/202605/22/2605.20297v1-medcrp-cl-continual-medical-image-segmentation-via-bayesian-nonparametric-semantic-modality-discovery)  
    标签：评分：6.8/10
    evidence：检索回退候选
-2. [Cross-lingual robustness of LLM-brain alignment and its computational roots](/202605/21/2605.21049v1-cross-lingual-robustness-of-llm-brain-alignment-and-its-computational-roots)  
+10. [Deep Image Segmentation via Discriminant Feature Learning](/202605/22/2605.14609v1-deep-image-segmentation-via-discriminant-feature-learning)  
    标签：评分：6.8/10
    evidence：检索回退候选
-3. [Bad Seeing or Bad Thinking? Rewarding Perception for Vision-Language Reasoning](/202605/21/2605.14054v1-bad-seeing-or-bad-thinking-rewarding-perception-for-vision-language-reasoning)  
-   标签：评分：6.7/10
-   evidence：检索回退候选
-4. [Fast Leaf-to-Ancestor Minimum Query in the Oracle Model](/202605/21/2605.14112v1-fast-leaf-to-ancestor-minimum-query-in-the-oracle-model)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-5. [Automatic Detection of Reference Counting Bugs in Linux Kernel Drivers](/202605/21/2605.13246v1-automatic-detection-of-reference-counting-bugs-in-linux-kernel-drivers)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-6. [The Distribution of the Deepest Leaves in Binary Trees](/202605/21/2605.12821v1-the-distribution-of-the-deepest-leaves-in-binary-trees)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-7. [Analytic local resolution of Medvedev's Morse index conjecture for the critical hyperbolic catenoid in $\mathbb{H}^3$](/202605/21/2605.13562v1-analytic-local-resolution-of-medvedevs-morse-index-conjecture-for-the-critical-hyperbolic-catenoid-in-mathbbh3)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-8. [Nesterov acceleration for the Wasserstein minimization of displacement-convex free energies](/202605/21/2605.13186v1-nesterov-acceleration-for-the-wasserstein-minimization-of-displacement-convex-free-energies)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-9. [Dean-Kawasaki Equation with Biot-Savart and Keller-Segel Interactions: Existence and Large Deviations](/202605/21/2605.13479v1-dean-kawasaki-equation-with-biot-savart-and-keller-segel-interactions-existence-and-large-deviations)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-10. [Nesterov acceleration for the Wasserstein minimization of displacement-convex free energies](/202605/21/2605.13186v3-nesterov-acceleration-for-the-wasserstein-minimization-of-displacement-convex-free-energies)  
-   标签：评分：6.3/10
-   evidence：检索回退候选
-11. [Policy-DRIFT: Dynamic Reward-Informed Flow Trajectory Steering](/202605/21/2605.14022v1-policy-drift-dynamic-reward-informed-flow-trajectory-steering)  
-   标签：评分：6.3/10
+11. [Speech-Guided Multimodal Learning for Vocal Tract Segmentation in Real-Time MRI](/202605/22/2605.18466v1-speech-guided-multimodal-learning-for-vocal-tract-segmentation-in-real-time-mri)  
+   标签：评分：6.8/10
    evidence：检索回退候选
 
 
