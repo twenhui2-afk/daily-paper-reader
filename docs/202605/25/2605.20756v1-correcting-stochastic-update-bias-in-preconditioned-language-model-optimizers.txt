@@ -1,0 +1,2022 @@
+Title: Correcting Stochastic Update Bias in Preconditioned Language Model Optimizers
+
+URL Source: https://arxiv.org/pdf/2605.20756v1
+
+Published Time: Thu, 21 May 2026 00:36:39 GMT
+
+Number of Pages: 32
+
+Markdown Content:
+# Correcting Stochastic Update Bias in Preconditioned Language Model Optimizers 
+
+Nikhil Nayak, Julia White, Urchade Zaratiana, Kelton Zhang, Henrijs Princis, Dhruv Atreja, Henry Fawcett, Matthew Thomas, George Hurn-Maloney, Ash Lewis Fastino Labs 
+
+Correspondence: nayak.nikhil2608@gmail.com 
+
+Code: https://github.com/fastino-ai/preconditioner-bias-correction 
+
+## Abstract 
+
+Preconditioned optimizers are central to language model training, but their stochas-tic update rules are usually treated as direct approximations to population precon-ditioned descent. We show that this view misses two finite-sample biases. First, the gradient and preconditioner are typically estimated from the same minibatch, introducing gradient–preconditioner coupling bias. Second, even when the precon-ditioner estimate is unbiased, its inverse or inverse-root is generally biased because inversion is nonlinear. We propose a single-batch bias-correction framework that addresses both effects: cross-fitted preconditioning estimates the numerator and preconditioner from independent microbatch groups, while variance-corrected inversion uses microbatch variability to subtract the leading delta-method bias term. The framework applies to diagonal moment, diagonal curvature, and matrix precon-ditioning methods, instantiated in AdamW, Sophia, and Shampoo. Bias correction reduces held-out pretraining loss on Qwen2.5-0.5B by 0.15 , 0.07 , and 0.11 nats, respectively; the effects on mixed-quality pretraining and downstream instruction tuning are consistently neutral-to-positive. Together, these results establish bias correction as a practical mechanism for reducing finite-sample update bias and improving the performance of preconditioned optimizers. 
+
+## 1 Introduction 
+
+Large language models are usually trained with first-order stochastic optimizers such as SGD, Adam, AdamW, and their matrix- or curvature-aware variants. These methods work well in practice, but their update rules are usually treated as deterministic transformations of stochastic quantities. In particular, adaptive optimizers estimate both a descent direction and a geometry term from minibatches. The geometry term may be a scalar learning-rate estimate, a diagonal second-moment estimate, a curvature proxy, or a structured matrix preconditioner. This paper focuses on a statistical question that is usually implicit in optimizer design. For the population objective 
+
+f (θ) = Ez∼D [ℓ(θ; z)] 
+
+and a population preconditioner P (θ), the ideal preconditioned update at parameter value θ is 
+
+u⋆(θ) = P (θ)−1∇f (θ), (1) whereas in practice we only observe minibatch estimates ˆg and ˆP and apply the standard adaptive update 
+
+ˆu = ˆP −1 ˆg. (2) 
+
+> arXiv:2605.20756v1 [cs.LG] 20 May 2026
+
+Even when ˆg is an unbiased gradient estimator and ˆP is an unbiased preconditioner estimator, the product in Equation (2) is not generally an unbiased estimator of Equation (1). There are two distinct sources of mismatch. First, if ˆP and ˆg are estimated from the same random minibatch, the two terms are statistically coupled. Second, even if ˆP is unbiased for P , the inverse 
+
+ˆP −1 is generally biased for P −1 because inversion is nonlinear. These effects are not implementation mistakes. They arise from using finite stochastic estimates inside nonlinear adaptive update rules. The goal of this paper is to make these two biases explicit and propose a practical correction framework. The proposed method is single-step and single-batch: it does not require revisiting the same parameter value, which is unrealistic in neural network training. At a fixed θt, the current training batch is split into microbatch groups. One group estimates the gradient, another estimates the preconditioner, and microbatch variation is used to correct the inverse-preconditioner estimate before the update is applied. We evaluate the framework on three optimizer families. AdamW represents diagonal moment-based adaptive optimization. Sophia represents diagonal curvature-based or lightweight second-order optimization. Shampoo represents matrix-preconditioned optimization. These three cases test whether the proposed bias correction is useful across increasingly structured preconditioners: diagonal moments, diagonal curvature, and matrix geometry. 
+
+Contributions. This paper makes three contributions. 1. We give a statistical decomposition of the stochastic preconditioned update into two distinct finite-sample biases: gradient–preconditioner coupling, and the nonlinearity of inversion. 2. We propose a single-batch correction framework that combines cross-fitted preconditioning with a delta-method inverse correction estimated from microbatch variability, and we analyze its bias-reduction and convergence properties. 3. We instantiate the framework across diagonal moment, diagonal curvature, and matrix preconditioning (AdamW, Sophia, Shampoo) and evaluate it on pretraining and instruction tuning; the strongest empirical results are 0.1489 -, 0.0701 -, and 0.1103 -nat reductions in held-out pretraining cross-entropy for AdamW, Sophia, and Shampoo. 
+
+## 2 Related work 
+
+Momentum, acceleration, and convergence guarantees. The study of faster first-order optimization predates modern adaptive methods. Robbins and Monro introduced stochastic approximation as a framework for iterative optimization from noisy observations [Robbins and Monro, 1951]. Polyak’s heavy-ball method showed how momentum can accelerate deterministic iterative methods [Polyak, 1964], while Nesterov’s accelerated method achieved the optimal O(1 /k 2) rate for smooth convex optimization with first-order information [Nesterov, 1983]. Polyak–Ruppert averaging later showed that averaging stochastic approximation iterates can recover optimal asymptotic behavior under classical conditions [Polyak and Juditsky, 1992]. For nonconvex stochastic optimization, guarantees typically shift from convergence to a global minimum to convergence toward approximate stationarity; for example, Ghadimi and Lan [2013] give complexity guarantees for stochastic first-order methods in smooth nonconvex problems. In deep learning, momentum remains central: Sutskever et al. [2013] showed that carefully scheduled momentum and initialization allow SGD with momentum to train deep and recurrent networks effectively, and Lookahead wraps an inner optimizer with slow/fast weights to improve stability and reduce variance [Zhang et al., 2019]. These works improve convergence rates, stability, or asymptotic behavior of the optimization trajectory. Our work addresses a different but compatible question: whether the stochastic preconditioned update used by such optimizers is itself a biased estimator of the corresponding population preconditioned direction. 
+
+Adaptive diagonal optimizers. AdaGrad introduced coordinate-wise adaptive scaling from accumu-lated squared gradients, with both diagonal and full-matrix viewpoints [Duchi et al., 2011]. Adam made this form of adaptivity the default in deep learning by combining exponential moving averages of first and second moments with initialization bias corrections for those moving averages [Kingma and Ba, 2015]. AdamW decoupled weight decay from the adaptive gradient update, which is now standard in language model training [Loshchilov and Hutter, 2019]. Subsequent work identified 2convergence pathologies in Adam-like exponential moving average schemes and proposed AMSGrad-style long-memory fixes [Reddi et al., 2018]. Other widely used variants target optimizer memory or large-batch stability: Adafactor factorizes second-moment accumulators to reduce memory from matrix size to row/column size [Shazeer and Stern, 2018], while LAMB adds layerwise trust ratios for large-batch BERT training [You et al., 2020]. These methods design the form of the precondi-tioner, its memory footprint, or its large-batch scaling. Our work is orthogonal: given a stochastic preconditioner estimate, we study the bias introduced by multiplying it with a stochastic gradient and by applying a nonlinear inverse. This is also distinct from Adam’s standard bias correction, which corrects the initialization bias of exponential moving averages, not the finite-sample bias of the inverse preconditioner. 
+
+Curvature and matrix preconditioning. Natural gradient methods use the Fisher geometry as the local metric for optimization [Amari, 1998]. K-FAC makes this idea practical for neural networks by approximating layerwise Fisher blocks with Kronecker factors [Martens and Grosse, 2015]. Shampoo instead maintains structured second-moment matrices for tensor dimensions and applies inverse-root preconditioners [Gupta et al., 2018]; scalable implementations add numerical and systems refinements that make Shampoo practical for deep networks and language models [Anil et al., 2021]. SOAP further combines Shampoo’s eigenspace with Adam-like second-moment tracking to reduce the degradation from infrequent eigendecompositions [Vyas et al., 2025]. In the diagonal-curvature direction, Sophia estimates a diagonal Hessian or Gauss–Newton–Bartlett-style curvature proxy and clips the resulting curvature-scaled update for language model pretraining [Liu et al., 2024]. These methods estimate richer geometry than AdamW. Our contribution is not a new curvature approximation; it is a statistical correction layer for the stochastic inverse or inverse-root already used by such optimizers. 
+
+Variance reduction, stability, and objective modification. Classical variance-reduced stochastic methods such as SVRG and SAGA construct lower-variance gradient estimators by reusing reference or stored gradients [Johnson and Zhang, 2013, Defazio et al., 2014]. These methods reduce gradient noise but do not address bias from inverting a noisy preconditioner. Sharpness-Aware Minimization modifies the training objective to favor parameters whose neighborhoods have uniformly low loss [Foret et al., 2021]. This is another complementary axis: SAM changes the objective being optimized, whereas our method changes the statistical estimator of a preconditioned update for a fixed objective. Clipping and trust-ratio mechanisms in optimizers such as Adafactor, LAMB, and Sophia can stabilize large or poorly scaled updates, but they do not explicitly remove the leading inverse-estimator bias; in our experiments, such stabilization can either help preserve useful same-batch normalization or mask the effect of denominator correction. 
+
+Statistical bias correction and sample splitting. The jackknife was developed as a general bias-reduction technique for estimators [Quenouille, 1956, Efron, 1982], and the delta method gives the standard second-order expansion used to approximate the bias of smooth nonlinear transformations [van der Vaart, 1998]. Cross-fitting and sample splitting are also central in double/debiased machine learning, where they reduce overfitting and nuisance-estimation bias in semiparametric inference [Chernozhukov et al., 2018]. We use these statistical tools in a different setting: a single optimizer step at a fixed parameter vector. The numerator and denominator of the update are estimated from independent microbatch groups to remove gradient–preconditioner coupling, and microbatch variability is used to subtract the leading bias introduced by inverse or inverse-root maps. To our knowledge, prior optimizer work has not turned these classical bias-correction ideas into a practical correction for AdamW-, Sophia-, and Shampoo-style language model optimizers. 
+
+## 3 Background and problem setup 
+
+3.1 Stochastic first-order optimization 
+
+For the objective f (θ) = Ez∼D [ℓ(θ; z)] , plain SGD updates parameters as θt+1 = θt − ηˆgB using the unbiased minibatch gradient 
+
+ˆgB = 1
+
+|B| 
+
+X
+
+> zi∈B
+
+∇θ ℓ(θ; zi), E[ˆ gB] = ∇f (θ).
+
+3Here the preconditioner is a deterministic identity, so neither bias studied in this paper arises: SGD has gradient variance, but no gradient–preconditioner coupling bias and no inverse-preconditioner bias. Both biases appear once the update contains a stochastic, data-dependent multiplier—as in adaptive SGD variants, stochastic line-search methods, gradient clipping, normalized gradients, Adam-style methods, or matrix-preconditioned optimizers. All of these can be written abstractly as 
+
+θt+1 = θt − η ˆP −1 
+
+> t
+
+ˆgt,
+
+where ˆPt may be diagonal, block-diagonal, low-rank, or matrix-valued. The statistical question, which standard convergence analyses do not address, is whether ˆP −1 
+
+> t
+
+ˆgt is a clean estimator of the ideal population update. 
+
+3.2 Adaptive and preconditioned optimizers 
+
+Adam-style optimizers use coordinate-wise second moments to scale gradients. Ignoring momen-tum and bias correction for notation, a simplified Adam-style update and its associated diagonal preconditioner are 
+
+θt+1 = θt − η ˆgt
+
+√ˆvt + ϵ ,
+
+ˆPt = diag( pˆvt + ϵ).
+
+Here ˆvt estimates a second moment of gradients, and AdamW is the main representative of this family in our experiments. Sophia-style optimizers also use diagonal preconditioning, but the preconditioner is based on a stochastic curvature or Hessian proxy rather than only the second moment of the gradient. In simplified notation, a Sophia-style update can be written as 
+
+θt+1 = θt − η clip 
+
+ ˆmt
+
+ˆht + λ , c clip 
+
+
+
+,
+
+where ˆht is a diagonal curvature estimate, λ is damping, and cclip is the ratio-clipping threshold. This gives a second setting where the inverse of a noisy diagonal quantity directly affects the update. Matrix-preconditioned methods instead use a structured matrix estimate, such as a blockwise co-variance, Fisher approximation, or inverse-root preconditioner. Shampoo is the representative matrix-preconditioned optimizer in our experiments. Unlike AdamW and Sophia, Shampoo uses matrix-valued preconditioners, making it a direct test of whether the proposed correction extends beyond coordinate-wise scaling. 
+
+3.3 Problem setup 
+
+Fix a parameter value θ and let z ∼ D be a training example. Let g(z; θ) denote the per-example gradient and let P (z; θ) denote the corresponding per-example or microbatch preconditioning statistic. We write the population gradient, population preconditioner, and target preconditioned update as 
+
+g(z; θ) = ∇θ ℓ(θ; z), g(θ) = E[g(z; θ)] = ∇f (θ),P (θ) = E[P (z; θ)] , u⋆(θ) = P (θ)−1g(θ).
+
+Given a minibatch A, the corresponding empirical quantities and same-batch preconditioned update are 
+
+ˆgA = 1
+
+|A|
+
+X
+
+> zi∈A
+
+g(zi; θ), ˆPA = 1
+
+|A|
+
+X
+
+> zi∈A
+
+P (zi; θ),
+
+ˆuA = ˆP −1 
+
+> A
+
+ˆgA.
+
+Suppressing the shared θ argument, the central observation is that, in general, 
+
+E[ ˆP −1 
+
+> A
+
+ˆgA]̸ = P −1g. (3) This mismatch has two sources, described next. 44 Two finite-sample biases 
+
+Equation (3) states that the same-batch preconditioned update is not an unbiased estimator of the target update. The right-hand side has two distinct sources of mismatch, made precise below: gradient–preconditioner coupling, and the nonlinearity of inversion. 
+
+4.1 Coupling bias 
+
+The first issue appears because the same random minibatch is used to estimate both the gradient and the preconditioner. Since both ˆPA and ˆgA are functions of the same random examples, they are statistically dependent: 
+
+E[ ˆP −1 
+
+> A
+
+ˆgA]̸ = E[ ˆP −1 
+
+> A
+
+] E[ˆ gA]
+
+in general. We call the resulting cross-moment term 
+
+Bias coupling = E[ ˆP −1 
+
+> A
+
+ˆgA] − E[ ˆP −1 
+
+> A
+
+] E[ˆ gA] (4) the gradient–preconditioner coupling bias. This term is not present in plain SGD because P = I is deterministic. It appears when the update uses a stochastic preconditioner, stochastic normalization term, stochastic clipping rule, or stochastic line-search estimate. It can also appear in AdamW, Sophia, and Shampoo because the same minibatch can influence both the descent direction and the stochastic geometry used to scale or precondition that direction. The coupling term is not necessarily always harmful. In some settings, adapting the preconditioner to the current minibatch geometry may help. However, if the target is the population preconditioned update P −1g, then same-batch coupling introduces an additional term that is not part of the target vector field. 
+
+4.2 Inverse-preconditioner bias 
+
+The second issue remains even if the gradient and preconditioner are estimated from independent samples. An unbiased preconditioner estimate, E[ ˆP ] = P , does not imply unbiasedness after inversion because matrix inversion is nonlinear: 
+
+E[ ˆP −1]̸ =
+
+
+
+E[ ˆP ]
+
+−1
+
+.
+
+The scalar case makes the issue concrete: for the damped inverse f (x) = ( x + λ)−1 with f ′′ (x) = 2( x + λ)−3 > 0, Jensen’s inequality gives E[1 /(ˆ p + λ)] ≥ 1/(p + λ), with strict inequality whenever ˆp has nonzero variance. A simple two-point example, ˆp ∈ { 0.5, 1.5} with E[ˆ p] = 1 , yields 
+
+E[1 /ˆp] = 4 /3̸ = 1 . Appendix D.1 gives the full delta-method derivation of the leading bias and the corresponding correction. For a preconditioned update, this creates the inverse-preconditioner bias 
+
+Bias inv =
+
+
+
+E[ ˆP −1] − P −1
+
+g. 
+
+This bias is reduced by larger batches, exponential moving averages, damping, and conservative learning rates. It is not necessarily the dominant error in all regimes. However, it is a real finite-sample effect and becomes more relevant when preconditioner estimates are noisy, aggressive, or matrix-valued. This is why the issue is especially natural to test on AdamW, Sophia, and Shampoo. 
+
+## 5 Proposed method 
+
+We propose a two-part correction framework. The first component removes gradient–preconditioner coupling by estimating the gradient and preconditioner from independent microbatch groups. The second component reduces inverse-preconditioner bias using single-batch microbatch variability. 55.1 Cross-fitted preconditioning 
+
+At step t, parameters are fixed at θt. We sample two independent microbatch groups A and B from the same training distribution and use them for the numerator and preconditioner estimates, 
+
+ˆgA = 1
+
+|A|
+
+X
+
+> zi∈A
+
+g(zi; θt), ˆPB = 1
+
+|B|
+
+X
+
+> zi∈B
+
+P (zi; θt).
+
+The resulting cross-fitted update and, by independence, its factorized expectation are 
+
+ˆucf = ˆP −1 
+
+> B
+
+ˆgA.
+
+E[ ˆP −1 
+
+> B
+
+ˆgA] = E[ ˆP −1 
+
+> B
+
+] E[ˆ gA].
+
+Therefore, cross-fitting removes the coupling term in Equation (4) . It does not, by itself, remove inverse-preconditioner bias. The remaining mismatch is 
+
+E[ˆ ucf ] − P −1g =
+
+
+
+E[ ˆP −1 
+
+> B
+
+] − P −1
+
+g. 
+
+In practice, A and B can be created by splitting the current training batch, by using separate gradient-accumulation microbatch groups, or by drawing two independent minibatches from the data stream. The theory assumes independence. Occasional overlap is acceptable if the sampling procedures are independent and the dataset is large. 
+
+5.2 Single-batch inverse correction 
+
+We next reduce the finite-sample bias in ˆP −1 
+
+> B
+
+. The correction must be computed at the current parameter value θt, because training does not revisit the same point. We therefore use microbatch variability inside the current batch. Let B be split into m microbatches B1, . . . , B m, with microbatch preconditioners and averaged preconditioner 
+
+ˆPj = ˆPBj .
+
+¯P = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+ˆPj .
+
+A standard method would use ( ¯P + λI )−1, where λ > 0 is a damping term. We instead use the variation among ˆP1, . . . , ˆPm to estimate and subtract the leading inverse bias. 
+
+5.2.1 Diagonal correction for AdamW and Sophia 
+
+For diagonal preconditioners, the correction is elementwise. This covers AdamW and Sophia. Let 
+
+¯pk denote the kth coordinate of the averaged preconditioner and let dVar(¯ pk) denote the estimated variance of the microbatch mean for that coordinate. The relevant inverse functional is 
+
+T (p) = 1
+
+p + λ .
+
+Its second-order expansion gives 
+
+E[T (¯ pk)] ≈ T (pk) + 12 T ′′ (pk)Var(¯ pk).
+
+For this functional, the curvature and leading finite-sample bias are 
+
+T ′′ (p) = 2(p + λ)3 , Var(¯ pk)(pk + λ)3 .
+
+Replacing unknown population quantities with batch estimates gives the corrected inverse 
+
+eT (¯ pk) = 1¯pk + λ − dVar(¯ pk)(¯ pk + λ)3 . (5) 6The variance term is the variance of the microbatch mean, not the variance of a single microbatch statistic. If pj,k is the kth preconditioner entry from microbatch Bj , then 
+
+dVar(¯ pk) = 1
+
+m(m − 1) 
+
+> m
+
+X
+
+> j=1
+
+(pj,k − ¯pk)2, ¯pk = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+pj,k .
+
+The factor m − 1 gives the unbiased sample variance across microbatches, and the additional factor m
+
+converts the variance of microbatch statistics into the variance of their mean. For numerical stability, we clip the corrected inverse before applying the update: 
+
+eT (¯ pk) ← max 
+
+n
+
+0, eT (¯ pk)
+
+o
+
+.
+
+The resulting bias-corrected update is 
+
+ˆubc = eP −1 
+
+> B
+
+ˆgA,
+
+where eP −1 
+
+> B
+
+is the diagonal matrix with entries given by Equation (5). Appendix D.1 gives the delta-method derivation and explains why replacing the unknown population value pk by the observed batch estimate ¯pk introduces only higher-order error. This correction is cheap. It requires storing the microbatch mean and variance of the preconditioner estimate, not recomputing multiple inverses. For AdamW, p corresponds to the denominator induced by the second-moment estimate, such as pk = √vk. For Sophia, p corresponds to the diagonal curvature or Hessian-proxy estimate used in the denominator. 
+
+5.2.2 Jackknife correction 
+
+A more general single-batch correction uses the jackknife. The inverse functional, leave-one-microbatch-out preconditioner, and jackknife-corrected inverse are 
+
+T (P ) = ( P + λI )−1.
+
+¯P(−j) = 1
+
+m − 1
+
+X
+
+> ℓ̸=j
+
+ˆPℓ
+
+Tjack = mT ( ¯P ) − m − 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+T ( ¯P(−j)). (6) Under standard smoothness conditions for the functional T , the jackknife cancels the leading O(1 /m )
+
+finite-sample bias term, leaving a smaller higher-order bias. This correction is more general than the diagonal Taylor correction, but it can be more expensive because it requires evaluating the inverse functional on m leave-one-out estimates. For diagonal preconditioners, Equation (6) is inexpensive and can be used directly. For matrix preconditioners such as Shampoo, it may be too expensive to compute every step. In that case, the jackknife can be applied periodically, blockwise, or only to small structured preconditioner blocks. 
+
+5.2.3 Matrix-preconditioner correction for Shampoo 
+
+For Shampoo, the preconditioner is matrix-valued or block-matrix-valued, and the correction can be applied in an eigenbasis. Suppose ¯P = QΛQ⊤.
+
+We project each microbatch preconditioner into this basis, 
+
+ˆP ′ 
+
+> j
+
+= Q⊤ ˆPj Q. 
+
+The diagonal entries of ˆP ′ 
+
+> j
+
+estimate variability along the eigen-directions of ¯P . Let λk be the kth eigenvalue of ¯P and let dVar( ¯λk) be the estimated variance of the corresponding projected microbatch mean. For an inverse-root preconditioner, define the scalar spectral map 
+
+Tα(x) = ( x + λ0)−α.
+
+7Algorithm 1 Bias-corrected preconditioned step at parameters θt.
+
+Require: parameters θt; batch Bt; microbatch count m; damping λ; learning rate η 
+
+> 1:
+
+Split Bt into two independent groups A (numerator) and B (denominator)  
+
+> 2:
+
+ˆgA ← 1
+
+> |A|
+
+P 
+
+> z∈A
+
+∇ℓ(θt; z) ▷ numerator gradient estimate  
+
+> 3:
+
+Split B into microbatches B1, . . . , B m 
+
+> 4:
+
+for j = 1 , . . . , m do  
+
+> 5:
+
+Compute microbatch preconditioner ˆPj ← ˆPBj (θt) 
+
+> 6:
+
+end for  
+
+> 7:
+
+¯PB ← 1
+
+> m
+
+Pmj=1 ˆPj ▷ averaged denominator  
+
+> 8:
+
+if diagonal preconditioner (AdamW, Sophia) then  
+
+> 9:
+
+dVar( ¯PB ) ← 1
+
+> m(m−1)
+
+Pmj=1 ( ˆPj − ¯PB )⊙2 
+
+> 10:
+
+eHB ← ( ¯PB + λ)−1 − dVar( ¯PB ) ( ¯PB + λ)−3 ▷ Eq. (5)  
+
+> 11:
+
+else ▷ matrix preconditioner (Shampoo)  
+
+> 12:
+
+Eigendecompose ¯PB = QΛQ⊤ 
+
+> 13:
+
+Project ˆPj into the eigenbasis and estimate dVar( ¯λk) for each eigen-direction  
+
+> 14:
+
+Apply Eq. (9) eigen-direction-wise to obtain the corrected inverse-root operator eHB 
+
+> 15:
+
+end if  
+
+> 16:
+
+θt+1 ← θt − η eHB ˆgA
+
+For matrix parameters in Shampoo, α = 1 /4. The corrected inverse-root eigenvalue and precondi-tioner are 
+
+edk = Tα(λk) − 12 T ′′  
+
+> α
+
+(λk)dVar( ¯λk).
+
+eP −α = Q diag( ed1, . . . , edd) Q⊤.
+
+This avoids repeated eigendecompositions. It uses the eigendecomposition already required by Shampoo-style matrix preconditioning and adds only a variance estimate in the current eigenbasis. Appendix D.2 gives the bias and residual-error analysis for the inverse-root correction, including the eigenbasis-of- ¯P approximation. 
+
+Interpretation: numerator vs. denominator. The two correction components can be interpreted by comparing numerator and denominator signals. When both the numerator and denominator are large, or both small, the cross-fitted update resembles same-batch behavior: gradient magnitude and preconditioner agree about the local scale of the step. The informative cases are asymmetric: a large numerator paired with a small independent denominator is unsupported, and the inverse-bias correction shrinks the inverse denominator in high-variance directions, keeping the step conservative; a small numerator paired with a large denominator is benign because little gradient signal is available. The correction therefore damps unsupported large steps while leaving reliable large-gradient, large-denominator cases controlled. Algorithm 1 summarizes the proposed method. The convergence theorems are given in Section 6, and detailed optimizer instantiations are given in Appendix A. 
+
+## 6 Convergence analysis 
+
+For a nonconvex language-model loss, one generally cannot prove that an optimizer reaches a better global optimum. A correct statement is more local and estimator-based: the bias-corrected update is designed to reduce the targeted stochastic-update bias components relative to the standard same-batch preconditioned update; under smooth nonconvex assumptions, smaller update bias improves the stationarity bound; and under a PL or locally strongly-convex-type condition, smaller update bias improves the linear contraction constant and the limiting suboptimality floor. This is consistent with biased-SGD theory, where estimator bias changes attainable accuracy and convergence constants [Ajalloeian and Stich, 2020], and with existing adaptive and preconditioned optimizer analyses that prove convergence under smoothness, bounded variance, and bounded preconditioner assumptions. We analyze a generic stochastic preconditioned update 
+
+θt+1 = θt − ηˆut, ˆut = bHt ˆgt,
+
+8where the target population update is 
+
+u⋆t = Ht∇f (θt), Ht = P −1 
+
+> t
+
+.
+
+For AdamW, Ht is a diagonal inverse second-moment preconditioner; for Sophia, it is a diagonal in-verse curvature preconditioner; and for Shampoo, it is a structured inverse-root matrix preconditioner. 
+
+Conditional update bias. Let Ft denote the history before sampling minibatches at step t. Define the conditional stochastic-update bias 
+
+bt = E[ˆ ut | F t] − Ht∇f (θt),
+
+and the conditional update variance 
+
+σ2 
+
+> t
+
+= E
+
+h
+
+∥ˆut − E[ˆ ut | F t]∥2 | F t
+
+i
+
+.
+
+Theorem 1 below makes the connection to Section 5 precise: cross-fitting removes the coupling component of bt, and delta-method correction reduces the inverse component of bt from O(m−1)
+
+to O(m−3/2). Theorems 2 and 3 then translate this estimator-level bias reduction into convergence guarantees under standard assumptions. 
+
+Theorem 1 (Bias reduction by cross-fitting and inverse correction) . Fix θt. Let A and B be indepen-dent minibatch groups sampled from the same data distribution. Let 
+
+ˆgA and bHB
+
+be the stochastic gradient and inverse-preconditioner estimates, respectively. Suppose 
+
+E[ˆ gA | F t] = ∇f (θt),
+
+and suppose the inverse-preconditioner map is three-times continuously differentiable in a neigh-borhood of the population preconditioner, with bounded third derivative and bounded microbatch moments. If the preconditioner is estimated from m independent microbatches, then the standard same-batch estimator satisfies 
+
+E[ bHA ˆgA | F t] − Ht∇f (θt)= Cov( bHA, ˆgA | F t)
+
+| {z }
+
+> coupling bias
+
++
+
+
+
+E[ bHA | F t] − Ht
+
+
+
+∇f (θt)
+
+| {z }
+
+> inverse bias
+
+,
+
+where Cov( bHA, ˆgA | F t) denotes the cross-moment E[ bHA ˆgA | F t] − E[ bHA | F t]E[ˆ gA | F t]. The cross-fitted estimator removes the coupling term: 
+
+E[ bHB ˆgA | F t] − Ht∇f (θt) = 
+
+
+
+E[ bHB | F t] − Ht
+
+
+
+∇f (θt).
+
+If the delta-method correction is applied to the inverse-preconditioner estimate, then, for diagonal preconditioners or for matrix preconditioners whose microbatch perturbations are diagonal in a fixed population-aligned eigendirection basis, 
+
+E[ eHB | F t] = Ht + O(m−3/2),
+
+whereas the uncorrected inverse estimator has 
+
+E[ bHB | F t] = Ht + O(m−1).
+
+Consequently, 
+
+E[ eHB ˆgA | F t] − Ht∇f (θt) = O(m−3/2)∥∇ f (θt)∥.
+
+For Shampoo, the implementation applies the same scalar correction in the empirical eigenbasis of the averaged preconditioner; Appendix D.2 states the resulting basis-rotation approximation explicitly. 9Proof. For the same-batch estimator, 
+
+E[ bHA ˆgA | F t] = E[ bHA | F t]E[ˆ gA | F t] + Cov( bHA, ˆgA | F t).
+
+Since E[ˆ gA | F t] = ∇f (θt), subtracting Ht∇f (θt) gives the stated decomposition. For cross-fitting, bHB and ˆgA are conditionally independent given Ft, so 
+
+E[ bHB ˆgA | F t] = E[ bHB | F t]E[ˆ gA | F t].
+
+Thus the covariance term vanishes. For the inverse correction, write the scalar inverse or inverse-root map as T (x). If ¯x is the mean of m
+
+microbatch estimates with mean x, then Taylor expansion gives 
+
+E[T (¯ x)] = T (x) + 12 T ′′ (x)Var(¯ x) + O(m−3/2).
+
+The delta-method estimator subtracts 
+
+12 T ′′ (¯ x)dVar(¯ x),
+
+whose expectation equals the leading bias term up to O(m−3/2). Therefore the corrected inverse estimate has residual bias O(m−3/2). Applying this coordinatewise, or eigendirection-wise under the commuting perturbation condition in the theorem statement, gives the result. The estimator-level bias reduction in Theorem 1 is the input to the convergence analysis below. We now state the assumptions used by the convergence theorems and follow with the theorems themselves. Long proofs are deferred to Appendix D.3; we keep one-paragraph sketches in the body. 
+
+Assumption 1 (Smoothness and bounded preconditioning) . The objective f is L-smooth and lower bounded by f⋆. The population inverse preconditioners Ht are symmetric positive definite and satisfy 
+
+μH I ⪯ Ht ⪯ MH I
+
+for constants 0 < μ H ≤ MH < ∞. The stochastic update has bounded relative bias and bounded conditional variance: 
+
+∥E[ˆ ut | F t] − Ht∇f (θt)∥ ≤ ρbias μH ∥∇ f (θt)∥, 0 ≤ ρbias < 1,
+
+E
+
+h
+
+∥ˆut − E[ˆ ut | F t]∥2 | F t
+
+i
+
+≤ σ2.
+
+Assumption 2 (PL condition) . The objective satisfies the Polyak–Lojasiewicz condition with constant 
+
+μPL > 0:
+
+12 ∥∇ f (θ)∥2 ≥ μPL (f (θ) − f⋆) for all iterates θ. 
+
+The parameter ρbias in Assumption 1 is the relative update-bias level. Theorem 1 shows how cross-fitting and inverse correction reduce the bias terms that contribute to ρbias , up to the variance introduced by sample splitting. 
+
+Theorem 2 (Nonconvex stationarity bound) . Under Assumption 1, choose a constant step size η
+
+satisfying 
+
+0 < η ≤ μH (1 − ρbias )
+
+L(MH + ρbias μH )2 .
+
+Then after T steps, 
+
+1
+
+T 
+
+> T−1
+
+X
+
+> t=0
+
+E∥∇ f (θt)∥2 ≤ 2( f (θ0) − f⋆)
+
+ηT μ H (1 − ρbias ) + Lησ 2
+
+μH (1 − ρbias ) .
+
+10 Proof sketch. By L-smoothness, f (θt+1 ) ≤ f (θt)−η⟨∇ f (θt), ˆut⟩+ Lη 2 
+
+> 2
+
+∥ˆut∥2. Taking conditional expectation, the bounded relative bias gives ⟨∇ f, E[ˆ ut | F t]⟩ ≥ μH (1 − ρbias )∥∇ f ∥2, while the bounded conditional variance gives E[∥ˆut∥2 | F t] ≤ (MH + ρbias μH )2∥∇ f ∥2 + σ2. Combining yields a per-step descent inequality with coefficient cbias = ημ H (1 − ρbias ) − Lη 2 
+
+> 2
+
+(MH + ρbias μH )2,and the step-size condition implies cbias ≥ 12 ημ H (1 − ρbias ). Summing over t = 0 , . . . , T − 1 and using f (θT ) ≥ f⋆ gives the claim. The full argument is in Appendix D.3. This theorem formalizes the estimator-level convergence statement. If the corrected method has 
+
+ρbias ,BC < ρ bias ,std and does not increase σ2 too much, then the upper bound is smaller. If sample splitting increases variance, the theorem also explains why an optimizer can fail under fixed compute: 
+
+ρbias improves, but σ2 worsens. 
+
+Theorem 3 (Linear convergence to a smaller neighborhood) . Under Assumptions 1 and 2, with the step size of Theorem 2, define 
+
+cbias = ημ H (1 − ρbias ) − Lη 2
+
+2 (MH + ρbias μH )2 > 0.
+
+Assume also that the step size is small enough that 0 < 2μPL cbias < 1. Then 
+
+E[f (θT ) − f⋆] ≤ (1 − 2μPL cbias )T (f (θ0) − f⋆) + Lη 2σ2
+
+4μPL cbias 
+
+.
+
+Proof sketch. The per-step descent inequality from Theorem 2 combined with the PL con-dition ∥∇ f (θt)∥2 ≥ 2μPL (f (θt) − f⋆) gives a linear contraction E[f (θt+1 ) − f⋆ | Ft] ≤
+
+(1 − 2μPL cbias )( f (θt) − f⋆) + Lη 2σ2 
+
+> 2
+
+. Unrolling the recursion produces the stated geometric decay plus an asymptotic neighborhood. The full argument is in Appendix D.3. This theorem does not claim a better global optimum in a nonconvex language model. It says that the method converges to a smaller objective neighborhood when the corrected estimator has a better effective bias–variance tradeoff. 
+
+Corollary 1 (When bias correction improves convergence) . Let standard and bias-corrected updates satisfy Assumption 1 with a common step size and parameters 
+
+(ρbias ,std , σ 2std ) and (ρbias ,BC , σ 2BC ).
+
+Let cstd and cBC denote the corresponding constants from Theorem 3. If 
+
+cBC > c std ,
+
+and both methods satisfy the contraction condition in Theorem 3, then the PL contraction factor is better for the bias-corrected method: 
+
+1 − 2μPL cBC < 1 − 2μPL cstd .
+
+If additionally 
+
+σ2BC 
+
+cBC 
+
+< σ2std 
+
+cstd 
+
+,
+
+then the limiting suboptimality neighborhood is also smaller for the bias-corrected method. 
+
+The direct theoretical conclusion is therefore not that the corrected optimizer always reaches a better global optimum. Rather, under the stated assumptions, bias correction reduces the targeted stochastic-update bias components; this improves the convergence constant and the limiting optimization neighborhood whenever the variance cost of correction is not larger than the bias-reduction benefit. This unified statement applies at the level of the preconditioned update and therefore covers AdamW, Sophia, and Shampoo through the corresponding choices of Ht when the implemented update satisfies the bounded-bias and bounded-variance conditions. 
+
+## 7 Experiments 
+
+We evaluate the correction in two regimes (Table 1). First, we run language-model pretraining from random initialization using the Qwen2.5-0.5B architecture on packed FineWeb-Edu sequences — a 11 Table 1: Experimental regimes used in this study.             
+
+> Regime Initialization Training Data Evaluation
+> Clean pretraining Qwen2.5-0.5B config, ran-dom init 256K packed FineWeb-Edu se-quences 10K packed sequences, 10.24M tokens Mixed-quality pre-training Qwen2.5-0.5B config, ran-dom init 80% clean + 20% span-replaced train sequences Same clean 10K packed eval-uation set Instruction tuning Qwen2.5-0.5B pretrained 32K supervised examples 500 examples; selected checkpoints also 5K
+
+longer and noisier setting, and therefore the more direct stress test for finite-sample preconditioner bias. We also run a mixed-quality pretraining diagnostic in which 20% of the training sequences are corrupted by span replacement while the held-out evaluation set remains clean. Second, we run instruction tuning from a pretrained Qwen2.5-0.5B checkpoint on Alpaca-style supervised data — a short-horizon, relatively stable post-training setting. Unless otherwise stated, reported values are held-out cross-entropy losses and lower is better. The primary experimental axes are the optimizer family, the bias-correction variant, and the training regime. We instantiate the method for AdamW, Sophia-G, and Shampoo. For each family, the main variants are standard same-batch preconditioning, cross-fit only, inverse correction only, and full BC. The main component ablation is reported in Appendix B. Additional SFT studies sweep learning rate, batch size, cross-fit mixing, pre-EMA versus post-EMA inverse correction, warm-starting from standard training, Shampoo layer coverage, clipping, preconditioner recomputation frequency, and the number of denominator microbatches; these sweep results are reported in Appendix F. For pretraining, FineWeb-Edu text is tokenized with the Qwen tokenizer and packed into fixed 1024-token sequences; the pretraining experiments use 256K packed training sequences and evaluate on 10K packed sequences. In the mixed-quality diagnostic, 51,200 of the 256,000 training sequences are selected for corruption. For each selected sequence, approximately 30% of its 64-token blocks are replaced by spans sampled from other training sequences, preserving token-level plausibility while breaking semantic coherence; the evaluation set is copied unchanged. For instruction tuning, we shuffle the Alpaca-style supervised dataset with a fixed seed and reserve held-out examples before selecting the 32K-example training subset. The main SFT evaluation uses 500 held-out examples, and selected saved checkpoints are also evaluated on a larger 5K-example held-out set. Table 5 gives the optimizer hyperparameters, microbatch structure, learning-rate schedule, random seeds, and compute resources. Learning rates and implementation variants were chosen through the targeted sweeps reported in Appendix F; the reported main comparisons are the settings most relevant to the claims rather than an exhaustive hyperparameter grid. 
+
+7.1 Main pretraining results 
+
+Table 2 reports pretraining results with final held-out evaluation. Bias correction improves the corresponding standard optimizer for all three optimizer families in these pretraining comparisons. For AdamW, the main corrected run uses the LOO+Jensen variant described in Section A: embeddings follow standard AdamW, while dense parameters use leave-one-out cross-fitting over 64 microbatches and the Jensen inverse correction. On clean FineWeb-Edu pretraining, this reduces eval loss from 4.836 to 4.687, a reduction of 0.149 nats. In the mixed-quality setting, AdamW LOO+Jensen reduces clean eval loss from 4.8225 to 4.8034. This second gap is smaller (0.0191 nats) and should be read as a directional diagnostic rather than a large effect; notably, the corrected run has higher final training loss, consistent with fitting the corrupted spans less aggressively while retaining a lower clean held-out loss. Sophia full BC reduces eval loss from 6.6647 to 6.5946, and Shampoo full BC reduces eval loss from 5.7916 to 5.6813. The AdamW result illustrates why the batch split matters. Two-fold AdamW full-BC uses only half the batch for the denominator estimate, which inflates the square-of-mean denominator noise and makes updates too conservative. The LOO version keeps the denominator scale close to standard AdamW because each fold’s denominator uses 504 of the 512 examples. It therefore removes same-microbatch coupling without paying the same small-denominator penalty. 12 Table 2: Pretraining results from random initialization on packed FineWeb-Edu sequences. AdamW LOO+Jensen uses 64 leave-one-out folds of 8 examples each; embeddings use standard AdamW and dense parameters use LOO bias correction. The noisy-train rows use the span-replacement training set and the same clean evaluation set. 
+
+Optimizer Train Data Variant Batch / Split LR Final-50 Train Eval Loss Delta 
+
+AdamW 
+
+AdamW Clean Standard b512 6e −4 4.832 4.836 AdamW Clean LOO+Jensen BC b512, LOO-64 embed 6e −4;dense 9e −4
+
+4.733 4.687 -0.149 
+
+AdamW Noisy Standard b512 6e −4 4.853 4.823 AdamW Noisy LOO+Jensen BC b512, LOO-64 embed 6e −4;dense 9e −4
+
+4.872 4.803 -0.019 
+
+Sophia-G 
+
+Sophia Clean Standard b512 6e −4 6.663 6.665 Sophia Clean Full BC A512/B512 6e −4 6.592 6.595 -0.070 
+
+Shampoo 
+
+Shampoo Clean Standard b512 6e −4 5.787 5.792 Shampoo Clean Full BC A512/B512 1e −3 5.676 5.681 -0.110 100 200 300 400    
+
+> Pretraining step
+> 4.8
+> 5.4
+> 6.0
+> 6.6
+> 7.2
+> Training loss
+> (a) Clean FineWeb-Edu train/eval
+> Std AdamW (eval 4.8361)
+> LOO+Jensen BC (eval 4.6872)
+> 100 200 300 400
+> Pretraining step
+> 4.8
+> 5.4
+> 6.0
+> 6.6
+> 7.2
+> (b) 80% clean + 20% span-replaced train, clean eval
+> Std AdamW (eval 4.8225)
+> LOO+Jensen BC (eval 4.8034)
+
+Figure 1: AdamW pretraining comparisons for Qwen2.5-0.5B trained from random initialization. Left: clean FineWeb-Edu training and clean held-out evaluation. Right: mixed-quality training with 20% span-replaced sequences and the same clean held-out evaluation. Thin lines show per-step losses and thick lines show a trailing moving average. LOO+Jensen BC improves clean held-out eval in both settings; in the mixed-quality setting it does so despite higher final training loss, consistent with less fitting of corrupted spans. Table 3: Best instruction-tuning comparisons. Values are held-out cross-entropy losses. Deltas that round to 0.000 indicate differences below 5 × 10 −4.
+
+Optimizer Standard Setting Corrected Setting Eval Set Std Full BC Delta 
+
+AdamW b512, lr 2e −5 b512, lr 1e −4 500 1.347 1.346 -0.001 
+
+Sophia b512, lr 2e −5 b512, lr 2e −5 5K 1.342 1.342 0.000 Shampoo attn only, b512, lr 2e −5 attn only, b512, lr 2e −5 500 1.347 1.347 0.000 
+
+7.2 Main instruction-tuning results 
+
+Table 3 summarizes the strongest instruction-tuning comparisons. The differences are small, as expected for a short SFT run starting from a strong pretrained model. These results should be read as targeted evidence rather than an exhaustive grid: AdamW benefits most after retuning and pre-EMA inverse correction, Sophia is nearly tied on 500 examples but slightly better on the larger 5K evaluation, and Shampoo is effectively neutral in the attention-only SFT setting. 13 0 100 200 300 400     
+
+> Pretraining step
+> 7.5
+> 9.0
+> 10.5
+> 12.0
+> Training loss
+> (a) Full trajectory
+> Standard (eval 6.6647)
+> Full BC (eval 6.5946)
+> 160 240 320 400 480
+> Pretraining step
+> 6.50
+> 6.75
+> 7.00
+> 7.25
+> 7.50
+> (b) Late-stage zoom
+> Standard (eval 6.6647)
+> Full BC (eval 6.5946)
+
+Figure 2: Sophia pretraining loss curves for Qwen2.5-0.5B trained from random initialization. Thin lines show per-step losses and thick lines show a trailing moving average. Full BC reaches both lower final-50 training loss and lower held-out eval loss than the standard optimizer in this pretraining comparison. 0 100 200 300 400     
+
+> Pretraining step
+> 6.0
+> 7.5
+> 9.0
+> 10.5
+> 12.0
+> Training loss
+> (a) Full trajectory
+> Standard (eval 5.7916)
+> Full BC (eval 5.6813)
+> 160 240 320 400 480
+> Pretraining step
+> 5.6
+> 6.0
+> 6.4
+> 6.8
+> 7.2
+> (b) Late-stage zoom
+> Standard (eval 5.7916)
+> Full BC (eval 5.6813)
+
+Figure 3: Shampoo pretraining loss curves for Qwen2.5-0.5B trained from random initialization with attention and MLP layers using Shampoo preconditioning. Thin lines show per-step losses and thick lines show a trailing moving average. The full-BC run reaches lower final-50 training loss and lower held-out eval loss than the standard Shampoo run. 
+
+## 8 Limitations 
+
+This study evaluates one model scale, Qwen2.5-0.5B, in two training regimes: FineWeb-Edu pre-training from random initialization and supervised instruction tuning on an Alpaca-style dataset. The pretraining results are positive for AdamW, Sophia, and Shampoo, and the instruction-tuning results are comparable to standard optimization with small gains in selected AdamW and Sophia settings. However, the conclusions should be checked on larger models, longer training runs, and additional pretraining and post-training datasets before treating the effect size as general. The small SFT deltas in Tables 3 and 4 are near the plausible noise floor on the 500-example evaluation set. The pretraining gaps are larger, but they are still point estimates rather than seed-averaged effects. Compute is the main constraint on statistical significance and ablation completeness: the experiments were run under a single-GPU compute budget, and each full pretraining comparison takes several hours. We therefore prioritized optimizer-family coverage, implementation checks, and compute-matched comparisons over repeated seeds, full pretraining ablation grids, and exhaustive non-AdamW SFT ablations. The resulting point estimates identify promising regimes and failure modes, but they should not be read as seed-averaged effect-size estimates. The correction also has implementation-specific limitations. The Shampoo correction uses an eigenbasis approximation: it operates in the eigenbasis of the averaged preconditioner ¯PB rather than an eigenbasis that jointly diagonalizes the microbatch variability, so the scalar inverse-root correction is exact only along aligned eigendirections. The AdamW results also show that the batch-splitting design matters: a two-fold denominator estimate can be too noisy, while the LOO construction keeps the denominator close to full-batch scale. 14 9 Conclusion 
+
+We identify two statistical biases in stochastic preconditioned optimization: gradient–preconditioner coupling bias and inverse-preconditioner finite-sample bias. We propose a single-batch correction framework that uses cross-fitting to remove the first and microbatch variance correction to reduce the second. The method is lightweight for diagonal optimizers such as AdamW and Sophia, and extensible to matrix-preconditioned optimizers such as Shampoo through jackknife or eigenbasis correction. In pretraining, the corrected variants improve over the corresponding standard optimizers for all three optimizer families. In instruction tuning, the corrected variants are competitive with standard optimization and give small gains in selected AdamW and Sophia settings, while Shampoo is effectively neutral. These results show that correcting finite-sample bias in the stochastic update can make preconditioned language-model optimization more effective. Further discussion is provided in Appendix C. 15 References 
+
+Ahmad Ajalloeian and Sebastian U. Stich. On the convergence of SGD with biased gradients. In 
+
+Workshop on Beyond First Order Methods in ML Systems at the 37th International Conference on Machine Learning , 2020. URL https://arxiv.org/abs/2008.00051 .Shun-ichi Amari. Natural gradient works efficiently in learning. Neural Computation , 10(2):251– 276, 1998. URL https://direct.mit.edu/neco/article-abstract/10/2/251/6143/ Natural-Gradient-Works-Efficiently-in-Learning .Rohan Anil, Vineet Gupta, Tomer Koren, Kevin Regan, and Yoram Singer. Towards practical second order optimization for deep learning. In International Conference on Learning Representations ,2021. URL https://openreview.net/forum?id=Sc8cY4Jpi3s .Victor Chernozhukov, Denis Chetverikov, Mert Demirer, Esther Duflo, Christian Hansen, Whitney Newey, and James Robins. Double/debiased machine learning for treatment and structural pa-rameters. The Econometrics Journal , 21(1):C1–C68, 2018. URL https://academic.oup.com/ ectj/article/21/1/C1/5056401 .Aaron Defazio, Francis Bach, and Simon Lacoste-Julien. SAGA: A fast incremental gradient method with support for non-strongly convex composite objectives. In Advances in Neural Information Processing Systems , volume 27, 2014. URL https://proceedings.neurips.cc/paper/ 2014/hash/ede7e2b6d13a41ddf9f4bdef84fdc737-Abstract.html .John Duchi, Elad Hazan, and Yoram Singer. Adaptive subgradient methods for online learning and stochastic optimization. Journal of Machine Learning Research , 12:2121–2159, 2011. URL 
+
+https://www.jmlr.org/papers/v12/duchi11a.html .Bradley Efron. The Jackknife, the Bootstrap and Other Resampling Plans , volume 38 of CBMS-NSF Regional Conference Series in Applied Mathematics . Society for Industrial and Applied Mathematics, Philadelphia, PA, 1982. URL https://epubs.siam.org/doi/book/10.1137/ 1.9781611970319 .Pierre Foret, Ariel Kleiner, Hossein Mobahi, and Behnam Neyshabur. Sharpness-aware minimization for efficiently improving generalization. In International Conference on Learning Representations ,2021. URL https://openreview.net/forum?id=6Tm1mposlrM .Saeed Ghadimi and Guanghui Lan. Stochastic first- and zeroth-order methods for nonconvex stochastic programming. SIAM Journal on Optimization , 23(4):2341–2368, 2013. doi: 10.1137/ 120880811. URL https://doi.org/10.1137/120880811 .Vineet Gupta, Tomer Koren, and Yoram Singer. Shampoo: Preconditioned stochastic tensor op-timization. In Proceedings of the 35th International Conference on Machine Learning , vol-ume 80 of Proceedings of Machine Learning Research , pages 1842–1850. PMLR, 2018. URL 
+
+https://proceedings.mlr.press/v80/gupta18a.html .Rie Johnson and Tong Zhang. Accelerating stochastic gradient descent using pre-dictive variance reduction. In Advances in Neural Information Processing Sys-tems , volume 26, 2013. URL https://proceedings.neurips.cc/paper/2013/hash/ ac1dd209cbcc5e5d1c6e28598e8cbbe8-Abstract.html .Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In International Conference on Learning Representations , 2015. URL https://arxiv.org/abs/1412.6980 .Hong Liu, Zhiyuan Li, David Hall, Percy Liang, and Tengyu Ma. Sophia: A scalable stochastic second-order optimizer for language model pre-training. In International Conference on Learning Representations , 2024. URL https://openreview.net/forum?id=3xHDeA8Noi .Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on Learning Representations , 2019. URL https://openreview.net/forum?id= Bkg6RiCqY7 .16 James Martens and Roger Grosse. Optimizing neural networks with Kronecker-factored approximate curvature. In Proceedings of the 32nd International Conference on Machine Learning , volume 37 of Proceedings of Machine Learning Research , pages 2408–2417. PMLR, 2015. URL https: //proceedings.mlr.press/v37/martens15.html .Yurii E. Nesterov. A method of solving the convex programming problem with convergence rate 
+
+O(1 /k 2). Soviet Mathematics Doklady , 27(2):372–376, 1983. Boris T. Polyak. Some methods of speeding up the convergence of iteration methods. USSR Compu-tational Mathematics and Mathematical Physics , 4(5):1–17, 1964. doi: 10.1016/0041-5553(64) 90137-5. URL https://www.mathnet.ru/eng/zvmmf7713 .Boris T. Polyak and Anatoli B. Juditsky. Acceleration of stochastic approximation by averaging. 
+
+SIAM Journal on Control and Optimization , 30(4):838–855, 1992. doi: 10.1137/0330046. M. H. Quenouille. Notes on bias in estimation. Biometrika , 43(3/4):353–360, 1956. URL https: //academic.oup.com/biomet/article-abstract/43/3-4/353/345190 .Sashank J. Reddi, Satyen Kale, and Sanjiv Kumar. On the convergence of Adam and beyond. In 
+
+International Conference on Learning Representations , 2018. URL https://openreview.net/ forum?id=ryQu7f-RZ .Herbert Robbins and Sutton Monro. A stochastic approximation method. The Annals of Mathematical Statistics , 22(3):400–407, 1951. doi: 10.1214/aoms/1177729586. URL https: //projecteuclid.org/journals/annals-of-mathematical-statistics/volume-22/ issue-3/A-Stochastic-Approximation-Method/10.1214/aoms/1177729586.full .Noam Shazeer and Mitchell Stern. Adafactor: Adaptive learning rates with sublinear memory cost. In Proceedings of the 35th International Conference on Machine Learning , volume 80 of Proceedings of Machine Learning Research , pages 4596–4604. PMLR, 2018. URL https: //proceedings.mlr.press/v80/shazeer18a.html .Ilya Sutskever, James Martens, George Dahl, and Geoffrey Hinton. On the importance of initialization and momentum in deep learning. In Proceedings of the 30th International Conference on Machine Learning , volume 28 of Proceedings of Machine Learning Research , pages 1139–1147. PMLR, 2013. URL https://proceedings.mlr.press/v28/sutskever13.html .Aad W. van der Vaart. Asymptotic Statistics . Cambridge University Press, Cambridge, 1998. Nikhil Vyas, Depen Morwani, Rosie Zhao, Itai Shapira, David Brandfonbrener, Lucas Janson, and Sham M. Kakade. SOAP: Improving and stabilizing Shampoo using Adam for language modeling. In International Conference on Learning Representations , 2025. URL https://openreview. net/forum?id=IDxZhXrpNf .Yang You, Jing Li, Sashank Reddi, Jonathan Hseu, Sanjiv Kumar, Srinadh Bhojanapalli, Xiaodan Song, James Demmel, Kurt Keutzer, and Cho-Jui Hsieh. Large batch optimization for deep learning: Training BERT in 76 minutes. In International Conference on Learning Representations ,2020. URL https://openreview.net/forum?id=Syx4wnEtvH .Michael R. Zhang, James Lucas, Geoffrey Hinton, and Jimmy Ba. Lookahead optimizer: 
+
+k steps forward, 1 step back. In Advances in Neural Information Processing Sys-tems , volume 32, 2019. URL https://proceedings.neurips.cc/paper/2019/hash/ 90fd4f88f588ae64038134f1eeaa023f-Abstract.html .17 Appendix A Algorithm and instantiations 
+
+Algorithm 1 gives the generic bias-corrected preconditioned step. This section then specializes the same template to AdamW (diagonal moments), Sophia (diagonal curvature), and Shampoo (matrix preconditioning); detailed update equations and the four-way ablation variants ustd , u cf , u inv , u full 
+
+for each family are deferred to Appendix E. 
+
+A.1 AdamW: diagonal moment preconditioning 
+
+AdamW is the standard diagonal adaptive optimizer used in language model training. Ignoring mo-mentum notation, its update, diagonal denominator, coordinate-wise corrected inverse, and corrected update are 
+
+ut = ˆmt
+
+√ˆvt + ϵ .
+
+ˆpt = pˆvt.
+
+ep−1 
+
+> t,k
+
+= 1¯pt,k + ϵ − dVar(¯ pt,k )(¯ pt,k + ϵ)3 .ut,k = ep−1 
+
+> t,k
+
+ˆmA,t,k .
+
+The numerator and denominator statistics can be estimated from independent microbatch groups to remove coupling. This gives the simplest and cheapest instantiation of the method. For AdamW pretraining, the main comparison uses a leave-one-out (LOO) version of this idea rather than a two-fold split. The 512-example batch is divided into m = 64 microbatches. For fold r, the numerator uses gr and the denominator uses the leave-one-out mean 
+
+g−r = m¯g − gr
+
+m − 1 , ¯g = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+gj .
+
+Thus the denominator is estimated from 504 of the 512 examples, nearly matching standard AdamW’s denominator noise floor while still removing same-microbatch coupling. This avoids the conservatism of a two-fold split, where each denominator is estimated from only half the batch and the squared-gradient denominator is inflated by the smaller-batch variance. We apply the Jensen inverse correction to each LOO fold and average the resulting fold updates. 
+
+A.2 Sophia: diagonal curvature preconditioning 
+
+Sophia-style optimizers use a stochastic diagonal curvature or Hessian proxy. In simplified notation, the update depends on 
+
+ˆmt
+
+ˆht + λ ,
+
+where ˆht is a diagonal curvature estimate. Since ˆht is stochastic and appears in the denominator, both coupling bias and inverse-preconditioner bias can arise. The corrected inverse curvature and corrected Sophia-style update are 
+
+eh−1 
+
+> t,k
+
+= 1¯ht,k + λ − dVar( ¯ht,k )(¯ht,k + λ)3 .ut,k = eh−1 
+
+> t,k
+
+ˆmA,t,k ,
+
+with the usual clipping or stabilization used by Sophia applied after correction. This setting is important because curvature estimates are often noisier than AdamW second-moment estimates, so inverse-bias correction may have a larger effect. 18 Table 4: SFT ablations separating cross-fitting and inverse correction.                  
+
+> Setting Std Cross-fit only Inverse only Full BC
+> AdamW ablation
+> AdamW, b512, lr 2e −51.3467 1.3507 1.3464 1.3481
+> Sophia ablation
+> Sophia, b512, lr 2e −51.3892 1.3899 1.3893 1.3892
+> Shampoo ablation
+> Shampoo, b512, lr 2e −51.3473 1.3473 1.3472 1.3470
+
+A.3 Shampoo: matrix preconditioning 
+
+Shampoo is the matrix-preconditioned optimizer used in our evaluation. For a matrix parameter W ,Shampoo estimates structured second-moment matrices and applies inverse-root preconditioners to the gradient. Abstractly, this can be written as 
+
+Ut = ˆL−αt ˆGt ˆR−αt ,
+
+where ˆLt and ˆRt are stochastic matrix preconditioners and α depends on the Shampoo variant. Our correction applies to each matrix preconditioner. For a generic Shampoo preconditioner ¯P , we use its eigendecomposition and projected microbatch preconditioners, 
+
+¯P = QΛQ⊤.
+
+ˆP ′ 
+
+> j
+
+= Q⊤ ˆPj Q. 
+
+The delta-method correction is applied to the scalar spectral map 
+
+T (λ) = ( λ + λ0)−α.
+
+For matrix parameters in Shampoo, α = 1 /4. The corrected inverse-root eigenvalue is 
+
+eT (¯λk) = T (¯λk) − 12 T ′′ (¯λk)dVar( ¯λk).
+
+This gives a direct matrix-preconditioner version of the method while avoiding repeated eigendecom-positions. 
+
+Wrapper interpretation. Algorithm 1 is intentionally designed as a wrapper around existing optimizers. For AdamW, eP −1 
+
+> B
+
+is diagonal and based on second-moment denominators. For Sophia, it is diagonal and based on curvature denominators. For Shampoo, it is matrix-valued or block-matrix-valued and applied through the eigenspectrum of the preconditioner. Plain SGD is not part of the main evaluation because it has no stochastic preconditioner and therefore does not test the main bias-correction mechanism. 
+
+## B Main experiment ablations 
+
+Table 4 separates the two components of the method. The four variants are: standard same-batch preconditioning; cross-fit only, which decouples numerator and preconditioner but does not correct the inverse; inverse-only, which applies the delta-method inverse correction without cross-fitting; and full BC, which combines both. The SFT ablations are primarily for AdamW, where inverse-only is neutral-to-slightly positive at the default setting and full BC needs retuning. For Sophia and Shampoo, the reported SFT full-BC comparisons are stable and close to standard; the pretraining results above are the more informative stress test. 
+
+## C Discussion 
+
+The proposed framework does not claim that current optimizers are wrong at every step. Current methods compute the exact inverse of the minibatch preconditioner they estimate. The issue is statistical: the minibatch inverse is generally not an unbiased estimator of the population inverse, 19 and same-batch estimation couples the gradient with the preconditioner. These effects may be small in large-batch, heavily smoothed AdamW training, but they may become important when the preconditioner is noisy, the batch is small, the curvature estimate is aggressive, or the optimizer uses matrix-valued preconditioning. The contribution is therefore not a replacement for existing optimizers. It is a bias-correction layer that can be applied to them. The main hypothesis is that lower-bias stochastic estimates of the preconditioned update can improve stability and sample efficiency in regimes where adaptive geometry helps but is noisy. AdamW, Sophia, and Shampoo isolate three different preconditioner regimes: diagonal moment estimates, diagonal curvature estimates, and matrix-valued preconditioners. In pretraining, the reported AdamW, Sophia, and Shampoo comparisons all favor the corrected variants, with larger gaps than in SFT. In our instruction-tuning experiments, AdamW and Sophia show small gains in selected settings, while Shampoo is effectively neutral. Interpreting cross-fitting through the numerator and denominator signals (Section 5) helps explain why the method is expected to matter more in pretraining than in short instruction tuning. During pretraining from random or weakly trained initialization, batches are noisier, curvature and second-moment estimates change rapidly, and training takes many more optimizer steps. In this regime, conservative inverse correction can prevent occasional high-variance preconditioner estimates from producing overly aggressive updates. At the same time, high momentum and preconditioner EMA values do not eliminate the effect: over a long horizon there is enough time for the separated numerator and denominator estimates to stabilize, and for the accumulated reduction in unreliable updates to improve convergence. In shorter SFT runs, the same mechanism can still improve the best-tuned result, but the gains are smaller because the model starts from a trained initialization and the optimization trajectory is shorter. The AdamW case also shows why the goal is not to remove every form of same-batch adaptivity unconditionally. Same-batch coupling in AdamW can normalize rare or unusually large coordinates because the same minibatch that produces a large numerator also increases the second-moment denominator. A naive two-fold split removes this coupling but estimates the denominator from only half the batch, inflating the square-of-mean noise floor and making updates too conservative. The LOO construction used for the main AdamW pretraining result keeps the denominator at nearly the same scale as standard AdamW, because each fold uses 504 of the 512 examples for the denominator. This preserves the useful scale of the standard denominator while removing same-microbatch coupling and applying the Jensen inverse correction. 
+
+Negative findings, framed by the theory. Two negative or near-neutral findings are worth surfacing as part of the narrative. First, the Shampoo SFT comparisons (Table 3 and Appendix Table 12) show standard and full-BC eval losses agreeing to within ∼ 0.005 , and full BC trails standard for the attention+MLP coverage. This is consistent with the theory: short SFT from a strong pretrained initialization gives a low-noise regime in which the inverse bias being corrected is small, and the variance cost of sample splitting can dominate. Second, the two-fold AdamW full-BC pretraining run at the same nominal learning rate as standard AdamW was substantially worse (Appendix Table 13). This failure motivated the LOO construction: the issue was not that AdamW cannot benefit from bias correction, but that the denominator estimator must keep approximately the same noise floor as standard AdamW. 
+
+## D Additional derivations 
+
+D.1 Delta-method derivation for diagonal inverse correction 
+
+The diagonal correction in Equation (5) is a second-order approximation to the bias introduced by inverting a noisy preconditioner estimate. Consider one scalar preconditioner entry, with independent microbatch estimates and mean 
+
+E[pj ] = p, Var( pj ) = σ2,
+
+¯p = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+pj .
+
+20 The inverse map is 
+
+f (p) = 1
+
+p + λ .
+
+Its nonlinearity alone is enough to introduce finite-sample bias. On the domain p + λ > 0,
+
+f ′′ (p) = 2(p + λ)3 > 0,
+
+so f is convex and Jensen’s inequality gives 
+
+E[f (¯ p)] ≥ f (E[¯ p]) = f (p), (7) with strict inequality when the microbatch estimate has nonzero variance. Thus the usual inverse preconditioner is biased upward. The variance entering the correction is the variance of the mean estimate. By independence, 
+
+Var(¯ p) = Var 
+
+ 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+pj
+
+ = 1
+
+m2
+
+> m
+
+X
+
+> j=1
+
+Var( pj ) = σ2
+
+m .
+
+Thus Var(¯ p) = O(1 /m ) and the typical fluctuation satisfies ¯p − p = Op(m−1/2). In practice we estimate this quantity from the same microbatches using 
+
+dVar(¯ p) = 1
+
+m(m − 1) 
+
+> m
+
+X
+
+> j=1
+
+(pj − ¯p)2. (8) The factor m − 1 is the usual unbiased sample-variance correction, and the additional factor m
+
+converts the variance of individual microbatch statistics into the variance of their mean. The delta method approximates the bias by expanding f around the true value p and then taking expectations: 
+
+f (¯ p) ≈ f (p) + f ′(p)(¯ p − p) + 12 f ′′ (p)(¯ p − p)2.
+
+E[f (¯ p)] ≈ f (p) + 12 f ′′ (p)Var(¯ p),
+
+where the linear term vanishes because E[¯ p − p] = 0 . For f (p) = ( p + λ)−1,
+
+f ′′ (p) = 2(p + λ)3 .
+
+Therefore the leading bias is 
+
+12 f ′′ (p)Var(¯ p) = Var(¯ p)(p + λ)3 .
+
+This term is positive, consistent with Jensen’s inequality in Equation (7) . Since Var(¯ p) = O(1 /m ),the uncorrected inverse has the leading bias 
+
+Bias uncorrected = Var(¯ p)(p + λ)3 + higher-order terms .
+
+The practical correction subtracts an estimate of this leading term, 
+
+eT (¯ p) = 1¯p + λ − dVar(¯ p)(¯ p + λ)3 .
+
+The first term is the usual inverse preconditioner, and the second term estimates the upward bias caused by microbatch noise. Larger microbatch variance produces a larger correction, while stronger damping through λ reduces the correction because the inverse map becomes less curved. The hat on dbias is important because the true leading bias is a population quantity, 
+
+bias( p) ≈ Var(¯ p)(p + λ)3 .
+
+21 It depends on the unknown population preconditioner entry p, so it cannot be subtracted directly. The practical correction instead subtracts the plug-in estimate 
+
+dbias = dVar(¯ p)(¯ p + λ)3 .
+
+Thus the approximation is replacing the unknown curvature factor (p + λ)−3 by the observable 
+
+(¯ p + λ)−3, and replacing the unknown variance of the mean by its microbatch estimate. This does not assume p = ¯ p; it uses ¯p as a consistent estimator of p inside a second-order bias approximation. The additional error from this plug-in replacement is smaller than the bias being corrected. To see this, first ignore the variance-estimation error and focus only on replacing p by ¯p. Define 
+
+g(x) = 1(x + λ)3 .
+
+A first-order expansion around p gives 
+
+g(¯ p) = g(p) + g′(p)(¯ p − p) + O((¯ p − p)2), g′(p) = − 3(p + λ)4 .
+
+Substituting this derivative gives 
+
+g(¯ p) = 1(p + λ)3 − 3(¯ p − p)(p + λ)4 + O((¯ p − p)2).
+
+After multiplication by Var(¯ p),
+
+Var(¯ p)g(¯ p) = Var(¯ p)(p + λ)3 − 3Var(¯ p)(¯ p − p)(p + λ)4 + O(Var(¯ p)(¯ p − p)2).
+
+Since Var(¯ p) = O(1 /m ) and ¯p − p = Op(m−1/2), the leading term is O(1 /m ), which is the bias we want to correct. The next term is Op(m−3/2), and the quadratic remainder contributes Op(m−2).Thus the error introduced by plugging in ¯p shrinks faster with m than the dominant inverse bias itself. The same logic applies to the variance estimate in Equation (8) : it estimates the variance of the random mean ¯p, not the degenerate quantity obtained after conditioning on the observed value. Therefore the variance does not become zero when p is replaced by ¯p; the microbatch fluctuations around ¯p are precisely the empirical signal used to estimate Var(¯ p).Putting the pieces together, the corrected estimator can be written as 
+
+f (¯ p) − dbias , dbias = dVar(¯ p)(¯ p + λ)3 .
+
+Taking expectations separates the true leading bias from the estimated subtraction, 
+
+E[f (¯ p) − dbias] = f (p) + O(m−3/2).
+
+The O(1 /m ) terms cancel. What remains is the approximation error in the bias estimate, which is smaller than the leading inverse bias being corrected: 
+
+Bias corrected = O(m−3/2),
+
+or O(m−2) under stronger moment and smoothness conditions. Thus the correction removes the dominant finite-sample inverse bias and leaves only smaller-order residual terms. In diagonal or vector preconditioners, this correction is applied elementwise. For matrix preconditioners, the same principle can be applied to eigenvalues in the current eigenspace, since the nonlinearity enters through inverse or inverse-root transformations of the spectrum. 
+
+D.2 Inverse-root correction for matrix preconditioners 
+
+For Shampoo-style inverse-root preconditioning, the relevant scalar functional is the spectral map 
+
+T (λ) = ( λ + λ0)−α, α ∈ (0 , 1] ,
+
+22 applied to the eigenvalues of an averaged matrix preconditioner ¯P with eigendecomposition ¯P =
+
+QΛQ⊤. For microbatch preconditioner estimates ¯P1, . . . , ¯Pm, define their projections into the eigenbasis of ¯P by 
+
+ePj = Q⊤ ¯Pj Q
+
+and let the projected microbatch eigenvalue estimates be the diagonal entries ¯λj,k = [ ePj ]kk , with mean 
+
+¯λk = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+¯λj,k .
+
+Note that ¯λk is the kth eigenvalue of ¯P , not of the population P ; the proof must treat this distinction carefully. 
+
+Bias of the inverse-root estimate. Fix coordinate k and write λ for the population eigenvalue along the corresponding eigen-direction. Under bounded fourth-order microbatch moments and three-times continuous differentiability of T , a Taylor expansion of T around λ gives 
+
+E[T (¯λk)] = T (λ) + 12 T ′′ (λ)Var( ¯λk) + O(m−3/2),
+
+where Var( ¯λk) = O(1 /m ) by independence of the microbatches. For T (λ) = ( λ + λ0)−α, the second derivative is 
+
+T ′′ (λ) = α(α + 1)( λ + λ0)−α−2 > 0,
+
+so T is convex on λ + λ0 > 0 and the leading bias term is positive — the uncorrected inverse-root systematically overestimates T (λ).
+
+Plug-in correction. Subtracting the plug-in estimate of the leading bias gives the corrected inverse-root eigenvalue 
+
+eT (¯λk) = T (¯λk) − 12 T ′′ (¯λk)dVar( ¯λk). (9) The same plug-in argument as in Appendix D.1 applies coordinatewise: replacing λ by ¯λk in the curvature factor introduces an Op(m−3/2) error, which is smaller than the O(1 /m ) bias being corrected. Therefore, 
+
+E[ eT (¯λk)] = T (λ) + O(m−3/2),
+
+so the corrected inverse-root eigenvalue has residual bias of order m−3/2 rather than m−1.
+
+Eigenbasis approximation. A caveat: the correction is computed in the eigenbasis of ¯P , not in the eigenbasis of the population P . Under bounded eigen-gap and bounded matrix-perturbation moments, classical eigenvalue perturbation gives ¯Q − Q⋆ = Op(m−1/2) in operator norm, where 
+
+Q⋆ is the population eigenbasis. The correction is therefore exact for the scalar inverse-root bias along directions in which ¯P and P share an eigen-direction. When the eigenspaces differ, the coordinatewise correction in the empirical eigenbasis leaves additional basis-rotation terms; these are controlled by the same perturbation assumptions but are not canceled by the scalar delta-method correction. This is the approximation used for Shampoo in our implementation. 
+
+D.3 Convergence proofs 
+
+This subsection contains the deferred proofs of Theorems 2 and 3. 
+
+Proof of Theorem 2. The proof starts from the standard descent inequality implied by L-smoothness: 
+
+f (θt+1 ) ≤ f (θt) − η⟨∇ f (θt), ˆut⟩ + Lη 2
+
+2 ∥ˆut∥2.
+
+Taking conditional expectation, decompose the mean stochastic update as 
+
+E[ˆ ut | F t] = Ht∇f (θt) + bt,
+
+where bt is the conditional update bias. The lower spectral bound on Ht and the relative-bias assumption give 
+
+⟨∇ f, H t∇f ⟩ ≥ μH ∥∇ f ∥2
+
+23 |⟨∇ f, b t⟩| ≤ ∥ bt∥∥∇ f ∥ ≤ ρbias μH ∥∇ f ∥2.
+
+Combining the last two displays yields the descent-direction lower bound 
+
+⟨∇ f, E[ˆ ut | F t]⟩ ≥ μH (1 − ρbias )∥∇ f ∥2.
+
+The corresponding second-moment bound follows from the upper spectral bound, the same relative-bias condition, and the variance assumption: 
+
+∥E[ˆ ut | F t]∥ ≤ (MH + ρbias μH )∥∇ f ∥,
+
+E[∥ˆut∥2 | F t] ≤ (MH + ρbias μH )2∥∇ f ∥2 + σ2.
+
+Substituting these two estimates into the smoothness inequality gives the one-step recursion 
+
+E[f (θt+1 ) | F t] ≤ f (θt) − cbias ∥∇ f (θt)∥2 + Lη 2
+
+2 σ2,
+
+with coefficient 
+
+cbias = ημ H (1 − ρbias ) − Lη 2
+
+2 (MH + ρbias μH )2.
+
+The stated step-size condition ensures that this coefficient is positive and satisfies 
+
+cbias ≥ 12 ημ H (1 − ρbias ).
+
+Summing over t = 0 , . . . , T − 1, using f (θT ) ≥ f⋆, and rearranging gives the claim. 
+
+Proof of Theorem 3. The proof of Theorem 2 gives the conditional descent recursion 
+
+E[f (θt+1 ) | F t] ≤ f (θt) − cbias ∥∇ f (θt)∥2 + Lη 2
+
+2 σ2.
+
+The PL condition converts gradient norm into function suboptimality: 
+
+∥∇ f (θt)∥2 ≥ 2μPL (f (θt) − f⋆).
+
+Substitution gives the affine contraction 
+
+E[f (θt+1 ) − f⋆ | F t] ≤ (1 − 2μPL cbias )( f (θt) − f⋆) + Lη 2
+
+2 σ2.
+
+Unrolling this recursion gives 
+
+E[f (θT ) − f⋆] ≤ (1 − 2μPL cbias )T (f (θ0) − f⋆) + Lη 2σ2
+
+4μPL cbias 
+
+.
+
+## E Implementation details for evaluated optimizers 
+
+This section gives the update equations used for the corrected implementations. In all cases, the parameter value is fixed at θt before any gradients or preconditioner statistics are computed. The batch is split into an A group for the numerator direction and a B group for the preconditioner. The 
+
+B group is further split into microbatches B1, . . . , B m so that microbatch variability can be used to estimate the variance of the mean preconditioner. All quantities for A and B are computed before modifying the parameters. 
+
+E.1 Training configuration 
+
+Table 5 consolidates the optimizer hyperparameters, schedules, seeds and compute resources used across the pretraining and SFT runs reported in the body. Values without a sweep are reported as scalars; values that vary across cells in Tables 6–12 are reported as ranges with the swept dimension named. 24 Setting Value 
+
+Optimization 
+
+Total optimizer steps (SFT) 62 for b512 main runs; 125–250 in smaller-batch sweeps Total optimizer steps (pretrain) 500 Sequence length 1024 tokens Numerator group size |A| 128–512 examples; main compute-matched runs use 512 Denominator group size |B| 128–512 examples for CF/full BC; main runs use 512 Microbatch count m 2–64 microbatches per group, depending on optimizer and memory; AdamW LOO pretraining uses 64 folds of 8 examples Gradient accumulation Per-microbatch accumulation; one optimizer step after all microbatches 
+
+AdamW 
+
+β1, β 2, ϵ pretrain: (0 .9, 0.95 , 10 −8); SFT: (0 .9, 0.999 , 10 −8)
+
+Weight decay λwd pretrain: 0.1; SFT: 0.01 Damping λ (when applicable) None beyond ϵ = 10 −8
+
+Sophia-G 
+
+Denominator scale ρ 0.05 Hessian-update interval K pretrain: 5; SFT: 10 
+
+β1, β 2, ϵ pretrain: (0 .965 , 0.99 , 10 −12 ); SFT: (0 .965 , 0.99 , 10 −15 )
+
+Shampoo 
+
+Eigenbasis update cadence pretrain: 5 steps; SFT: 10 steps unless swept Eigenvalue clip dmax Disabled in reported main runs Frobenius clip c Disabled in reported main runs 
+
+Schedule & regularization 
+
+LR schedule (warmup + decay) Linear warmup followed by cosine decay; AdamW LOO pretraining decays to 20% of peak LR Warmup steps pretrain: 20; SFT: 12 for b512 main runs, 50 in auxiliary sweeps Gradient clip threshold Global norm 1.0; Sophia ratio clip 3.0 (pretrain) and 1.0 (SFT) 
+
+Reproducibility 
+
+Random seeds Model seed 42; Alpaca shuffle seed 42; data-order seed 99 for compute-matched runs Tokenizer Qwen/Qwen2.5-0.5B tokenizer HuggingFace model revision Qwen/Qwen2.5-0.5B default revision 
+
+Hardware & compute 
+
+GPU type NVIDIA A100-SXM4-80GB GPU count 1Wall-clock per SFT run Approximately 11–21 minutes for b512 main runs Wall-clock per pretraining run Approximately 2.8–6.7 hours for 500-step runs Total measured compute At least 74 A100-hours from timestamped run logs 
+
+Table 5: Training configuration. Single source of truth for the optimizer hyperparameters, schedules, random seeds, hardware, and wall-clock compute used in the runs reported in Tables 6–12 and the pretraining results in Section 7. 
+
+E.2 Corrected AdamW 
+
+AdamW is implemented with decoupled weight decay, first- and second-moment exponential moving averages, bias correction, and then the adaptive step. At step t, the numerator and denominator groups give the gradients 
+
+gA = 1
+
+|A|
+
+X
+
+zi∈A
+
+∇θ ℓ(θt; zi), gBj = 1
+
+|Bj |
+
+X
+
+zi∈Bj
+
+∇θ ℓ(θt; zi).
+
+The first moment uses only the numerator group: 
+
+mt = β1mt−1 + (1 − β1)gA.
+
+The second moment uses only the independent denominator group: 
+
+sB = 1
+
+m
+
+mX
+
+j=1 
+
+g⊙2
+
+Bj ,vt = β2vt−1 + (1 − β2)sB .
+
+Adam bias correction then gives 
+
+ˆmt = mt
+
+1 − βt
+
+1
+
+, ˆvt = vt
+
+1 − βt
+
+2
+
+, pt = pˆvt.
+
+For inverse-bias correction, we treat the square-root denominator p = √ˆv as the scalar preconditioning quantity and define the hypothetical denominator induced by each B microbatch: 
+
+vt,j = β2vt−1 + (1 − β2)g⊙2
+
+Bj , ˆvt,j = vt,j 
+
+1 − βt
+
+2
+
+, pt,j = pˆvt,j .
+
+25 The variance estimator for the mean denominator is 
+
+¯pt = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+pt,j , dVar(¯ pt) = 1
+
+m(m − 1) 
+
+> m
+
+X
+
+> j=1
+
+(pt,j − ¯pt)⊙2.
+
+The corrected inverse denominator and corrected AdamW direction are 
+
+ep−1 
+
+> t
+
+= 1¯pt + ϵ − dVar(¯ pt)(¯ pt + ϵ)⊙3 , ep−1 
+
+> t
+
+← max {ep−1 
+
+> t
+
+, 0}.ut = ˆ mt ⊙ ep−1 
+
+> t
+
+.
+
+In experiments, the same final update clipping and decoupled weight decay are applied to standard and corrected AdamW: 
+
+ut ← ut · min 
+
+
+
+1, c
+
+∥ut∥2
+
+
+
+.θwd  
+
+> t
+
+= θt − ηλ wd θt, θt+1 = θwd  
+
+> t
+
+− ηu t.
+
+The four AdamW ablations are 
+
+ustd  
+
+> t
+
+= ˆmt
+
+√ˆvt + ϵ ,ucf  
+
+> t
+
+= ˆmA,t 
+
+pˆvB,t + ϵ ,uinv  
+
+> t
+
+= ˆ mt ⊙ ep−1 
+
+> t
+
+,ufull  
+
+> t
+
+= ˆ mA,t ⊙ ep−1
+
+> B,t
+
+.
+
+The AdamW pretraining comparison in Table 2 uses a LOO variant to avoid the half-batch denomina-tor penalty of a two-fold split. Let the 512-example batch be partitioned into m = 64 microbatches, with gradient means g1, . . . , g m and full-batch mean ¯g = m−1 P 
+
+> j
+
+gj . For fold r,
+
+g−r = m¯g − gr
+
+m − 1 , s−r = g⊙2 
+
+> −r
+
+.
+
+The dense-parameter fold update uses gr in the numerator and s−r in the denominator: 
+
+ur = ˆmr
+
+pˆv−r + ϵ , uLOO = 1
+
+m
+
+> m
+
+X
+
+> r=1
+
+ur .
+
+With the Jensen correction enabled, the implementation estimates the sample variance across LOO denominators pr = pˆv−r + ϵ,
+
+¯pLOO = 1
+
+m
+
+> m
+
+X
+
+> r=1
+
+pr , dVar fold (pr ) = 1
+
+m − 1
+
+> m
+
+X
+
+> r=1
+
+(pr − ¯pLOO )⊙2.
+
+The corresponding inverse-bias term is subtracted before averaging: 
+
+uLOO+Jensen = 1
+
+m
+
+> m
+
+X
+
+> r=1
+
+ ˆmr
+
+pr
+
+− dVar fold (pr ) ˆmr
+
+p⊙3
+
+> r
+
+
+
+,
+
+with a sign-preserving clamp when the correction would reverse a coordinate. Embedding parameters remain on the standard AdamW path in this hybrid implementation, while dense attention, MLP, normalization, and bias parameters use the LOO+Jensen update. 
+
+E.3 Corrected Sophia-G 
+
+For Sophia, the implementation target is Sophia-G. The optimizer maintains a first-moment EMA 
+
+mt and a diagonal Hessian or Gauss–Newton–Bartlett estimate ht. The numerator gradient and first moment are computed from A:
+
+gA = 1
+
+|A|
+
+X
+
+> zi∈A
+
+∇θ ℓ(θt; zi), mt = β1mt−1 + (1 − β1)gA.
+
+26 Each denominator microbatch Bj gives a Sophia-G diagonal curvature estimate 
+
+rBj = g⊙2GNB ,B j ,
+
+where gGNB ,B j is the gradient of the sampled-label loss used by the Gauss–Newton–Bartlett estimator. The independent Hessian estimates are averaged and then used to update the Hessian EMA: 
+
+rB = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+rBj ,ht = β2ht−1 + (1 − β2)rB .
+
+The denominator is 
+
+pt = ρ b h t + ϵ, 
+
+where b is the batch-size scaling used by the implementation. If the implementation uses the paper-style parameterization without this scaling, set b = 1 .For inverse correction, define each microbatch denominator and then estimate the variance of the mean denominator: 
+
+ht,j = β2ht−1 + (1 − β2)rBj , pt,j = ρ b h t,j + ϵ. 
+
+¯pt = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+pt,j , dVar(¯ pt) = 1
+
+m(m − 1) 
+
+> m
+
+X
+
+> j=1
+
+(pt,j − ¯pt)⊙2.
+
+The corrected inverse denominator, pre-clipping ratio, and clipped direction are 
+
+ep−1 
+
+> t
+
+= 1
+
+pt
+
+− dVar(¯ pt)
+
+p⊙3
+
+> t
+
+, ep−1 
+
+> t
+
+← max {ep−1 
+
+> t
+
+, 0}.qt = mt ⊙ ep−1 
+
+> t
+
+, eqt = clip( qt, −1, 1) .
+
+Equivalently, 
+
+eqt = sign( mt) ⊙ min {| mt| ⊙ ep−1 
+
+> t
+
+, 1}.
+
+Decoupled weight decay is applied before the adaptive step: 
+
+θwd  
+
+> t
+
+= (1 − ηλ wd )θt, θt+1 = θwd  
+
+> t
+
+− ηeqt.
+
+If the Hessian estimate is updated only every K steps, the B-side Hessian estimation and inverse correction are performed only on those Hessian-update steps. On other steps, ht = ht−1 and the most recent corrected denominator is reused, while mt continues to update every step from A.The four Sophia ablations are 
+
+ustd  
+
+> t
+
+= clip 
+
+ mt
+
+ρbh t + ϵ , −1, 1
+
+
+
+,ucf  
+
+> t
+
+= clip 
+
+
+
+mA,t ⊙ 1
+
+ρbh B,t + ϵ , −1, 1
+
+
+
+,uinv  
+
+> t
+
+= clip  mt ⊙ ep−1 
+
+> t
+
+, −1, 1 ,ufull  
+
+> t
+
+= clip 
+
+
+
+mA,t ⊙ ep−1
+
+> B,t
+
+, −1, 1
+
+
+
+.
+
+The inverse correction is applied before Sophia’s clipping. 
+
+E.4 Corrected Shampoo 
+
+For Shampoo, consider a matrix parameter Wt ∈ Rd1×d2 . The numerator gradient and momentum state are 
+
+GA = 1
+
+|A|
+
+X
+
+> zi∈A
+
+∇W ℓ(Wt; zi),Mt = β1Mt−1 + (1 − β1)GA.
+
+27 Each denominator microbatch gives a gradient and corresponding left/right Shampoo statistics: 
+
+GBj = 1
+
+|Bj |
+
+X
+
+> zi∈Bj
+
+∇W ℓ(Wt; zi),SLBj = GBj G⊤ 
+
+> Bj
+
+, SRBj = G⊤ 
+
+> Bj
+
+GBj .
+
+Averaging over B and applying the EMA convention gives 
+
+SLB = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+SLBj , SRB = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+SRBj .Lt = β2Lt−1 + (1 − β2)SLB , Rt = β2Rt−1 + (1 − β2)SRB .
+
+For cumulative AdaGrad-style Shampoo, replace these equations by Lt = Lt−1 + SLB and Rt =
+
+Rt−1 + SRB . The correction must use the same convention as the baseline implementation. Damping is added before forming the inverse-root preconditioners: 
+
+¯Lt = Lt + λI d1 , ¯Rt = Rt + λI d2 .P Lt = ¯L−1/4 
+
+> t
+
+, P Rt = ¯R−1/4 
+
+> t
+
+.
+
+The exponent α = 1 /4 is the standard Shampoo choice for matrix parameters. The cross-fitted uncorrected update is 
+
+U cf  
+
+> t
+
+= P Lt MtP Rt .
+
+For inverse-root correction, eigendecompose the damped averaged preconditioners: 
+
+¯Lt = QLt ΛLt (QLt )⊤, ¯Rt = QRt ΛRt (QRt )⊤.
+
+For each microbatch, construct hypothetical updated preconditioners, 
+
+Lt,j = β2Lt−1 + (1 − β2)SLBj , Rt,j = β2Rt−1 + (1 − β2)SRBj ,
+
+with the cumulative analog used if the baseline is cumulative Shampoo. After damping, these are projected into the eigenspaces of the averaged preconditioners: 
+
+eLt,j = ( QLt )⊤(Lt,j + λI d1 )QLt , eRt,j = ( QRt )⊤(Rt,j + λI d2 )QRt .
+
+Define the projected diagonal coordinates and their mean-eigenvalue variance estimate by 
+
+ℓLt,j,k = [ eLt,j ]kk , ℓRt,j,k = [ eRt,j ]kk .
+
+dVar( ¯λLt,k ) = 1
+
+m(m − 1) 
+
+> m
+
+X
+
+> j=1
+
+(ℓLt,j,k − ¯ℓLt,k )2, ¯ℓLt,k = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+ℓLt,j,k ,
+
+with the analogous definition for dVar( ¯λRt,k ).For f (x) = x−1/4, f ′′ (x) = 516 x−9/4. The corrected inverse-root eigenvalues are 
+
+edLt,k = ( λLt,k )−1/4 − 532 (λLt,k )−9/4 dVar( ¯λLt,k ),
+
+edRt,k = ( λRt,k )−1/4 − 532 (λRt,k )−9/4 dVar( ¯λRt,k ).
+
+For stability, corrected eigenvalues are clipped to the same range used by the Shampoo baseline: 
+
+edLt,k ← min {dmax , max {0, edLt,k }} , edRt,k ← min {dmax , max {0, edRt,k }} .
+
+The corrected left and right inverse-root matrices and the full corrected Shampoo update are 
+
+eP Lt = QLt diag( edLt, 1, . . . , edLt,d 1 )( QLt )⊤,
+
+eP Rt = QRt diag( edRt, 1, . . . , edRt,d 2 )( QRt )⊤.U full  
+
+> t
+
+= eP Lt Mt eP Rt .
+
+28 Table 6: AdamW SFT batch size sweep at lr 5e −5.        
+
+> Batch Std Full BC
+> b128 1.369 1.364
+> b256 1.358 1.351
+> b512 1.352 1.348
+
+Table 7: AdamW SFT learning-rate sweep at b512.           
+
+> LR Std Full BC
+> 2e −51.347 1.348
+> 5e −51.352 1.348
+> 1e −41.371 1.346
+> 2e −41.415 1.395
+
+The same final Frobenius-norm clipping and decoupled weight decay are applied to standard and corrected Shampoo: 
+
+U full  
+
+> t
+
+← U full  
+
+> t
+
+· min 
+
+
+
+1, c
+
+∥U full  
+
+> t
+
+∥F
+
+
+
+.W wd  
+
+> t
+
+= Wt − ηλ wd Wt, Wt+1 = W wd  
+
+> t
+
+− ηU full  
+
+> t
+
+.
+
+The Shampoo ablations are 
+
+U std  
+
+> t
+
+= ( Lt + λI )−1/4Mt(Rt + λI )−1/4,U cf  
+
+> t
+
+= P LB,t MA,t P RB,t ,U inv  
+
+> t
+
+= eP Lt Mt eP Rt ,U full  
+
+> t
+
+= eP LB,t MA,t eP RB,t .
+
+## F Additional experimental results 
+
+This appendix records the targeted sweeps used to understand the bias-correction design. These are not exhaustive grids. They are diagnostic runs chosen to isolate learning-rate sensitivity, batch size, cross-fit mixing, inverse-correction timing, clipping, preconditioner recomputation, and denominator microbatch count. Unless otherwise stated, SFT results use the 500-example held-out set and lower is better. 
+
+F.1 AdamW SFT sweeps 
+
+The AdamW sweeps are split by the variable being tested. Tables 6 and 7 vary batch size and learning rate, respectively. Table 8 reports inverse-correction implementation choices. The strongest full-BC AdamW SFT run uses the larger b512 compute-matched setting with pre-EMA inverse correction and lr 1e −4.
+
+F.2 Cross-fit mixing sweeps 
+
+Tables 9 and 10 report AdamW cross-fit mixing experiments. Here α controls how strongly the denominator is mixed between same-batch and cross-fitted estimates. Keeping batch size fixed makes the pattern clearer: small rolling-B mixing recovers much of the standard behavior at b128, while fixed full decoupling at b512 needs a larger learning rate. 
+
+F.3 Sophia SFT sweeps 
+
+Table 11 reports the Sophia SFT sweeps. Sophia SFT is dominated by its clipped-ratio update: the default b512 full-BC runs are stable and nearly tied with standard, while the larger 5K evaluation slightly favors full BC. Aggressive cross-fitting at lr 1e −4 is a high-learning-rate failure case. 29 Table 8: AdamW inverse-correction implementation checks. Rows include denominator microbatch count, correction timing, and stability diagnostics. 
+
+Variant Control Variable Setting Eval 
+
+Inverse only denominator microbatches default 1.341 
+
+Inverse only denominator microbatches m = 8 1.342 Full BC inverse timing pre-EMA, b512, lr 1e −4 1.346 
+
+Stability diagnostics 
+
+Full BC warm start 50 std steps then BC 19.456 †
+
+Full BC support clip τ ∈ { 1, 4, 10 } —‡†Training diverged after the warm-start handoff from standard to bias-corrected updates. ‡Aggressive support clipping did not yield a usable final-evaluation checkpoint. 
+
+Table 9: AdamW SFT cross-fit mixing at b128 and lr 2e −5.
+
+Variant Mixing Coefficient Eval 
+
+Cross-fit α = 0 1.349 Cross-fit α = 0 .25 1.349 Cross-fit adaptive α 1.349 Rolling cross-fit αmax = 0 .1 1.342 
+
+Rolling cross-fit αmax = 0 .25 1.343 Rolling cross-fit αmax = 1 .0 1.345 
+
+F.4 Shampoo SFT sweeps 
+
+Table 12 reports Shampoo layer-coverage and inverse-root recomputation sweeps. Attention-only Shampoo is the most stable setting; routing MLP matrices through Shampoo increases coverage but worsens the short SFT loss for both standard and corrected variants in these experiments. These rows are grouped separately from Sophia because they answer a different question: how much structured preconditioner coverage and eigendecomposition frequency are needed in short SFT. Across all rows in Table 12, the Std and Full BC eval losses agree to within ∼ 0.005 , which is at or below the 500-example single-seed noise floor; the table documents that the Shampoo correction does not measurably help in short SFT, and Section 8 cites this as one of the regimes where the variance cost of sample splitting can offset the bias benefit. 
+
+F.5 Additional pretraining comparisons 
+
+Table 13 reports the additional pretraining comparisons used to contextualize the main results. 30 Table 10: AdamW fixed cross-fit at b512. The related controls are mixing strength and learning rate. 
+
+Variant Mixing Coefficient LR Eval 
+
+Fixed cross-fit α = 0 .5 2e −5 1.353 Fixed cross-fit α = 1 .0 2e −5 1.356 Fixed cross-fit α = 1 .0 1e −4 1.345 
+
+Table 11: Sophia SFT sweeps. 
+
+Batch/LR Variant Eval Set Std Corrected 
+
+Full-BC timing at fixed b512 and lr 2e −5
+
+b512 / 2e −5 post-EMA full BC 500 1.3892 1.3892 
+
+b512 / 2e −5 pre-EMA full BC 500 1.3892 1.3893 b512 / 2e −5 full BC 5K 1.3422 1.3418 
+
+Cross-fit-only learning-rate check 
+
+b512 / 2e −5 cross-fit only 500 1.3892 1.3899 b512 / 1e −4 cross-fit only 500 1.3892 1.6570 
+
+Low-batch stress test 
+
+b128 / 2e −5 full-BC recipe 500 1.4841 1.5699 
+
+Table 12: Shampoo SFT sweeps over layer coverage and inverse-root recomputation. 
+
+Coverage Max Dim Root / Momentum Setting Eval Std Full BC 
+
+Attention-only Shampoo 
+
+Attention only 2048 root freq. 10 500 1.347 1.347 Attention only 2048 root freq. 10 5K 1.298 1.298 Attention only, b128 2048 root freq. 10 500 1.342 1.343 
+
+Attention + MLP Shampoo 
+
+Attention + MLP 4864 root freq. 10 500 1.381 1.385 Attention + MLP 4864 root freq. 2 500 1.386 1.388 Attention + MLP 4864 root freq. 2, β = 0 .5 500 1.387 1.389 Attention + MLP 5000 literature-style params 500 1.363 1.368 
+
+Table 13: Additional pretraining comparisons. 
+
+Optimizer Variant LR Final Train Eval 
+
+AdamW 
+
+AdamW Standard, clean 6e −4 4.832 4.836 AdamW LOO+Jensen, clean emb 6e −4 / dense 9e −4 4.733 4.687 
+
+AdamW Standard, noisy train 6e −4 4.853 4.823 AdamW LOO+Jensen, noisy train emb 6e −4 / dense 9e −4 4.872 4.803 
+
+AdamW Inverse only, clean 6e −4 4.826 4.830 AdamW Two-fold full BC, clean 6e −4 5.281 5.285 
+
+Sophia-G 
+
+Sophia Standard 6e −4 6.663 6.665 Sophia Full BC 6e −4 6.592 6.595 
+
+Shampoo 
+
+Shampoo Standard 6e −4 5.787 5.792 Shampoo Full BC 1e −3 5.676 5.681 
+
+31 G Code, Assets, and LLM Usage 
+
+Code availability. The code for the experiments is available at https://github.com/ fastino-ai/preconditioner-bias-correction . The repository includes optimizer imple-mentations, training scripts, evaluation scripts, plotting utilities, and the data-preparation script for packed FineWeb-Edu sequences. It is intended to reproduce the runs summarized in Tables 2–3 and the additional sweeps in Appendix F, subject to the same hardware and data-access assumptions listed in Table 5. 
+
+Existing assets and licenses. The experiments use the Qwen/Qwen2.5-0.5B model and tokenizer, which are released under Apache 2.0; the HuggingFaceFW/fineweb-edu dataset, which is released under the Open Data Commons Attribution License (ODC-By) v1.0; and the yahma/alpaca-cleaned instruction dataset, which is released under CC-BY-4.0. The optimizer baselines are credited to their original papers in Section 2. We do not release new model checkpoints or new datasets. 
+
+LLM usage. Large language models are the optimization targets in this work. LLM-based assistants were used for drafting, editing manuscript text, understanding technical concepts, writing code, and helping facilitate or run experiments. They were not used to generate training data, labels, mathematical results, or experimental measurements; all claims, derivations, code, and reported numbers were checked by the authors against the source code and run artifacts. 32
