@@ -1,0 +1,722 @@
+Title: Bridging the Gap: Enabling Soft Actor Critic for High Performance Legged Locomotion
+
+URL Source: https://arxiv.org/pdf/2605.24975v1
+
+Published Time: Tue, 26 May 2026 01:52:30 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# BRIDGING THE GAP : E NABLING SOFT ACTOR CRITIC FOR HIGH PERFORMANCE LEGGED LOCOMOTION ∗
+
+Gianluca Sabatini, Chenhao Li, Marco Hutter 
+
+ETH Zurich, Switzerland 
+
+{gsabatini, chenhli, mahutter }@ethz.ch https://sabagian.github.io/sac_release_project/ 
+
+# ABSTRACT 
+
+Proximal Policy Optimization (PPO) has become the de facto standard for train-ing legged robots, thanks to its robustness and scalability in massively parallel simulation environments like IsaacLab. However, its on-policy nature makes it in-herently sample-inefficient, preventing its use for continuous adaptation and fine-tuning on real hardware. Soft Actor-Critic (SAC), by contrast, is an off-policy algorithm that can reuse past experience, making it a natural candidate for sim-to-real transfer workflows where the same algorithm can be used both in simulation and for online learning on the real robot. Despite these advantages, SAC has consistently failed to match PPO’s empirical performance in massively parallel training settings. This work identifies the root causes of this gap and introduces targeted modifications, covering policy initialization, timeout-aware critic targets, and multi-step return estimation, that enable SAC to train stably at scale. Eval-uated across multiple legged robot platforms and diverse locomotion tasks, our approach closes the performance gap with PPO entirely. 
+
+# 1 INTRODUCTION 
+
+Legged robots operating in unstructured real-world environments must continuously adapt to novel terrain and perturbations, making online learning on hardware a long-term objective of the field (Smith et al., 2021; As et al., 2026). Massively parallel simulation frameworks (Makoviychuk et al., 2021; Zakka et al., 2025; NVIDIA et al., 2025) have dramatically reduced the time needed to train locomotion policies, enabling remarkable results across a wide range of platforms and tasks (Rudin et al., 2022; Agarwal et al., 2023; Cheng et al., 2024; Zhuang et al., 2024). Within this paradigm, Proximal Policy Optimization (PPO) (Schulman et al., 2017) has become the dominant training algorithm, owing to its stability and scalability across thousands of parallel environments. Despite these successes, PPO’s on-policy nature poses a fundamental limitation: it can only learn from data collected by the current policy, discarding all transitions after each update. This makes PPO inherently sample-inefficient, a property that is tolerable in simulation, where data is cheap, but becomes a critical bottleneck for real-world deployment. On physical hardware, where rollouts are slow, costly, and constrained by real-time execution, sample efficiency is essential. Robots that must keep learning after deployment cannot afford to discard their experience (As et al., 2026; Smith et al., 2021; Li et al., 2025). Off-policy algorithms offer a principled solution to this problem. By storing transitions in a replay buffer and reusing them across many gradient updates, they can achieve substantially higher sample efficiency than on-policy methods (As et al., 2026). In particular, Soft Actor-Critic (SAC) (Haarnoja et al., 2018), a maximum entropy off-policy algorithm, is a natural candidate for bridging simulation training and real-world fine-tuning: a single algorithm could be used both to pretrain in simulation and to adapt on hardware, without requiring the massive parallelism that PPO depends on (Smith et al., 2021). Yet despite these compelling properties, SAC and other off-policy methods have con-sistently failed to match PPO’s empirical performance in massively parallel training environments (Li et al., 2026). 
+
+> ∗
+
+This paper is a technical report accompanying the open-source release of RSL-RL-SAC, an extension of the widely used RSL-RL reinforcement learning library. 
+
+1         
+
+> arXiv:2605.24975v1 [cs.RO] 24 May 2026 VecEnv
+> Off -Policy Runner
+> 𝑎 !
+> 𝑠 !"#,𝑟 !,𝑑 !,𝑒 !
+> Replay
+> Buffer
+> 𝑠 !,𝑎 !,𝑟 !,'𝑠 !"#,𝑑 !,𝑏 !
+> Agent
+> IsaacLab
+> Actor Initialization Action Bounds Setting
+> N-step Returns Timeout -aware Bootstrapping
+
+Figure 1: Overview of our RSL-RL-SAC framework for training legged locomotion policies in IsaacLab. Four modifications are highlighted: actor initialization with small σ to speed up training, action bounds from robot joint limits, timeout-aware bootstrapping that distinguishes timeouts from failures, and n-step returns for faster reward propagation. The reasons for this gap have been recently investigated (Raffin, 2025; Shukla, 2025; Seo et al., 2025a), revealing that the massively parallel simulation setting exposes fundamental incompatibil-ities between standard SAC and this training regime. These include miscalibrated action space exploration arising from unbounded environment action spaces, incorrect handling of episode trun-cations that biases critic targets, and reward propagation that is too slow for stable learning on rough terrain. Existing solutions either require task-specific reward engineering (Seo et al., 2025a), rely on distributional critics that introduce additional complexity and variance (Seo et al., 2025b), or demand extensive hyperparameter tuning that limits generalization (Raffin, 2025; Shukla, 2025). None of these works systematically closes the gap with PPO across a broad range of tasks and robot platforms using unmodified reward functions. In this work, we identify and address the core sources of instability that prevent SAC from scal-ing in massively parallel simulation, and propose a set of principled modifications that require no task-specific tuning. Our approach is evaluated against the RSL-RL PPO implementation (Schwarke et al., 2025) across seven legged robot platforms, from quadrupeds to humanoids, on velocity track-ing tasks over rough terrain, using the same reward functions originally designed for PPO. Our main contributions are: • We identify the key failure modes of SAC in massively parallel simulation: miscalibrated initial exploration due to action space mismatch, biased critic targets from incorrect trun-cation handling, and slow reward propagation on rough terrain. 2• We demonstrate that the resulting algorithm closes the performance gap with PPO across all evaluated tasks and platforms, using a single hyperparameter configuration and unmodified PPO reward functions. • We release our implementation built on top of RSL-RL, extended with Random Network Distillation, symmetry-based data augmentation, and multi-GPU training support. 
+
+# 2 RELATED WORK 
+
+Massively parallel simulation for legged locomotion. GPU-accelerated simulation frameworks have become the standard substrate for training RL-based locomotion controllers (Makoviychuk et al., 2021; Mittal et al., 2023; Zakka et al., 2025; NVIDIA et al., 2025). By running thousands of environments in parallel on a single workstation, these frameworks have enabled remarkable results across a wide range of robot morphologies and tasks, including quadrupedal locomotion over chal-lenging terrain, dexterous manipulation, and humanoid parkour (Rudin et al., 2022; Agarwal et al., 2023; Cheng et al., 2024; Singh et al., 2024; Zhuang et al., 2024). However, the dominant training algorithm across all of these works is PPO, an on-policy method whose sample inefficiency is toler-able in simulation but becomes a fundamental limitation for online learning on physical hardware. 
+
+Sim-to-real transfer and online fine-tuning. Policies trained purely in simulation often fail to generalize to the full diversity of real-world conditions, motivating approaches that combine simula-tion pretraining with online adaptation on hardware. Smith et al. (2021) demonstrated that off-policy RL can enable continuous performance improvement when transitioning from simulation to real en-vironments, showing that a replay buffer populated in simulation can bootstrap efficient learning on the physical robot. In a related line of work, (Smith et al., 2023) showed that off-policy RL can learn locomotion policies directly on hardware within minutes, without requiring massive environment parallelism. More recently, As et al. (2026) systematically studied what factors matter most for this sim-to-real fine-tuning paradigm, highlighting sample efficiency as a first-order concern. These works motivate the use of off-policy algorithms such as SAC, which can reuse past experience and operate effectively even without massive environment parallelism. 
+
+Scaling off-policy RL in massively parallel simulation. Despite the appeal of off-policy meth-ods for robotics, scaling them to massively parallel simulation settings has proven surprisingly dif-ficult. Early work by Li et al. (2023) and Gallici et al. (2024) showed that off-policy algorithms can be adapted to this regime, but did not match PPO’s performance on locomotion tasks. More re-cently, Raffin (2025) identified that a key source of failure is the mismatch between SAC’s squashed Gaussian action distribution and the overly large action space bounds commonly used in IsaacLab environments and, as Shukla (2025), showed that SAC can be made to work through careful hyper-parameter tuning. In a parallel line of work, Seo et al. (2025a) and Seo et al. (2025b) introduced FastSAC and FastTD3, achieving strong results on humanoid locomotion tasks. However, these methods rely on task-specific reward engineering, limiting their generalization to new platforms, and employ distributional critics (Bellemare et al., 2017) that introduce additional complexity in critic training and can increase variance in actor updates. Furthermore, they typically involve a large number of sensitive hyperparameters, requiring extensive tuning to achieve good performance. In contrast to prior works that achieve competitive performance through extensive hyperparameter tuning or reward engineering, our approach provides a systematic analysis of the root causes of SAC’s failure in massively parallel simulation and proposes principled modifications that address each failure mode directly. Built on top of RSL-RL, a widely adopted library for robot learning, our implementation is evaluated across a broad range of legged platforms spanning both quadrupeds and humanoids. 
+
+# 3 METHOD 
+
+The modifications introduced in this work address three distinct failure modes of standard SAC in massively parallel simulation: miscalibrated initial exploration arising from unbounded action spaces, biased critic targets caused by incorrect handling of episode truncations, and slow reward 3propagation on rough terrain. We present each component in turn, preceded by a description of the SAC objective and policy parameterization used throughout. 3.1 PRELIMINARIES 
+
+We model the environment as a Markov Decision Process (MDP) defined by the tuple M =(S, A, p, r ), where S ∈ Rs and A ∈ Rd represent the state and action spaces, and p and r denote the unknown transition and reward functions, respectively. In the maximum entropy RL framework, the agent seeks a policy π∗ : S → A that maximizes the expected return augmented by a weighted entropy bonus: 
+
+π∗ = arg max 
+
+> π
+
+X
+
+> t
+
+E(st,a t)∼ρπ [r(st, a t) + αH(π(· | st))] . (1) In the infinite-horizon setting, a discount factor γ ∈ (0 , 1) ensures the objective remains finite. We use Ne to denote the number of parallel environments and Ns the number of steps collected per environment per iteration. The critic is trained by minimizing the soft Bellman residual over an ensemble of N Q-functions, using target networks updated via exponential moving average and clipped double Q-learning to mitigate overestimation bias (Fujimoto et al., 2018): 
+
+JQ({θi}Ni=1 ) = E(st,a t)∼D 
+
+"
+
+1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ Qθi (st, a t) − Qtarget 
+
+> ¯θ
+
+2
+
+#
+
+,Qtarget  
+
+> ¯θ
+
+= r(st, a t) + γEst+1 ∼p
+
+V¯θ (st+1 ),V¯θ (st+1 ) = Eat+1 ∼π
+
+
+
+min   
+
+> i∈{ 1,...,N }
+
+Q¯θi (st+1 , a t+1 ) − α log π(at+1 | st+1 )
+
+
+
+.
+
+(2) The actor is trained to maximize the expected return plus entropy using the reparameterization trick: 
+
+Jπ (ϕ) = Est∼D , ϵ t∼N 
+
+
+
+α log πϕ
+
+ fϕ(ϵt; st) | st
+
+ − min   
+
+> i∈{ 1,...,N }
+
+Qθi
+
+ st, f ϕ(ϵt; st)
+
+. (3) The temperature α is tuned automatically by optimizing: 
+
+J(log α) = Eat∼πt
+
+−(log α)  log πt(at | st) + ¯H , (4) where ¯H is the target entropy. We found automatic temperature tuning to be beneficial for both training stability and final performance. 3.2 POLICY PARAMETERIZATION AND ACTION BOUNDS 
+
+The policy is parameterized as a state-dependent Gaussian. The actor network outputs a mean 
+
+μϕ(s) ∈ Rd and a raw log-standard-deviation ˜ℓϕ(s) ∈ Rd, which is clamped and exponentiated to give σϕ(s) = exp(clip( ˜ℓϕ(s), ℓ min , ℓ max )) . The latent action is sampled via the reparameterization trick, x = μϕ(s)+ σϕ(s)⊙ε, ε ∼ N (0 , I ), and passed through a tanh squashing function (Haarnoja et al., 2018) to produce u ∈ (−1, 1) d.A critical issue in applying SAC to IsaacLab environments is the mismatch between the environ-ment’s action space definition and the effective range of motion required by the task. Depending on the environment wrapper, action bounds may be left unscaled, constraining policy outputs to 
+
+(−1, 1) d and producing insufficiently small joint displacements, or set to arbitrarily large values that far exceed the range used by a trained policy. In the latter case, SAC’s squashed Gaussian rescales its outputs to fill the entire declared action space, spreading probability mass near the action limits and inducing erratic exploratory behavior from the first iteration (Raffin, 2025). In either case, the mismatch between the declared action space and the task-relevant range of motion causes the ini-tial exploration distribution to be poorly calibrated, impeding learning from the outset. We address this by deriving tight action bounds directly from the robot’s joint configuration, following a similar physics-based approach to (Seo et al., 2025a), without requiring a pretrained policy. Specifically, 4(a) σ0 = 1 .0 (b) σ0 = 0 .2
+
+Figure 2: Effect of initial standard deviation σ0 on the squashed Gaussian exploration distribution. Large σ0 leads to near-uniform exploration over the action range; small σ0 concentrates exploration around the default joint configuration. the environment processes policy outputs as apt = s ⊙ at + be, where be is the default joint config-uration and s is the task-specific action scale. For each joint j, we compute the distance from the default position to the soft joint limits, r± 
+
+> j
+
+= |qmin / max  
+
+> j
+
+− q0 
+
+> j
+
+|, and rescale by the action-manager scale to obtain per-joint policy output bounds amin  
+
+> j
+
+= −r− 
+
+> j
+
+/s , amax  
+
+> j
+
+= r+ 
+
+> j
+
+/s . Using soft rather than hard limits is important: hard limits introduce suboptimal regions that degrade performance. Defining b = 12 (amax + amin ) and c = 12 (amax − amin ), the final action and log-probability are: 
+
+fϕ(ε; s) = b + c ⊙ tanh( μϕ(s) + σϕ(s) ⊙ ε) , (5) 
+
+log πϕ(a | s) = 
+
+> d
+
+X
+
+> j=1
+
+log N  xj ; μϕ,j , σ 2
+
+> ϕ,j
+
+ −
+
+> d
+
+X
+
+> j=1
+
+log  1 − tanh 2(xj ) −
+
+> d
+
+X
+
+> j=1
+
+log cj , (6) where the log probability correction follows from the change of variables formula applied to the element-wise tanh transformation and scaling. 3.3 ACTOR INITIALIZATION 
+
+Even with correctly bounded actions, the shape of the initial exploration distribution is controlled by the initial policy standard deviation σ0. For large values (e.g. σ0 = 1 ), the squashed Gaussian places significant mass near the action bounds, resulting in near-uniform exploration over the admissible range. For small values (e.g. σ0 = 0 .15 ), exploration concentrates around zero (i.e. around the de-fault joint configuration), which we find leads to faster and more stable convergence. This behavior is illustrated in Fig. 2. To achieve this, the actor network ends with a linear layer mapping the last hidden feature h ∈ Rdh
+
+to a 2d-dimensional output z = W h + b, which is then split into a mean head zμ and a log-standard-deviation head zlog σ , each of dimension d.The mean head is initialized with small random weights and zero bias: 
+
+[Wμ]ij ∼ N (0 , ϵ ), bμ = 0d. (7) This ensures that initial actions are close to zero, corresponding to the default joint configuration, while remaining weakly state-dependent. The small but nonzero weights also preserve gradient flow through the mean head from the very first update. The log-standard-deviation head is initialized with a constant bias: 
+
+Wlog σ = 0d×dh , blog σ = log( σ0)1d. (8) Setting the weights to zero makes the initial exploration scale state-independent and uniformly equal to σ0 across all action dimensions, decoupling the exploration level from the network’s hidden rep-resentation at initialization. Together, these two choices produce a policy centered at the default joint configuration with a controllable and well-calibrated exploration scale. 53.4 HANDLING TIMEOUT TRANSITIONS 
+
+SAC is derived for a discounted infinite-horizon objective, but simulation episodes are terminated artificially after a fixed number of steps for computational reasons. If these timeouts are treated iden-tically to true task failures, critic targets are biased: future value is incorrectly dropped at episode boundaries that do not correspond to genuine terminations. Correcting for this requires bootstrap-ping from the state immediately before the environment reset, rather than the post-reset state that the environment exposes by default. In on-policy methods such as PPO, this issue can be handled approximately by evaluating the current value function at the timeout state. Because on-policy transitions are consumed immediately within the same iteration and then discarded, the value estimate used for bootstrapping is always consistent with the current policy, making this approximation acceptable in practice. SAC, by contrast, stores transitions in a replay buffer where they may be sampled repeatedly across many future updates. This introduces two compounding sources of staleness: first, the value function used for bootstrapping evolves continuously during training, so a bootstrap term precomputed at collection time becomes increasingly inaccurate as the critic is updated; second, and more fundamentally, SAC must evaluate the Q-function on actions sampled from the current policy, not the policy that was active when the transition was collected. As training progresses and the policy changes, precomputed action samples become off-policy in a way that is inconsistent with the SAC objective, introducing bias that can destabilize training. To address this, we modify the RSL-RL VecEnv wrapper, as well as the manager-based RL envi-ronment, to expose both the pre-reset observation sp 
+
+> t+1
+
+and the post-reset observation st+1 through the extras interface. Let bt ∈ { 0, 1}Ne and dt ∈ { 0, 1}Ne denote the per-environment timeout and termination masks at time t, where dt encompasses both failures and timeouts. The corrected next observation is: 
+
+˜st+1 = bt ⊙ sp 
+
+> t+1
+
++ (1 − bt) ⊙ st+1 , (9) and the replay buffer stores the tuple (st, a t, r t, ˜st+1 , d t, b t). By storing ˜st+1 rather than a precom-puted bootstrap term, the value estimate and the action used for bootstrapping are both recomputed at training time using the current critic and policy, ensuring consistency throughout training. The bootstrap mask is mt = bt + 1 − dt, giving the corrected SAC target: 
+
+Qtarget  
+
+> ¯θ
+
+= rt + γm tE˜st+1 ∼p [V¯θ (˜ st+1 )] . (10) All other optimization objectives are modified accordingly. 3.5 n-S TEP RETURNS 
+
+One-step TD targets are noisy in rough-terrain tasks, where rewards are sparse over short horizons and a single misstep can cause termination. Following Seo et al. (2025a) and Seo et al. (2025b), we augment the replay buffer to construct n-step returns on-the-fly, which accelerates reward propaga-tion and improves training stability. Let Sk := Qk−1 
+
+> j=0
+
+(1 − dt+j ), with S0 = 1 , denote the survival indicator over the n-step window. The masked n-step critic target is: 
+
+Qtarget  
+
+> ¯θ
+
+=
+
+> n−1
+
+X
+
+> k=0
+
+γkSkrt+k + γnSnV (˜ st+n) + 
+
+> n−1
+
+X
+
+> k=0
+
+γk+1 Skbt+kV (˜ st+k+1 ), (11) where the expectation over the next state is omitted for brevity. The first term accumulates dis-counted rewards over n steps, masking out transitions that occur after any termination. The second term bootstraps from the value function at step t + n, provided no termination occurred within the window. The third term handles timeout transitions consistently with Sec. 3.4: episode failures stop the return entirely, while timeouts allow bootstrapping from the corresponding pre-reset state. Algorithm 1 summarizes the full training loop. 
+
+# 4 EXPERIMENTS 
+
+Setup. We evaluate the proposed approach across a range of velocity tracking tasks on rough terrain, spanning both quadruped and humanoid platforms (Fig. 3). To ensure a fair comparison 6Algorithm 1 RSL-RL-SAC  
+
+> 1:
+
+Initialize actor πϕ, critics Qθi and targets Q¯θi (i ∈ { 1, 2}), buffer D, temperature α 
+
+> 2:
+
+Compute per-joint action bounds from soft joint limits (Sec. 3.2)  
+
+> 3:
+
+for each learning iteration do  
+
+> 4:
+
+for Ns environment steps across Ne parallel envs do  
+
+> 5:
+
+Sample action at ∼ πϕ(· | st) 
+
+> 6:
+
+Step environments; observe rt, st+1 , done flag dt, timeout flag bt 
+
+> 7:
+
+Build corrected next-state ˜st+1 (Sec. 3.4)  
+
+> 8:
+
+Store (st, a t, r t, ˜st+1 , d t, b t) in D 
+
+> 9:
+
+end for  
+
+> 10:
+
+for each gradient update step do  
+
+> 11:
+
+Sample n-step mini-batch from D 
+
+> 12:
+
+Compute n-step return target y with timeout correction (Sec. 3.5)  
+
+> 13:
+
+Critic update: minimize JQ(θi) = E(Qθi (s, a ) − y)2 for i = 1 , 2 
+
+> 14:
+
+Temperature update: minimize J(log α) = E−α (log πϕ(a | s) + ¯H) 
+
+> 15:
+
+Actor update (every p steps): maximize Jπ (ϕ) = Emin i Qθi (s, a ′) − α log πϕ(a′ | s) 
+
+> 16:
+
+Soft target update: ¯θi ← τ θ i + (1 − τ )¯θi 
+
+> 17:
+
+end for  
+
+> 18:
+
+end for 
+
+Figure 3: Example of IsaacLab simulation environments used for evaluation: ANYmal D and Uni-tree H1 on rough terrain. with PPO, we adopt identical environment settings: Ns = 24 rollout steps per environment and 
+
+Ne = 8192 parallel environments. Crucially, we do not modify the reward functions and instead reuse those originally designed for PPO, which represents a more stringent evaluation setting than prior works that rely on task-specific reward engineering. Full hyperparameter details are provided in Sec. C. Due to the high update-to-data (UTD) ratio required for stable SAC training (Raffin, 2025; Seo et al., 2025a), SAC performs significantly more gradient updates per unit of collected data than PPO, which contributes to the wall-clock time gap discussed below. As shown in Figs. 4–7, the proposed modifications enable SAC to close the performance gap with PPO across all evaluated tasks (see also Sec. A for additional platforms). On humanoid tasks, SAC surpasses PPO, which we attribute to the denser and more structured reward design used for these platforms (Sec. B): in this setting, entropy maximization provides a meaningful exploration advantage that translates into higher final returns and faster convergence. Across all quadruped tasks, SAC converges to PPO-level performance with a single shared hyperparameter configuration, demonstrating that the proposed modifications are robust and transfer across platforms without per-task adjustment. 
+
+# 5 LIMITATIONS 
+
+Closing the return gap does not resolve every challenge, and several limitations remain relevant for practitioners considering SAC as a replacement for PPO in massively parallel simulation. 7Figure 4: Anymal D velocity tracking on rough terrain. Left: reward vs. training iterations. Right: reward vs. wall-clock time. 
+
+Figure 5: Unitree A1 velocity tracking on rough terrain. Left: reward vs. training iterations. Right: reward vs. wall-clock time. 
+
+Wall-clock time. Despite matching PPO in terms of cumulative reward, a significant wall-clock time gap persists, and we argue it is structurally difficult to eliminate. Several compounding factors contribute. First, SAC requires larger network architectures to achieve comparable performance, increasing the cost of every forward and backward pass. Second, each training iteration involves multiple optimizers and loss terms, critic, actor, and temperature, whereas PPO performs a single joint update, resulting in lower per-iteration overhead. Third, off-policy replay exposes the agent to a more diverse training distribution, which in turn requires a higher update-to-data (UTD) ratio to extract a stable learning signal; each environment step therefore triggers substantially more gradient updates than in PPO. Finally, SAC lacks adaptive learning rate mechanisms analogous to PPO’s scheduling, requiring a learning rate roughly one order of magnitude smaller to maintain stability (Sec. C), which further slows convergence in wall-clock terms. Taken together, these factors mean that even when SAC matches PPO in sample efficiency, it does so at greater computational cost per unit time. Closing this gap would require either algorithmic advances that reduce the UTD ratio needed for stability, or engineering optimizations that amortize the cost of the additional loss terms. 
+
+Other limitations. Entropy-driven exploration is not uniformly beneficial across tasks, and un-derstanding when it helps or hurts performance remains an open question. We also observe higher variability across random seeds compared to PPO, and in some tasks, notably G1 locomotion, high final rewards do not always correspond to natural movement, suggesting that reward design may need to be revisited for optimal behavior. Addressing these limitations will be important for making SAC a robust drop-in replacement for PPO in the massively parallel simulation setting. 8Figure 6: Unitree H1 velocity tracking on rough terrain. Left: reward vs. training iterations. Right: reward vs. wall-clock time. 
+
+Figure 7: Unitree G1 velocity tracking on rough terrain. Left: reward vs. training iterations. Right: reward vs. wall-clock time. 
+
+# 6 CONCLUSION 
+
+This work demonstrates that the performance gap between SAC and PPO in massively parallel simulation can be closed through a principled set of modifications that address the root causes of SAC’s instability in this setting. By correcting action space miscalibration, handling episode trunca-tions consistently with the infinite-horizon training objective, and accelerating reward propagation through n-step returns, our approach enables SAC to achieve PPO-level performance across a broad range of legged locomotion tasks, from quadrupeds to humanoids, using a fixed set of hyperparam-eters and unmodified PPO reward functions. To facilitate further development and adoption, our implementation extends the baseline algorithm with Random Network Distillation (RND) (Burda et al., 2018), symmetry-based data augmentation (Mittal et al., 2024), and multi-GPU training sup-port. These results open a concrete path toward bridging simulation training and online reinforcement learning on real hardware. Because SAC operates off-policy, a policy pretrained in simulation can be fine-tuned directly on the physical robot using the same algorithm, without the massive environment parallelism that PPO requires. Investigating this sim-to-real fine-tuning workflow is a natural and promising direction for future work. ACKNOWLEDGMENTS 
+
+This research was supported by the ETH AI Center and the Swiss National Science Foundation through the National Centre of Competence in Automation (NCCR automation). In addition, we thank Clemens Schwarke for his technical support during the release. 9REFERENCES 
+
+Ananye Agarwal, Ashish Kumar, Jitendra Malik, and Deepak Pathak. Legged locomotion in chal-lenging terrains using egocentric vision. In Conference on robot learning , 2023. Yarden As, Dhruva Tirumala, Ren´ e Zurbr¨ ugg, Chenhao Li, Stelian Coros, Andreas Krause, and Markus Wulfmeier. What matters for simulation to online reinforcement learning on real robots, 2026. URL https://arxiv.org/abs/2602.20220 .Marc G Bellemare, Will Dabney, and R´ emi Munos. A distributional perspective on reinforcement learning. In International Conference on Machine Learning , 2017. Yuri Burda, Harrison Edwards, Amos Storkey, and Oleg Klimov. Exploration by random network distillation, 2018. URL https://arxiv.org/abs/1810.12894 .Xuxin Cheng, Kexin Shi, Ananye Agarwal, and Deepak Pathak. Extreme parkour with legged robots. In 2024 IEEE International Conference on Robotics and Automation (ICRA) , 2024. Scott Fujimoto, Herke Hoof, and David Meger. Addressing function approximation error in actor-critic methods. In International Conference on Machine Learning , 2018. Matteo Gallici, Mattie Fellows, Benjamin Ellis, Bartomeu Pou, Ivan Masmitja, Jakob Nicolaus Foerster, and Mario Martin. Simplifying deep temporal difference learning. arXiv preprint arXiv:2407.04811 , 2024. Tuomas Haarnoja, Aurick Zhou, Kristian Hartikainen, George Tucker, Sehoon Ha, Jie Tan, Vikash Kumar, Henry Zhu, Abhishek Gupta, Pieter Abbeel, et al. Soft actor-critic algorithms and appli-cations. arXiv preprint arXiv:1812.05905 , 2018. Chenhao Li, Andreas Krause, and Marco Hutter. Robotic world model: A neural network simulator for robust policy optimization in robotics, 2025. URL https://arxiv.org/abs/2501. 10100 .Chenhao Li, Andreas Krause, and Marco Hutter. Uncertainty-aware robotic world model makes offline model-based reinforcement learning work on real robots, 2026. URL https://arxiv. org/abs/2504.16680 .Zechu Li, Tao Chen, Zhang-Wei Hong, Anurag Ajay, and Pulkit Agrawal. Parallel q-learning: Scaling off-policy reinforcement learning under massively parallel simulation. In International Conference on Machine Learning , pp. 19440–19459. PMLR, 2023. Viktor Makoviychuk, Lukasz Wawrzyniak, Yunrong Guo, Michelle Lu, Kier Storey, Miles Macklin, David Hoeller, Nikita Rudin, Arthur Allshire, Ankur Handa, and Gavriel State. Isaac gym: High performance gpu-based physics simulation for robot learning, 2021. Mayank Mittal, Calvin Yu, Qinxi Yu, Jingzhou Liu, Nikita Rudin, David Hoeller, Jia Lin Yuan, Ritvik Singh, Yunrong Guo, Hammad Mazhar, Ajay Mandlekar, Buck Babich, Gavriel State, Marco Hutter, and Animesh Garg. Orbit: A unified simulation framework for interactive robot learning environments. IEEE Robotics and Automation Letters , 8(6):3740–3747, 2023. doi: 10.1109/LRA.2023.3270034. Mayank Mittal, Nikita Rudin, Victor Klemm, Arthur Allshire, and Marco Hutter. Symmetry con-siderations for learning task symmetric robot policies. In 2024 IEEE International Conference on Robotics and Automation (ICRA) , pp. 7433–7439. IEEE, 2024. NVIDIA, :, Mayank Mittal, Pascal Roth, James Tigue, Antoine Richard, Octi Zhang, Peter Du, Antonio Serrano-Mu˜ noz, Xinjie Yao, Ren´ e Zurbr¨ ugg, Nikita Rudin, Lukasz Wawrzyniak, Mi-lad Rakhsha, Alain Denzler, Eric Heiden, Ales Borovicka, Ossama Ahmed, Iretiayo Akinola, Abrar Anwar, Mark T. Carlson, Ji Yuan Feng, Animesh Garg, Renato Gasoto, Lionel Gulich, Yijie Guo, M. Gussert, Alex Hansen, Mihir Kulkarni, Chenran Li, Wei Liu, Viktor Makoviy-chuk, Grzegorz Malczyk, Hammad Mazhar, Masoud Moghani, Adithyavairavan Murali, Michael Noseworthy, Alexander Poddubny, Nathan Ratliff, Welf Rehberg, Clemens Schwarke, Ritvik Singh, James Latham Smith, Bingjie Tang, Ruchik Thaker, Matthew Trepte, Karl Van Wyk, 10 Fangzhou Yu, Alex Millane, Vikram Ramasamy, Remo Steiner, Sangeeta Subramanian, Clemens Volk, CY Chen, Neel Jawale, Ashwin Varghese Kuruttukulam, Michael A. Lin, Ajay Mandlekar, Karsten Patzwaldt, John Welsh, Huihua Zhao, Fatima Anes, Jean-Francois Lafleche, Nicolas Mo¨ enne-Loccoz, Soowan Park, Rob Stepinski, Dirk Van Gelder, Chris Amevor, Jan Carius, Jumyung Chang, Anka He Chen, Pablo de Heras Ciechomski, Gilles Daviet, Mohammad Mo-hajerani, Julia von Muralt, Viktor Reutskyy, Michael Sauter, Simon Schirm, Eric L. Shi, Pierre Terdiman, Kenny Vilella, Tobias Widmer, Gordon Yeoman, Tiffany Chen, Sergey Grizan, Cathy Li, Lotus Li, Connor Smith, Rafael Wiltz, Kostas Alexis, Yan Chang, David Chu, Linxi ”Jim” Fan, Farbod Farshidian, Ankur Handa, Spencer Huang, Marco Hutter, Yashraj Narang, Soha Pouya, Shiwei Sheng, Yuke Zhu, Miles Macklin, Adam Moravanszky, Philipp Reist, Yunrong Guo, David Hoeller, and Gavriel State. Isaac lab: A gpu-accelerated simulation framework for multi-modal robot learning, 2025. URL https://arxiv.org/abs/2511.04831 .Antonin Raffin. Getting sac to work on a massive parallel simulator: An rl journey with off-policy algorithms. araffin.github.io , Feb 2025. URL https://araffin.github.io/post/ sac-massive-sim/ .Nikita Rudin, David Hoeller, Philipp Reist, and Marco Hutter. Learning to walk in minutes using massively parallel deep reinforcement learning. In Proceedings of the 5th Conference on Robot Learning , volume 164 of Proceedings of Machine Learning Research , pp. 91–100. PMLR, 2022. URL https://proceedings.mlr.press/v164/rudin22a.html .John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017. Clemens Schwarke, Mayank Mittal, Nikita Rudin, David Hoeller, and Marco Hutter. Rsl-rl: A learning library for robotics research. arXiv preprint arXiv:2509.10771 , 2025. Younggyo Seo, Carmelo Sferrazza, Juyue Chen, Guanya Shi, Rocky Duan, and Pieter Abbeel. Learning sim-to-real humanoid locomotion in 15 minutes, 2025a. URL https://arxiv. org/abs/2512.01996 .Younggyo Seo, Carmelo Sferrazza, Haoran Geng, Michal Nauman, Zhao-Heng Yin, and Pieter Abbeel. Fasttd3: Simple, fast, and capable reinforcement learning for humanoid control. arXiv preprint arXiv:2505.22642 , 2025b. Arth Shukla. Speeding up sac with massively parallel simulation. 
+
+https://arthshukla.substack.com , Mar 2025. URL https://arthshukla.substack. com/p/speeding-up-sac-with-massively-parallel .Ritvik Singh, Arthur Allshire, Ankur Handa, Nathan Ratliff, and Karl Van Wyk. Dextrah-rgb: Visuomotor policies to grasp anything with dexterous hands. arXiv preprint arXiv:2412.01791 ,2024. Laura Smith, J. Chase Kew, Xue Bin Peng, Sehoon Ha, Jie Tan, and Sergey Levine. Legged robots that keep on learning: Fine-tuning locomotion policies in the real world, 2021. URL https: //arxiv.org/abs/2110.05457 .Laura Smith, Ilya Kostrikov, and Sergey Levine. A walk in the park: Learning to walk in 20 minutes with model-free reinforcement learning. In Robotics: Science and Systems , 2023. Kevin Zakka, Baruch Tabanpour, Qiayuan Liao, Mustafa Haiderbhai, Samuel Holt, Jing Yuan Luo, Arthur Allshire, Erik Frey, Koushil Sreenath, Lueder A Kahrs, et al. Mujoco playground. arXiv preprint arXiv:2502.08844 , 2025. Ziwen Zhuang, Shenzhe Yao, and Hang Zhao. Humanoid parkour learning. arXiv preprint arXiv:2406.10759 , 2024. 11 A ADDITIONAL RESULTS 
+
+In this section, we present additional results on velocity tracking tasks for Unitree Go1, Unitree Go2, and Anymal B. These results further support the findings reported in Sec. 4. 
+
+Figure A8: Unitree Go1 Velocity Tracking on Rough Terrain 
+
+Figure A9: Unitree Go2 Velocity Tracking on Rough Terrain 
+
+Figure A10: Anymal B Velocity Tracking on Rough Terrain 12 Table B1: Policy observation space for Anymal B/D, Unitree Go1/Go2/A1 Entry Symbol Dimensions base linear velocity v 0:3 base angular velocity ω 3:6 projected gravity g 6:9 commanded linear velocity (xy) cxy 9:11 commanded angular velocity (z) cz 11:12 joint positions q 12:24 joint velocities ˙q 24:36 previous actions at−1 36:48 height scan h 48:235 Table B2: Policy observation space for Unitree H1 Entry Symbol Dimensions base linear velocity v 0:3 base angular velocity ω 3:6 projected gravity g 6:9 commanded linear velocity (xy) cxy 9:11 commanded angular velocity (z) cz 11:12 joint positions q 12:31 joint velocities ˙q 31:50 previous actions at−1 50:69 height scan h 69:256 
+
+# B ENVIRONMENT CONFIGURATION 
+
+B.1 OBSERVATION AND ACTION SPACES 
+
+The observation space for all the tasks mentioned in this paper can be found in the subsection in Tab. B1–B3. The action space is made of the joint position targets. The dimension of such space for each task can be seen in Tab. B4. B.2 REWARD FUNCTIONS 
+
+At each timestep, the reward is defined as a weighted sum of active components: 
+
+r = X
+
+> i
+
+wiri.
+
+Table B3: Policy observation space for Unitree G1 Entry Symbol Dimensions base linear velocity v 0:3 base angular velocity ω 3:6 projected gravity g 6:9 commanded linear velocity (xy) cxy 9:11 commanded angular velocity (z) cz 11:12 joint positions q 12:49 joint velocities ˙q 49:86 previous actions at−1 86:123 height scan h 123:310 13 Table B4: Action space across robots Robot Symbol Dimensions Anymal B q∗ 12 Anymal D q∗ 12 Unitree A1 q∗ 12 Unitree Go1 q∗ 12 Unitree Go2 q∗ 12 Unitree G1 q∗ 37 Unitree H1 q∗ 19 Table B5: Reward weights for Anymal B and Anymal D Symbol Value Symbol Value 
+
+wvxy 1.0 wωz 0.5
+
+wvz −2.0 wωxy −0.05 
+
+wqτ −1.0 × 10 −5 w¨q −2.5 × 10 −7
+
+w ˙a −0.01 wfa 0.125 
+
+wc −1.0
+
+The set of active terms and corresponding weights depends on the task and is reported in Tabs. B5– B8. The following reward components are used across the considered tasks: 
+
+Linear velocity tracking ( x, y )
+
+rvxy = wvxy exp − ∥cxy − vxy ∥22
+
+σ2
+
+> vxy
+
+!
+
+,
+
+with σvxy = 0 .5.
+
+Angular velocity tracking ( z)
+
+rωz = wωz exp 
+
+
+
+− ∥cz − ωz ∥22
+
+σ2
+
+> ωz
+
+
+
+,
+
+with σωz = 0 .5.
+
+Linear velocity penalty ( z)
+
+rvz = wvz ∥vz ∥22.
+
+Angular velocity penalty ( x, y )
+
+rωxy = wωxy ∥ωxy ∥22.
+
+Joint torque penalty 
+
+rqτ = wqτ ∥τ ∥22.
+
+Table B6: Reward weights for Unitree A1, Unitree Go1, Unitree Go2 Symbol Value Symbol Value 
+
+wvxy 1.5 wωz 0.75 
+
+wvz −2.0 wωxy −0.05 
+
+wqτ −2.0 × 10 −4 w¨q −2.5 × 10 −7
+
+w ˙a −0.01 wfa 0.01 
+
+14 Table B7: Reward weights for Unitree H1 Symbol Value Symbol Value 
+
+wterm −200 .0 wvxy 1.0
+
+wωz 1.0 wωxy −0.05 
+
+w¨q −1.25 × 10 −7 w ˙a −0.005 
+
+wfa 0.25 wfs −0.25 
+
+wg −1.0 wqankle lim −1.0
+
+wqhip 
+
+> d
+
+−0.2 wqarms  
+
+> d
+
+−0.2
+
+wqtorso  
+
+> d
+
+−0.1
+
+Table B8: Reward weights for Unitree G1 Symbol Value Symbol Value 
+
+wterm −200 .0 wvxy 1.0
+
+wωz 2.0 wωxy −0.05 
+
+wknee  
+
+> qτ
+
+−1.5 × 10 −7 wankle  
+
+> qτ
+
+−1.5 × 10 −7
+
+whip  
+
+> qτ
+
+−1.5 × 10 −7 w¨q −1.25 × 10 −7
+
+w ˙a −0.005 wfa 0.25 
+
+wfs −0.1 wg −1.0
+
+wankle -pitch  
+
+> qlim
+
+−1.0 wankle -roll  
+
+> qlim
+
+−1.0
+
+wqhip 
+
+> d
+
+−0.1 wqarms  
+
+> d
+
+−0.1
+
+wqfingers 
+
+> d
+
+−0.05 wqtorso  
+
+> d
+
+−0.1
+
+Joint acceleration penalty 
+
+r¨q = w¨q ∥¨q∥22.
+
+Action-rate penalty 
+
+r ˙a = w ˙a∥at − at−1∥22.
+
+Feet air-time reward 
+
+rfa = wfa tfa ,
+
+where tfa is the task-specific air-time statistic (quadruped vs. biped version in code). 
+
+Undesired contact penalty 
+
+rc = wc cu,
+
+where cu counts contacts above threshold on undesired bodies. 
+
+Flat-orientation penalty 
+
+rg = wg ∥gxy ∥22.
+
+Joint-limit penalty 
+
+rqlim = wqlim 
+
+X
+
+> j
+
+ [ qj − qmax  
+
+> j, soft
+
+]+ + [ qmin  
+
+> j, soft
+
+− qj ]+
+
+ ,
+
+where [x]+ = max( x, 0) , and qmin 
+
+> j, soft
+
+, q max  
+
+> j, soft
+
+are the soft lower/upper limits for joint j.
+
+Feet-slide penalty 
+
+rfs = wfs
+
+X 
+
+> f∈F
+
+vwf,xy 2 I
+
+
+
+max  
+
+> t
+
+F wf (t) 2 > 1.0
+
+
+
+,
+
+where F denotes the set of feet considered in the task, f is the foot index, and wfs is the correspond-ing reward weight. Moreover, vwf,xy ∈ R2 denotes the linear velocity of foot f in the world frame 15 projected onto the horizontal plane, such that ∥vwf,xy ∥2 is the planar sliding speed of that foot. The quantity F wf (t) ∈ R3 denotes the contact force acting on foot f at time sample t in the world frame, and max t ∥F wf (t)∥2 is the maximum contact-force magnitude over the sensor history used by the implementation. Finally, I(·) is the indicator function. 
+
+Joint-deviation penalties 
+
+rqd = wqd ∥q − q0∥1,
+
+Termination penalty 
+
+rterm = wterm Iterm ,
+
+where wterm < 0 is a large negative constant and Iterm ∈ { 0, 1} is a binary indicator equal to 1 if the environment terminates (failure) at the current step and 0 otherwise. 
+
+# C TRAINING PARAMETERS 
+
+The learning networks and algorithm are implemented in PyTorch 2.7.0 with CUDA 12.8 and trained on an NVIDIA RTX 3090 GPU. The hyperparameters used can be seen in Tab. C9–C10. For the G1 and H1 platforms, task-specific hyperparameters are used: an entropy coefficient of 0.008 and 0.01 respectively for PPO, and a target entropy scale of 0.5 for SAC. Table C9: SAC training parameters Parameter Symbol Value environments Ne 8192 
+
+step time seconds ∆t 0.02 
+
+rollout steps per environment Ns 24 
+
+max iterations − 800 
+
+training start iteration − 1
+
+replay buffer size |D| 5 × 10 6
+
+learning epochs − 1
+
+mini-batches − 200 
+
+mini-batch size − 8192 
+
+actor learning rate ηπ 2 × 10 −4
+
+critic learning rate ηQ 2 × 10 −4
+
+temperature learning rate ηα 2 × 10 −5
+
+discount factor γ 0.97 
+
+target smoothing coefficient τ 0.003 
+
+initial temperature α 0.001 
+
+automatic temperature tuning − True 
+
+target entropy scale − 0.167 
+
+max gradient norm − 1.0
+
+policy update frequency − 1
+
+multi-step return horizon n 5
+
+actor observation normalization − True 
+
+critic observation normalization − True 
+
+actor hidden dimensions − [1024 , 512 , 256] 
+
+critic hidden dimensions − [1024 , 512 , 256] 
+
+activation − SiLU 
+
+layer normalization − False 
+
+initial action noise std σ0 0.15 
+
+16 Table C10: PPO training parameters Parameter Symbol Value environments Ne 8192 
+
+step time seconds ∆t 0.02 
+
+rollout steps per environment Ns 24 
+
+max iterations − 800 
+
+learning rate η 1 × 10 −3
+
+learning rate schedule − adaptive learning epochs − 5
+
+mini-batches − 4
+
+discount factor γ 0.99 
+
+GAE parameter λ 0.95 
+
+clip range ϵ 0.2
+
+entropy coefficient − 0.005 
+
+value loss coefficient − 1.0
+
+clipped value loss − True 
+
+normalize advantage per mini-batch − False 
+
+KL divergence target − 0.01 
+
+max gradient norm − 1.0
+
+actor observation normalization − False 
+
+critic observation normalization − False 
+
+actor hidden dimensions − [512 , 256 , 128] 
+
+critic hidden dimensions − [512 , 256 , 128] 
+
+activation − ELU 
+
+initial action noise std σ0 1.0
+
+17
