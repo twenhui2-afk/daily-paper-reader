@@ -6,73 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-27
-- 运行时间：2026-05-28 05:12:11 UTC+8
+- 最新运行日期：2026-05-28
+- 运行时间：2026-05-29 05:50:18 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Resolving Ambiguity in Composed Image Retrieval via Calibrated Interaction》（8.4/10）, 《AcroRL: Learning Aggressive Quadrotor Inversion using Bidirectional Thrust》（8.4/10）
-- 速读：《Bridging the Gap: Enabling Soft Actor Critic for High Performance Legged Locomotion》（8.1/10）, 《Equality in a Reverse Minkowski Shell Bound for Integral Lattices via Spherical Designs》（8.0/10）, 《Language Bias in LVLMs: From In-Depth Analysis to Simple and Effective Mitigation》（8.0/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Intra-YOLO: A Small Object Detection Model for Caries and Molar-Incisor Hypomineralization in Intraoral Photography Based on Transfer Learning with Reinforcement Learning》（7.6/10）, 《VesselSim: learning 3D blood vessel segmentation without expert annotations》（7.4/10）, 《VesselSim: learning 3D blood vessel segmentation without expert annotations》（7.4/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/27/README](/202605/27/README)
+- 详情：[/202605/28/README](/202605/28/README)
 
 ### 精读区论文标签
-1. [Resolving Ambiguity in Composed Image Retrieval via Calibrated Interaction](/202605/27/2605.24634v2-resolving-ambiguity-in-composed-image-retrieval-via-calibrated-interaction)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-2. [AcroRL: Learning Aggressive Quadrotor Inversion using Bidirectional Thrust](/202605/27/2605.24301v1-acrorl-learning-aggressive-quadrotor-inversion-using-bidirectional-thrust)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-3. [On the Stability and Realizability of Recurrent Polynomial Surrogate Ternary Logic Gate Networks](/202605/27/2605.24649v1-on-the-stability-and-realizability-of-recurrent-polynomial-surrogate-ternary-logic-gate-networks)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-4. [Resolving Ambiguity in Composed Image Retrieval via Calibrated Interaction](/202605/27/2605.24634v1-resolving-ambiguity-in-composed-image-retrieval-via-calibrated-interaction)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-5. [A Signal Extraction Approach for Remote Heart Rate Variability Assessment Using Proxy Measure in a Driving Simulator](/202605/27/2605.24525v1-a-signal-extraction-approach-for-remote-heart-rate-variability-assessment-using-proxy-measure-in-a-driving-simulator)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-6. [Attested Tool-Server Admission: A Security Extension to the Model Context Protocol](/202605/27/2605.24248v1-attested-tool-server-admission-a-security-extension-to-the-model-context-protocol)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Bridging the Gap: Enabling Soft Actor Critic for High Performance Legged Locomotion](/202605/27/2605.24975v1-bridging-the-gap-enabling-soft-actor-critic-for-high-performance-legged-locomotion)  
-   标签：评分：8.1/10
+1. [Intra-YOLO: A Small Object Detection Model for Caries and Molar-Incisor Hypomineralization in Intraoral Photography Based on Transfer Learning with Reinforcement Learning](/202605/28/2605.28157v1-intra-yolo-a-small-object-detection-model-for-caries-and-molar-incisor-hypomineralization-in-intraoral-photography-based-on-transfer-learning-with-reinforcement-learning)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-2. [Equality in a Reverse Minkowski Shell Bound for Integral Lattices via Spherical Designs](/202605/27/2605.25126v1-equality-in-a-reverse-minkowski-shell-bound-for-integral-lattices-via-spherical-designs)  
-   标签：评分：8.0/10
+2. [VesselSim: learning 3D blood vessel segmentation without expert annotations](/202605/28/2605.26277v1-vesselsim-learning-3d-blood-vessel-segmentation-without-expert-annotations)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-3. [Language Bias in LVLMs: From In-Depth Analysis to Simple and Effective Mitigation](/202605/27/2605.25036v1-language-bias-in-lvlms-from-in-depth-analysis-to-simple-and-effective-mitigation)  
-   标签：评分：8.0/10
+3. [VesselSim: learning 3D blood vessel segmentation without expert annotations](/202605/28/2605.26277v2-vesselsim-learning-3d-blood-vessel-segmentation-without-expert-annotations)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-4. [When Does Adaptive Guidance Help? Belief-Aware Privileged Distillation for Autonomous Driving Under Partial Observability](/202605/27/2605.26155v1-when-does-adaptive-guidance-help-belief-aware-privileged-distillation-for-autonomous-driving-under-partial-observability)  
-   标签：评分：7.9/10
+4. [Detail Consistent Stage-Wise Distillation for Efficient 3D MRI Segmentation](/202605/28/2605.26382v1-detail-consistent-stage-wise-distillation-for-efficient-3d-mri-segmentation)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-5. [On the Vertex Decomposability of $r$-Independence Complexes of Trees](/202605/27/2605.25150v1-on-the-vertex-decomposability-of-r-independence-complexes-of-trees)  
-   标签：评分：7.9/10
+5. [Gradient Step Plug-and-Play Model for Dental Cone-Beam CT Reconstruction](/202605/28/2605.28124v1-gradient-step-plug-and-play-model-for-dental-cone-beam-ct-reconstruction)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-6. [Enhanced INS/GNSS State Estimation using GNSS-Based Acceleration Measurements](/202605/27/2605.24767v1-enhanced-insgnss-state-estimation-using-gnss-based-acceleration-measurements)  
-   标签：评分：7.8/10
+6. [VRXU-net: A Deep Learning Approach for Brain Ischemic Stroke Lesion Detection and Segmentation in T1W MRI](/202605/28/2605.21633v1-vrxu-net-a-deep-learning-approach-for-brain-ischemic-stroke-lesion-detection-and-segmentation-in-t1w-mri)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-7. [Counting Rational Points on Danielewski and Double Danielewski Surfaces over Finite Fields](/202605/27/2605.24821v1-counting-rational-points-on-danielewski-and-double-danielewski-surfaces-over-finite-fields)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-8. [K-U-KAN: Koopman-Enhanced U-KAN for 3D Dental Reconstruction from a Single Panoramic X-ray Radiograph](/202605/27/2605.25163v1-k-u-kan-koopman-enhanced-u-kan-for-3d-dental-reconstruction-from-a-single-panoramic-x-ray-radiograph)  
-   标签：评分：7.7/10
-   evidence：检索回退候选
-9. [Soft Tuy-Completeness for Robust Projection Selection in Cone-Beam CT](/202605/27/2605.24023v1-soft-tuy-completeness-for-robust-projection-selection-in-cone-beam-ct)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-10. [EchoPilot: Training-Free Ultrasound Video Segmentation via Scale-Space Semantic Prompting and Reliability-Gated Memory](/202605/27/2605.25944v1-echopilot-training-free-ultrasound-video-segmentation-via-scale-space-semantic-prompting-and-reliability-gated-memory)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-11. [Towards Anatomically Plausible Human Image Generation via Synthetic Localized Preferences](/202605/27/2605.25759v1-towards-anatomically-plausible-human-image-generation-via-synthetic-localized-preferences)  
+7. [An Open Multi-Center Whole-Body FDG PET/CT Foundation Model for Tumor Segmentation](/202605/28/2605.21835v1-an-open-multi-center-whole-body-fdg-petct-foundation-model-for-tumor-segmentation)  
    标签：评分：6.8/10
+   evidence：检索回退候选
+8. [Universal CT Representations from Anatomy to Disease Phenotype through Agglomerative Pretraining](/202605/28/2605.21906v1-universal-ct-representations-from-anatomy-to-disease-phenotype-through-agglomerative-pretraining)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+9. [SegGuidedNet: Sub-Region-Aware Attention Supervision for Interpretable Brain Tumor Segmentation](/202605/28/2605.22572v1-segguidednet-sub-region-aware-attention-supervision-for-interpretable-brain-tumor-segmentation)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+10. [ImPartial: Multi-channel Whole-Cell Segmentation using Partial Annotations](/202605/28/2605.24128v1-impartial-multi-channel-whole-cell-segmentation-using-partial-annotations)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+11. [Gaze into the Details: Locality-Sensitive Enhancement for OCTA Retinal Vessel Segmentation](/202605/28/2605.20651v1-gaze-into-the-details-locality-sensitive-enhancement-for-octa-retinal-vessel-segmentation)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
