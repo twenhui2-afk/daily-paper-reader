@@ -1,0 +1,505 @@
+Title: DeCoDrift: Stabilizing Decoder Coupling in Closed-Loop Foundation Segmentation
+
+URL Source: https://arxiv.org/pdf/2605.25730v1
+
+Published Time: Tue, 26 May 2026 02:10:25 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# DeCoDrift: Stabilizing Decoder Coupling in Closed-Loop Foundation Segmentation 
+
+H. M. Shadman Tabib † Md. Shamsuzzoha Bayzid † M Sohel Rahman ††Department of Computer Science and Engineering Bangladesh University of Engineering and Technology, Dhaka, Bangladesh 
+
+# Abstract 
+
+Foundation segmentation models such as Segment Anything Model (SAM) are now routinely used in iterative pipelines, where each predicted mask is fed back as the next prompt. This practice turns segmentation into a closed-loop dynamical process, yet the decoder-level behavior of these systems remains largely unexamined. We show that this feedback loop can induce a previously overlooked failure mode, decoder coupling drift, in which the mask decoder’s cross-attention progressively loses alignment with the target object, causing errors to accumulate across iterations. We study this phenomenon by instrumenting SAM’s mask decoder and deriving ground-truth-free measures of prompt-image coupling, attention stability, and temporal consistency. On volumetric electron microscopy data, these decoder-internal signals reveal that standard iterative prompting systematically degrades attention alignment and temporal coherence relative to oracle-anchored feedback. We then formalize iterative prompting as a discrete-time dynamical system and show how proximal anchoring reduces error amplification in the feedback loop. Building on this analysis, we introduce DeCoDrift, a training-free inference-time stabilization framework that constrains prompt updates and preserves decoder coupling across iterations.Across extensive experiments, DeCoDrift consistently improves attention stability, temporal coherence, and segmentation quality over standard iterative prompting, without retraining or ground-truth supervision. More broadly, our results show that decoder-internal dynamics are not merely diagnostic: they provide actionable signals for stabilizing foundation segmentation models in closed-loop use. 
+
+# 1 Introduction 
+
+Promptable foundation models for image segmentation Kirillov et al. [2023], Ravi et al. [2024], Ke et al. [2023] have transformed how practitioners approach segmentation tasks. Given point or box prompts, SAM’s lightweight mask decoder—a two-layer transformer Vaswani et al. [2017] condi-tioned on prompt tokens and image features from a Vision Transformer (ViT) encoder Dosovitskiy et al. [2021]—produces high-quality masks in a single forward pass. This zero-shot capability has been rapidly adopted from natural-image editing Yang et al. [2023] to medical imaging and digital pathology Ma et al. [2024], Mazurowski et al. [2023], Deng et al. [2023] and to connectomics-style volumetric biological analysis Funke et al. [2019], Wei et al. [2020], Lee et al. [2017]. A natural extension is to apply SAM iteratively : extract prompts from the predicted mask of one pass and feed them into the next, progressively refining the segmentation or propagating it across a volume. This is standard in interactive segmentation Sofiiuk et al. [2022], video object segmentation Oh et al. [2019], Cheng and Schwing [2022], and volumetric biological analysis Funke et al. [2019], Lee et al. [2017]. The iterative scheme creates a closed-loop feedback system: 
+
+Mt = fθ (It, p t), pt+1 = g(Mt), (1) 
+
+> Preprint.
+> arXiv:2605.25730v1 [cs.CV] 25 May 2026
+
+Figure 1: Overview. (a) Method A iteratively feeds predicted masks back as prompts (high AAD, low TCS). (b) Method B (oracle) uses ground-truth-derived anchor prompts. (c) DeCoDrift (A-Stab) inserts a training-free stabilization module bounding drift via proximal regularization. (d) All methods share decoder instrumentation that hooks four attention sites and records per-call coupling metrics. where fθ is the SAM decoder, g extracts prompts (centroids, bounding boxes) from the predicted mask, and Φθ = g ◦ fθ defines a discrete-time dynamical system. Errors compound: small inaccuracies in 
+
+Mt produce shifted prompts pt+1 , which alter the decoder’s cross-attention and further degrade the mask. 
+
+The central question: What happens inside SAM’s decoder during this iterative drift, and can we intervene at inference time without retraining? Prior work on SAM robustness has focused on prompt sensitivity and prompt quality Mazurowski et al. [2023], adaptation and personalization Chen et al. [2023], Wu et al. [2023], Zhang et al. [2023], and corruption robustness Qiao et al. [2023]—all studying the input side. We instead study the decoder’s internal attention dynamics under iterated feedback, revealing a systematic failure mode invisible from the output alone. 
+
+Contributions. 
+
+1. Decoder coupling framework. We instrument SAM’s mask decoder at four attention sites and define ten metrics that quantify coupling between decoder attention and the target without ground truth (Section 3). 2. Empirical characterization. On 133,452 paired decoder calls across 10 volumetric slices, we show iterative prompting suffers from systematic attention drift, elevated prompt energy, and degraded temporal stability relative to an oracle-anchored upper bound (Section 6). 3. Dynamical analysis. We formalize the prompt-feedback loop and prove proximal anchor regular-ization bounds the effective Jacobian (Section 4). 4. Training-free stabilization. DeCoDrift closes up to 76.4% of the coupling gap to an oracle and improves end-to-end IoU by 37.7% relative (Sections 5 and 6). 
+
+# 2 Related Work 
+
+Foundation segmentation. SAM Kirillov et al. [2023] introduced prompt-based segmentation; SAM 2 Ravi et al. [2024] extends to video with memory-conditioned decoding, and HQ-SAM Ke et al. [2023] improves boundary quality. These models target single-image inference; the iterative prompt-feedback setting we study has no decoder-level analysis to date. In biomedicine, MedSAM Ma et al. [2024] fine-tunes on >1M medical pairs; recent foundation-model work in cryo-electron tomography Uddin et al. [2025] also uses diffusion priors for unsupervised cellular segmentation. Mazurowski et al. [2023] found SAM is sensitive to prompt quality, motivating our study. In connectomics, iterative propagation is standard Funke et al. [2019], Wei et al. [2020], Lee et al. [2017], Arganda-Carreras et al. [2015]. 2Interactive/iterative segmentation and attention analysis. Interactive methods Sofiiuk et al. [2022], Cheng et al. [2022] and video object segmentation Oh et al. [2019], Cheng and Schwing [2022] both involve feedback loops similar to Equation (1); SAM 2 Ravi et al. [2024] extends SAM with an explicit memory bank to combat drift in video. Existing analyses focus on output quality, leaving the decoder’s internal dynamics unexamined. Track-Anything Yang et al. [2023] composes SAM with off-the-shelf trackers; DeCoDrift is complementary to such memory- or tracker-based propagation: it stabilizes the per-decoder-call coupling that they assume as a black box. Attention rollout Abnar and Zuidema [2020], gradient-weighted attention Chefer et al. [2021], and probing Clark et al. [2019] have interpreted encoder transformers; Mask2Former Cheng et al. [2022] showed masked cross-attention helps focus, but did not study attention under iterated prompting. We give the first systematic attention analysis in a decoder transformer under closed-loop feedback. 
+
+Dynamical systems and test-time methods. Neural ODEs Chen et al. [2018] and stability analy-ses Miller and Hardt [2019], Hardt et al. [2016] cast deep models as dynamical systems; proximal operators are well-studied Parikh and Boyd [2014]. Test-time training Sun et al. [2020] and prompt tuning Jia et al. [2022] adapt models at inference. Our approach modifies neither weights nor learned representations, operating on the geometry of the prompt-feedback loop. 
+
+# 3 Decoder Coupling Metrics 
+
+We instrument SAM’s two-layer mask decoder at four attention sites: (i) final self-attention Aself ∈
+
+RB×H×Q×Q; (ii) token →image cross-attention At→i; (iii) image →token cross-attention Ai→t; and (iv) final token →image attention Afinal . We cache prompt embeddings, image embeddings, and the output mask token. From the head-averaged attention map for the mask token, Ft ∈ RHf ×Wf , and the predicted (or GT) mask Gt, we define: 
+
+Cross-Attention Mask Alignment (CAMA). Spatial agreement between attention and target: 
+
+CAMA -Dice( Ft, G t) = 2 P 
+
+> x
+
+Ft(x)Gt(x)
+
+P 
+
+> x
+
+Ft(x) + P 
+
+> x
+
+Gt(x) , CAMA -IoU analogously . (2) 
+
+Attention Anchor Drift (AAD). AAD( Ft, F 0) = JS( Ft∥F0), where F0 is the centroid-aligned first-call attention. 
+
+Temporal Coupling Stability (TCS). TCS( Ft, F t−1) = 1 − JS( Ft∥Ft−1).
+
+Prompt Drift Energy (PDE). PDE = ∥ct − c0∥2/diag 2 + λb(1 − IoU( bt, b 0)) , with centroid ct
+
+and bbox bt.
+
+Distractibility Leakage Ratio (DLR). DLR = min( P 
+
+> x
+
+Ft(1 −Gt)/(P 
+
+> x
+
+FtGt + ϵ), τ clamp ) with 
+
+τclamp =10 4; we report log DLR .
+
+Causal Coupling Drop (CCD). Ablate the top-k attended image tokens and re-run; CCD = max(0 , IoU base − IoU ablated ). High CCD indicates causal (not merely correlational) dependence on attended regions. 
+
+Composite PICS. PICS = CAMA Dice · TCS · (1 − AAD) · (1 − DLR /τ clamp ). We additionally report attention entropy (AE) and the Spearman self–cross correlation (SCA). 
+
+Ground-truth dependence and test-time use. AAD, TCS, PDE, AE, and SCA are computed en-tirely from cached prompts and attention maps and require no ground truth—these are the deployable monitoring signals. CAMA, DLR, CCD, and PICS use Gt, which is the GT mask in our reported experiments and the predicted mask downsampled to Hf × Wf when GT is unavailable; in that GT-free regime the metrics measure attention–prediction agreement (a self-consistency proxy) rather than attention–target agreement. CCD ablates the top-k=5% of image tokens by head-averaged 
+
+Afinal , replacing them with the per-token mean (rather than zero) to avoid distribution shift, then re-runs the decoder—a controlled counterfactual rather than a destructive zeroing. For an expanded explanation of each metric, including intuition, implementation details, edge cases, aggregation, and deployment-time interpretation, see Section A. 3Figure 2: Dynamical-systems view. (a) Prompt-space trajectories: Method A (red) drifts unboundedly (ρ(J) ≥ 1); DeCoDrift (green) stays inside the proximal envelope ( ρreg ≈ 0.76 ); Method B (blue) is near-static. (b) Cumulative prompt error over iterations: A grows as ρt; DeCoDrift bounded as 0.76 t;B near-zero. The empirical AAD/PDE in Tables 2 and 3 match this geometric-vs-bounded prediction. 
+
+# 4 Dynamical Systems Analysis 
+
+The iterative pipeline defines a system on the prompt space P ⊂ R6 (2D centroid + bbox corners): 
+
+pt+1 = Φ θ (It, p t). Defining the prompt error et = pt − p∗ 
+
+> t
+
+relative to the GT-derived optimal prompt and linearizing, 
+
+et+1 ≈ Jt et + ηt, Jt = ∂Φθ /∂p pt
+
+. (3) 
+
+Theorem 1 (Stability) . The feedback loop is asymptotically stable if ρ(Jt) < 1 for all t. When 
+
+ρ(Jt) ≥ 1, errors grow geometrically as ρ(Jt)t, producing the drift we measure via AAD and PDE. 
+
+Proximal stabilization. We replace Φθ with a regularized update—the closed-form solution of 
+
+min p ∥p − ˆpt∥2 + λa∥p − p0∥2 + λs∥p − pt−1∥2 Parikh and Boyd [2014]: 
+
+pt = ˆpt + λa p0 + λs pt−1
+
+1 + λa + λs
+
+. (4) 
+
+Proposition 1 (Effective Jacobian Reduction) . The regularized update has Jreg = ( Jorig + λsI)/(1 + 
+
+λa + λs), hence ρ(Jreg ) ≤ (ρ(Jorig ) + λs)/(1 + λa + λs). Strict reduction ρ(Jreg ) < ρ (Jorig ) holds iff λs < ρ (Jorig )( λa + λs), which is automatic for ρ(Jorig ) ≥ 1 and λa > 0 (the unstable/marginal regime). For ρ(Jorig ) < 1 (already stable), regularization can leave ρ effectively unchanged or slightly damp it; the design intent is to neutralize the unstable regime where empirical drift occurs. Proof sketch. Substituting ˆpt = Φ θ (It, p t−1) into Equation (4) and differentiating: the first term contributes Jorig /(1+ λa+λs), the constant anchor vanishes, and the smoothness term contributes 
+
+λsI/ (1+ λa+λs). Sub-additivity yields the bound. With λa=0 .4, λ s=0 .3 and ρ(Jorig ) ≈ 1, the effective spectral radius is 1.3/1.7 ≈ 0.76 , reducing per-step drift by ∼24% ; over T iterations cumulative error scales as 0.76 T .
+
+# 5 DeCoDrift: Training-Free Stabilization 
+
+DeCoDrift comprises four inference-time components requiring no gradients, weight modification, or additional training data (Figure 3). The default stabilization and candidate-selection hyperparameters used throughout the experiments are reported in Table 1. 4Figure 3: DeCoDrift stabilization module. The frozen SAM ViT-H decoder produces candidate masks and attention maps that flow through four sequential components: 1⃝ attention-guided prompt extraction weights centroids/bboxes by the head-averaged attention Ft; 2⃝ proximal anchor reg-ularization blends ˆpt with anchor p0 and previous prompt pt−1 (effective spectral radius ≈0.76 ); 
+
+> 3
+
+⃝ decoder-aware candidate scoring trades off confidence, continuity, uncertainty, divergence, and leakage; 4⃝ soft persistence retains objects via AAD/TCS thresholds with anchor-based recovery. The stabilized pt feeds back into the decoder. Table 1: DeCoDrift stabilization hyperparameters. Defaults used for all experiments unless otherwise stated.                                
+
+> Component Parameter Symbol Default Proximal update Anchor weight λa0.4 Smoothness weight λs0.3 Attn. extraction Threshold τ0.15 Candidate scoring SAM confidence α0.35 Continuity β0.25 Uncertainty γ0.15 Anchor divergence δ0.15 Leakage η0.10 Soft keep/drop Confidence threshold τs0.30 Div. threshold τd0.20 TCS threshold τc0.70 Max lost iters Kmax 3
+
+(1) Attention-guided prompt extraction. Standard extraction computes the next centroid/bbox from raw mask moments. We instead use the decoder’s own attention as a spatial prior: 
+
+W (x) = F ↑ 
+
+> t
+
+(x) · Mt(x), ˆct =
+
+P 
+
+> x
+
+x · W (x)
+
+P 
+
+> x
+
+W (x) , (5) biasing the prompt toward regions the decoder is actively attending to. When attention has already drifted, this could in principle reinforce errors; the proximal anchoring (component 2) actively counters this, consistent with our ablation in which the proximal term is the dominant contributor. 
+
+(2) Proximal anchor regularization. The attention-derived ˆpt is regularized via Equation (4). The anchor term prevents unbounded drift; the smoothness term prevents oscillation. 
+
+(3) Decoder-aware candidate selection. When SAM produces K candidate masks (multimask_output=True ), we replace arg max k IoU k with k∗ = arg max k[α conf k + β cont k −
+
+γ unc k − δ div k − η leak k], selecting masks both confident and well-coupled to attention. 5Table 2: Decoder coupling metrics: A (iterative) vs. B (oracle). All differences significant (p < 0.001 ); n = 133 ,452 .                                                                  
+
+> Metric Direction Mean A Std A Mean B Std B ∆(A −B) CAMA Dice ↑higher 0.059 0.107 0.089 0.125 −0.031 CAMA IoU ↑higher 0.034 0.065 0.052 0.077 −0.018 AAD ↓lower 0.156 0.077 0.049 0.052 +0.106 TCS ↑higher 0.847 0.082 0.995 0.008 −0.148 PDE ↓lower 0.380 0.162 0.120 0.056 +0.260
+> log DLR ↓lower 14.28 12.06 13.83 12.77 +0.44 CCD ↑higher 0.058 0.099 0.140 0.146 −0.082 PICS ↑higher 0.042 0.078 0.085 0.119 −0.043
+> (a) AAD (b) TCS (c) PDE (d) PICS
+
+Figure 4: Per-slice coupling. Method A (red) vs. Method B oracle (blue) across 10 MitoEM slices. The gap is persistent and consistent. 
+
+(4) Soft object persistence. Hard IQR filtering can drop temporarily occluded objects. We replace binary keep/drop with keep( i) = (conf i>τ s) ∨ (AAD i<τ d) ∨ (TCS i>τ c), with anchor-based recovery for up to Kmax consecutive lost iterations. 
+
+# 6 Experiments 
+
+Setup. We evaluate on MitoEM Wei et al. [2020] (mitochondria instance segmentation in rat cortex, “R” variant, slices 4096 ×4096 from mito-train-R-v2 ). EM is ideal because adjacent slices share high structural similarity (a natural iterative-propagation setting) and dense annotation enables rigorous evaluation. All methods use 10 prompt-feedback iterations per object on the SAM ViT-H decoder instrumented at all four attention sites (per-call 64 ×64 head-averaged map, predicted mask, ten coupling metrics; <40 GB lightweight mode). 
+
+Methods. A (Iterative Baseline): SAM auto-mask on the reference slice, then iterative prompt-based refinement across slices. A-Stab (DeCoDrift): identical with our four components active (λa=0 .4, λ s=0 .3; full hyperparameters in Table 1). B (Oracle-Anchored): anchored method with uncertainty-guided refinement and visual coherence regularization, receiving ground-truth–derived 
+
+anchors—an oracle upper bound, not a practical competitor. 
+
+Protocol. 10 slices (0–9), ∼300 –430 objects/slice/method, 10 iterations, yielding 133,452 paired calls (A vs. B) and 44,341 (three-way). Significance via two-sided paired permutation tests with 2,000 permutations. 
+
+Main coupling results. Table 2 shows attention decoupling is severe: A exhibits 3.2× higher AAD ( 0.156 vs. 0.049 ), and TCS drops from a near-perfect 0.995 for B to 0.847 for A (15% of attention shifts each step). PDE is 3.2× higher for A; CCD is 2.4× higher for B (ablating B’s top-attended tokens drops prediction more, confirming functional dependence). PICS is 2.0× higher for B. Per-slice plots (Figure 4) show the gap is consistent across all 10 slices, ruling out outliers. Complementary per-slice trends for CAMA-Dice, CCD, log DLR, and clamped DLR are shown in Figure 5. 
+
+Stabilization results. Table 3 shows DeCoDrift closes 76.4% of the TCS gap, 27.9% of AAD, and 23.8% of PDE; PICS improves by 15.8% of the gap. CCD and CAMA-Dice change negligibly (≤5% ), revealing a clean dichotomy: static coupling (causal dependence, raw overlap) is hard to alter 6(a) CAMA-Dice (b) CCD (c) log DLR (d) DLR (clamped) 
+
+Figure 5: Additional per-slice decoder-coupling metrics. Method A (red) vs. Method B oracle (blue). Raw DLR varies over several orders of magnitude across small/large objects, motivating the 
+
+log scaling and clamp at τclamp =10 4 used in Section 3. Table 3: Three-way comparison: A vs. DeCoDrift (A-Stab) vs. B (oracle). n = 44 ,341 . †p < 
+
+0.001 . Gap closed: (¯ xA-Stab −¯xA)/(¯ xB −¯xA) × 100% .                                                 
+
+> Metric AA-Stab B∆(A →A-Stab) pGap (%) CAMA Dice ↑0.061 0.060 0.090 −0.001 0.020 −5.0 AAD ↓0.156 0.126 0.049 −0.030 †<0.001 27.9 TCS ↑0.847 0.960 0.995 +0.113 †<0.001 76.4
+> PDE ↓0.392 0.327 0.120 −0.065 †<0.001 23.8 CCD ↑0.060 0.057 0.140 −0.003 <0.001 −4.0 PICS ↑0.044 0.050 0.085 +0.006 †<0.001 15.8
+
+without weight modification, while dynamic coupling (temporal stability, drift, prompt energy) is strongly amenable to inference-time regularization. 
+
+Downstream segmentation. Table 4: DeCoDrift improves IoU over A by 37.7% (relative) at short distances ( 0.296 vs. 0.215 ), 32 .4% at medium and 28 .8% at long distances; HD95 improves 14–16% across bins. DeCoDrift’s standard deviations are 2–3× lower than B, reflecting bounded drift (Proposition 1). At ≤ 30 slices, the gap to the oracle narrows to 3.8 pp IoU—the oracle decays as its own attention drifts, while DeCoDrift’s proximal regularization maintains bounded coupling. 
+
+Ablation. Configurations on the same MitoEM-R slices: baseline (A) gives PICS 0.041 . Adding 
+
+EMA only degrades PICS to 0.031 with no AAD/TCS change—uninformed momentum amplifies drift. Adding proximal regularization produces the largest single jump: AAD drops 18% ( 0.154 →0.126 ), TCS jumps 12.2 pp ( 0.849 →0.953 ). Candidate scoring and soft persistence preserve gains and yield the full DeCoDrift (PICS 0.050 ). Proximal regularization is the dominant contributor, while uninformed smoothing is counterproductive. 
+
+Decoder metrics predict quality. We compute per-slice Pearson/Spearman correlations between aggregated decoder metrics and segmentation IoU. Two of the ten evaluated slices contain too few objects of overlapping support across all three methods to yield a stable IoU aggregate, so the per-slice correlation uses n=8 slices common to all methods (the per-call coupling counts n=133 ,452 and 
+
+n=44 ,341 already use the full 10 slices). Under Method B, AAD strongly anti-correlates with IoU (r=−0.991 , p< 0.001 ; ρ=−1.000 ); PDE: r=−0.971 ; attention entropy: r=0 .967 ; PICS: r=0 .955 ;TCS: r=0 .879 ; CCD: r=0 .768 . Under Method A (saturated drift regime), no metric reaches p< 0.18 .To address small-n concerns, we additionally computed per-call Spearman correlations on the full 133,452 paired observations: AAD vs. per-call IoU ρ=−0.41 (p< 10 −12 ) and PICS vs. IoU ρ=0 .38 
+
+(p< 10 −12 ) under B, with magnitudes <0.10 but still highly significant under A—directionally consistent with the per-slice picture. The asymmetry confirms that decoder coupling is a genuine 
+
+driver , not a co-occurring phenomenon: when coupling is controlled, our metrics are strongly predictive; when saturated, between-slice variation is dominated by noise. 
+
+Hyperparameter sensitivity. We swept λa ∈ { 0.1, 0.2, 0.4, 0.6, 0.8} and λs ∈ { 0.1, 0.3, 0.5}
+
+holding all other defaults fixed. DeCoDrift’s TCS gap-closure exceeds 70% across the full grid and peaks at λa=0 .4, λ s=0 .3 (76.4%); IoU at ≤ 10 slices varies between 0.281 and 0.298 (vs. baseline 
+
+0.215 ). The candidate-scoring weights (α, β, γ, δ, η )=(0 .35 , 0.25 , 0.15 , 0.15 , 0.10) were chosen to satisfy α + β = 1 − (γ + δ + η) with confidence and continuity dominant; perturbing each by ±50% 
+
+7Table 4: Segmentation quality vs. slice distance. MitoEM-R, 10 iters/object. Values are mean ±std across slices. B uses oracle anchors.                                                                                            
+
+> Distance Method IoU ↑Dice ↑HD95 ↓≤10
+> Iterative (A) 0.215 ±0.009 0.354 ±0.012 162 .5±11 .6
+> DeCoDrift (A-Stab) 0.296 ±0.024 0.457 ±0.029 139 .8±14 .3
+> Oracle (B) 0.536 ±0.101 0.693 ±0.085 64 .2±30 .2
+> ≤20
+> Iterative (A) 0.210 ±0.012 0.347 ±0.016 162 .3±10 .1
+> DeCoDrift (A-Stab) 0.278 ±0.021 0.435 ±0.026 144 .1±12 .7
+> Oracle (B) 0.389 ±0.157 0.543 ±0.158 96 .9±36 .7
+> ≤30
+> Iterative (A) 0.208 ±0.011 0.344 ±0.016 161 .3±9.6
+> DeCoDrift (A-Stab) 0.268 ±0.019 0.422 ±0.024 147 .2±11 .4
+> Oracle (B) 0.306 ±0.168 0.446 ±0.183 115 .4±38 .7
+
+changes IoU by <1.5 pp, indicating low sensitivity. We recommend selecting (λa, λ s) on a held-out micro-volume by maximizing TCS subject to keeping AAD below the unregularized baseline. 
+
+Anchor robustness. To probe sensitivity to imperfect p0, we re-ran DeCoDrift with the anchor centroid perturbed by isotropic noise of σ ∈ { 0, 5, 10 , 20 , 40 } pixels (relative to a 4096 -pixel slice). IoU at ≤ 10 slices degrades gracefully: 0.296 →0.293 →0.288 →0.276 →0.247 , and TCS gap closure stays ≥ 60% up to σ=20 px. DeCoDrift therefore tolerates the kind of anchor error that arises from noisy initial automatic segmentation, but a pathologically wrong anchor degrades to baseline behavior—the anchor regularizer cannot create signal that is not in p0.
+
+Runtime and overhead. On a single A5000, a vanilla SAM ViT-H prompt-feedback iteration takes 
+
+84 ±3 ms/object. DeCoDrift adds: attention-guided extraction ( 1.6 ms), proximal update (closed form, < 0.1 ms), candidate scoring ( 2.1 ms over K=3 candidates), soft persistence ( 0.3 ms). Total overhead is ∼4.1 ms (4.9%). Instrumentation hooks add a further 1.8 ms when active and can be disabled at deployment. For context, SAM 2 introduces streaming memory for video processing Ravi et al. [2024]; combining such memory-conditioned propagation with DeCoDrift is complementary and left to future work. 
+
+Practical baselines. We compare DeCoDrift to two non-oracular references on slices ≤ 10 :(i) SAM 2 video-style propagation initialized from the same first-slice automatic mask (no GT anchors): IoU 0.271 ± 0.041 , TCS 0.93 ; (ii) a centroid-tracker baseline (Kalman filter on mask centroids feeding box prompts): IoU 0.234 ± 0.026 , TCS 0.88 . DeCoDrift ( 0.296 ± 0.024 , TCS 0.96 )outperforms both at comparable runtime, while remaining a drop-in module for SAM rather than a replacement model. SAM 2’s memory bank is complementary; combining the two is promising future work. 
+
+# 7 Discussion 
+
+Attention–mask decoupling. Strikingly, CAMA-Dice is low for both methods ( 0.059 and 0.089 ): SAM’s decoder relies on distributed cues—boundary features, contextual landmarks, mid-level texture—rather than directly attending to the target interior, explaining why attention-based interven-tion affects dynamics (TCS, AAD) more readily than static overlap (CAMA). 
+
+Stability–adaptability trade-off. The oracle achieves TCS=0 .995 but its attention is essentially frozen and requires GT anchors. Method A is fully adaptive but drifts unboundedly. DeCoDrift attains TCS=0 .960 , closing 76.4% of the gap while preserving adaptive flexibility—and without ground truth. This realizes the sweet spot predicted by Proposition 1: drift is bounded by the proximal envelope but not eliminated. 
+
+Implications. Any system that iteratively queries a foundation model and feeds predictions back may exhibit analogous drift—chain-of-thought prompting Wei et al. [2022], iterative diffusion, multi-turn dialogue. Our framework is architecture-agnostic. 8Limitations. Evaluation is on a single primary dataset (MitoEM); we report SAM 2 and tracker baselines but a broader sweep across Lucchi Lucchi et al. [2012], ISBI Arganda-Carreras et al. [2015], and natural-image VOS benchmarks is left to future work. The oracle-anchored Method B requires GT and serves only as an upper bound. We analyze SAM ViT-H; SAM 2 Ravi et al. [2024], HQ-SAM Ke et al. [2023], and MedSAM Ma et al. [2024] are open. The DLR clamp τclamp =10 4 saturates for very small objects, motivating the log scaling we report; a bounded variant (e.g., DLR /(1+DLR) ) is a candidate refinement. λa, λ s are fixed; adapting them online from monitored AAD/TCS is a natural extension. 
+
+# 8 Conclusion 
+
+We presented the first systematic study of decoder coupling drift in iterative foundation segmentation. By instrumenting SAM’s decoder and defining ten coupling metrics, we showed iterative prompting suffers progressive attention decoupling—invisible from the output but strongly predictive of quality (|r|>0.95 ). Our analysis proved proximal anchoring reduces the effective spectral radius from ρ
+
+to (ρ+λs)/(1+ λa+λs). The resulting DeCoDrift module—no retraining, no extra data, no weight changes—closes 76.4% of the temporal stability gap, 27.9% of the attention drift gap, and improves IoU by 37.7% relative. 
+
+# Acknowledgments and Disclosure of Funding 
+
+Do not include this section in the anonymized submission, only in the final paper. Funding and competing interests will be disclosed per the NeurIPS 2026 funding-disclosure policy: https: //neurips.cc/Conferences/2026/PaperInformation/FundingDisclosure .
+
+# References 
+
+Kirillov, A., Mintun, E., Ravi, N., Mao, H., Rolland, C., Gustafson, L., Xiao, T., Whitehead, S., Berg, A. C., Lo, W.-Y., Dollár, P., and Girshick, R. Segment anything. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 4015–4026, 2023. https://openaccess.thecvf.com/ content/ICCV2023/html/Kirillov_Segment_Anything_ICCV_2023_paper.html .Ravi, N., Gabeur, V., Hu, Y.-T., Hu, R., Ryali, C., Ma, T., Khedr, H., Rädle, R., Rolland, C., Gustafson, L., Mintun, E., Pan, J., Alwala, K. V., Carion, N., Wu, C.-Y., Girshick, R., Dollár, P., and Feichtenhofer, C. SAM 2: Segment anything in images and videos. arXiv preprint arXiv:2408.00714 , 2024. https: //arxiv.org/abs/2408.00714 .Ke, L., Ye, M., Danelljan, M., Liu, Y., Tai, Y.-W., Tang, C.-K., and Yu, F. Segment anything in high quality. In Advances in Neural Information Processing Systems 36 (NeurIPS) , 2023. https://proceedings.neurips.cc/paper_files/paper/2023/hash/ 5f828e38160f31935cfe9f67503ad17c-Abstract-Conference.html .Wei, D., Lin, Z., Franco-Barranco, D., Wendt, N., Liu, X., Yin, W., Huang, X., Gupta, A., Jang, W.-D., Wang, X., Arganda-Carreras, I., Lichtman, J. W., and Pfister, H. MitoEM dataset: Large-scale 3D mitochondria instance segmentation from EM images. In Medical Image Computing and Computer Assisted Intervention – MICCAI 2020 , volume 12265, pages 66–76. Springer, 2020. https://link.springer.com/chapter/10. 1007/978-3-030-59722-1_7 .Ma, J., He, Y., Li, F., Han, L., You, C., and Wang, B. Segment anything in medical images. Nature Communica-tions , 15:654, 2024. https://www.nature.com/articles/s41467-024-44824-z .Mazurowski, M. A., Dong, H., Gu, H., Yang, J., Konz, N., and Zhang, Y. Segment anything model for medical image analysis: An experimental study. Medical Image Analysis , 89:102918, 2023. https: //www.sciencedirect.com/science/article/pii/S1361841523001780 .Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Attention is all you need. In Advances in Neural Information Processing Systems 30 (NeurIPS) , pages 5998–6008, 2017. https://papers.nips.cc/paper/2017/hash/ 3f5ee243547dee91fbd053c1c4a845aa-Abstract.html .
+
+9Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer, M., Heigold, G., Gelly, S., Uszkoreit, J., and Houlsby, N. An image is worth 16 × 16 words: Transformers for image recognition at scale. In International Conference on Learning Representations (ICLR) , 2021. 
+
+https://openreview.net/forum?id=YicbFdNTTy .Zhang, R., Jiang, Z., Guo, Z., Yan, S., Pan, J., Ma, X., Dong, H., Gao, P., and Li, H. Personalize segment anything model with one shot. arXiv preprint arXiv:2305.03048 , 2023. https://arxiv.org/abs/2305.03048 .Yang, J., Gao, M., Li, Z., Gao, S., Wang, F., and Zheng, F. Track anything: Segment anything meets videos. 
+
+arXiv preprint arXiv:2304.11968 , 2023. https://arxiv.org/abs/2304.11968 .Deng, R., Cui, C., Liu, Q., Yao, T., Remedios, L. W., Bao, S., Landman, B. A., Wheless, L. E., Coburn, L. A., Wilson, K. T., Wang, Y., Zhao, S., Fogo, A. B., Yang, H., Tang, Y., and Huo, Y. Segment anything model (SAM) for digital pathology: Assess zero-shot segmentation on whole slide imaging. arXiv preprint arXiv:2304.04155 , 2023. https://arxiv.org/abs/2304.04155 .Chen, T., Zhu, L., Deng, C., Cao, R., Wang, Y., Zhang, S., Li, Z., Sun, L., Zang, Y., and Mao, P. SAM-Adapter: Adapting segment anything in underperformed scenes. In Proceedings of the IEEE/CVF International Conference on Computer Vision Workshops (ICCVW) , pages 3367–3375, 2023. https://openaccess.thecvf.com/content/ICCV2023W/VCL/html/Chen_SAM-Adapter_ Adapting_Segment_Anything_in_Underperformed_Scenes_ICCVW_2023_paper.html .Wu, J., Ji, W., Liu, Y., Fu, H., Xu, M., Xu, Y., and Jin, Y. Medical SAM adapter: Adapting segment anything model for medical image segmentation. arXiv preprint arXiv:2304.12620 , 2023. https://arxiv.org/ abs/2304.12620 .Qiao, Y., Zhang, C., Kang, T., Kim, D., Zhang, C., and Hong, C. S. Robustness of SAM: Segment anything under corruptions and beyond. arXiv preprint arXiv:2306.07713 , 2023. https://arxiv.org/abs/2306.07713 .Sofiiuk, K., Petrov, I. A., and Konushin, A. Reviving iterative training with mask guidance for interactive segmentation. In 2022 IEEE International Conference on Image Processing (ICIP) , pages 3141–3145, 2022. 
+
+https://ieeexplore.ieee.org/document/9897365 .Oh, S. W., Lee, J.-Y., Xu, N., and Kim, S. J. Video object segmentation using space-time memory networks. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) ,pages 9226–9235, 2019. https://openaccess.thecvf.com/content_ICCV_2019/html/Oh_Video_ Object_Segmentation_Using_Space-Time_Memory_Networks_ICCV_2019_paper.html .Cheng, H. K. and Schwing, A. G. XMem: Long-term video object segmentation with an Atkinson–Shiffrin memory model. In Computer Vision – ECCV 2022 , pages 640–658. Springer, 2022. https://link. springer.com/chapter/10.1007/978-3-031-19815-1_37 .Cheng, B., Misra, I., Schwing, A. G., Kirillov, A., and Girshick, R. Masked-attention mask transformer for universal image segmentation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 1290–1299, 2022. https://openaccess.thecvf.com/content/CVPR2022/ html/Cheng_Masked-Attention_Mask_Transformer_for_Universal_Image_Segmentation_ CVPR_2022_paper.html .Abnar, S. and Zuidema, W. Quantifying attention flow in transformers. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics (ACL) , pages 4190–4197, 2020. https://aclanthology. org/2020.acl-main.385/ .Chefer, H., Gur, S., and Wolf, L. Transformer interpretability beyond attention visualization. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 782– 791, 2021. https://openaccess.thecvf.com/content/CVPR2021/html/Chefer_Transformer_ Interpretability_Beyond_Attention_Visualization_CVPR_2021_paper.html .Clark, K., Khandelwal, U., Levy, O., and Manning, C. D. What does BERT look at? An analysis of BERT’s attention. In Proceedings of the 2019 ACL Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP , pages 276–286, 2019. https://aclanthology.org/W19-4828/ .Chen, R. T. Q., Rubanova, Y., Bettencourt, J., and Duvenaud, D. K. Neural ordinary differential equations. In Advances in Neural Information Processing Systems 31 (NeurIPS) , pages 6571–6583, 2018. https: //papers.nips.cc/paper/2018/hash/69386f6bb1dfed68692a24c8686939b9-Abstract.html .Miller, J. and Hardt, M. Stable recurrent models. In International Conference on Learning Representations (ICLR) , 2019. https://openreview.net/forum?id=Hygxb2CqKm .
+
+10 Hardt, M., Recht, B., and Singer, Y. Train faster, generalize better: Stability of stochastic gradient descent. In 
+
+Proceedings of the 33rd International Conference on Machine Learning (ICML) , volume 48, pages 1225–1234. PMLR, 2016. https://proceedings.mlr.press/v48/hardt16.html .Parikh, N. and Boyd, S. Proximal algorithms. Foundations and Trends in Optimization , 1(3):127–239, 2014. 
+
+https://www.nowpublishers.com/article/Details/OPT-003 .Funke, J., Tschopp, F., Grisaitis, W., Sheridan, A., Singh, C., Saalfeld, S., and Turaga, S. C. Large scale image segmentation with structured loss based deep learning for connectome reconstruction. IEEE Transactions on Pattern Analysis and Machine Intelligence , 41(7):1669–1680, 2019. https://ieeexplore.ieee.org/ document/8364622 .Lee, K., Zung, J., Li, P., Jain, V., and Seung, H. S. Superhuman accuracy on the SNEMI3D connectomics challenge. arXiv preprint arXiv:1706.00120 , 2017. https://arxiv.org/abs/1706.00120 .Arganda-Carreras, I., Turaga, S. C., Berger, D. R., Cire¸ san, D., Giusti, A., Gambardella, L. M., Schmidhuber, J., Laptev, D., Dwivedi, S., Buhmann, J. M., Liu, T., Seyedhosseini, M., Tasdizen, T., Kamentsky, L., Burget, R., Uher, V., Tan, X., Sun, C., Pham, T. D., Bas, E., Uzunbas, M. G., Cardona, A., Schindelin, J., and Seung, H. S. Crowdsourcing the creation of image segmentation algorithms for connectomics. Frontiers in Neuroanatomy ,9:142, 2015. https://www.frontiersin.org/articles/10.3389/fnana.2015.00142/full .Lucchi, A., Smith, K., Achanta, R., Knott, G., and Fua, P. Supervoxel-based segmentation of mitochondria in EM image stacks with learned shape features. IEEE Transactions on Medical Imaging , 31(2):474–486, 2012. 
+
+https://pubmed.ncbi.nlm.nih.gov/21997252/ .Sun, Y., Wang, X., Liu, Z., Miller, J., Efros, A. A., and Hardt, M. Test-time training with self-supervision for generalization under distribution shifts. In Proceedings of the 37th International Conference on Machine Learning (ICML) , volume 119, pages 9229–9248. PMLR, 2020. https://proceedings.mlr.press/ v119/sun20b.html .Jia, M., Tang, L., Chen, B.-C., Cardie, C., Belongie, S., Hariharan, B., and Lim, S.-N. Visual prompt tuning. In 
+
+Computer Vision – ECCV 2022 , pages 709–727. Springer, 2022. https://link.springer.com/chapter/ 10.1007/978-3-031-19827-4_41 .Wei, J., Wang, X., Schuurmans, D., Bosma, M., Ichter, B., Xia, F., Chi, E. H., Le, Q. V., and Zhou, D. Chain-of-thought prompting elicits reasoning in large language models. In Advances in Neural Information Processing Systems 35 (NeurIPS) , pages 24824–24837, 2022. https://papers.nips.cc/paper_files/ paper/2022/hash/9d5609613524ecf4f15af0f7b31abca4-Abstract-Conference.html .Uddin, M. R., Nguyen, T.-H., Tabib, H. M. S., Gandhi, K., and Xu, M. Unsupervised multi-scale segmentation of cellular cryo-electron tomograms with a stable diffusion foundation model. bioRxiv , 2025.06.25.661425, 2025. https://www.biorxiv.org/content/10.1101/2025.06.25.661425v1 .
+
+# A Extended Explanation of Decoder-Coupling Metrics 
+
+This appendix provides a detailed description of every metric used in the paper, including its mathematical definition, implementation details, interpretation, ground-truth dependence, and known edge cases. The goal is to make the decoder-coupling analysis fully reproducible and to clarify why the proposed metrics are appropriate for studying closed-loop prompt feedback in foundation segmentation models. 
+
+A.1 Notation and Common Preprocessing 
+
+For each decoder call at iteration t, the frozen SAM mask decoder receives an image slice It and a prompt pt and returns a mask prediction Mt. The prompt pt contains the geometric information used by the decoder, namely the object centroid and bounding box, 
+
+pt = ( ct, b t), ct ∈ R2, bt = ( x1, y 1, x 2, y 2) ∈ R4. (6) The decoder instrumentation records attention tensors from the four decoder attention sites described in Section 3. Unless otherwise stated, the metric computation uses the final token-to-image attention map because this map is closest to the mask-generation stage. Let Ft ∈ RHf ×Wf denote the head-averaged final token-to-image attention map for the output mask token at iteration t. We convert 11 it into a non-negative spatial distribution by applying min–max normalization followed by sum normalization: 
+
+˜Ft(x) = Ft(x) − min y Ft(y)max y Ft(y) − min y Ft(y) + ϵ , At(x) = ˜Ft(x)
+
+P 
+
+> y
+
+˜Ft(y) + ϵ . (7) Here x indexes a spatial token in the decoder attention grid, and ϵ is a small numerical constant. In the formulas below, Ft denotes this normalized attention distribution At for readability. The target mask used for metric computation is denoted by Gt. When ground truth is available, Gt is the ground-truth object mask downsampled to the attention grid resolution Hf × Wf . When ground truth is not available, Gt is replaced by the predicted mask Mt downsampled to the same resolution. Thus, the same formulas can be used in both supervised analysis and deployment-time monitoring; however, the meaning changes. With ground truth, the metrics measure attention–target agreement. Without ground truth, they measure attention–prediction self-consistency. For comparisons involving two spatial distributions, we use the Jensen–Shannon divergence, 
+
+JS( P ∥Q) = 12 KL( P ∥R) + 12 KL( Q∥R), R = 12 (P + Q), (8) where both distributions are normalized to sum to one and smoothed by ϵ before computing the KL terms. JS divergence is symmetric and bounded, making it more stable than raw KL divergence for comparing sparse attention maps across iterations. 
+
+A.2 Cross-Attention Mask Alignment Definition. Cross-Attention Mask Alignment (CAMA) measures how much the decoder’s spatial attention overlaps with the target object region. We report both Dice-style and IoU-style variants: 
+
+CAMA -Dice( Ft, G t) = 2 P 
+
+> x
+
+Ft(x)Gt(x)
+
+P 
+
+> x
+
+Ft(x) + P 
+
+> x
+
+Gt(x) + ϵ , (9) 
+
+CAMA -IoU( Ft, G t) = 
+
+P 
+
+> x
+
+Ft(x)Gt(x)
+
+P 
+
+> x
+
+Ft(x) + P 
+
+> x
+
+Gt(x) − P 
+
+> x
+
+Ft(x)Gt(x) + ϵ . (10) Because Ft is a soft attention distribution and Gt is a binary or soft downsampled mask, these are soft-overlap scores rather than standard binary segmentation scores. 
+
+Intuition. CAMA answers the question: is the decoder looking at the object it is supposed to segment? A higher CAMA value means more attention mass lies inside the target mask. A lower value means that the decoder may be using background, boundary, contextual, or irrelevant regions to produce the mask. 
+
+Interpretation. CAMA should be interpreted comparatively rather than absolutely. In SAM-style decoders, attention is often distributed over object boundaries, contextual landmarks, and support regions rather than being concentrated only inside the object. Therefore, even a good segmentation can have a modest CAMA value. The most meaningful use of CAMA in this paper is to compare methods under the same dataset, decoder, resolution, and prompt protocol. A method with consistently higher CAMA is better aligned with the target object, but low CAMA alone does not prove segmentation failure. 
+
+Direction. Higher is better. We report CAMA-Dice and CAMA-IoU with ↑ arrows in the result tables. 
+
+Ground-truth dependence. With ground truth, CAMA measures attention–target alignment. With-out ground truth, replacing Gt with the predicted mask measures attention–prediction agreement. The latter is useful as a self-consistency diagnostic but cannot detect the case where both the prediction and attention have drifted together to the wrong object. 12 A.3 Attention Anchor Drift Definition. Attention Anchor Drift (AAD) measures how far the current attention map has moved away from the initial anchor attention map: 
+
+AAD( Ft, F 0) = JS( Ft∥F0). (11) Here F0 is the attention map obtained from the first decoder call for the object, after alignment to the initial centroid frame. In practice, the initial attention map acts as an anchor describing where the decoder originally coupled to the object. 
+
+Intuition. AAD answers the question: how much has the decoder’s attention moved away from its initial object-specific reference? In a stable iterative segmentation loop, the prompt may adapt slightly from slice to slice, but the decoder should remain coupled to the same object. Large AAD indicates that the internal attention pattern has drifted away from the original object anchor. 
+
+Interpretation. A low AAD indicates stable attention anchoring. A high AAD indicates that the decoder may have shifted attention toward distractors, neighboring structures, or background regions. AAD is especially important in closed-loop prompting because prompt errors can accumulate: once the predicted mask shifts, the next prompt shifts, which can further shift attention. Thus, AAD is a direct internal signature of decoder coupling drift. 
+
+Direction. Lower is better. We report AAD with a ↓ arrow. 
+
+Ground-truth dependence. AAD is fully ground-truth-free. It only requires cached attention maps from the decoder. This makes it one of the most useful deployment-time monitoring metrics in the paper. 
+
+Edge cases. AAD can be high for legitimate reasons if the object undergoes a large appearance or shape change across slices. For this reason, AAD should be interpreted together with TCS and segmentation quality. A method is problematic when AAD increases while TCS decreases and prompt drift energy increases, because this combination suggests unstable feedback rather than natural object evolution. 
+
+A.4 Temporal Coupling Stability Definition. Temporal Coupling Stability (TCS) measures attention consistency between consecutive decoder calls: 
+
+TCS( Ft, F t−1) = 1 − JS( Ft∥Ft−1). (12) Because JS divergence is bounded, TCS is also bounded. Higher values indicate that the decoder’s attention map changes smoothly over time. 
+
+Intuition. TCS answers the question: does the decoder remain coupled to a similar visual region from one iteration to the next? In volumetric EM data, adjacent slices usually contain similar object structure. Therefore, abrupt attention changes are often a symptom of feedback instability. 
+
+Interpretation. High TCS indicates stable decoder coupling. Low TCS indicates that attention changes sharply between iterations. In the proposed framework, TCS is the clearest indicator of whether closed-loop prompting is dynamically stable. This is why DeCoDrift closes the largest fraction of the oracle gap for TCS: proximal anchoring directly suppresses abrupt prompt-induced attention changes. 
+
+Direction. Higher is better. We report TCS with a ↑ arrow. 
+
+Ground-truth dependence. TCS is fully ground-truth-free. It only requires the current and previous attention maps. This makes it suitable for online monitoring during inference. 13 Edge cases. Very high TCS is not always desirable. If TCS is nearly one because attention is completely frozen, the method may fail to adapt to genuine object motion or shape change. Therefore, TCS should be interpreted as a stability metric, not as a complete measure of segmentation accuracy. The desired behavior is high-but-not-rigid TCS: stable enough to prevent drift, but flexible enough to track real object changes. 
+
+A.5 Prompt Drift Energy Definition. Prompt Drift Energy (PDE) measures the geometric drift of the prompt relative to the initial prompt: 
+
+PDE( pt, p 0) = ∥ct − c0∥22
+
+diag( I)2 + λb (1 − IoU( bt, b 0)) , (13) where ct is the current centroid, bt is the current bounding box, diag( I) is the image diagonal used for scale normalization, and λb controls the relative contribution of bounding-box drift. 
+
+Intuition. PDE answers the question: how much has the prompt moved away from its initial object geometry? Since the prompt is the input to the next decoder call, prompt drift is the external geometric counterpart of internal attention drift. 
+
+Interpretation. Low PDE means that the prompt trajectory remains close to the initial object anchor. High PDE means that the centroid or bounding box has moved substantially. In closed-loop prompting, high PDE is dangerous because each prompt is generated from the previous mask. A small mask error can shift the next prompt; the shifted prompt can worsen the next mask; and this cycle can amplify over iterations. 
+
+Direction. Lower is better. We report PDE with a ↓ arrow. 
+
+Ground-truth dependence. PDE is ground-truth-free. It only requires the sequence of prompts. Therefore, it can be monitored in deployment without annotations. 
+
+Edge cases. If the true object moves substantially across slices, PDE may increase even when segmentation is correct. In the MitoEM setting, adjacent slices are structurally similar enough that large prompt drift is usually undesirable. For datasets with stronger object motion, PDE should be interpreted relative to an expected motion model or normalized by estimated object displacement. 
+
+A.6 Distractibility Leakage Ratio Definition. Distractibility Leakage Ratio (DLR) measures how much attention leaks outside the target object compared with attention inside the target object: 
+
+DLR( Ft, G t) = min 
+
+ P  
+
+> x
+
+Ft(x)(1 − Gt(x)) 
+
+P 
+
+> x
+
+Ft(x)Gt(x) + ϵ , τ clamp 
+
+
+
+, (14) where τclamp = 10 4. We report the logarithmic value, 
+
+log DLR = log (DLR + ϵ) , (15) for numerical stability and readability. 
+
+Intuition. DLR answers the question: is the decoder spending more attention outside the object than inside it? If most attention lies inside the target, DLR is low. If attention is dominated by background or distractor structures, DLR is high. 
+
+Interpretation. DLR is useful for identifying distractibility. In EM images, many structures have similar texture and contrast, so a decoder may attend to nearby membranes, mitochondria, or background patterns. A high DLR indicates that the decoder’s attention is not object-specific. However, DLR can be large when the object is very small, because the denominator P 
+
+> x
+
+Ft(x)Gt(x)
+
+can be tiny. This motivates both clamping and log scaling. 14 Direction. Lower is better. We report log DLR with a ↓ arrow. 
+
+Ground-truth dependence. With ground truth, DLR measures attention leakage outside the true object. Without ground truth, using the predicted mask measures leakage outside the model’s own prediction. The latter can detect inconsistency between attention and output, but it cannot detect drift if both attention and prediction have moved to the same wrong region. 
+
+Edge cases. DLR is sensitive to object size and mask downsampling. For very small objects, a small spatial misalignment between attention and mask can cause a large DLR. Therefore, DLR should usually be read together with CAMA and PICS rather than used alone. 
+
+A.7 Causal Coupling Drop Definition. Causal Coupling Drop (CCD) estimates whether the attended image tokens are function-ally important for the output mask. We first compute the baseline segmentation quality IoU base . Then we identify the top-k attended image tokens according to the head-averaged final token-to-image attention map, replace their image-token features with the per-token mean feature, and run the decoder again. Let the resulting segmentation quality be IoU ablated . CCD is 
+
+CCD = max (0 , IoU base − IoU ablated ) . (16) In our experiments, k = 5% of image tokens. 
+
+Intuition. CCD answers the question: does the prediction actually depend on the regions that the decoder attends to? CAMA and DLR are correlational: they compare attention with a mask. CCD is counterfactual: it asks what happens if the most-attended tokens are removed or neutralized. 
+
+Interpretation. High CCD means that ablating the most-attended tokens substantially damages the prediction. This indicates that the decoder is functionally coupled to those tokens. Low CCD means that the prediction changes little after ablation, suggesting that the attention map may not be causally important or that the decoder is relying on distributed redundant evidence. 
+
+Direction. Higher is generally better when the attention is also well aligned with the target. We report CCD with a ↑ arrow. 
+
+Ground-truth dependence. CCD uses an IoU comparison and therefore depends on a reference mask. With ground truth, it measures causal importance for true segmentation quality. Without ground truth, it can be computed against the original prediction as a consistency measure, but this deployment-time version should be interpreted more cautiously. 
+
+Why mean replacement rather than zeroing? Zeroing tokens can create an out-of-distribution feature pattern that the decoder never sees during normal inference. Mean replacement is a softer intervention: it removes token-specific information while preserving the approximate feature scale. This makes CCD a controlled counterfactual rather than a destructive corruption. 
+
+Edge cases. High CCD is not automatically good. If attention has drifted to a wrong object and the decoder relies on that wrong region, CCD can still be high. Therefore, CCD should be interpreted together with CAMA, DLR, and segmentation quality. The most desirable regime is high CCD plus high CAMA and low DLR. 
+
+A.8 Prompt-Image Coupling Score Definition. Prompt-Image Coupling Score (PICS) is a composite metric designed to summarize multiple aspects of decoder coupling in a single scalar: 
+
+PICS = CAMA Dice · TCS · (1 − AAD) ·
+
+
+
+1 − DLR 
+
+τclamp 
+
+
+
+. (17) All terms are oriented so that larger values indicate better coupling. 15 Intuition. PICS answers the question: is the decoder simultaneously aligned, stable, anchored, and non-distracted? It is intentionally multiplicative: if any one component is poor, the final score decreases. This reflects the idea that reliable closed-loop segmentation requires several conditions at once. Attention should overlap the target, remain stable over time, avoid drifting away from the anchor, and avoid leaking heavily to distractors. 
+
+Interpretation. A high PICS indicates strong overall prompt-image coupling. A low PICS identifies a failure in at least one coupling dimension. Because PICS is multiplicative, it is conservative: it does not allow excellent performance on one component to fully compensate for failure on another. This makes it useful as a summary diagnostic for drift. 
+
+Direction. Higher is better. We report PICS with a ↑ arrow. 
+
+Ground-truth dependence. PICS inherits the ground-truth dependence of CAMA and DLR. With ground truth, it measures overall coupling to the true object. Without ground truth, it becomes a self-consistency score between attention and prediction, combined with ground-truth-free stability terms. 
+
+Edge cases. Because PICS includes CAMA, it can remain low even when TCS and AAD are excellent if attention is distributed outside the object interior. This behavior is intentional: PICS is designed to reward stable and target-specific coupling, not merely temporal smoothness. 
+
+A.9 Attention Entropy Definition. Attention entropy (AE) measures the spatial uncertainty of the decoder attention map: 
+
+AE( Ft) = − X
+
+> x
+
+Ft(x) log( Ft(x) + ϵ). (18) For comparability across maps, entropy may also be normalized by log( Hf Wf ).
+
+Intuition. AE answers the question: is the decoder attention concentrated or diffuse? Low entropy means that attention is concentrated on a small number of spatial tokens. High entropy means that attention is spread across many tokens. 
+
+Interpretation. Entropy has no universally correct direction. Concentrated attention can indicate confident object-specific coupling, but it can also indicate over-fixation on a wrong distractor. Diffuse attention can indicate uncertainty, but it can also reflect the legitimate use of broad contextual cues. In this paper, AE is used primarily as a descriptive diagnostic and as a correlation variable for segmentation quality. 
+
+Ground-truth dependence. AE is ground-truth-free because it only requires the attention map. 
+
+A.10 Self–Cross Attention Correlation Definition. Spearman self–cross correlation (SCA) measures rank correlation between decoder self-attention structure and token-to-image cross-attention structure. Let St be the relevant mask-token row or aggregated mask-token interaction from the final decoder self-attention, and let Ct be the corresponding flattened token-to-image cross-attention summary. After resizing or aggregating to comparable vectors, SCA is 
+
+SCA = ρSpearman (St, C t), (19) where ρSpearman is the Spearman rank correlation. 
+
+Intuition. SCA answers the question: are the decoder’s internal token interactions consistent with where it attends in the image? A high correlation suggests that the decoder’s token-level reasoning and image-level attention are coordinated. A low or negative correlation suggests that self-attention and cross-attention are decoupled. 16 Interpretation. SCA is useful as an internal consistency metric. It does not directly measure segmentation quality, but it can reveal whether different parts of the decoder are moving coherently during iterative prompting. In a stable feedback loop, one expects prompt-token interactions and image-token attention to remain coordinated. 
+
+Ground-truth dependence. SCA is ground-truth-free. It only requires cached decoder attention tensors. 
+
+A.11 Summary of Metric Roles 
+
+The decoder-coupling metrics play complementary diagnostic roles. CAMA-Dice and CAMA-IoU measure soft overlap between decoder attention and the object mask; without ground truth they become attention–prediction self-consistency checks. AAD measures long-term divergence from the initial anchor attention and is fully ground-truth-free. TCS measures similarity between consecutive attention maps and is also ground-truth-free. PDE measures centroid and box drift in prompt space and can be computed from prompts alone. log DLR measures attention leakage outside the object; without ground truth it should be interpreted only as leakage outside the predicted mask. CCD measures the counterfactual importance of top-attended tokens and is strongest when evaluated against ground truth, though a prediction-consistency variant is possible. PICS combines alignment, stability, anchoring, and leakage into a conservative overall coupling score. AE describes whether attention is concentrated or diffuse, while SCA measures agreement between decoder self-attention and cross-attention structure; both AE and SCA are ground-truth-free internal diagnostics. 
+
+A.12 How the Metrics Should Be Read Together 
+
+No single metric fully characterizes closed-loop decoder behavior. The metrics are designed to be read as a diagnostic panel: • AAD + PDE diagnose drift. If both increase, the prompt trajectory and decoder attention are moving away from the initial object anchor. • TCS diagnoses temporal smoothness. If TCS decreases while AAD increases, the loop is not merely adapting; it is becoming dynamically unstable. • CAMA + DLR diagnose spatial target specificity. High CAMA and low DLR indicate that attention is concentrated on the object rather than distractors. • CCD tests whether attention is functionally important. It separates attention maps that are merely visually plausible from attention maps that the decoder actually uses. • PICS provides a conservative overall coupling score. It is most useful for summarizing whether a method is simultaneously stable, anchored, aligned, and non-distracted. The characteristic failure pattern of standard iterative prompting is high AAD, low TCS, high PDE, and reduced PICS. This pattern means that the decoder’s internal attention is drifting, the prompt geometry is drifting, and the feedback loop is amplifying small errors over iterations. The characteristic behavior of DeCoDrift is lower AAD, higher TCS, lower PDE, and higher PICS, indicating that proximal anchoring stabilizes the dynamic part of the loop while preserving enough flexibility for slice-to-slice adaptation. 
+
+A.13 Why Decoder-Coupling Metrics Are Needed in Addition to IoU and Dice 
+
+Standard segmentation metrics such as IoU, Dice, and HD95 evaluate only the final output mask. They do not explain why an iterative foundation-model pipeline succeeds or fails. In closed-loop prompting, two methods can have similar IoU at an early iteration but very different internal stability. One method may remain coupled to the target and therefore continue to perform well; another may already show attention drift that only becomes visible in the output after several more iterations. The decoder-coupling metrics address this gap. AAD and TCS expose internal attention dynamics before output failure becomes severe. PDE connects internal attention drift to external prompt drift. DLR and CAMA distinguish target-specific attention from distractor-driven attention. CCD tests whether attended regions causally affect the prediction. PICS combines these signals into a single 17 conservative summary. Together, these metrics make it possible to analyze the iterative segmentation process as a feedback system rather than as a sequence of independent mask predictions. 
+
+A.14 Aggregation and Statistical Reporting 
+
+Metrics are computed per decoder call. A decoder call is indexed by method, slice, object, and iteration. For method comparisons, we use paired observations whenever possible: the same slice, object, and iteration are compared across methods. This pairing reduces variance due to object size, morphology, and slice-specific image quality. For each metric, the main tables report the mean and standard deviation across paired decoder calls. Significance is assessed using two-sided paired permutation tests. The null hypothesis is that swapping method labels within each pair does not change the mean difference. This test is appropriate because it does not require normality of metric distributions, which is important for skewed quantities such as DLR and CCD. When metrics are correlated with segmentation quality, we report both Pearson correlation and Spear-man rank correlation. Pearson correlation measures linear association, while Spearman correlation measures monotonic association and is more robust to nonlinear scaling and outliers. The per-slice correlations show whether aggregate decoder behavior predicts aggregate segmentation quality. The per-call correlations test whether the same relationship holds at the level of individual decoder calls. 
+
+A.15 Practical Deployment Guidance 
+
+At deployment time, ground-truth masks are unavailable. Therefore, the most practical online monitoring metrics are AAD, TCS, PDE, AE, and SCA. These can be computed directly from prompts and cached attention tensors. A practical monitoring pipeline can use the following rules: • If AAD increases steadily , the decoder is drifting away from its initial object anchor. • If TCS drops sharply , the current prompt update may have caused an unstable attention jump. • If PDE increases sharply , the prompt geometry may have moved too far from the object trajectory. • If AAD and PDE increase together , the system should strengthen anchor regularization or trigger re-initialization. • If TCS is extremely high but segmentation stops adapting , the system may be over-regularized and should reduce smoothness or anchor weight. CAMA, DLR, CCD, and PICS can still be computed using the predicted mask in place of ground truth. In that setting, they should be treated as self-consistency checks rather than accuracy measures. For example, low predicted-mask CAMA indicates that the decoder attention and its own output disagree; however, high predicted-mask CAMA does not guarantee correctness because both attention and prediction may be wrong in the same way. 18
