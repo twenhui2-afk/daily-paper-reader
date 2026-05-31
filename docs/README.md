@@ -6,55 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-30
-- 运行时间：2026-05-31 04:11:13 UTC+8
+- 最新运行日期：2026-05-31
+- 运行时间：2026-06-01 04:32:31 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Universal Boosts, Specific Suppressors: Sparse Autoencoder Steering of Medical Vision-Language Models》（6.8/10）, 《Attenuation-Resilient Alternating Optimization for Laparoscopic Liver Landmark Detection》（6.7/10）, 《A multifractal-based masked auto-encoder: an application to medical images》（6.6/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《A proof of the $4,7$ cases of Sylvester's conjecture on cube sums》（8.3/10）, 《On modular inequalities for plane projective curves》（8.2/10）
+- 速读：《Nonlocal problem for Laplace equation in Bochner spaces》（7.4/10）, 《The strong monodromy conjecture for hyperplane arrangements》（7.3/10）, 《Different Statistical Perspectives for Understanding Generalisation in Graph Neural Networks》（7.3/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/30/README](/202605/30/README)
+- 详情：[/202605/31/README](/202605/31/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [A proof of the $4,7$ cases of Sylvester's conjecture on cube sums](/202605/31/2605.25917v2-a-proof-of-the-47-cases-of-sylvesters-conjecture-on-cube-sums)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
+2. [On modular inequalities for plane projective curves](/202605/31/2605.26237v1-on-modular-inequalities-for-plane-projective-curves)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Universal Boosts, Specific Suppressors: Sparse Autoencoder Steering of Medical Vision-Language Models](/202605/30/2605.24977v1-universal-boosts-specific-suppressors-sparse-autoencoder-steering-of-medical-vision-language-models)  
+1. [Nonlocal problem for Laplace equation in Bochner spaces](/202605/31/2605.25761v1-nonlocal-problem-for-laplace-equation-in-bochner-spaces)  
+   标签：评分：7.4/10
+   evidence：检索回退候选
+2. [The strong monodromy conjecture for hyperplane arrangements](/202605/31/2605.25335v2-the-strong-monodromy-conjecture-for-hyperplane-arrangements)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+3. [Different Statistical Perspectives for Understanding Generalisation in Graph Neural Networks](/202605/31/2605.25452v1-different-statistical-perspectives-for-understanding-generalisation-in-graph-neural-networks)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+4. [The strong monodromy conjecture for hyperplane arrangements](/202605/31/2605.25335v1-the-strong-monodromy-conjecture-for-hyperplane-arrangements)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+5. [Benchmarking Transparent Conductors](/202605/31/2605.25904v1-benchmarking-transparent-conductors)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+6. [Finite-$N$ BMN index across all vacuum sectors](/202605/31/2605.25560v1-finite-n-bmn-index-across-all-vacuum-sectors)  
+   标签：评分：7.1/10
+   evidence：检索回退候选
+7. [Broadband Hyperspectral 3D Imaging using Dispersed Structured Light](/202605/31/2605.25757v1-broadband-hyperspectral-3d-imaging-using-dispersed-structured-light)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+8. [DIVA: Harnessing the Representation Divergence in Unified Multimodal Models for Mutual Reinforcement](/202605/31/2605.25328v1-diva-harnessing-the-representation-divergence-in-unified-multimodal-models-for-mutual-reinforcement)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+9. [Identification and Estimation of Semiparametric Multilayered Sample Selection Models](/202605/31/2605.25519v1-identification-and-estimation-of-semiparametric-multilayered-sample-selection-models)  
    标签：评分：6.8/10
    evidence：检索回退候选
-2. [Attenuation-Resilient Alternating Optimization for Laparoscopic Liver Landmark Detection](/202605/30/2605.26630v1-attenuation-resilient-alternating-optimization-for-laparoscopic-liver-landmark-detection)  
+10. [Positivity in classical enumerative geometry: a case study in synchronized AI-assisted mathematics](/202605/31/2605.25271v1-positivity-in-classical-enumerative-geometry-a-case-study-in-synchronized-ai-assisted-mathematics)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+11. [$S$-duality, boundary states, and higher-form symmetries on ALE spaces](/202605/31/2605.26224v1-s-duality-boundary-states-and-higher-form-symmetries-on-ale-spaces)  
    标签：评分：6.7/10
-   evidence：检索回退候选
-3. [A multifractal-based masked auto-encoder: an application to medical images](/202605/30/2605.26287v1-a-multifractal-based-masked-auto-encoder-an-application-to-medical-images)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-4. [CRISP -- Clustering-Based Redundancy-Reduced Instance Sampling for Pathology Case Representation and Retrieval](/202605/30/2605.24253v1-crisp----clustering-based-redundancy-reduced-instance-sampling-for-pathology-case-representation-and-retrieval)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-5. [SliceWorld: A Predictive and Controllable World-State Model for CT Report Generation](/202605/30/2605.24371v1-sliceworld-a-predictive-and-controllable-world-state-model-for-ct-report-generation)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-6. [A Multimodal 3D Foundation Model for Light Sheet Fluorescence Microscopy Enables Few-Shot Segmentation, Classification, and Deblurring](/202605/30/2605.26026v1-a-multimodal-3d-foundation-model-for-light-sheet-fluorescence-microscopy-enables-few-shot-segmentation-classification-and-deblurring)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-7. [Context-driven Missing-Modality Learning for Robust Medical Diagnosis with Image-Tabular Data](/202605/30/2605.25968v1-context-driven-missing-modality-learning-for-robust-medical-diagnosis-with-image-tabular-data)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-8. [MORI-Seg: Learning Morphological Geometry for Instance Segmentation without Instance Annotations](/202605/30/2605.28261v1-mori-seg-learning-morphological-geometry-for-instance-segmentation-without-instance-annotations)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-9. [Exploiting Longitudinal Context in Clinician-Verified Interactive Lesion Tracking](/202605/30/2605.23118v1-exploiting-longitudinal-context-in-clinician-verified-interactive-lesion-tracking)  
-   标签：评分：6.3/10
-   evidence：检索回退候选
-10. [Not All NVFP4 QAT Recipes Are Equal: How Architecture and Scale Shape Model Quality for Anomaly Segmentation](/202605/30/2605.27616v1-not-all-nvfp4-qat-recipes-are-equal-how-architecture-and-scale-shape-model-quality-for-anomaly-segmentation)  
-   标签：评分：6.3/10
-   evidence：检索回退候选
-11. [Image Thresholding: Understanding Bias of Evaluation Metrics towards Specific Evaluation Functions](/202605/30/2605.27132v1-image-thresholding-understanding-bias-of-evaluation-metrics-towards-specific-evaluation-functions)  
-   标签：评分：6.2/10
    evidence：检索回退候选
 
 
