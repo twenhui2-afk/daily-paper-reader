@@ -6,61 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-31
-- 运行时间：2026-06-01 04:32:31 UTC+8
+- 最新运行日期：2026-06-01
+- 运行时间：2026-06-02 05:54:41 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《A proof of the $4,7$ cases of Sylvester's conjecture on cube sums》（8.3/10）, 《On modular inequalities for plane projective curves》（8.2/10）
-- 速读：《Nonlocal problem for Laplace equation in Bochner spaces》（7.4/10）, 《The strong monodromy conjecture for hyperplane arrangements》（7.3/10）, 《Different Statistical Perspectives for Understanding Generalisation in Graph Neural Networks》（7.3/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《Pólya--Schur problems and free probability》（8.6/10）, 《Real roots of non-centered random polynomials》（8.5/10）
+- 速读：《Inhomogeneous Approximation by Sums of Roots》（8.2/10）, 《Global optimization of quadratic root-difference minimization under elliptic annulus constraints》（8.2/10）, 《Counterexamples to Stanley's conjecture on dimer coverings》（8.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202605/31/README](/202605/31/README)
+- 详情：[/202606/01/README](/202606/01/README)
 
 ### 精读区论文标签
-1. [A proof of the $4,7$ cases of Sylvester's conjecture on cube sums](/202605/31/2605.25917v2-a-proof-of-the-47-cases-of-sylvesters-conjecture-on-cube-sums)  
+1. [Pólya--Schur problems and free probability](/202606/01/2605.31356v1-plya--schur-problems-and-free-probability)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
+2. [Real roots of non-centered random polynomials](/202606/01/2605.26402v1-real-roots-of-non-centered-random-polynomials)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+3. [Integrality of Averages of Roots of Unity and Perfect Isometries](/202606/01/2605.31161v1-integrality-of-averages-of-roots-of-unity-and-perfect-isometries)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+4. [The Q-Calculus: A Quaternion-Based Laws of Form System](/202606/01/2605.29246v1-the-q-calculus-a-quaternion-based-laws-of-form-system)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+5. [Lightning Plus Polynomial Approximation: Optimal Root-Exponential Convergence for Singular Functions in Corner Domains](/202606/01/2605.30796v1-lightning-plus-polynomial-approximation-optimal-root-exponential-convergence-for-singular-functions-in-corner-domains)  
    标签：评分：8.3/10
    evidence：检索回退候选
-2. [On modular inequalities for plane projective curves](/202605/31/2605.26237v1-on-modular-inequalities-for-plane-projective-curves)  
-   标签：评分：8.2/10
+6. [Partial theta-series and branching rules for the $\sl(3)$ parabolic Verma modules](/202606/01/2605.26946v1-partial-theta-series-and-branching-rules-for-the-sl3-parabolic-verma-modules)  
+   标签：评分：8.3/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Nonlocal problem for Laplace equation in Bochner spaces](/202605/31/2605.25761v1-nonlocal-problem-for-laplace-equation-in-bochner-spaces)  
-   标签：评分：7.4/10
+1. [Inhomogeneous Approximation by Sums of Roots](/202606/01/2605.27233v1-inhomogeneous-approximation-by-sums-of-roots)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-2. [The strong monodromy conjecture for hyperplane arrangements](/202605/31/2605.25335v2-the-strong-monodromy-conjecture-for-hyperplane-arrangements)  
-   标签：评分：7.3/10
+2. [Global optimization of quadratic root-difference minimization under elliptic annulus constraints](/202606/01/2605.29294v1-global-optimization-of-quadratic-root-difference-minimization-under-elliptic-annulus-constraints)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-3. [Different Statistical Perspectives for Understanding Generalisation in Graph Neural Networks](/202605/31/2605.25452v1-different-statistical-perspectives-for-understanding-generalisation-in-graph-neural-networks)  
-   标签：评分：7.3/10
+3. [Counterexamples to Stanley's conjecture on dimer coverings](/202606/01/2605.28195v1-counterexamples-to-stanleys-conjecture-on-dimer-coverings)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-4. [The strong monodromy conjecture for hyperplane arrangements](/202605/31/2605.25335v1-the-strong-monodromy-conjecture-for-hyperplane-arrangements)  
-   标签：评分：7.2/10
+4. [Time Series Causal Discovery via Context-Conditioned and Causality-Augmented Pretraining](/202606/01/2605.26759v1-time-series-causal-discovery-via-context-conditioned-and-causality-augmented-pretraining)  
+   标签：评分：8.1/10
    evidence：检索回退候选
-5. [Benchmarking Transparent Conductors](/202605/31/2605.25904v1-benchmarking-transparent-conductors)  
-   标签：评分：7.2/10
+5. [A Radius-Sensitive Approximation Algorithm for Connected Submodular Maximization](/202606/01/2605.30053v1-a-radius-sensitive-approximation-algorithm-for-connected-submodular-maximization)  
+   标签：评分：7.9/10
    evidence：检索回退候选
-6. [Finite-$N$ BMN index across all vacuum sectors](/202605/31/2605.25560v1-finite-n-bmn-index-across-all-vacuum-sectors)  
-   标签：评分：7.1/10
+6. [Decision-focused learning for optimal PV-Battery scheduling](/202606/01/2605.28340v1-decision-focused-learning-for-optimal-pv-battery-scheduling)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-7. [Broadband Hyperspectral 3D Imaging using Dispersed Structured Light](/202605/31/2605.25757v1-broadband-hyperspectral-3d-imaging-using-dispersed-structured-light)  
-   标签：评分：6.9/10
+7. [A Continuum of Small-cap Decouplings and Exponential Sums for the Moment Curve in $\mathbb{R}^4$](/202606/01/2605.27065v1-a-continuum-of-small-cap-decouplings-and-exponential-sums-for-the-moment-curve-in-mathbbr4)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-8. [DIVA: Harnessing the Representation Divergence in Unified Multimodal Models for Mutual Reinforcement](/202605/31/2605.25328v1-diva-harnessing-the-representation-divergence-in-unified-multimodal-models-for-mutual-reinforcement)  
-   标签：评分：6.9/10
+8. [Complex spectrum of the partial theta function](/202606/01/2605.29991v2-complex-spectrum-of-the-partial-theta-function)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-9. [Identification and Estimation of Semiparametric Multilayered Sample Selection Models](/202605/31/2605.25519v1-identification-and-estimation-of-semiparametric-multilayered-sample-selection-models)  
+9. [Two roles of Alexander in two Kashaev phases](/202606/01/2605.31588v1-two-roles-of-alexander-in-two-kashaev-phases)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Positivity in classical enumerative geometry: a case study in synchronized AI-assisted mathematics](/202605/31/2605.25271v1-positivity-in-classical-enumerative-geometry-a-case-study-in-synchronized-ai-assisted-mathematics)  
+10. [The $μ$-Trace System](/202606/01/2605.31019v1-the--trace-system)  
    标签：评分：6.8/10
    evidence：检索回退候选
-11. [$S$-duality, boundary states, and higher-form symmetries on ALE spaces](/202605/31/2605.26224v1-s-duality-boundary-states-and-higher-form-symmetries-on-ale-spaces)  
-   标签：评分：6.7/10
+11. [Musings on the Riemann Hypothesis](/202606/01/2605.30767v1-musings-on-the-riemann-hypothesis)  
+   标签：评分：6.8/10
    evidence：检索回退候选
 
 
