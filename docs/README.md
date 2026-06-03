@@ -6,73 +6,67 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-02
-- 运行时间：2026-06-03 06:51:12 UTC+8
+- 最新运行日期：2026-06-03
+- 运行时间：2026-06-04 06:47:31 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：15
+- 精读区：4
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Wide Regular Subalgebras of Symmetrizable Kac-Moody Algebras and an Extension of Schur's Lemma》（8.6/10）, 《ROG-Grasp: Root-Oriented Geometry for Robotic Grasping and Placement》（8.5/10）
-- 速读：《The World's Fastest Matching Engine Algorithm》（8.3/10）, 《PR2: Predictive Routing Replay for MoE-Based LLM Reinforcement Learning》（8.3/10）, 《Handling Control System Optimality》（8.2/10）
+- 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
+- 精读：《Construction of cyclic codes with large minimum distance from power functions over odd characteristic finite fields》（8.3/10）, 《Beyond Edge Coverage: Per-Task Data-Flow Extraction at Kernel Function Boundaries via LLVM》（8.2/10）
+- 速读：《Infinitely many holes in connectedness loci for collinear affine iterated function systems》（7.9/10）, 《A Sharp Reverse Minkowski Inequality for the Gaussian Mass of Integral Unimodular Lattices Through Rank $32$》（7.9/10）, 《Tame Galois Groups, Linking Numbers and Mildness》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/02/README](/202606/02/README)
+- 详情：[/202606/03/README](/202606/03/README)
 
 ### 精读区论文标签
-1. [Wide Regular Subalgebras of Symmetrizable Kac-Moody Algebras and an Extension of Schur's Lemma](/202606/02/2606.01371v1-wide-regular-subalgebras-of-symmetrizable-kac-moody-algebras-and-an-extension-of-schurs-lemma)  
-   标签：评分：8.6/10
+1. [Construction of cyclic codes with large minimum distance from power functions over odd characteristic finite fields](/202606/03/2606.03638v1-construction-of-cyclic-codes-with-large-minimum-distance-from-power-functions-over-odd-characteristic-finite-fields)  
+   标签：评分：8.3/10
    evidence：检索回退候选
-2. [ROG-Grasp: Root-Oriented Geometry for Robotic Grasping and Placement](/202606/02/2606.00449v1-rog-grasp-root-oriented-geometry-for-robotic-grasping-and-placement)  
-   标签：评分：8.5/10
+2. [Beyond Edge Coverage: Per-Task Data-Flow Extraction at Kernel Function Boundaries via LLVM](/202606/03/2606.00455v1-beyond-edge-coverage-per-task-data-flow-extraction-at-kernel-function-boundaries-via-llvm)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-3. [The Triple $T\bar{T}$-Like Flow in Quantum Field Theories: Irrelevant, Marginal, and Relevant](/202606/02/2606.00536v1-the-triple-tbart-like-flow-in-quantum-field-theories-irrelevant-marginal-and-relevant)  
-   标签：评分：8.5/10
+3. [State-Space Modelling and Analysis](/202606/03/2606.00699v1-state-space-modelling-and-analysis)  
+   标签：评分：8.0/10
    evidence：检索回退候选
-4. [PropLLM: Propagation-Aware Scene Reconstruction for Network Fault Diagnosis](/202606/02/2606.00582v1-propllm-propagation-aware-scene-reconstruction-for-network-fault-diagnosis)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-5. [Kleshchev multipartitions, affine Mirković-Vilonen polytopes, and representations of KLR algebras in type ${\tt A}^{(1)}_1$](/202606/02/2606.00421v1-kleshchev-multipartitions-affine-mirkovi-vilonen-polytopes-and-representations-of-klr-algebras-in-type-tt-a11)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-6. [Tree Containment Parameterized by Scanwidth](/202606/02/2605.31071v1-tree-containment-parameterized-by-scanwidth)  
+4. [Linear causality and stability constraints on relativistic second-order magnetohydrodynamics](/202606/03/2606.00649v1-linear-causality-and-stability-constraints-on-relativistic-second-order-magnetohydrodynamics)  
    标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [The World's Fastest Matching Engine Algorithm](/202606/02/2606.01183v1-the-worlds-fastest-matching-engine-algorithm)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-2. [PR2: Predictive Routing Replay for MoE-Based LLM Reinforcement Learning](/202606/02/2606.00395v1-pr2-predictive-routing-replay-for-moe-based-llm-reinforcement-learning)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-3. [Handling Control System Optimality](/202606/02/2606.00632v1-handling-control-system-optimality)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [Confused ChatGPT: Cross-App Context Poisoning via First-Party APIs](/202606/02/2606.00485v1-confused-chatgpt-cross-app-context-poisoning-via-first-party-apis)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-5. [Most Subradiant Bound Photon Pairs from Chirality-Mediated Dispersion Softening](/202606/02/2606.01146v1-most-subradiant-bound-photon-pairs-from-chirality-mediated-dispersion-softening)  
+1. [Infinitely many holes in connectedness loci for collinear affine iterated function systems](/202606/03/2606.01467v1-infinitely-many-holes-in-connectedness-loci-for-collinear-affine-iterated-function-systems)  
    标签：评分：7.9/10
    evidence：检索回退候选
-6. [When Hard Negatives Hurt: Bridging the Generative-Discriminative Gap in Hard Negative Synthesis for Retrieval](/202606/02/2606.01304v1-when-hard-negatives-hurt-bridging-the-generative-discriminative-gap-in-hard-negative-synthesis-for-retrieval)  
+2. [A Sharp Reverse Minkowski Inequality for the Gaussian Mass of Integral Unimodular Lattices Through Rank $32$](/202606/03/2606.01347v1-a-sharp-reverse-minkowski-inequality-for-the-gaussian-mass-of-integral-unimodular-lattices-through-rank-32)  
    标签：评分：7.9/10
    evidence：检索回退候选
-7. [An extremal problem for completely unclustered Burrows-Wheeler images](/202606/02/2606.01267v1-an-extremal-problem-for-completely-unclustered-burrows-wheeler-images)  
+3. [Tame Galois Groups, Linking Numbers and Mildness](/202606/03/2606.01083v1-tame-galois-groups-linking-numbers-and-mildness)  
    标签：评分：7.8/10
    evidence：检索回退候选
-8. [SweetFruit: A Two-Stage Mobile Sensing System for Real-Time Fruit Sugar Estimation](/202606/02/2606.01231v1-sweetfruit-a-two-stage-mobile-sensing-system-for-real-time-fruit-sugar-estimation)  
-   标签：评分：7.8/10
+4. [Leaf Spectral Reflectance Prediction Using Multi-Head Attention Neural Networks](/202606/03/2606.01432v1-leaf-spectral-reflectance-prediction-using-multi-head-attention-neural-networks)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-9. [ASAP: Advancing Medical Volumetric Representation Learning with Anatomy-aware Semantically-adaptive Pre-training](/202606/02/2606.00602v1-asap-advancing-medical-volumetric-representation-learning-with-anatomy-aware-semantically-adaptive-pre-training)  
+5. [Beyond the RF Paradigm: Rydberg Atomic Receivers for Next-Generation IoT](/202606/03/2606.01263v1-beyond-the-rf-paradigm-rydberg-atomic-receivers-for-next-generation-iot)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+6. [The art of counterpoint: a Mazzola-type three-voice first-species counterpoint model](/202606/03/2606.01102v1-the-art-of-counterpoint-a-mazzola-type-three-voice-first-species-counterpoint-model)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+7. [Quality-Guided Semi-Supervised Learning for Medical Image Segmentation](/202606/03/2606.01753v1-quality-guided-semi-supervised-learning-for-medical-image-segmentation)  
    标签：评分：6.9/10
    evidence：检索回退候选
-10. [Single-Channel Tissue Segmentation via Cross-Modal Distillation from Foundation Models](/202606/02/2606.00928v1-single-channel-tissue-segmentation-via-cross-modal-distillation-from-foundation-models)  
-   标签：评分：6.8/10
+8. [Flexible Control of 3D CT Generation via Text and Semantically-Defined Segmentation Prompts](/202606/03/2606.00967v1-flexible-control-of-3d-ct-generation-via-text-and-semantically-defined-segmentation-prompts)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-11. [Cohort-Scale Neural Atlases of Ultrasound Video](/202606/02/2606.00890v1-cohort-scale-neural-atlases-of-ultrasound-video)  
+9. [Sparse-View Lung Nodule Volumetry from Digitally Reconstructed Radiographs via AReT: Anatomy-Regularized TensoRF](/202606/03/2606.02639v1-sparse-view-lung-nodule-volumetry-from-digitally-reconstructed-radiographs-via-aret-anatomy-regularized-tensorf)  
    标签：评分：6.6/10
+   evidence：检索回退候选
+10. [Segment-driven Structural Induction and Semantic Alignment for Heterogeneous Tabular Representation](/202606/03/2606.01890v1-segment-driven-structural-induction-and-semantic-alignment-for-heterogeneous-tabular-representation)  
+   标签：评分：6.5/10
+   evidence：检索回退候选
+11. [Simple Token-Efficient Vision-Language Model for Case-level Pathology Synoptic Report Generation](/202606/03/2605.30716v1-simple-token-efficient-vision-language-model-for-case-level-pathology-synoptic-report-generation)  
+   标签：评分：6.5/10
    evidence：检索回退候选
 
 
