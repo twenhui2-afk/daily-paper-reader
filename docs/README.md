@@ -6,58 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-05
-- 运行时间：2026-06-06 05:10:34 UTC+8
+- 最新运行日期：2026-06-06
+- 运行时间：2026-06-07 05:08:44 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《Large AI Models in Dental Healthcare: From General-Purpose Systems to Domain-Specific Foundation Models》（8.0/10）
-- 速读：《Deep Learning-based 3D Oral Cavity Reconstruction Using 2D Intraoral Images》（7.9/10）, 《ROBUST-WT: Robust Uncertainty-aware Segmentation Transform via Whitening and Training Enhancements》（7.9/10）, 《BiSegMamba: Efficient Bidirectional Tri-Oriented Mamba for 3D Medical Image Segmentation》（7.8/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Pre-Deployment Robustness Stress Testing for CT Segmentation Systems Using Clinically Motivated Multi-Corruption Augmentation》（7.0/10）, 《XSSR: Cross-Domain Self-Supervised Representative Selection for Efficient Annotation in Medical Image Segmentation》（7.0/10）, 《CDPM-Align: Multi-Scale Guidance-Aligned Diffusion Pretraining for Robust Few-Shot Anatomical Landmark Detection》（6.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/05/README](/202606/05/README)
+- 详情：[/202606/06/README](/202606/06/README)
 
 ### 精读区论文标签
-1. [Large AI Models in Dental Healthcare: From General-Purpose Systems to Domain-Specific Foundation Models](/202606/05/2606.02914v2-large-ai-models-in-dental-healthcare-from-general-purpose-systems-to-domain-specific-foundation-models)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Deep Learning-based 3D Oral Cavity Reconstruction Using 2D Intraoral Images](/202606/05/2606.05998v1-deep-learning-based-3d-oral-cavity-reconstruction-using-2d-intraoral-images)  
-   标签：评分：7.9/10
+1. [Pre-Deployment Robustness Stress Testing for CT Segmentation Systems Using Clinically Motivated Multi-Corruption Augmentation](/202606/06/2606.00491v1-pre-deployment-robustness-stress-testing-for-ct-segmentation-systems-using-clinically-motivated-multi-corruption-augmentation)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-2. [ROBUST-WT: Robust Uncertainty-aware Segmentation Transform via Whitening and Training Enhancements](/202606/05/2606.03069v1-robust-wt-robust-uncertainty-aware-segmentation-transform-via-whitening-and-training-enhancements)  
-   标签：评分：7.9/10
+2. [XSSR: Cross-Domain Self-Supervised Representative Selection for Efficient Annotation in Medical Image Segmentation](/202606/06/2606.04301v1-xssr-cross-domain-self-supervised-representative-selection-for-efficient-annotation-in-medical-image-segmentation)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-3. [BiSegMamba: Efficient Bidirectional Tri-Oriented Mamba for 3D Medical Image Segmentation](/202606/05/2605.30972v1-bisegmamba-efficient-bidirectional-tri-oriented-mamba-for-3d-medical-image-segmentation)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-4. [GLINT: Sparsely Gated Vision-Language Alignment for Fine-Grained Radiology Representations](/202606/05/2606.03180v1-glint-sparsely-gated-vision-language-alignment-for-fine-grained-radiology-representations)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-5. [MS-DKC: A Dataset Knowledge Card Framework for Designing and Adapting Medical Image Segmentation Models](/202606/05/2606.06103v1-ms-dkc-a-dataset-knowledge-card-framework-for-designing-and-adapting-medical-image-segmentation-models)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-6. [PathAR: Structure-First Autoregressive Synthesis of Multimodal Pathology Images](/202606/05/2606.01543v1-pathar-structure-first-autoregressive-synthesis-of-multimodal-pathology-images)  
-   标签：评分：7.7/10
-   evidence：检索回退候选
-7. [Motion-Guided Causal Disentanglement for Robust Multi-View Cine Cardiac MRI Diagnosis](/202606/05/2606.04414v1-motion-guided-causal-disentanglement-for-robust-multi-view-cine-cardiac-mri-diagnosis)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-8. [A New Angle on Bones: Robust Pose Estimation in X-Ray and Ultrasound](/202606/05/2606.04700v1-a-new-angle-on-bones-robust-pose-estimation-in-x-ray-and-ultrasound)  
+3. [CDPM-Align: Multi-Scale Guidance-Aligned Diffusion Pretraining for Robust Few-Shot Anatomical Landmark Detection](/202606/06/2606.04898v1-cdpm-align-multi-scale-guidance-aligned-diffusion-pretraining-for-robust-few-shot-anatomical-landmark-detection)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [HD-DinoMoE: A Class-Aware Hierarchical Dual Mixture-of-Experts Network for Scleral Anomaly Segmentation in Complex Acquisition Scenarios](/202606/05/2606.04888v1-hd-dinomoe-a-class-aware-hierarchical-dual-mixture-of-experts-network-for-scleral-anomaly-segmentation-in-complex-acquisition-scenarios)  
+4. [MedSyn2: Flexible Control of 3D CT Generation via Text and Semantically-Defined Segmentation Prompts](/202606/06/2606.00967v2-medsyn2-flexible-control-of-3d-ct-generation-via-text-and-semantically-defined-segmentation-prompts)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [A Vision-language Framework for Comparative Reasoning in Radiology](/202606/05/2606.06407v1-a-vision-language-framework-for-comparative-reasoning-in-radiology)  
+5. [Implicit Fuzzification via Bounded Noise Injection for Robust Medical Image Segmentation](/202606/06/2606.04427v1-implicit-fuzzification-via-bounded-noise-injection-for-robust-medical-image-segmentation)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+6. [Enhancing MedSAM with a Lightweight Box Predictor for Medical Image Segmentation](/202606/06/2606.04705v1-enhancing-medsam-with-a-lightweight-box-predictor-for-medical-image-segmentation)  
    标签：评分：6.6/10
    evidence：检索回退候选
-11. [Controllable Lung Nodule Synthesis via Histogram-Regularized Latent Diffusion Models](/202606/05/2605.30631v1-controllable-lung-nodule-synthesis-via-histogram-regularized-latent-diffusion-models)  
+7. [Efficient Transformer-Based Localized Patch Sampling for Choroid Plexus Segmentation in Multiple Sclerosis](/202606/06/2606.03566v1-efficient-transformer-based-localized-patch-sampling-for-choroid-plexus-segmentation-in-multiple-sclerosis)  
    标签：评分：6.6/10
+   evidence：检索回退候选
+8. [EasyLens: A Training-Free Plug-and-Play Subtle-Lesion Representation Amplifier for Medical Vision-Language Models](/202606/06/2606.06379v1-easylens-a-training-free-plug-and-play-subtle-lesion-representation-amplifier-for-medical-vision-language-models)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+9. [LegSegNet: A Public Deep Learning System for Lower Extremity CT Tissue Segmentation and Quantification](/202606/06/2605.30829v1-legsegnet-a-public-deep-learning-system-for-lower-extremity-ct-tissue-segmentation-and-quantification)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Generating Reports or Repeating Templates? Measuring and Mitigating Template Collapse in 3D CT Report Generation](/202606/06/2605.30984v1-generating-reports-or-repeating-templates-measuring-and-mitigating-template-collapse-in-3d-ct-report-generation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Rethinking Efficient Crack Segmentation with Task-Aligned Structural-Directional Modeling](/202606/06/2605.31048v1-rethinking-efficient-crack-segmentation-with-task-aligned-structural-directional-modeling)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
