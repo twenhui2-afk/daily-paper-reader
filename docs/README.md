@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-06
-- 运行时间：2026-06-07 05:08:44 UTC+8
+- 最新运行日期：2026-06-07
+- 运行时间：2026-06-08 04:15:07 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,45 +15,45 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Pre-Deployment Robustness Stress Testing for CT Segmentation Systems Using Clinically Motivated Multi-Corruption Augmentation》（7.0/10）, 《XSSR: Cross-Domain Self-Supervised Representative Selection for Efficient Annotation in Medical Image Segmentation》（7.0/10）, 《CDPM-Align: Multi-Scale Guidance-Aligned Diffusion Pretraining for Robust Few-Shot Anatomical Landmark Detection》（6.8/10）
+- 速读：《Multi-Granularity 3D Kidney Lesion Characterization from CT Volumes》（6.1/10）, 《hZACH-ViT: Curved Latent Geometry for Compact Vision Transformers in Low-Data Medical Imaging》（6.1/10）, 《An Attention-Based Denoising Model for Diffusion Weighted Imaging》（6.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/06/README](/202606/06/README)
+- 详情：[/202606/07/README](/202606/07/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Pre-Deployment Robustness Stress Testing for CT Segmentation Systems Using Clinically Motivated Multi-Corruption Augmentation](/202606/06/2606.00491v1-pre-deployment-robustness-stress-testing-for-ct-segmentation-systems-using-clinically-motivated-multi-corruption-augmentation)  
-   标签：评分：7.0/10
+1. [Multi-Granularity 3D Kidney Lesion Characterization from CT Volumes](/202606/07/2606.04365v1-multi-granularity-3d-kidney-lesion-characterization-from-ct-volumes)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-2. [XSSR: Cross-Domain Self-Supervised Representative Selection for Efficient Annotation in Medical Image Segmentation](/202606/06/2606.04301v1-xssr-cross-domain-self-supervised-representative-selection-for-efficient-annotation-in-medical-image-segmentation)  
-   标签：评分：7.0/10
+2. [hZACH-ViT: Curved Latent Geometry for Compact Vision Transformers in Low-Data Medical Imaging](/202606/07/2606.00906v1-hzach-vit-curved-latent-geometry-for-compact-vision-transformers-in-low-data-medical-imaging)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-3. [CDPM-Align: Multi-Scale Guidance-Aligned Diffusion Pretraining for Robust Few-Shot Anatomical Landmark Detection](/202606/06/2606.04898v1-cdpm-align-multi-scale-guidance-aligned-diffusion-pretraining-for-robust-few-shot-anatomical-landmark-detection)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-4. [MedSyn2: Flexible Control of 3D CT Generation via Text and Semantically-Defined Segmentation Prompts](/202606/06/2606.00967v2-medsyn2-flexible-control-of-3d-ct-generation-via-text-and-semantically-defined-segmentation-prompts)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-5. [Implicit Fuzzification via Bounded Noise Injection for Robust Medical Image Segmentation](/202606/06/2606.04427v1-implicit-fuzzification-via-bounded-noise-injection-for-robust-medical-image-segmentation)  
-   标签：评分：6.7/10
-   evidence：检索回退候选
-6. [Enhancing MedSAM with a Lightweight Box Predictor for Medical Image Segmentation](/202606/06/2606.04705v1-enhancing-medsam-with-a-lightweight-box-predictor-for-medical-image-segmentation)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-7. [Efficient Transformer-Based Localized Patch Sampling for Choroid Plexus Segmentation in Multiple Sclerosis](/202606/06/2606.03566v1-efficient-transformer-based-localized-patch-sampling-for-choroid-plexus-segmentation-in-multiple-sclerosis)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-8. [EasyLens: A Training-Free Plug-and-Play Subtle-Lesion Representation Amplifier for Medical Vision-Language Models](/202606/06/2606.06379v1-easylens-a-training-free-plug-and-play-subtle-lesion-representation-amplifier-for-medical-vision-language-models)  
+3. [An Attention-Based Denoising Model for Diffusion Weighted Imaging](/202606/07/2606.03903v1-an-attention-based-denoising-model-for-diffusion-weighted-imaging)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [LegSegNet: A Public Deep Learning System for Lower Extremity CT Tissue Segmentation and Quantification](/202606/06/2605.30829v1-legsegnet-a-public-deep-learning-system-for-lower-extremity-ct-tissue-segmentation-and-quantification)  
+4. [Rate-optimal neural boundary detection from unlabeled noisy images](/202606/07/2606.00715v1-rate-optimal-neural-boundary-detection-from-unlabeled-noisy-images)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [Generating Reports or Repeating Templates? Measuring and Mitigating Template Collapse in 3D CT Report Generation](/202606/06/2605.30984v1-generating-reports-or-repeating-templates-measuring-and-mitigating-template-collapse-in-3d-ct-report-generation)  
+5. [Bridging Topology and Deep Representation Learning: A TDA-ViT Fusion Model for Four-Class Brain Tumor Classification](/202606/07/2606.00927v1-bridging-topology-and-deep-representation-learning-a-tda-vit-fusion-model-for-four-class-brain-tumor-classification)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [Rethinking Efficient Crack Segmentation with Task-Aligned Structural-Directional Modeling](/202606/06/2605.31048v1-rethinking-efficient-crack-segmentation-with-task-aligned-structural-directional-modeling)  
+6. [SWARD: Stochastic Window-Attention-Based Relational Distillation for Cross-Architectural Semantic Segmentation](/202606/07/2606.00999v1-sward-stochastic-window-attention-based-relational-distillation-for-cross-architectural-semantic-segmentation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+7. [PMC-InterCPT: Rethinking Biomedical Interleaved Data for Multimodal Continued Pretraining](/202606/07/2606.01049v1-pmc-intercpt-rethinking-biomedical-interleaved-data-for-multimodal-continued-pretraining)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+8. [Regularized joint reconstruction and slab combination for accelerated three-dimensional multi-slab diffusion-weighted imaging using multi-scale energy models](/202606/07/2606.01606v1-regularized-joint-reconstruction-and-slab-combination-for-accelerated-three-dimensional-multi-slab-diffusion-weighted-imaging-using-multi-scale-energy-models)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+9. [Learning Label-Efficient Interpretable Medical Image Diagnosis via Semi-supervised Hypergraph Concept Bottleneck Model](/202606/07/2606.01698v1-learning-label-efficient-interpretable-medical-image-diagnosis-via-semi-supervised-hypergraph-concept-bottleneck-model)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Deep Learning for Generating Computational PIN-4 Immunohistochemistry Staining from Prostate Biopsy H&E Images](/202606/07/2606.01871v1-deep-learning-for-generating-computational-pin-4-immunohistochemistry-staining-from-prostate-biopsy-he-images)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Realistic noise synthesis reduces bias and improves tissue microstructure estimation with supervised machine learning](/202606/07/2606.02044v1-realistic-noise-synthesis-reduces-bias-and-improves-tissue-microstructure-estimation-with-supervised-machine-learning)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
