@@ -1,0 +1,690 @@
+Title: The World's Fastest Matching Engine Algorithm
+
+URL Source: https://arxiv.org/pdf/2606.01183v2
+
+Published Time: Mon, 08 Jun 2026 01:05:20 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# The World’s Fastest Matching Engine Algorithm 
+
+## Jake Yoon 
+
+jake@flash1.com 
+
+Flash One Technologies LLC United States 
+
+## Abstract 
+
+A single CPU core sustains 32 million order messages per second with sub-microsecond median wire-to-wire latency— 
+
+4.7–11 × faster than the best available open-source matching engines on identical hardware. Scaled out, a single 96-core commodity server (~$1,630/month) sustains ∼ 640 million 
+
+messages per second across 10,000 symbols—over 20 × the provisioned capacity of the U.S. consolidated quote feed. We reach these numbers by attacking the storage layer that de-termines matching latency. Every electronic exchange relies on an order book, and the dominant implementation—linked lists chained through a balanced tree—imposes two costs on every operation: pointer-chased traversal to reach the insertion point, and root-to-leaf search to locate the target price level. Under micro-burst conditions these costs pro-duce tail-latency spikes that degrade market quality pre-cisely when liquidity is most needed. We present two data-structure contributions that eliminate them. The first is the 
+
+Priority-Indicated Node (PIN), a priority queue in which en-tries occupy fixed-capacity, contiguously addressable slots, with priority indicators encoding the entry’s global priority status. Unlike heaps, which require 𝑂 (log 𝑛 ) comparisons per operation, the PIN resolves insertion position directly from the indicators without comparing entries; indicator up-dates are 𝑂 (1), independent of queue size. A depth-aware capacity model sizes each PIN so that hot entries fit within L1 residency. The second targets a broader inefficiency: bal-anced search trees search from root to leaf on every inser-tion and deletion, even when the caller already knows the key’s in-order neighbors—which, in ordered event streams, incremental index maintenance, and electronic trading, are available at zero cost. Neighbor-aware insertion and deletion exploit known neighbor references to attach or remove a node with 𝑂 (1) reference writes, followed by single-path rebalancing, uniformly across red-black, AVL, and B/B +-tree variants. The aggregate figure is the ceiling of a memory-bandwidth-bound instance, not a linear per-core extrapola-tion. 
+
+## 1 Introduction 
+
+A single CPU core in our matching engine sustains 32 mil-lion order messages per second at sub-microsecond me-dian wire-to-wire latency— 4.7–11 × faster than the best avail-able open-source matching engines on identical hardware. Scaled out, one commodity 96-core server (~$1,630/month) sustains ∼ 640 million messages per second across 10,000 symbols: over 20 × the provisioned capacity of the entire U.S. consolidated quote feed. This paper shows how. Modern electronic venues routinely experience micro-bursts: short, extremely intense spikes in order flow that last only microseconds yet carry a significant fraction of daily volume [ 14 , 15 , 32 ]. During these bursts, the per-symbol matching core saturates, queues build up, tail latency spikes, and deterministic behavior is lost [ 14 , 15 ]. Market makers react with defensive quoting, wider spreads, and reduced dis-played liquidity, harming both traders and the exchange [ 2 ]. Existing high-performance exchanges are already close to the limits of conventional software architectures [ 46 ]. Public documentation reports peak throughputs of only ∼ 300 ,000 
+
+orders/s per partition (each bundling multiple products) on carefully engineered systems [ 15 , 17 ]. Because per-symbol matching logic is strictly serialized, Amdahl’s law makes it the dominant bottleneck regardless of how aggressively surrounding infrastructure is parallelized or scaled out [ 1,14]. This paper presents a new matching engine architecture that targets deterministic, micro-burst-resilient performance on a single CPU core per symbol. The key observation is that most hot-path work consists of structured, cache-sensitive operations on queues of resting orders and price levels. We therefore organize the book as a hierarchy of fixed-capacity 
+
+Priority-Indicated Nodes (PINs) with contiguously address-able slots, bounded relocation cascades, and depth-aware node capacities, coupled with a compact, neighbor-aware balanced search tree over price levels that supports constant-time splice/graft operations from known neighbors followed by a short rebalancing walk. We implement this design on commodity CPUs and evalu-ate it using workloads calibrated to regulator-reported mar-ket activity, including synthetic micro-bursts with millions of back-to-back messages. On a latest-generation ARM core, one matching core servicing one symbol sustains 32 mil-lion order messages per second under realistic stochastic price dynamics (up to 33 M/s under controlled conditions) while maintaining sub-microsecond median wire-to-wire latency, and is 4.7–11 × faster than the best available open-source matching engines on the same hardware. The same architecture is designed from the ground up for hardware acceleration: the PIN’s fixed-capacity slot regions map di-rectly to on-chip block memory (BRAM), priority indicators map to hardware priority encoders, and neighbor-aware tree operations eliminate the deep data-dependent traversals that 
+
+> 1
+> arXiv:2606.01183v2 [cs.DC] 5 Jun 2026 Jake Yoon
+
+are hostile to hardware pipelines. An FPGA realization of this specified design is underway; this paper reports the CPU results. In summary, this paper makes the following contributions: 
+
+• We formulate the micro-burst matching problem for single-symbol order books and show that realistic exchange workloads and public throughput ceilings place the per-symbol matching loop at the architec-tural bottleneck [14, 15]. 
+
+• We introduce the Priority-Indicated Node (PIN), a new priority queue design with (i) a contiguously address-able region of 𝐶 logical slots and (ii) priority indica-tors encoding the entry’s global priority status, that provide worst-case constant work per node while pre-serving strict price–time priority. 
+
+• We develop a neighbor-aware balanced search tree framework for price levels that supports constant-time splice and graft operations from known neighbors, followed by a single root-to-leaf rebalancing path, in a representation-independent way. 
+
+• We open-source the benchmark harness 1—adapters for the three baseline engines, a deterministic work-load generator, and byte-identical reference output hashes—so the workload, the baseline results, and the correctness oracle are independently reproducible, and any engine can be measured on the identical or-der stream. Our own engine binary is withheld; its single-symbol numbers are reported here, validated against that public oracle, with the instance-level ag-gregate (§6.3.1) given as a ten-run median and per-run standard deviation. 
+
+## 2 Background and Motivation 
+
+Electronic limit order books (LOBs) implement continuous double auctions for individual instruments. For each symbol, the exchange maintains a price-indexed set of resting or-ders and a matching engine that consumes a totally ordered message stream, updates the in-memory book, and emits executions and acknowledgements. Strict price–time priority is inherently serial at the symbol level: competing messages for the same instrument must be processed in a single deterministic sequence. This is a correctness requirement, not an implementation choice, and it creates a hard ceiling on per-symbol throughput regardless of how aggressively other pipeline stages are parallelized [ 2,7]. Modern exchange architectures therefore scale across 
+
+symbols (many matching instances in parallel) but remain throughput-limited within a hot symbol by the performance and memory behavior of a single matching core. Our target regime is similar to recent microsecond- scale RPC and cache systems (e.g., eRPC, Caladan), where queuing and scheduling rather than raw compute often dominate tail latency [ 18 , 26 ]. 
+
+> 1https://github.com/flash1-dev/matching-engine-benchmark
+
+Why order-book matching is fundamentally harder than key-value workloads. High-throughput in-memory systems such as MICA [ 30 ] and FaRM [ 16 ] achieve tens to hundreds of millions of operations per second on key-value workloads, so the throughput numbers in this paper deserve context. A key-value get /put is a point operation: hash to a bucket, read or write one record, done. An order-book mes-sage triggers a cascade of dependent, state-mutating steps that must all complete atomically under strict serial ordering: (i) look up an existing order by ID (hash); (ii) locate or create the target price level in a dynamically sized ordered index (tree search); (iii) insert into, delete from, or match against a priority queue at that level while preserving price–time ordering across all levels; (iv) if the order crosses the spread, walk the opposite side of the book executing trades at succes-sively worse prices until the order is filled or exhausted, up-dating aggregate depth at each level; and (v) emit a determin-istic sequence of acknowledgments, trades, and market-data deltas. A single aggressive order can therefore touch dozens of price levels and hundreds of resting orders in one indivisi-ble operation. Moreover, approximately 95% of messages are cancellations that target arbitrary positions in the queue— not just the head or tail—making the dominant workload a random-delete priority queue. These constraints—strict serial ordering, multi-step state cascades, dynamic ordered indexing, and random-position deletion—are what make the matching-engine bottleneck a data-structure problem dis-tinct from the workloads studied in prior high-throughput in-memory systems. 
+
+2.1 Market Micro-Bursts Expose Throughput Ceilings 
+
+Modern electronic markets exhibit highly bursty order-arrival patterns: long periods of moderate activity punctuated by sub-millisecond micro-bursts triggered by news, auction tran-sitions, or feedback among fast strategies. A disproportion-ate share of trading occurs in these short intervals, and they dominate tail latency and perceived market quality [2]. From a systems perspective, a micro-burst is the regime where the instantaneous ingress rate for a single symbol exceeds the sustainable service rate of its matching engine. Deutsche Börse’s T7 measurements illustrate this gap: during a representative burst, inbound traffic peaks around 8 million messages/second at an early gateway timestamp, but only 
+
+∼ 300 ,000 messages/second at the start of matching, with in-termediate stages in the few-hundred-kHz range [ 15 ]. Public documentation similarly reports sustainable per-partition matching throughput on the order of a few 10 5 messages/second even in highly engineered systems [ 17 ]. When burst rates exceed this ceiling, per-symbol queues grow and end-to-end latency becomes dominated by queuing delay rather than raw compute. 
+
+> 2The World’s Fastest Matching Engine Algorithm
+
+2.2 Latency Spikes Create Execution Uncertainty and Widen Spreads 
+
+Queueing during micro-bursts matters economically because it makes execution timing unpredictable . A market maker’s cancel/replace message competes for the same serialized bandwidth as everyone else’s messages; when the book is congested, stale quotes cannot be withdrawn quickly and are exposed to latency arbitrage (stale-quote “sniping”) by faster traders [ 2 , 7 ]. Rational liquidity providers respond by quoting more conservatively (less depth, wider spreads, more frequent quote fading), raising transaction costs for investors. Using message-level exchange data, Aquilina, Budish, and O’Neill estimate that eliminating stale-quote sniping would reduce effective spreads—investors’ cost of liquidity—by up to 17% [ 2]. Congestion-induced execution uncertainty is there-fore not a minor distributional effect; it is a first-order con-tributor to spreads and thus to market quality. 
+
+2.3 Why Throughput, Not Baseline Latency, Is the Remaining Bottleneck 
+
+Over the last decade, venues and participants have largely exhausted easy gains in baseline latency through co-location, optimized networking stacks, and specialized hardware. Deutsche Börse, for example, reports microsecond-scale baseline laten-cies in T7 (a few microseconds one-way in colocated settings and low double-digit microseconds from NIC to matching-engine ingress) [ 15 ]. At these scales, shaving a few more microseconds off median latency does little to address the dominant source of tail latency under stress: queues at the serialized match loop during bursts. Empirical evidence also shows diminishing returns to la-tency reduction once fast access is already available. A case study finds that a latency reduction at an Australian ex-change yielded some liquidity improvements but no persis-tent reduction in bid–ask spreads when institutional traders already had co-location [ 34 ]. By contrast, exchange technol-ogy upgrades that explicitly increase capacity have clearer market-quality effects on both spreads and fairness; we quan-tify one such upgrade—TSE’s Arrowhead renewal—in detail in Section 2.4. 
+
+2.4 Commercial Significance 
+
+Improving sustainable per-symbol throughput is therefore a commercial lever as well as a systems goal. The mechanism is most direct in U.S. equities, where Regulation NMS Rule 611 (the Order Protection Rule) prohibits any trading center from executing an order at a price inferior to a “protected quo-tation” displayed on another venue [ 48 , 50 ]. A quotation is protected only if it is automated, immediately executable, and publicly disseminated at the National Best Bid or Of-fer (NBBO). An exchange that cannot update its quotes fast enough during a micro-burst risks losing NBBO status: its displayed price becomes stale, and Rule 611 routes incom-ing marketable order flow to whichever competing venue 
+
+is at the NBBO. In a market with seventeen active trading venues [ 9 ] — three operated by Nasdaq, five by NYSE, four by Cboe, and five independents (IEX, MEMX, LTSE, MIAX, BSTX) — the marginal effect of matching-engine throughput on NBBO capture time directly translates to captured order flow and thus to transaction-fee revenue. Among exchanges, Nasdaq captures the largest share of on-exchange volume (roughly 49% of trading in NYSE-listed stocks and 67% of Nasdaq-listed stocks, vs. NYSE’s 33% and 15%) [ 35 ]. An ex-change whose matching engine can process micro-bursts without congestion-induced quote staleness holds a struc-tural advantage in this competition. The baseline effect of a throughput upgrade is already evident even without the NBBO amplifier. TSE’s Arrowhead renewal in September 2015 approximately doubled order-processing capacity [ 19 ]. The market-quality effects were substantial: effective spreads fell 6.45%, particularly for large-cap stocks with low tick sizes, and marking-the-close manipulation declined 61% [ 27 ]. High-frequency market makers increased their liquidity provision following the upgrade [ 37 ]. The revenue impact was direct: average daily trading value for cash equities rose 19.4% and Nikkei 225 mini futures volume grew 33.4% year-on-year; trading services revenue rebounded from a 10% decline to 
+
+¥48.70 billion in FY2015 to ¥52.47 billion in FY2016 (up 7.7%), with JPX attributing the growth to “increases in trading of cash equities and derivatives” [ 23 ]. Read together, the two are not parallel examples but a base effect and its amplifier. JPX’s Arrowhead upgrade is well-documented evidence of the base mechanism: faster matching lets market makers refresh quotes faster, which raises their profitability and lets them quote tighter—compressing spreads and lifting both market quality and trading volume. In fragmented U.S. equi-ties, Rule 611 amplifies that effect by orders of magnitude: be-cause marketable flow must route to whichever venue holds the NBBO, a faster matching core does not merely improve its own market—it absorbs volume from slower competitors, converting a throughput edge into outsized market-share gains. 
+
+Quantifying the stakes. The preceding data points allow back-of-envelope estimates of the economic value at stake. For exchanges: consolidated U.S. equity volume routinely ex-ceeds $500 billion in daily notional across approximately 250 trading days per year, of which 53% executes on-exchange [ 9 ]. One percentage point of on-exchange market share therefore represents approximately $660 billion in annual matched no-tional. At typical net capture rates of $0.001–$0.003 per share, a single percentage point of market share translates to tens of millions of dollars in annual transaction-fee revenue. For liquidity providers: Aquilina, Budish, and O’Neill estimate that stale-quote sniping extracts approximately $5 billion per year from liquidity providers across global equity markets 
+
+> 3Jake Yoon
+
+alone ($2.3–$8.4 billion across sensitivity analyses), imposing a roughly 0.5 basis point tax on trading volume [2]. 
+
+## 3 System Overview 
+
+Our prototype implements a full end-to-end exchange pipeline around the core matching engine evaluated in later sec-tions. The design follows a shard-per-core, shared-nothing structure: network ingress, sequencing, matching, and out-bound publication run on dedicated cores and communi-cate only via explicit message passing through bounded queues. This single-writer-per-core model avoids cross-core synchronization on the critical path, following the delega-tion principle shown to outperform fine-grained locking in high-throughput systems [44]. 
+
+3.1 End-to-End Pipeline 
+
+Rather than a single monolithic thread that handles sockets and matching in one loop, the implementation is decom-posed into a deterministic ingest/sequence stage, a set of matcher shards, and a dedicated outbound publishing stage. Conceptually, one exchange segment is organized as: 
+
+Ingress: TCP shards. The ingress stage consists of 𝑁 
+
+TCP shards using kernel-bypass networking, following the general trend toward user-level dataplanes (e.g., IX, Arrakis) that demonstrate moving packet I/O out of the kernel is crit-ical for microsecond-scale services [ 5, 39 ]. Each TCP shard parses inbound order-entry messages and emits compact internal order descriptors into a shared ingress queue. 
+
+Sequencer: deterministic merge and dispatch. A single 
+
+Sequencer thread drains the ingress queue and performs two tasks. First, it linearizes concurrent arrivals from the TCP shards into a deterministic internal event stream, assigning each message a monotonically increasing sequence identifier. Second, it routes each message to exactly one matcher shard based on its symbol, producing an 𝑀 -way fanout into 𝑀 per-matcher queues, preserving a single total order per symbol 
+
+at the destination matcher. 
+
+Matching: sharded matchers with symbol partitions. 
+
+The system runs 𝑀 matcher shards. Each matcher is pinned to its own core and owns all order-book state for its assigned symbol range: Matcher 𝑖 handles symbols 
+
+𝑖𝑁 sym 
+
+𝑀 , (𝑖 + 1)𝑁 sym 
+
+𝑀 
+
+
+
+.
+
+This partitioning is configurable; in the stress tests used in this paper, hot symbols can be isolated so that a single matcher shard services one symbol, making the measured throughput and latency representative of a single-symbol matching core. Each matcher executes the matching and book-update logic and emits resulting events (acknowledgments, trades, cancels, and market-data deltas) into a dedicated output queue. 
+
+Egress: outbound publishing (market data and client responses). A single OutboundPublisher thread drains the output queues from all matchers and performs all outbound formatting and transport. Market-data dissemination uses a UDP multicast feed, and client-directed responses (e.g., order acknowledgments and fills) are routed to the appropriate TCP shard for each client session. 
+
+3.2 Order Book Representation Inside Each Matcher 
+
+In most production implementations, the order book is rep-resented in a queue of orders within a specific price level, and each price-level is organized in a linear data structure or a tree-like structure. In our implementation, the order book is represented as two tightly coupled layers: a chain of Priority-Indicated Nodes that stores individual orders in contiguous memory, and a balanced search tree of price-level metadata that maps prices to the nodes and slots that cur-rently hold the best orders at each level. This organization ensures that the latency-critical matching loop touches a small, cache-friendly working set while preserving strict price–time semantics. Each matcher shard owns the order book data structure for the symbols that are allocated for it. 
+
+3.3 Design Constraints and Objectives 
+
+The pipeline is designed around four constraints: determin-istic per-symbol ordering (one matcher shard, one thread, owning all state for its symbols); hot-path isolation (matchers never touch sockets, kernel APIs, or allocator-heavy struc-tures, with all network and serialization work in TCP shards and the OutboundPublisher); bounded inter-stage communi-cation (lock-free queues); and kernel-bypass networking to keep the matcher fed at the message rates this work targets. 
+
+## 4 Data Structures and Core Algorithms 
+
+4.1 Key Limitations of Existing Work 
+
+Most production and open-source matching engines still use pointer-chasing structures: each price level is a linked list (or tree of lists) of orders, with a balanced tree or ar-ray indexing price levels. This gives simple 𝑂 (1) queue ed-its and 𝑂 (log 𝑁 ) price lookup, but it fights modern CPUs: heap-allocated nodes are scattered in memory, hardware prefetchers cannot predict pointer chains, and each list/tree step risks a dependent cache miss, so under micro-bursts the core stalls on memory rather than arithmetic. The obvi-ous opposite extreme—storing a per-price queue as a single contiguous array—plays nicely with caches and prefetchers, but is mismatched to real workloads where roughly 95% of orders cancel without executing and many cancels hit in the middle of the FIFO. In an array, deleting from the middle requires shifting a suffix of the queue, giving 𝑂 (𝑛 ) work per cancel at that level; under heavy churn, the engine burns                  
+
+> 4The World’s Fastest Matching Engine Algorithm
+> Core Matching Shards ( 0. . . 𝑀 )
+> TCP Shard 0
+> TCP Shard 1
+> ...
+> TCP Shard 𝑁
+> Ingress
+> Ingress Queue Sequencer
+> Queue 0Matcher 0OutQ 0
+> Queue 𝑀 Matcher 𝑀 OutQ 𝑀
+> .........
+> Outbound
+> Publisher
+
+Figure 1. System Architecture: a single segment of the matching engine pipeline ingests orders from 𝑁 TCP shards into a shared ingress queue, sequences them, and dispatches them to 𝑀 sharded core matchers. cycles on large memmoves and loses the benefit of locality. In short, classic pointer-based designs underutilize the cache hierarchy, while naive flat arrays make random in-queue deletions prohibitively expensive; our design is motivated by the need to keep storage contiguous and prefetch-friendly without incurring 𝑂 (𝑛 ) compaction on the dominant cancel path. Cache-aware index structures such as Masstree [ 31 ] and Silo [ 47 ] have demonstrated that memory layout dominates algorithmic complexity at high throughput, but they tar-get point queries; the order book’s combination of ordered traversal, random-position deletion, and dynamic ordered insertion (§2) requires a different structure that nonetheless applies the same locality principles. 
+
+4.2 Priority-Indicated Node (PIN) 
+
+A Priority-Indicated Node (PIN) is a fixed-capacity priority queue node with (i) a contiguously addressable region of 𝐶 
+
+logical slots and (ii) priority indicators encoding the entry’s global priority status. Think of a priority indicator as a coat-check ticket: the order rests in whatever slot is free, but its ticket records exactly where it stands in line, so the engine redeems rank by reading the ticket rather than walking the rack to find it. 
+
+Contiguously addressable slot region. A node exposes a logical slot index space {0, . . . , 𝐶 − 1} such that slot 𝑖 is found by base-plus-stride arithmetic, with no pointer chasing. The region may be (i) a single embedded array, (ii) a small num-ber of back-to-back sub-arrays, or (iii) a contiguous section of a shared arena owned by the node (with linear or ring indexing). Across all cases we enforce a base/stride invari-ant : during normal operations (e.g., insert, delete, modify, and cascades), the base address (or arena offset) and per-slot stride do not change, so consecutive indices always map to predictable fixed-offset locations. Each slot stores either the order object or a compact reference to an order stored elsewhere. 
+
+Priority indicators. A priority indicator encodes the 
+
+global priority status of an order under the active rule. In a price–time book, for example, an indicator might record that slot 𝑖 holds the book-wide best (or 𝑘 -th best) order at its price level; this is not merely a node-local ranking but a projection of the order’s position in the full priority se-quence onto a slot-local representation. In the embodiment evaluated here, the node maintains one indicator per slot, updated whenever orders move so that each slot’s indicator stays consistent with the order it holds; more generally, a priority indicator need not be materialized as one datum per slot. In a sparse encoding, an indicator that is inactive or non-asserted under the current rule—even for a slot that stores a live order—may be absent from the encoding or set to a neutral value, avoiding overhead for materializing indicators whose priority status is not currently relevant. 
+
+Comparison with database page layouts. Database sys-tems such as PostgreSQL use per-slot ItemId entries within heap pages to track storage-management states—liveness, redirection, and garbage-collection eligibility ( LP_NORMAL ,
+
+LP_REDIRECT , LP_DEAD , LP_UNUSED ) [ 40 ]. Those flags gov-ern where and whether a tuple can be found, but carry no information about its rank relative to other tuples in the page. Our indicators encode priority semantics —the order’s posi-tion (head, tail, cohort membership) under a global ordering rule—directly into the slot metadata, so the node can resolve “which slot holds the highest-priority order?” in 𝑂 (1) without scanning the entire book. PostgreSQL’s ItemId flags cannot answer this without a sequential scan plus an external sort. 
+
+Representation and placement. Indicators are represen-tation and placement neutral: they may be bitmasks (one bit per slot), slot-indexed arrays of flags or references, or fields embedded in the order objects; they may live inside the node, in a per-node external structure, or in the orders. Empty slots are encoded by absence of an indicator entry or a neutral value (e.g., bit=0/null). More generally, we use 
+
+> 5Jake Yoon
+
+priority indicator for any such encoding; a one-indicator-per-slot layout is the realization evaluated here, not a defining restriction. 
+
+Why these two properties matter. Base/stride address-ing plus priority indicators decouples logical priority from physical layout. Node-local operations are 𝑂 (𝐶 ) (with small 
+
+𝐶 ≪ 𝑛 total orders), reduce slot access to base-plus-stride arithmetic, and avoid the 𝑂 (𝑛 ) data shifting and compaction overhead of conventional array-based or unrolled-list de-signs, while retaining cache-friendly contiguous storage. 
+
+Hardware suitability. The PIN’s properties map cleanly to hardware. Contiguously addressable slots fit FPGA block RAM (BRAM) or ASIC SRAM with single-cycle determinis-tic access—no cache hierarchy, no eviction, no miss penalty. Bitmask priority indicators become a combinational prior-ity encoder rather than a sequential clz /tzcnt , and the bounded relocation cascade maps to a short pipelined data-path with a statically known maximum depth. Because the tree is touched only on price-level creation or deletion—a rare event relative to per-order PIN operations—its logic need not be pipelined for throughput; a state machine that stalls the matcher for a small number of cycles on level transitions is sufficient. Statically sized memory, fixed-width parallel operations, bounded pipeline depth, and rare-event tree han-dling make the architecture a natural fit for FPGA and ASIC embodiments; the deployment-level argument is in §6.5. 
+
+Append and Prepend within a node. All insertions into a node are expressed as Append or Prepend relative to a rule-defined reference at that price level (e.g., the current head or tail under strict price–time). Append writes the new order into a chosen free slot and makes it the lowest-priority order at that level; Prepend makes it the highest-priority order. Each operation performs one payload write and a constant number of indicator updates. 
+
+Directed relocation cascades with bounded hops. If Append/Prepend targets a full node, the engine executes a directed relocation cascade . A Push Back hop moves one selected order to the next node toward the tail; a Push For-ward hop moves one order to the previous node toward the head. Each hop relocates a single order payload and performs the corresponding bounded indicator updates. Cascades are capped at 𝐷 max hops; if no free slot is found within 𝐷 max 
+
+hops, the engine allocates or reuses a node at the boundary, links it in, and places the relocating order there. Thus inser-tion into a full node touches only a short run of adjacent nodes and has worst-case cost proportional to 𝐷 max .
+
+4.3 Flexible Node Capacity Model 
+
+Node capacity need not be uniform across the book. Orders near the top of book are accessed far more often than those in the tail, so using the same width everywhere wastes cache and TLB footprint on cold regions while under-amortizing misses on the hot prefix. We therefore use a Flexible Node Capacity policy that chooses each node’s slot capacity as a function of its depth from the book head. The policy is applied only at node allocation or deallocation time; a node’s capacity is fixed for its lifetime. 
+
+Depth-indexed capacity function. Let 𝑑 ∈ N denote node depth, with 𝑑 = 0 at the best price level on a given side (best bid/ask), increasing away from the top of book. We define a depth-dependent capacity function 
+
+𝜅 (𝑑 ) = 𝐶 𝑑 ∈ N
+
+subject to: 1. Monotone nonincreasing: 𝐶 0 ≥ 𝐶 1 ≥ 𝐶 2 ≥ . . . , so hotter regions may be wider. 2. Per-node bound: there exists 𝐶 max with 𝐶 𝑑 ≤ 𝐶 max 
+
+for all 𝑑 , chosen so that all per-slot indicators fit in a small, fixed number of machine words. 3. Unbounded total depth: Í∞ 
+
+> 𝑑 =0
+
+𝐶 𝑑 = ∞, so the book can grow arbitrarily deep even if tail nodes use mini-mal capacities. These constraints preserve the bitmask/flag invariants of the Priority-Indicated Node and ensure that changing 𝜅 (·) 
+
+never forces a global reorganization; only newly allocated or recycled nodes adopt new capacities. 
+
+Per-node latency model. For a node of capacity 𝑘 that stores orders in a contiguous array, in-node work (e.g., shifts) is 𝑂 (𝑘 ). We model the latency of a book operation that hits this node as 
+
+𝑇 hit (𝑘 ) = 𝐴𝑘, 𝑇 miss (𝑘 ) = 𝐴𝑘 + 𝑡 𝑅 ,
+
+where 𝐴 > 0 is the average per-slot scan/shift cost and 
+
+𝑡 𝑅 > 0 is the extra penalty of missing in L1. Let 𝑃 (𝑘 ) be the probability the node is resident in L1 when an operation touches one of its orders. The expected latency is 
+
+𝐿 (𝑘 ) = 𝑃 (𝑘 ) 𝑇 hit (𝑘 ) + [ 1−𝑃 (𝑘 )] 𝑇 miss (𝑘 ) = 𝐴𝑘 + [ 1−𝑃 (𝑘 )] 𝑡 𝑅 .
+
+The 𝑘 -dependent part of the objective is 
+
+Δ(𝑘 ) = 𝐴𝑘 − 𝑡 𝑅 𝑃 (𝑘 ),
+
+so minimizing 𝐿 (𝑘 ) is equivalent to minimizing Δ(𝑘 ).
+
+Empirical access model. Index price levels by ℓ ∈ { 1, 2, . . . },with ℓ = 1 at the best price. Empirical studies of limit order books report that order-flow intensity decays with distance from the best quotes with heavy tails and that average depth profiles decay roughly exponentially.[ 6, 11 , 21 , 33 , 54 ] We encode this via: 1. Updates per price level follow approximately a power law: 
+
+#updates (ℓ) ∝ ℓ −𝛽 , 𝛽 > 1.
+
+[6, 11, 21, 54] 
+
+> 6The World’s Fastest Matching Engine Algorithm
+
+2. Expected queue length at level ℓ decays roughly ex-ponentially: 
+
+𝑛 ℓ = 𝑛 1𝑒 −𝛾 (ℓ −1) , 𝛾 > 0.
+
+[6, 21, 33] Within a level we assume uniform hits across positions in the FIFO queue. Conditional on a hit at level ℓ, each of the 
+
+𝑛 ℓ orders is equally likely: 
+
+Pr (offset 𝑗 | ℓ) = 1
+
+𝑛 ℓ
+
+, 0 ≤ 𝑗 < 𝑛 ℓ .
+
+Writing 𝑍 𝛽 = Í∞ 
+
+> 𝑚 =1
+
+𝑚 −𝛽 for the normalizing constant, the probability that a random book operation hits the order at level ℓ and offset 𝑗 is 
+
+𝑝 ℓ,𝑗 = ℓ −𝛽 
+
+𝑍 𝛽 𝑛 ℓ
+
+.
+
+Because this does not depend on 𝑗 , we write 𝑝 ℓ for the per-order hit probability at level ℓ.
+
+Node hit probability and capacity choice. Group orders into nodes that each hold 𝑘 consecutive orders in a global ranking (e.g., scan price levels by increasing ℓ, and within each level scan FIFO offsets). Let 𝑠 be the rank of the first order in a node, and 𝑝 𝑖 the hit probability of the order with rank 𝑖 . For nodes far from the head and 𝑘 ≪ 𝑠 , 𝑝 𝑖 varies slowly and we approximate 
+
+𝑝 𝑖 ≈ 𝑝 𝑠 for 𝑖 ∈ { 𝑠, . . . , 𝑠 + 𝑘 − 1}.
+
+The node hit probability is then 
+
+𝑃 (𝑘 ) = 1 − 
+
+> 𝑠 +𝑘 −1
+
+Ö
+
+> 𝑖 =𝑠
+
+(1 − 𝑝 𝑖 ) ≈ 1 − ( 1 − 𝑝 𝑠 )𝑘 .
+
+Deep nodes. If 𝑘𝑝 𝑠 ≪ 1, then (1 − 𝑝 𝑠 )𝑘 ≈ 1 − 𝑘𝑝 𝑠 and 
+
+𝑃 (𝑘 ) ≈ 𝑘𝑝 𝑠 .
+
+Substituting into Δ(𝑘 ) gives 
+
+Δ(𝑘 ) ≈ 𝑘  𝐴 − 𝑡 𝑅 𝑝 𝑠 
+
+.
+
+Whenever 𝑝 𝑠 < 𝐴 /𝑡 𝑅 , Δ(𝑘 ) grows with 𝑘 , so the optimal choice is the smallest feasible node size. This justifies thin nodes in the tail. 
+
+Top-of-book nodes. Near the head of book, per-order hit probabilities are large enough that the linearization (1 −
+
+𝑝 𝑠 )𝑘 ≈ 1 − 𝑘𝑝 𝑠 used for deep nodes no longer holds. At the best price level ( ℓ = 1), the per-order hit probability from the empirical model above is 
+
+𝑝 1 = 1−𝛽 
+
+𝑍 𝛽 𝑛 1
+
+= 1
+
+𝑍 𝛽 𝑛 1
+
+,
+
+where 𝑍 𝛽 = Í∞ 
+
+> 𝑚 =1
+
+𝑚 −𝛽 is the normalizing constant of the power-law level-hit distribution and 𝑛 1 is the queue length at the best price. More generally, for a node sitting at level ℓ
+
+near the top of book, we approximate 𝑝 𝑖 over the node by the constant 
+
+𝐶 top = ℓ −𝛽 
+
+𝑍 𝛽 𝑛 ℓ
+
+.
+
+At ℓ = 1 this reduces to 𝐶 top = 1/( 𝑍 𝛽 𝑛 1). Because 𝐶 top is small but 𝑘𝐶 top is no longer negligible, we use the exponen-tial approximation 
+
+(1 − 𝐶 top )𝑘 ≈ exp (− 𝑘 𝐶 top )
+
+to obtain the node hit probability 
+
+𝑃 (𝑘 ) = 1 − ( 1 − 𝐶 top )𝑘 ≈ 1 − exp (− 𝑘 𝐶 top ).
+
+Substituting into the 𝑘 -dependent objective Δ(𝑘 ) = 𝐴𝑘 −
+
+𝑡 𝑅 𝑃 (𝑘 ) from the per-node latency model gives 
+
+Δ(𝑘 ) = 𝐴 𝑘 − 𝑡 𝑅 
+
+1 − exp (− 𝑘 𝐶 top ) .
+
+Differentiating with respect to 𝑘 and setting to zero: 
+
+𝑑 Δ
+
+𝑑𝑘 = 𝐴 − 𝑡 𝑅 𝐶 top exp (− 𝑘 𝐶 top ) = 0.
+
+Taking logarithms and solving for 𝑘 yields the optimal node capacity 
+
+𝑘 ∗ = 1
+
+𝐶 top 
+
+ln 
+
+ 𝑡 𝑅 𝐶 top 
+
+𝐴 
+
+
+
+.
+
+This is well-defined whenever 𝑡 𝑅 𝐶 top > 𝐴 , i.e., when the cache-miss penalty weighted by the per-order hit rate ex-ceeds the per-slot scan cost—precisely the regime at the top of book where orders are hot enough to justify wider nodes. The formula has a natural interpretation: 𝑘 ∗ grows logarith-mically with the ratio 𝑡 𝑅 /𝐴 . A large L1 cache-miss penalty 𝑡 𝑅 
+
+pushes the optimal capacity upward, because packing more orders into a single node amortizes the cost of one cache load across more slots; conversely, a large per-slot scan cost 
+
+𝐴 favors smaller nodes to curtail the linear work done on ev-ery modification. The prefactor 1/𝐶 top scales inversely with hit probability, so hotter levels (higher 𝐶 top ) tolerate wider nodes while cold levels shrink toward the minimum. As depth increases and 𝐶 top drops below 𝐴 /𝑡 𝑅 , the loga-rithm goes negative and the optimal choice reverts to the smallest feasible node size, recovering the deep-node result. A practical caveat applies at the very top of book: the mono-tone exponential queue-length decay 𝑛 ℓ ≈ 𝑛 1𝑒 −𝛾 (ℓ −1) holds in the interior of the book, but in many liquid equities the resting depth peaks a tick or two behind the touch—a “hump” over the first one-to-five ticks—leaving the very best level thinner than a monotone fit through that region implies. Because the model then over-states the resting queue at the top of book and 𝐶 top ∝ 1/𝑛 ℓ , it under -states the per-order hit probability there, so the analytic 𝑘 ∗ at the very top of book is best read as an approximate guide rather than an exact optimum; in production an online estimator (not detailed here) can tighten it from live telemetry. 
+
+> 7Jake Yoon
+
+4.4 Price-Level Index with Neighbor-Aware Balanced-Tree Updates 
+
+Each side of the order book maintains a dynamically chang-ing set of active price levels ; a balanced search tree over prices supports fast best-price queries and predecessor/successor navigation needed by continuous matching. Each tree ele-ment is a Price Level Descriptor that stores fixed-size metadata (price, aggregated size, and references to the current head/tail order locations in Priority-Indicated Nodes), along with tree links and explicit in-order neighbor links. 
+
+Why neighbor-aware updates. In conventional balanced trees, inserting or deleting a price-level key costs 𝑂 (log 𝑛 )
+
+for a root-to-leaf search (to find the structural edit loca-tion), plus 𝑂 (log 𝑛 ) for the subsequent fix-up walk (rota-tions/splits/merges) that restores balance [ 4 , 12 , 22 ]. The key idea of neighbor-aware insertion/deletion is to bypass the search phase when the matching engine already knows the in-order predecessor and/or successor of the affected price level. Given these neighbors, the tree edit reduces to a constant-time splice (or graft) localized to a small set of nodes/pages, followed by the standard fix-up phase along a single ancestor path. Eliminating the search traversal re-moves a large fraction of pointer-chasing reads and unpre-dictable branches from the critical path, which is precisely the behavior that becomes fragile under micro-bursts. 
+
+How the matching engine supplies neighbors. The matching engine naturally maintains (or can obtain at negli-gible marginal cost) the neighbor information required for these updates: 
+
+• When activating a new price level. A new level 
+
+𝑝 is created only when an incoming limit order tar-gets a price with no existing resting interest. At that moment, the engine can determine the immediate predecessor/successor levels in price order from state it already touches : (i) best-price pointers and the in-order neighbor links of nearby active levels (common when 𝑝 is close to the top of book), or (ii) a single predecessor/successor query (e.g., “floor” or “ceiling”) that is needed anyway to decide where 𝑝 sits relative to current book state. Crucially, once the engine has identified the bracketing levels (𝑃, 𝑆 ), it does not re-traverse the tree from the root to locate the insertion point; it splices the new descriptor directly between 
+
+𝑃 and 𝑆 .
+
+• When deleting an empty price level. A level is deleted exactly when the last resting order at that price is executed or canceled. Because each order slot ultimately maps to its owning level descriptor (directly or indirectly via Priority-Indicated Node metadata), the engine holds a pointer to the descriptor being removed. The descriptor itself maintains explicit in-order neighbor links ( pred /succ ), so the engine can select the successor (or predecessor at the boundary) as a graft candidate without any tree search. As a result, tree search is not used to discover neighbors ;neighbor discovery is coupled to the matching workflow and book-local metadata, and the balanced tree is used pri-marily for (i) maintaining global price order under churn and (ii) providing a bounded-height structure for predictable rebalancing. 
+
+Binary-tree procedure (AVL / Red–Black). Let 𝑛 be the number of active price levels on a side. Suppose a new level 𝑝 
+
+must be inserted between its immediate neighbors 𝑃 < 𝑝 < 𝑆 
+
+in price order (both may exist, or one may be missing at the extremes). In a binary search tree, the insertion location is a 
+
+unique gap between 𝑃 and 𝑆 : if both neighbors exist, exactly one of right (𝑃 ) or left (𝑆 ) is null, and that null pointer is the unique attachment location preserving the BST invariant. Neighbor-aware insertion therefore performs: (i) allocate a descriptor for 𝑝 , (ii) attach it using the unique null child pointer determined from (𝑃, 𝑆 ) with 𝑂 (1) pointer writes, (iii) update the doubly-linked neighbor pointers of 𝑃 , 𝑆 , and 𝑝 in 
+
+𝑂 (1) writes, and then (iv) run the standard AVL/RB fix-up along the ancestor path to the root, which is 𝑂 (log 𝑛 ) and uses local rotations/recoloring [12, 22]. Deletion is symmetric. When removing a descriptor 𝑧 , the engine chooses 𝑦 as 𝑧 ’s in-order successor (or predecessor at the boundary) directly from neighbor links. It then performs a constant-size graft/transplant that replaces 𝑧 with 𝑦 while preserving in-order traversal, updates neighbor links in 𝑂 (1)
+
+writes, and executes the standard fix-up walk along the single path where balance may have been perturbed. Overall, for both insertion and deletion, the cost becomes: 
+
+𝑇 (𝑛 ) = 𝑂 (1) + 𝑂 (log 𝑛 ),
+
+where the 𝑂 (1) term replaces the traditional 𝑂 (log 𝑛 ) search. 
+
+Multi-way procedure ( 𝐵 /𝐵 +-trees). In multi-way trees, the same neighbor information identifies a unique gap in the sorted key sequence at the leaf layer. Operationally, the en-gine keeps (or quickly derives) a pointer to the leaf/page con-taining 𝑃 or 𝑆 (e.g., via the descriptor), inserts the new key 𝑝 
+
+into that leaf at the appropriate slot, updates leaf-level neigh-bor links, and then performs the standard split/merge/borrow fix-ups on the single ancestor path to the root [ 4 ]. As in the binary case, neighbor-aware updates remove the top-down search and reduce the structural edit to a constant-time lo-calized page operation plus the usual bounded-height rebal-ancing. 
+
+Theorem 4.1 (Neighbor-aware insertion/deletion) . Let 𝑇 be a balanced search tree from any family whose rebalancing pro-cedure uses only order-preserving local transforms (rotations, splits, merges, redistribution) along a single root-to-leaf path. Given a new key 𝑝 and its in-order neighbors in 𝑇 (predecessor 
+
+𝑃 , successor 𝑆 , or both; at the extremes, one suffices), insertion 
+
+> 8The World’s Fastest Matching Engine Algorithm
+
+of 𝑝 requires 𝑂 (1) reference writes to attach 𝑝 at the unique BST-valid position, followed by the standard 𝑂 (log 𝑛 ) rebal-ancing walk. Deletion is symmetric: given the node 𝑧 to remove and its in-order successor 𝑦 (obtained from an explicit neigh-bor link in 𝑂 (1)), the graft/transplant requires 𝑂 (1) reference writes followed by the standard rebalancing walk. Proof sketch. Existence and uniqueness of the attachment point. 
+
+In any binary search tree, if both 𝑃 and 𝑆 are present and adjacent in in-order traversal, then exactly one of right (𝑃 )
+
+or left (𝑆 ) is null: if right (𝑃 ) is non-null then 𝑆 is the leftmost descendant of right (𝑃 ) so left (𝑆 ) is null; if right (𝑃 ) is null then 𝑆 is an ancestor with 𝑃 in its left subtree so left (𝑆 ) is non-null. This null pointer is the unique location where 𝑝 
+
+can be attached as a leaf while preserving the BST invariant; linking 𝑝 there requires 𝑂 (1) writes. At the boundary (no predecessor or no successor), the attachment point is the leftmost or rightmost null pointer in 𝑇 , identifiable in 𝑂 (1)
+
+from the existing extreme. For multi-way trees ( 𝐵 /𝐵 +), the analogous gap is a unique slot position in the leaf containing 
+
+𝑃 or 𝑆 , identifiable in 𝑂 (1) given a pointer to that leaf. 
+
+Rebalancing is unaffected. The standard fix-up procedures (AVL rotations, red-black recoloring, 𝐵 -tree splits/merges) are functions solely of the ancestor path from the physically modified position to the root and the local balance metadata (heights, colors, key counts) along that path. These proce-dures are identical regardless of whether the modification point was found by root-to-leaf search or by neighbor-based 
+
+𝑂 (1) lookup — the tree state after attachment is the same in both cases. Trees requiring occasional global rebuilds (e.g., scapegoat trees [ 20 ]) are excluded, as their rebalancing is not a local-transform walk. □
+
+When neighbors are unavailable. The neighbor-aware path is an optimization layered on a conventional balanced tree, not a replacement for it. When the caller does not al-ready hold an in-order neighbor, the index falls back to a standard root-to-leaf descent and retains the usual 𝑂 (log 𝑛 )
+
+bound. Neighbor-awareness is therefore a strict improve-ment rather than a trade-off: the common case, in which mu-tations cluster near recently touched keys, pays only 𝑂 (1)
+
+to locate the attachment point, while the rare case degrades gracefully to the textbook cost. 
+
+Generality beyond order books. The neighbor-aware in-sertion and deletion technique applies to any balanced-tree index where mutations cluster near recently touched keys — a property we call key-stream locality . Whenever updates arrive in an order correlated with key order — or the caller otherwise already holds a reference to an in-order neighbor — the conventional root-to-leaf search to locate the attach-ment point discards positional information the caller already possesses. Our technique eliminates this redundant traversal by grafting directly at the known neighbor, reducing the insertion and deletion critical path to a single rebalancing walk with 𝑂 (1) reference writes per rotation, regardless of tree size. 
+
+## 5 Implementation 
+
+5.1 Platform and Build 
+
+All experiments ran on a dedicated AWS EC2 r8g.metal-24xl 
+
+(Graviton4) instance (2025-12-03): ARM64 Neoverse-V2, 96 cores (no SMT), single socket / single NUMA node, 754 GB DRAM, 64 B cache lines, Ubuntu 24.04 with Linux 6.14.0-1017-aws, and an AWS ENA NIC. This instance type is listed at approximately $1,630/month under three-year all-upfront reserved pricing in the AWS US East (N. Virginia) region as of May 2026. The engine is a single C++ process compiled with GCC 14.2.0 (aarch64-linux-gnu ) with aggressive optimizations enabled. A well-optimized x86 build of the same codebase on an r8i in-stance (Intel Xeon 6, Granite Rapids) achieves approximately 70% of the Graviton4 throughput reported here. The perfor-mance is governed by cache hierarchy behavior, memory bus profile, and load-to-use latency rather than peak clock speed; the Graviton4’s single-socket NUMA-free topology and large per-core L2 favor this access pattern. 
+
+5.2 Runtime 
+
+The order book is sharded by symbol and owned by a single matching thread (no locks in the book). Ingress, matching, and egress stages communicate via bounded queues. For benchmarking, all threads are pinned to dedicated cores. 
+
+## 6 Evaluation 
+
+On “the world’s fastest.” The title is a claim we invite the reader to falsify, not a slogan to take on faith. We make it precise against the best available evidence: the fastest matching throughput on identical hardware, benchmarked against baselines anyone can openly reproduce. Published production-venue figures are either far lower or not directly comparable—they bundle full networking, risk, compliance, and real-network stages this measurement deliberately ex-cludes. Public documentation reports sustainable per-partition matching throughput of only ∼ 300 ,000 orders/s, each par-tition bundling many products, even in highly engineered systems [ 15 , 17 ]; on the market-data side, the CTA consoli-dated quote feed for U.S. equities is provisioned for 27 mil-lion messages per second [ 10 ], and the OPRA consolidated options feed—the largest market-data feed in the world— reported a peak sustained rate of 44.8 million messages per second in Q3 2024 [ 8 ], with peak 1-millisecond bursts exceed-ing 187 million messages per second during the April 2025 sell-off [ 13 ]. Against the reproducible, like-for-like baselines we can run head-to-head, a single matching core sustains 
+
+32 million order messages per second , 4.7–11 × faster than the best available open-source matching engines on the same hardware (§6.4). We therefore issue an open-harness 
+
+> 9Jake Yoon
+
+challenge: the workload generator, baseline adapters, and byte-identical reference hashes are public—so the baselines and the correctness oracle are independently reproducible— and any venue or firm can run the identical workload against its own engine on identical hardware and compare. 2 We will revise the title the day a faster engine clears it. 
+
+6.1 Methodology 
+
+We stress the matcher with synthetic bursts of limit orders calibrated to a highly liquid equity (NVIDIA). Limit prices are drawn from a power-law depth distribution with exponent 
+
+𝛽 = 2.23 fitted to historical level-hit statistics. Quantities are uniform in [1, 100 ] shares. We characterize depth sensitivity in Section 6.2.1. Each limit order is expanded into a short “lifetime” trace with add, optional modify/replace, and eventual cancel or execution. This mirrors modern equity markets, where order flow is dominated by cancellations and replacements: trade-to-order volume ratios are only a few percent and ∼ 97% of orders are cancelled before trading [28, 51]. Upon arrival, an order is marked immediate-or-cancel (IOC) with probability 𝑝 IOC = 0.15 , consistent with the ma-terial share of IOC-like liquidity-taking instructions in real data [ 29 ]. IOC orders either execute against top-of-book liq-uidity or expire without posting residual size. Non-IOC orders model active quote management. Each is modified once with probability 𝑝 modify = 0.20 (a small price/size change) and is then cancelled with probability 
+
+𝑝 cancel = 0.95 , aligned with the extreme order-to-trade imbal-ance and short quote lifetimes observed in SEC data [ 49 , 51 ]. Non-IOC lifetimes are drawn from an exponential distribu-tion with median 0.431 ms , chosen to be harsher than typical production lifetimes but anchored to measured millisecond/sub-millisecond cancellation mass [ 49 , 52 ]. Combined with the power-law depth profile and high cancellation rate, this pro-duces dense micro-bursts with millions of back-to-back mes-sages and heavy churn at the top of book, which is the regime we target. 
+
+Stochastic mid-price model. Real instruments do not trade at a fixed price. For the single-matcher microbench-mark and all head-to-head comparisons, the mid-price evolves per order via geometric Brownian motion (GBM): 
+
+mid (𝑡 +1) = mid (𝑡 ) · exp  − 12 𝜎 2𝑑𝑡 + 𝜎 √𝑑𝑡 𝑍 , 𝑍 ∼ N ( 0, 1),
+
+calibrated to NVIDIA (closing price $167.52, tick size $0.005 per SEC sub-penny regulation, compliance scheduled for Nov 2026). Order prices are placed relative to the moving mid using the same 𝛽 = 2.23 power-law distribution. The time step 𝑑𝑡 is chosen so that the expected 1𝜎 log-return over the full burst matches a target swing parameter, and a fixed random seed (12345) ensures reproducibility across engines 
+
+> 2https://github.com/flash1-dev/matching-engine-benchmark
+
+and scenarios. Figure 5 shows a representative stochastic price path under this model. We report results under five scenarios. A static fixed-price reference uses zero volatility, isolating data-structure perfor-mance from price-path effects (realized span 1,529 ticks, 4.6%). The normal-trading-day scenario uses 15% annualized volatil-ity with a 2% target swing, representing an unremarkable in-traday session for a liquid large-cap equity (median intraday range ∼1.5–3% in calm periods; realized path 2,057 ticks, 6.1% of start price). A large-swing scenario uses 50% annualized volatility with a 25% target swing (realized span 14,313 ticks, 42.7%). Two flash-crash scenarios use the same 50% volatility with 40% and 60% target swings (realized spans 23,932 and 37,923 ticks, respectively), modeling the price dislocations documented during events such as the May 2010 Flash Crash. Unless otherwise noted, all single-matcher and comparison results use the normal-trading-day ( ∼2% swing) workload as the representative operating point. 
+
+6.2 Single Matcher Performance 
+
+In the single-matcher microbenchmark, each run replays a burst of ∼ 2M messages generated by the workload above, delivered back-to-back with no inter-message gap. Orders are injected directly into the matcher thread, which publishes events to a dedicated output queue drained by a separate thread pinned to an adjacent core (Figure 2). Under the normal-trading-day workload ( ∼2% swing), a single core sustains 30–32 M msgs/s (median over ten runs), corresponding to ∼31 ns per message. Under a controlled fixed-price workload that isolates data-structure performance from price-path effects, throughput rises to 33 M msgs/s 
+
+(∼30 ns/msg). The modest gap reflects the wider active price tree under drift; the engine remains in a stable, CPU-bound regime with no evidence of phase changes or patholog-ical tails in either configuration. In raw throughput, the matcher reaches the same order of magnitude as special-ized in-memory key-value systems such as FaRM [ 16 ] and MICA [ 30 ], despite the multi-step per-message state cascade under strict serial ordering that distinguishes the order-book workload from a point query (§2). 
+
+Matcher OutQ Message Drainer 
+
+Figure 2. Single-matcher setup. Orders are injected directly into the matcher, which pushes events to an output queue drained on an adjacent core. 
+
+6.2.1 Book depth sensitivity. The benchmarks above use the empirically fitted, top-of-book-concentrated book (𝛽 = 2.23 , where 𝛽 is the depth power-law exponent intro-duced in our capacity model). To characterize sensitivity to 
+
+> 10 The World’s Fastest Matching Engine Algorithm
+
+resting-book depth—a liquid mid-session book rests across many more price levels—we prefill the book to progressively greater depths before the timed run, expressed as a fixed number of price levels per side × resting orders per level (the empty configuration adds no prefill and leaves only the transient book the workload itself sustains). Book-depth statistics (median active price levels) are measured in a sepa-rate, untimed pass, so the timed throughput runs carry no in-window statistics overhead. 
+
+Table 1. Single-book matcher throughput vs. resting-book depth. Depth is set by prefilling the book to a fixed number of price levels per side × resting orders per level; the empty configuration adds no prefill, leaving only the transient book the workload itself sustains. Median of 10 trials (trial-to-trial spread ≲ 1% ); active-level counts from a separate untimed pass.             
+
+> Prefill Median active T-put (levels ×orders) price levels (M msgs/s)
+> empty 41 33.10 200 ×20 397 31.37 300 ×30 589 30.55 400 ×50 789 28.95
+
+Table 1 reports single-book matcher throughput across this sweep. From the empty configuration (33.10 M msgs/s at ∼41 transient active levels, comparable to the empiri-cally fitted operating depth) to a deeply prefilled 789-level book (400 levels/side × 50 orders/level, far harsher than any empirical distribution), throughput declines from 33.1 to 29.0 M msgs/s—a depth penalty of 12.5% (and only 7.7% across the deliberately prefilled 397–789-level range). The matcher degrades gracefully as the resting book widens; the modest cost reflects the larger working set rather than additional per-message algorithmic work. 
+
+6.2.2 Context-switch overhead. Real exchanges multi-plex many symbols per core. To quantify this application-level context switching, we benchmark a matcher while varying the number of active books from 1 to 10,000 sym-bols. Orders follow the same workload parameters as above, with symbols drawn from a Zipf popularity distribution with 
+
+𝛼 = 1.2 on the same platform as Section 5. Table 2 summarizes results. With a single symbol, the matcher sustains 32.31 M msgs/s at 30.9 ns/msg (baseline). Multiplexing across 10–250 symbols yields 26.3–29.7 M/s (34–38 ns), roughly 0.81–0.92 × baseline (8–19% overhead). At 1,000 symbols throughput is 23.98 M/s (41.7 ns/msg, 26% overhead), and at 10,000 symbols it remains 20.50 M/s (48.7 ns/msg, 37% overhead). The degradation is dominated by locality effects rather than algorithmic work: each message incurs an extra per-symbol pointer dereference, symbol decode and index, and 
+
+Table 2. Multi-Symbol Scaling Performance. Throughput and latency are measured on a single core as the number of active symbols increases.                                                 
+
+> Symbols T-put Latency vs. Overhead
+> (Count) (M/s) (ns) Base (%) 132.31 30.9 Baseline 0% 10 29.74 33.6 0.92x 8% 50 28.98 34.5 0.90x 10% 100 27.84 35.9 0.86x 14% 250 26.29 38.0 0.81x 19% 500 25.20 39.6 0.78x 22% 1,000 23.98 41.7 0.74x 26% 2,500 22.54 44.3 0.70x 30% 5,000 21.49 46.5 0.67x 33% 10,000 20.50 48.7 0.63x 37%
+
+more frequent working-set switches across books, which reduce cache effectiveness. Throughput decreases smoothly as the number of symbols grows, remaining above 20 M/s (0.63 × the single-symbol baseline) even at 10,000 books on a single core. 
+
+6.3 Wire-to-Wire Response Latency 
+
+On receipt of a new order, the matching thread generates the acknowledgment before running matching—the same ack-on-receipt semantics as Nasdaq INET’s OUCH protocol (in contrast to CME iLink, which acknowledges only after the match completes). The acknowledgment, like every out-put event, then flows through the inter-thread output stage, where it is serialized to an OUCH 5.0 response and the cor-responding ITCH 5.0 market-data message, with event order preserved, so a client always observes its acceptance before any execution of the same order. We measure wire-to-wire response latency across this en-tire path (Figure 3): from each message’s scheduled wire arrival, through OUCH 5.0 inbound parsing on the ingress thread, hand-off to the matching stage, single-book match-ing, hand-off to egress, and OUCH/ITCH 5.0 encoding, to the egress timestamp—everything an exchange gateway does short of the NIC and network. Two methodological choices make the numbers honest. First, load is applied open-loop at a fixed offered rate and each message’s latency is mea-sured from its scheduled arrival time, so the measurement is coordinated-omission-free and queueing delay imposed by the system is never hidden. Second, the workload is the single-symbol, single-book stream (1M NEW orders plus their cancels and modifies) used for Table 6, and every trial’s matching output is cross-checked byte-for-byte against that verified reference. We report the median of ten trials. At an offered load of 5 M msgs/s per matcher segment, order-to-acknowledgment wire-to-wire latency is P50 =      
+
+> 11 Jake Yoon
+> Deterministic Core Execution
+> TCP Shard Ingress Queue Sequencer Queue Matcher Output Queue
+> Message Drainer
+
+Figure 3. Full-Pipeline Measurement: order flow from TCP ingress through sequencing, matching, and draining. 
+
+376 ns , P99 = 524 ns , and P99.9 = 1.68 𝜇 s (≈1.7 𝜇 s), all me-dians of ten trials. The median holds this sub-microsecond floor as offered load climbs—525 ns at 10 M msgs/s—then degrades gracefully through the knee (Table 3), reaching 1.48 𝜇 s at 24 M msgs/s and only 2.22 𝜇 s at 28 M msgs/s, the edge of the clean operating envelope. The P99.9 figure should be read with one caveat: the measurement host does 
+
+not use interrupt-isolated cores, so the extreme tail reflects kernel scheduling noise on the test machine rather than any behavior of the engine itself. 
+
+Table 3. Acknowledgment-path P50 latency vs. offered load, per matcher segment (single representative sweep; the 5 M msgs/s point’s ten-trial median is the 376 ns headline P50). The median holds a sub-microsecond floor through 10 M msgs/s, then rises through the knee to the 28 M msgs/s edge of the clean operating envelope.           
+
+> Offered load (M msgs/s) 1510 24 28
+> Ack P50 (ns) 384 371 525 1,479 2,223
+
+Table 4 decomposes this latency by message lifecycle, lead-ing with the order-to-acknowledgment path and then break-ing out each originating-message-to-response class; every value is wire-to-wire, from the originating message’s sched-uled arrival to the encoding of the corresponding report. The table is a single representative run from the same session as the percentiles above: its acknowledgment row (P50 = 370 ns, P99 = 521 ns) is the single-run counterpart of the ten-run headline (376/524) and differs only by run-to-run noise. The final row pools all response types (P50 = 376 ns, P99 = 530 ns); its P99 is higher than the acknowledgment P99 because the pool mixes in the heavier fill and replace tails, so it is the all-message aggregate, not the order-to-acknowledgment headline. The execution row makes the ack-on-receipt architec-ture visible: a new order that crosses the book is acknowl-edged at P50 = 370 ns and its fill notification is published at P50 = 417 ns, so fills are reported within ∼50 ns of the ac-knowledgment. A venue that acknowledges only after match-ing completes structurally cannot exhibit this ordering—its acknowledgment and its execution are produced by the same downstream step—whereas here acceptance is confirmed first and the execution follows on the same ordered output stream. The cancel-to-confirmation row is the one market-making readers look for, and it is rarely reported in published systems. Cancellations dominate this workload—cancel requests are 
+
+∼41% of the total client messages submitted, and ∼95% of resting orders are ultimately cancelled (Section 6.1)—and a cancel request is confirmed at P50 = 378 ns, P99 = 491 ns, on par with new-order acknowledgment latency. We keep the per-class sample counts ( 𝑛 ) in the table so that the relative weight of each path is explicit. That cancel latency follows from the matching path itself. Cancel and modify requests resolve against the matcher’s O(1) order-resolution lookup on the same ingress–match– egress path as a new order, and that lookup is inside the measured span. This is why cancel confirmation latency is on par with order acknowledgment latency: a cancel traverses the same path as a new order, with the order-resolution lookup standing in for order construction. At these latencies the common-path floor is set by hardware memory physics rather than matching compute—which is precisely what the FPGA embodiment, with per-symbol on-chip memory, is designed to remove (§6.5). Two scope points frame these numbers. These latencies are per matcher segment : a single matcher segment’s full ingress–matcher–egress pipeline sustains ∼31 M msgs/s of full-pipeline throughput and holds a clean latency envelope up to ∼28 M msgs/s—at the low end of the 30–33 M msgs/s matcher-only throughput of Section 6.2, the small gap re-flecting the per-message OUCH/ITCH parsing and encoding on the dedicated ingress and egress threads. The deployed engine runs multiple matcher segments per process, so the per-instance ceiling is correspondingly higher (Section 6.3.1) and should not be conflated with these per-segment figures. Because every value here includes that wire-protocol pro-cessing, it is not comparable to matcher-only service-time figures. The reference point throughout is the scheduled wire arrival rather than software pickup; at this load the two differ by under 10 ns, so the distinction does not materially affect any cited value. We report these figures on their own terms rather than alongside published exchange-venue wire-to-wire numbers, which encompass full production stacks, risk and compliance layers, and real networks that this mea-surement deliberately excludes. Figure 4 shows the corresponding wire-to-wire distribu-tion for the same representative run: a sharp principal mode at the median, a small secondary mode near 465 ns, and 
+
+> 12 The World’s Fastest Matching Engine Algorithm
+
+a thin tail out to P99.9 = 1.69 𝜇 s. The concentrated mode reflects the contention-free common path through parse, match, and encode; the tail captures the occasional kernel scheduling and queueing effects noted above. The resulting profile is comparable to user-level high-throughput, low-latency systems such as eRPC and Caladan [ 18 , 26 ]; more broadly, ZygOS [ 41 ], Shinjuku [ 25 ], and Shenango [ 38 ] show that tail latency in serialized request processing is dominated by queuing and scheduling rather than raw compute. 
+
+Figure 4. Wire-to-wire response latency distribution at 5 M msgs/s per matcher segment (single representative run; its annotated percentiles, P50 = 370 ns / P99 = 521 ns, are the order-to-acknowledgment path of Table 4 and differ from the ten-run order-to-acknowledgment headline me-dians, 376/524 ns, only by run-to-run noise). 
+
+6.3.1 Instance-level aggregate throughput. The preced-ing experiments measure a single matcher core. To charac-terize the throughput ceiling of a node instance, we scale the pipeline to multiple matcher segments on the same 96-core machine (Section 5), each segment servicing a disjoint parti-tion of 10,000 total symbols. Symbols are assigned across seg-ments under a Zipf( 𝛼 = 1.2) popularity distribution; within each symbol, order arrivals follow the standard power-law (𝛽 = 2.23 ) depth distribution. The number of segments is tuned to balance per-matcher cache residency against total core utilization. Under apples-to-apples conditions with all matchers ser-vicing the realistic Zipf workload, the engine sustains ∼ 640 mil-lion messages per second across 10,000 symbols on a single instance (643.6 M/s median, ± 14.6 M/s standard deviation over 10 runs). Beyond the optimal point, aggregate through-put plateaus and then decreases as additional matchers in-crease L3 cache contention from concurrent working-set switches across books and compete with dedicated I/O cores for memory bandwidth, confirming that the instance-level ceiling is memory-hierarchy-bound, not compute-bound— precisely the bottleneck that the FPGA embodiment, with dedicated per-symbol BRAM partitions and no shared cache hierarchy, is designed to eliminate (§6.5). Because concurrent matchers share the machine’s L2/L3 capacity and memory bandwidth, per-matcher throughput in the full instance is lower than the isolated single-core figure of Table 2; the in-stance ceiling is set by machine-wide cache and bandwidth capacity rather than per-core compute. The realistic per-symbol distribution—Zipf-distributed flow across symbols combined with power-law depth within each symbol—concentrates ∼80% of orders on the top ten price levels of each active symbol, keeping each matcher’s hot order-book nodes L1-resident. Cancel operations resolve in 
+
+𝑂 (1) without cache misses. This production-realistic load pattern, rather than a uniform synthetic one, is what real exchanges experience: a small number of heavily-traded sym-bols dominate volume, and within each symbol orders cluster near the top of book. For context, publicly documented aggregate market mes-saging rates are as follows. The CTA consolidated quote feed for U.S. equities has a provisioned capacity of 27 million messages per second [ 10 ]. The OPRA consolidated options feed—the largest market-data feed in the world—reported a peak sustained rate of 44.8 million messages per second in Q3 2024 [ 8]; during the April 2025 sell-off, peak 1-millisecond bursts exceeded 187 million messages per second [13]. 
+
+6.4 Head-to-Head Comparison 
+
+We compare against three baselines that span the conven-tional design space: (i) Exchange-core [ 53 ], a Java matching engine using an adaptive radix tree with doubly-linked order lists; (ii) QuantCup 1 [ 42 ], the winning entry of the 2011 QuantCup matching engine contest sponsored by Tower Research Capital ($10,000 first prize), a contest-optimized flat-array design; and (iii) Liquibook [ 36 ], a conventional tree-of-lists design evaluated separately due to its 𝑂 (𝑛 ) can-cel path. 
+
+Common protocol. All engines are measured on the same platform (Section 5). Our engine and QuantCup are com-piled with GCC 14.2.0 at -O3 ; we run Exchange-core under JDK 11 with -server -Xms2g -Xmx2g after three full JIT warmup passes (harness-side choices; not prescribed by the project). Each configuration uses 10 subprocess-isolated runs; medians are reported. All engines emit OrderAck, Trade, CancelAck (including IOC residuals), and ModifyAck to an identical Output queue serviced by a dedicated thread on an adjacent core, so output-path overhead is included uniformly. For Exchange-core, we call OrderBookDirectImpl directly, bypassing the LMAX Disruptor pipeline, risk engine, and journaling—the same level of isolation as all other engines. All engines receive the same binary order stream from a fixed seed. 
+
+> 13 Jake Yoon
+
+Table 4. Full message-lifecycle wire-to-wire latency at 5 M msgs/s per matcher segment (single representative run, open-loop and coordinated-omission-free; each value measured from the originating message’s scheduled arrival to the encoding of the corresponding report). The acknowledgment row leads and is the single-run counterpart of the 376/524 ten-run headline; the final row pools all response types (P99 530, raised by the heavier fill and replace tails) and is not the order-to-acknowledgment headline. P99.9 is reported in the text, not here.                                           
+
+> Originating message →response 𝑛 P50 P90 P99 (ns) (ns) (ns)
+> New order →acknowledgment 944,354 370 402 521 New order →trade execution (fill) 59,078 417 539 626 New order →IOC residual cancel 137,316 380 407 536 Cancel request →cancel confirmation 762,852 378 396 491 Modify request →replace confirmation 161,046 411 430 522 All responses pooled 2,064,646 376 415 530
+
+QuantCup has no native modify support; modifies are implemented as cancel + re-insert in our adapter. Exchange-core’s moveOrder changes price but has no “increase quan-tity” API, so modifies are likewise implemented as cancel + re-insert. All engines use the same cancel + re-insert path for a fair comparison. 
+
+6.4.1 Correctness verification. We verify trade-by-trade correctness by comparing the output of our engine and all other engines on the identical, deterministic order stream. All benchmark engines produce 71,851 identical trades (normal trading day scheme)—same prices, quantities, and sequence— with zero differences at the byte level when using the same modify-order behavior (cancel with reinsert). Correctness verification is a prerequisite for any throughput comparison: engines that produce divergent trade outputs on the same input cannot be meaningfully compared on speed. Stochastic, cancel-dominated workloads of the kind used here expose correctness bugs that simple test cases miss—particularly around order cancellation across multiple price levels, iden-tifier deduplication, and best-price advancement under high churn. The verification harness—the deterministic workload generator, the baseline adapters, and the multi-engine con-sensus reference hashes against which every engine’s full report stream is checked—is released as part of the public benchmark, 3 so the reference can be regenerated from a fixed seed and used to verify any engine’s output byte-for-byte— the baselines independently, and our own engine against the same public oracle. 
+
+6.4.2 Against Liquibook. We run both engines on the same multi-volatility workload sweep (1M NEW orders, ∼2M total messages per run, 95% cancel, 20% modify, 15% IOC). 
+
+Correctness defect identified during integration. While integrating Liquibook our byte-level correctness methodol-ogy (§6.4.1) surfaced a defect in IOC handling. The OrderTracker 
+
+> 3https://github.com/flash1-dev/matching-engine-benchmark
+
+constructor ( src/book/order_tracker.h , lines 55–74) writes its conditions flag to the local parameter conditions rather than the member conditions_ , so immediate_or_cancel() 
+
+returns false for IOC orders. The post-match insertion guard then passes and the residual is silently inserted into the resting book, where it later matches against unrelated flow and produces trades that should not exist. Empirically, on a deterministic 100,000-order baseline with 15% IOC traffic, uncorrected Liquibook generates 26,999 trades—approximately 4× the consensus produced by our en-gine and corrected Liquibook—consistent with ∼15 ,000 stuck IOC residuals each producing ∼1.3 phantom matches. The fix is a one-character call-site change that routes conditions 
+
+through the explicit book.add(order, conditions) signa-ture, bypassing the buggy code path; all Liquibook through-put figures below use this corrected configuration, after which output is byte-identical to ours across every report type. Trivial single-IOC test cases pass on the uncorrected code, which underscores why correctness verification across the full report stream—not just trades—is a prerequisite of any throughput comparison. Table 5 shows a consistent ∼11 × speedup across all volatil-ity regimes where Liquibook is feasible. The consistency itself is informative. Because the engines now produce byte-identical matching output, the throughput gap is attributable almost entirely to the cancel path: Liquibook performs a lin-ear scan through std::multimap (find_on_market() ) on every cancel, while our engine resolves cancels in 𝑂 (1). With 95% cancel rates, this cancel-path differential dominates the total runtime in both engines, producing the stable ∼11 ×
+
+ratio. In the static regime the same pathology pushes Liqui-book to sub-0.03 M/s (deep per-level chains compound the 
+
+𝑂 (𝑛 ) scan), while our 𝑂 (1) cancel path is insensitive to chain depth and sustains 32 M/s. We note that the 𝑂 (𝑛 ) cancel path is an implementation choice in Liquibook, not an inherent property of balanced-tree order books; a hash map for order-ID lookup would 
+
+> 14 The World’s Fastest Matching Engine Algorithm
+
+Table 5. Throughput comparison with Liquibook across five scenarios (1M NEW orders, ∼2M total commands per run, 95% cancel, 20% modify, 15% IOC). All figures are medians over 10 runs with standard deviation. The static regime (0% mid-price drift) is infeasible for Liquibook at 2M commands because order arrivals concentrate at a narrow active price range, producing deep per-level order chains through which Liquibook’s 𝑂 (𝑛 ) cancel scan must traverse on every cancel-lation.                                     
+
+> Scenario Ours (M/s) Liquibook (M/s) Speedup
+> Static 32.42 ±0.46 infeasible ∞
+> Normal 30.44 ±0.59 2.77 ±0.08 11.0 ×
+> Swing-25 30.98 ±0.69 2.75 ±0.07 11.3 ×
+> Flash-crash-40 31.12 ±0.82 2.94 ±0.09 10.6 ×
+> Flash-crash-60 32.50 ±0.81 2.97 ±0.11 10.9 ×
+
+Figure 5. Representative stochastic price path during a volatile micro-burst: this draw swings ∼40% peak-to-trough from the $167.52 open ($147.48–$215.22 range). The engine processes ∼2M order messages over the ∼60 ms burst at 
+
+∼33 M order messages/s, within the 30–33 M/s sustained across all evaluated volatility regimes (Table 6). close much of this gap. The remaining advantage—which our paper’s correctness verification and multi-regime sta-bility demonstrate—comes from the contiguous-slot storage and neighbor-aware tree operations that survive across all workload conditions. 
+
+6.4.3 Three-engine comparison across volatility regimes. 
+
+Table 6 reveals two distinct behavioral classes among the two baseline engines it compares, and a third class occupied by our design. 
+
+Our engine vs. Exchange-core: 4.7–6.0 ×. Our engine is consistently 4.7–6.0 × faster than Exchange-core across all volatility regimes. Exchange-core implements the same algo-rithmic architecture used by production matching engines— balanced tree of linked order lists with hash-map cancel— making the gap attributable to both data-structural and systems-engineering advantages. At 30 M/s under routine trading conditions, our engine processes each order in ∼33 ns, sus-taining throughput that remains stable whether the price path is static or swinging 113% in a flash-crash scenario. 
+
+QuantCup: contiguous memory is necessary but not sufficient. QuantCup’s flat pricePoints[] array provides direct arithmetic indexing with no tree traversal and maxi-mal cache-line utilization in its matching path. This makes contiguous memory layout a powerful performance lever for the matching step itself; it is the same principle that motivates the PIN’s contiguously addressable slot region. Under static-price conditions, where active price levels clus-ter tightly and the linear scan from askMin / bidMax is short, QuantCup sustains 5.11 M/s. However, the flat-array architecture is catastrophically fragile under price drift. As the mid-price moves, the match-ing loop must scan linearly from askMin / bidMax through empty array slots before reaching the next active level. Under a routine 2% intraday drift, QuantCup drops to 2.96 M/s; at 25% swing it falls to 0.43 M/s, and by the 60% flash-crash sce-nario it reaches 0.15 M/s—a ∼34 × degradation from static to flash-crash, driven entirely by linear scanning through empty price slots. In contrast, our engine maintains 30–33 M/s across all five scenarios—a stability profile that no flat-array architecture can achieve regardless of implementation qual-ity. At the most volatile end, our engine is 216 × faster than QuantCup. This progressive collapse is what the PIN’s priority indica-tors exist to prevent—the flat array still has to walk the rack while the PIN reads the ticket: both designs store orders in contiguous memory, but a flat array without indicators must either scan or shift, while the PIN’s indicators decouple logi-cal priority from physical position so insertions, deletions, and best-order queries remain 𝑂 (1) under churn and price drift. 
+
+6.4.4 Pipeline overhead analysis. Exchange-core ships with a full LMAX Disruptor pipeline comprising sequenc-ing/batching (Grouping), pre-trade risk checks (Risk Hold), order matching, post-trade risk finalization (Risk Release), and result publication. Notably, Exchange-core performs per-order risk processing — user-profile lookup, margin calcula-tion across all positions in the same currency, and specula-tive balance debit/rollback — synchronously on the matching path. This is not how production securities exchanges operate. At CME Globex, Nasdaq INET, NYSE Arca/Pillar, and LSE Mil-lennium, the matching engine performs price–time priority matching, order-book management, and trade-report gen-eration, plus a set of constant-time order-level validations (max size, self-trade prevention, price bands, and similar) that may execute inline; what the matching path does not do is balance, margin, or credit lookup. Pre-trade risk con-trols are distributed across multiple layers, none of which require the matching path to look up participant balances, 
+
+> 15 Jake Yoon
+
+Table 6. Throughput across five volatility regimes (1M NEW orders, ∼2M total messages per run, 95% cancel, 20% modify, 15% IOC). Common protocol per §6.4. All figures are medians over 10 runs.                                   
+
+> Scenario Tick Realized Ours Exchange-core QuantCup Span Span (M/s) (M/s) (M/s)
+> Static (0% mid-price drift, with crossing bid-ask) 1,529 4.6% 32.42 5.37 5.11 Normal trading day (2% GBM drift) 2,057 6.1% 30.44 6.09 2.96 Large swing (25% GBM drift) 14,313 42.7% 30.98 6.55 0.43 Flash-crash (40% GBM drift) 23,932 71.4% 31.12 6.58 0.25 Flash-crash (60% GBM drift) 37,923 113% 32.50 6.21 0.15
+
+Table 7. Instance-level throughput comparison at 10,000 symbols on a single 96-core node. Exchange-core runs out-of-box on a single JVM; our engine is likewise a single process that uses multiple matcher segments with dedicated I/O cores. All figures are medians over 10 runs.         
+
+> Engine Aggregate (msg/s) Scope
+> EC (out-of-box) 120,000 Risk + match EC no-risk 4,240,000 Match only
+> Our engine 643,610,000 Match only
+
+margin, or credit: (i) broker/member-firm systems enforce buying power, margin limits, and credit controls under SEC Rule 15c3-5 (the Market Access Rule), where customer bal-ances are actually held, before an order is admitted to the exchange; (ii) the exchange order-entry gateway performs lightweight 𝑂 (1) checks such as message-rate throttling and fat-finger / maximum-size guards; (iii) constant-time order-level validations such as self-trade prevention and price-band reasonability are applied at or before matching—these test the incoming order against existing book state in 𝑂 (1) and involve no external balance or margin lookup; and (iv) the clearinghouse (OCC, DTCC, CME Clearing) handles margin calculation and mark-to-market on end-of-day or intraday batch cycles, not per-order. Our pipeline follows this produc-tion architecture: the matching path is kept free of stateful balance and margin checks, which are assumed to execute upstream and at clearing. To quantify the cost of Exchange-core’s in-line risk pro-cessing at instance scale, we run Exchange-core on the same 96-core machine across 10,000 symbols in two configurations: (i) EC full-risk (out-of-box), the complete LMAX Disruptor pipeline with per-order risk processing; and (ii) EC no-risk ,with risk processing disabled—matching the production ex-change architecture where risk is enforced upstream. Table 7 shows the instance-level comparison. Exchange-core’s out-of-box configuration, which includes per-order risk processing on the matching path, sustains 0.12 M/s across 10,000 symbols—a 35 × reduction from the no-risk configuration (4.24 M/s), confirming that in-line risk process-ing dominates Exchange-core’s pipeline cost. The apples-to-apples comparison is our engine against Exchange-core’s no-risk configuration, since both perform matching and out-put reporting without on-path risk checks. At this level, our engine is 152 × faster, reflecting the combined effect of the data-structure advantage, lower inter-stage overhead, and efficient multi-core scaling. Exchange-core could in principle be scaled further by partitioning symbols across multiple JVM instances running in parallel; however, this requires building a custom symbol-routing and sequencing infras-tructure that the out-of-box distribution does not provide, and inter-process communication between separate JVM instances introduces serialization overhead and additional latency that erodes per-matcher throughput. 
+
+Summary. Across the three conventional design points— tree-of-lists (Liquibook, ∼11 × slower), adaptive radix tree with Disruptor pipeline (Exchange-core, 4.7–6.0 × slower), and flat array (QuantCup, up to 216 × slower at the flash-crash extreme)—our engine is the only one that combines contiguous, cache-friendly storage with an unbounded, dy-namically sized price index whose updates avoid root-to-leaf search. 
+
+6.5 Integration into Production Exchange Infrastructure 
+
+The matching engine architecture evaluated in this paper is designed to integrate into existing exchange infrastructure as a drop-in replacement for the per-symbol matching core. The pipeline follows the same architectural separation used at production securities exchanges worldwide; each component maps directly to its production counterpart. 
+
+Network ingress. The matching engine consumes parsed order messages at the ingress stage, not raw network pack-ets. In production, kernel-bypass networking frameworks (DPDK, Solarflare OpenOnload, or vendor-specific stacks) handle packet I/O on dedicated cores, parsing and validating wire-format messages before forwarding compact internal order descriptors to the matching pipeline. This separation is standard at every major venue and is already reflected 
+
+> 16 The World’s Fastest Matching Engine Algorithm
+
+in our pipeline architecture (Figure 1). On an AWS deploy-ment within a single availability zone (Nitro instances with ENA enhanced networking in a cluster placement group), we observe low-10s microsecond NIC-to-NIC round-trip times, dominated by the cloud networking fabric rather than inter-nal processing. The engine’s wire-to-wire response latency (P50 376 ns, Table 4) is well below this low-10s-𝜇 s network floor, ensuring that the matching core is never the latency bottleneck in a deployed system. 
+
+Pre-trade risk and gateway validation. As established in §6.4.4, the matching path performs price–time priority matching, order-book management, trade-report genera-tion, and a small set of constant-time order-level valida-tions; stateful balance, margin, and credit risk is enforced upstream—across broker/member-firm systems and the ex-change gateway—and at clearing, consistent with how pro-duction securities exchanges are architected. Gateway-level validation (message parsing, field checks, rate limits) adds per-message cost but is fully parallelizable across cores and does not execute inside the serialized matching loop. 
+
+Deployment model. The shard-per-core, shared-nothing architecture maps naturally to both on-premise exchange deployments and cloud infrastructure. Each matcher shard owns all state for its assigned symbol range and commu-nicates with other pipeline stages only through bounded queues. No locks, no shared mutable state, no cross-core syn-chronization on the critical path. Symbol-to-core assignment is configurable: hot symbols can be isolated on dedicated cores, while less active symbols can be multiplexed (Table 2 characterizes the scaling behavior up to 10,000 symbols per core). 
+
+Hardware acceleration path. The multi-symbol scal-ing results (Table 2) reveal that the cost of multiplexing many books on one CPU core comes from cache-locality degradation—working-set switches across books—rather than additional matching work: per-message latency rises from 30.9 ns at one symbol to 48.7 ns at 10,000 symbols (a ∼37% throughput reduction) while the per-message algorithmic work is unchanged. This locality cost is architectural—no amount of software optimization can eliminate cache evic-tions when multiplexing thousands of books through a shared cache hierarchy. The PIN architecture eliminates this bottleneck on dedi-cated on-chip memory: each symbol’s book occupies its own BRAM partition with no shared cache or eviction, and multi-ple matcher pipelines run in parallel on the same chip, scaling linearly until the fabric’s memory and logic resources are exhausted—a hard wall rather than the smooth degradation observed on CPUs. An FPGA version report of the PIN and neighbor-aware tree, as specified here, is underway; the CPU results validate the algorithmic architecture the hardware path accelerates. 
+
+## 7 Related Work 
+
+Production exchanges. Modern exchanges optimize ag-gressively for latency and throughput, but public documenta-tion emphasizes end-to-end latency and aggregate message capacity rather than per-symbol, per-core throughput un-der micro-bursts. Deutsche Börse’s T7 presentations [ 15 ]break down latency across pipeline stages without publish-ing symbol-local throughput ceilings for the single-threaded matching core. Cboe’s Real-Time Latency Monitoring tools similarly expose microsecond-level port-to-port statistics rather than core saturation behavior [3]. 
+
+Open-source matching engines. Most open-source or-der books adopt the same basic pattern: a linked list of or-ders per price level indexed by a balanced search tree or linear array [ 43 , 45 ]. We benchmark three representative engines in Section 6.4.3: Liquibook [ 36 ], a C++ tree-of-lists design; Exchange-core [ 53 ], a Java engine using an adaptive radix tree with the LMAX Disruptor framework; and the QuantCup 1 winning entry [ 42 ], a flat-array design indexed directly by integer price. CoinTossX [ 24 ] is a Java engine using pre-allocated structures over Aeron, but retains con-ventional list-based per-price queues. None of these systems use contiguous priority-queue nodes or neighbor-aware tree operations. 
+
+## 8 Conclusion 
+
+This paper revisited the core bottleneck in modern electronic markets: the single-threaded, per-symbol matching loop un-der micro-bursts, where queueing and cache behavior, not network latency, dominate tail performance. We proposed an order-book architecture that treats this as a data-structure and cache-locality problem. Priority-Indicated Nodes (PINs) provide contiguously addressable slots with priority indi-cators and bounded relocation cascades, avoiding pointer chasing and unbounded compaction while preserving strict price–time priority. A depth-aware node-capacity model (optionally refined in production by a lightweight online estimator) concentrates capacity near the top of book, and a neighbor-aware balanced tree over price levels turns tree search into constant-time splice/graft operations followed by a single rebalancing walk. We implemented these ideas in a shard-per-core pipeline on commodity CPUs with bounded inter-stage queues be-tween ingress, sequencing, matching, and egress. Under regulator-calibrated, cancel-dominated workloads with sto-chastic price dynamics representing routine intraday con-ditions, a single matching core sustains 32 million order messages per second (up to 33 M/s under controlled condi-tions) with sub-microsecond median wire-to-wire response latency (P50 376 ns, P99 524 ns at a 5 M msgs/s offered load), 4.7–11 × faster than the best available open-source matching engines on identical hardware. Scaled to a single 96-core node servicing 10,000 symbols, the engine sustains 
+
+> 17 Jake Yoon
+
+∼ 640 million messages per second—a single commodity server (~$1,630/month) sustaining over 20 × the CTA consol-idated quote feed’s provisioned capacity (§6.3.1). The PIN’s slot regions, bitmask indicators, and bounded cascades map directly to FPGA block RAM and priority-resolution circuits, eliminating the cache-hierarchy effects that dominate multi-symbol scaling on CPUs; an FPGA version report of this spec-ified embodiment, targeting deterministic latency and flat multi-symbol scaling, is underway. Our evaluation isolates the in-process matching pipeline and leaves full network-ing integration, rich business logic, and stringent regulatory checks to future work. 
+
+Intellectual property. The production implementation of Flash One’s engine embodies proprietary optimizations not disclosed in this paper. The architecture described in this paper is protected by a patent portfolio covering the full stack: Priority-Indicated Node design, neighbor-aware balanced tree operations, the order-queue storage engine, and hardware accelerator embodiments. The portfolio com-prises multiple issued U.S. patents and pending international patents through a PCT application. All four U.S. applica-tions received first-action allowance from the USPTO. The first-action allowance rate in the relevant art unit is approx-imately 11%; achieving it on all four applications is, to our knowledge, unprecedented for algorithm and data-structure level inventions. The open license under which this paper is distributed covers its text and figures only. It grants no license, express or implied, to any issued patent or pending application covering the architectures, data structures, and algorithms described herein; implementing them requires a separate patent license. We further reserve the right to file continuation, continuation-in-part, divisional, or any similar additional patent applications on the same subject matter in any country in the world. Both the issued claims and this ongoing prosecution bear directly on any licensee’s freedom-to-operate analysis, and licensing inquiries may be directed to jake@flash1.com .
+
+## Engaging with Flash One 
+
+The benchmark harness, baselines, and correctness oracle are open today, and the architecture behind our results is ready to evaluate against real workloads. We invite three concrete next steps, matched to how you operate. 
+
+Exchanges and trading venues. We believe that we can help you capture more trading revenue and thus a larger market share by solving the micro-burst problem with our en-gine’s throughput. If your jurisdiction has an order-competition rule, such as Reg NMS in the US equities market, that ad-vantage exponentially compounds: because marketable flow must route to whoever holds the NBBO, a venue that stays at the NBBO through micro-bursts captures order flow from slower competitors rather than ceding it. Flash One’s match-ing engine is designed as a drop-in replacement for the matching core, mapping component-for-component onto the architecture production securities exchanges already use (§6.5); a single 96-core node (~$1,630/month) sustains 
+
+∼ 640 million messages per second across 10,000 symbols, over 20 × the CTA consolidated quote feed’s provisioned capacity. 
+
+HFT and market-making firms. We are looking for strategic partnerships with HFT firms that actively partici-pate in market making. You do not have to take our numbers on faith. Our public benchmark harness—baseline adapters, deterministic workload generator, and byte-identical refer-ence hashes 4—lets you reproduce the throughput of the best open-source engines on your own hardware and compare their numbers against ours. Run the harness with your own engine design, and evaluate for yourself how your design would perform on the same test. 
+
+FPGA early access. An FPGA version report is under-way (§6.5). We are opening early-access conversations for partners who want to be first on the hardware roadmap. To start a conversation, contact Jake Yoon at jake@flash1.com .
+
+## References                                               
+
+> [1] Gene M. Amdahl. 1967. Validity of the Single Processor Approach to Achieving Large Scale Computing Capabilities. In Proceedings of the April 18–20, 1967, Spring Joint Computer Conference (AFIPS ’67 (Spring)) . 483–485. doi: 10.1145/1465482.1465560
+> [2] Matteo Aquilina, Eric Budish, and Peter O’Neill. 2022. Quantifying the High-Frequency Trading “Arms Race”. The Quarterly Journal of Economics 137, 1 (February 2022), 493–564. doi: 10.1093/qje/qjab032 https://academic.oup.com/qje/article/137/1/493/6368348 .[3] BATS Global Markets. 2011. BATS Announces New Real-time Latency Monitoring Service. Technical notice. Accessed 2025-12-11. https://cdn.cboe.com/resources/release_notes/2011/BATS-Announces-New-Real-time-Latency-Monitoring-Service-Effective-Tuesday-February-1-2011.pdf .[4] Rudolf Bayer and Edward M. McCreight. 1972. Organization and Maintenance of Large Ordered Indexes. Acta Informatica 1, 3 (1972), 173–189. doi: 10.1007/BF00288683
+> [5] Adam Belay, George Prekas, Ana Klimovic, Samuel Grossman, Chris-tos Kozyrakis, and Edouard Bugnion. 2014. IX: A Protected Dataplane Operating System for High Throughput and Low Latency. In Proceed-ings of the 11th USENIX Symposium on Operating Systems Design and Implementation (OSDI) . USENIX Association. [6] Jean-Philippe Bouchaud, Marc Mézard, and Marc Potters. 2002. Statistical properties of stock order books: Empirical results and models. Quantitative Finance 2, 4(2002), 251– 256. doi: 10.1088/1469-7688/2/4/301 https://www.cfm.com/wp-content/uploads/2022/12/255-2002-statistical-propertes-of-stock-order-books-empiricals-results-and-model.pdf .[7] Eric Budish, Peter Cramton, and John Shim. 2015. The High-Frequency Trading Arms Race: Frequent Batch Auctions as a Market Design Response. The Quarterly Journal of Economics 130, 4 (2015), 1547–1621. doi: 10.1093/qje/qjv027 https://academic.oup.com/qje/article/130/4/ 1547/1916146 .[8] Cboe Global Markets. 2025. The Necessity of Real-Time Options Data for Retail Participants. https://www.cboe.com/insights/posts/the-necessity-of-real-time-options-data-for-retail-participants/ . Q3 2024
+> 4https://github.com/flash1-dev/matching-engine-benchmark
+> 18
+
+The World’s Fastest Matching Engine Algorithm 
+
+OPRA peak message volume of 44.8 million messages per second. Accessed 2025-12-11. [9] Cboe Global Markets. 2025. U.S. Equities Market Volume Summary. Market statistics dashboard. Accessed 2025-12-11. https://www.cboe. com/us/equities/market_share/ .[10] Consolidated Tape Association. 2025. Consolidated Tape Association: CTA Overview. https://www.ctaplan.com/index . Accessed 2025-12-11. [11] Rama Cont, Sasha Stoikov, and Rishi Talreja. 2010. A stochastic model for order book dynamics . Technical Report. Columbia University. https: //www.columbia.edu/~ww2040/orderbook.pdf .[12] Thomas H. Cormen, Charles E. Leiserson, Ronald L. Rivest, and Clifford Stein. 2022. Introduction to Algorithms (4 ed.). The MIT Press. https://mitpress.mit.edu/9780262046305/introduction-to-algorithms/ .[13] Databento. 2025. What is the Options Price Reporting Authority (OPRA)? https://databento.com/microstructure/opra . April 2025 peak 1-millisecond bursts exceeding 187 million messages per second. Accessed 2025-06-01. [14] Deutsche Börse Group. 2016. Xetra Trading System: Xetra In-sights. Technical presentation. Accessed 2025-12-11. https: //www.cashmarket.deutsche-boerse.com/resource/blob/307522/ 5a13437b23985d15540ab20c28893f60/data/Xetra_Insights.pdf .[15] Deutsche Börse Group. 2025. Insights into Trading System Dynamics: Deutsche Börse’s T7. Technical presentation. Ac-cessed 2025-12-11. https://www.eurex.com/resource/blob/48918/ e8d4df56f75c9a96fb0f6fff6b18a14f/data/presentation_insights-into-trading-system-dynamics_en.pdf .[16] Aleksandar Dragojević, Dushyanth Narayanan, Orion Hodson, and Miguel Castro. 2014. FaRM: Fast Remote Memory. In Proceedings of the 11th USENIX Symposium on Networked Systems Design and Implementation (NSDI) . USENIX Association. [17] Eurex Exchange. 2024. Publication of T7 Documentation: In-sights into Trading System Dynamics. Implementation News. 
+
+https://www.eurex.com/ex-en/support/information-channels/ implementation-news/Publication-of-T7-Documentation-4042720 .[18] Joshua Fried, Zhenyuan Ruan, Amy Ousterhout, and Adam Belay. 2020. Caladan: Mitigating Interference at Microsecond Timescales. In Proceedings of the 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI) . USENIX Association. [19] Fujitsu Limited and Tokyo Stock Exchange, Inc. 2015. New, En-hanced TSE arrowhead Cash Equity Trading System — For a Safer, More Convenient Market. Press release. Accessed 2025-12-11. https://www.fujitsu.com/global/about/resources/news/press-releases/2015/0924-01.html .[20] Igal Galperin and Ronald L. Rivest. 1993. Scapegoat Trees. In Proceed-ings of the Fourth Annual ACM-SIAM Symposium on Discrete Algo-rithms (SODA) . SIAM, 165–174. https://people.csail.mit.edu/rivest/ pubs/GR93.pdf .[21] Martin D. Gould, Mason A. Porter, Stacy Williams, Mark McDon-ald, Daniel J. Fenn, and Sam D. Howison. 2013. Limit order books. 
+
+Quantitative Finance 13, 11 (2013), 1709–1742. doi: 10.1080/14697688. 2013.803148 https://www.math.ucla.edu/~mason/papers/gould-qf-final.pdf .[22] Leo J. Guibas and Robert Sedgewick. 1978. A Dichromatic Framework for Balanced Trees. In Proceedings of the 19th Annual Symposium on Foundations of Computer Science (FOCS) . 8–21. doi: 10.1109/SFCS.1978.3 
+
+[23] Japan Exchange Group, Inc. 2016. JPX Report 2016. Integrated report. Accessed 2025-12-11. https://www.jpx.co.jp/english/corporate/ investor-relations/ir-library/integrated-report/tvdivq0000008t9q-att/JPXreport2016e_all.pdf .[24] Ivan Jericevich, Dharmesh Sing, and Tim Gebbie. 2022. CoinTossX: An open-source low-latency high-throughput matching engine. Soft-wareX 19 (2022), 101136. doi: 10.1016/j.softx.2022.101136 
+
+[25] Kostis Kaffes, Timothy Chong, Jack Tigar Humphries, Adam Belay, David Mazières, and Christos Kozyrakis. 2019. Shinjuku: Preemptive Scheduling for μsecond-Scale Tail Latency. In Proceedings of the 16th USENIX Symposium on Networked Systems Design and Implementation (NSDI) . USENIX Association, 345–360. [26] Anuj Kalia, Michael Kaminsky, and David G. Andersen. 2019. Datacen-ter RPCs Can Be General and Fast. In Proceedings of the 16th USENIX Symposium on Networked Systems Design and Implementation (NSDI) .USENIX Association. Best Paper Award. [27] David M. Kemme, Thomas H. McInish, and Jiang Zhang. 2022. Market fairness and efficiency: Evidence from the Tokyo Stock Exchange. 
+
+Journal of Banking & Finance 134 (2022), 106309. doi: 10.1016/j.jbankfin. 2021.106309 
+
+[28] Marta Khomyn and T ¯alis J. Putni ¯nš. 2021. Algos gone wild: What drives the extreme order cancellation rates in modern markets? Jour-nal of Banking & Finance 129 (2021), 106170. doi: 10.1016/j.jbankfin. 2021.106170 
+
+[29] Sida Li, Mao Ye, and Miles Zheng. 2023. Refusing the Best Price? 
+
+Journal of Financial Economics 147, 2 (2023), 317–337. doi: 10.1016/j. jfineco.2022.11.004 
+
+[30] Hyeontaek Lim, Dongsu Han, David G. Andersen, and Michael Kamin-sky. 2014. MICA: A Holistic Approach to Fast In-Memory Key-Value Storage. In Proceedings of the 11th USENIX Symposium on Networked Systems Design and Implementation (NSDI) . USENIX Association, 429– 444. [31] Yandong Mao, Eddie Kohler, and Robert Tappan Morris. 2012. Cache Craftiness for Fast Multicore Key-Value Storage. In Proceedings of the 7th ACM European Conference on Computer Systems (EuroSys) . ACM, 183–196. [32] Albert J. Menkveld. 2018. High-Frequency Trading as Viewed through an Electron Microscope. Financial Analysts Journal 74, 2 (2018), 24–31. doi: 10.2469/faj.v74.n2.1 Also available via SSRN (doi:10.2139/ssrn.2875612). [33] Ioane Muni Toke. 2013. The order book as a queueing system: av-erage depth and influence of the size of limit orders. arXiv preprint arXiv:1311.5661. https://arxiv.org/abs/1311.5661 .[34] Hamish Murray, Thu Phuong Pham, and Harminder Singh. 2016. La-tency reduction and market quality: The case of the Australian Stock Exchange. International Review of Financial Analysis 46 (2016), 257–265. doi: 10.1016/j.irfa.2015.09.001 
+
+[35] Nasdaq, Inc. 2024. Reimagining the Markets of Tomorrow: U.S. Equity Market Data. Whitepaper. https://www.nasdaq.com/docs/2024/US_ Equity_Market_Data_Whitepaper .[36] Object Computing, Inc. 2013. Liquibook: An Open Source C++ Order Matching Engine. GitHub repository. Accessed 2025-12-11. https: //github.com/ObjectComputing/liquibook .[37] Atsuyuki Ohyama, Yoshitaka Fukuyama, Shintaro Okude, and Kenta Suzuki. 2021. Characterization of High-Speed Trading . Techni-cal Report. Financial Services Agency (Japan). Accessed 2025-12-11. https://www.fsa.go.jp/frtc/english/seika/srhonbun/20210707_ Characterization_of_high_speed_tradingEN.pdf .[38] Amy Ousterhout, Joshua Fried, Jonathan Behrens, Adam Belay, and Hari Balakrishnan. 2019. Shenango: Achieving High CPU Efficiency for Latency-Sensitive Datacenter Workloads. In Proceedings of the 16th USENIX Symposium on Networked Systems Design and Implementation (NSDI) . USENIX Association, 361–378. [39] Simon Peter, Jialin Li, Irene Zhang, Dan R. K. Ports, Doug Woos, Arvind Krishnamurthy, Thomas Anderson, and Timothy Roscoe. 2014. Arrakis: The Operating System is the Control Plane. In Proceedings of the 11th USENIX Symposium on Operating Systems Design and Imple-mentation (OSDI) . USENIX Association. [40] PostgreSQL Global Development Group. 2024. Database Page Layout. PostgreSQL Documentation, Chapter 66. https://www.postgresql.org/ docs/current/storage-page-layout.html .19 Jake Yoon 
+
+[41] George Prekas, Marios Kogias, and Edouard Bugnion. 2017. ZygOS: Achieving Low Tail Latency for Microsecond-Scale Networked Tasks. In Proceedings of the 26th ACM Symposium on Operating Systems Prin-ciples (SOSP) . ACM, 325–341. [42] QuantCup 1 Contest. 2011. Price–Time Matching Engine (Winning Implementation). GitHub Gist. https://gist.github.com/druska/ d6ce3f2bac74db08ee9007cdf98106ef .[43] Zia Ur Rahman. 2021. limit-order-book: Fast, Multi-threaded Trade Matching Engine. GitHub repository. https://github.com/ziaagikian/ limit-order-book .[44] Sepideh Roghanchi, Jakob Eriksson, and Nilanjana Basu. 2017. Ffwd: Delegation Is (Much) Faster Than You Think. In Proceedings of the 26th ACM Symposium on Operating Systems Principles (SOSP) . ACM, 342–358. [45] W. K. Selph. 2011. How to Build a Fast Limit Order Book. Blog post. https://web.archive.org/web/20110219163448/http://howtohft. wordpress.com/2011/02/15/how-to-build-a-fast-limit-order-book/ .[46] Sergej Teverovski. 2023. Open Day 2023: T7 – Latency Roadmap. Deutsche Börse Group presentation. Accessed 2025-12-11. https://www.deutsche-boerse.com/resource/blob/3690194/ fe6b01b1e14800eb40374a95516debf2/data/Open%20Day%202023% 20-%20Presentation,%20T7-Latency%20Roadmap.pdf .[47] Stephen Tu, Wenting Zheng, Eddie Kohler, Barbara Liskov, and Samuel Madden. 2013. Speedy Transactions in Multicore In-Memory Databases. In Proceedings of the 24th ACM Symposium on Operating Systems Principles (SOSP) . ACM, 18–32. [48] U.S. Securities and Exchange Commission. 2005. 17 CFR § 242.611 — Order Protection Rule (Regulation NMS Rule 611). Code of Federal Regulations. https://www.ecfr.gov/current/title-17/chapter-II/part-242/subject-group-ECFRac68bdd026a46db/section-242.611 .[49] U.S. Securities and Exchange Commission. 2013. Quote Lifetime Distri-butions (Data Highlight 2013-04). SEC Market Structure Research. Last reviewed Aug. 16, 2022. https://www.sec.gov/about/quote-lifetime-distributions .[50] U.S. Securities and Exchange Commission. 2015. Memorandum: Rule 611 of Regulation NMS. SEC staff memo. https://www.sec. gov/spotlight/emsac/memo-rule-611-regulation-nms.pdf .[51] U.S. Securities and Exchange Commission. 2022. Trade to Or-der Volume Ratios. SEC Data Visualizations. Updated Aug. 6, 2025. https://www.sec.gov/data-research/statistics-data-visualizations/trade-order-volume-ratios .[52] U.S. Securities and Exchange Commission. 2025. Quote Life: Large Stocks (Conditional Frequency, Q1 2025). SEC Market Structure Data Visualizations. https://www.sec.gov/marketstructure/datavis/ quotelife_stocks_lg.html .[53] Maksim Zheravin. 2019. Exchange-core: Ultra-fast matching engine. GitHub repository. https://github.com/exchange-core/exchange-core .[54] Ilija I. Zovko and J. Doyne Farmer. 2002. The power of patience: A behavioral regularity in limit order placement. Quantitative Finance 
+
+2, 5 (2002), 387–392. doi: 10.1088/1469-7688/2/5/308 https://arxiv.org/ abs/cond-mat/0206280 .20
