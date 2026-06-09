@@ -6,67 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-08
-- 运行时间：2026-06-09 05:10:39 UTC+8
+- 最新运行日期：2026-06-09
+- 运行时间：2026-06-10 04:57:27 UTC+8
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：4
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
-- 精读：《The World's Fastest Matching Engine Algorithm》（8.5/10）, 《Orbifold Uniformization of Complex Algebraic Variety by Stable Parabolic Higgs Bundle》（8.4/10）
-- 速读：《Skeletal-Anchored Dual Harmonics for Structured 3D Modeling》（7.8/10）, 《RETROSPECT: RETROsynthesis via Sequential Prediction, and Chemically Transformed-ranking》（7.8/10）, 《DPAgent-in-the-Middle: Agentic Defense and Repair Against AI-Groomed Deceptive Patterns》（7.7/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《Algebra of Bivariate-Bicycle Surface Codes》（8.6/10）, 《Smith normal forms for coalescences at cospectral vertices》（8.5/10）
+- 速读：《On the Vinberg Family of K3 Surfaces》（8.3/10）, 《GPT-Micro: A large language paradigm for accelerated, inexpensive, and thermodynamics-consistent discovery of constitutive models in manufacturing》（8.2/10）, 《Vision-Guided Dual-Arm Humanoid Robotic Disassembly of End-of-Life 18650 Lithium-ion Battery Packs》（8.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/08/README](/202606/08/README)
+- 详情：[/202606/09/README](/202606/09/README)
 
 ### 精读区论文标签
-1. [The World's Fastest Matching Engine Algorithm](/202606/08/2606.01183v2-the-worlds-fastest-matching-engine-algorithm)  
+1. [Algebra of Bivariate-Bicycle Surface Codes](/202606/09/2606.08771v1-algebra-of-bivariate-bicycle-surface-codes)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
+2. [Smith normal forms for coalescences at cospectral vertices](/202606/09/2606.08449v1-smith-normal-forms-for-coalescences-at-cospectral-vertices)  
    标签：评分：8.5/10
    evidence：检索回退候选
-2. [Orbifold Uniformization of Complex Algebraic Variety by Stable Parabolic Higgs Bundle](/202606/08/2606.06778v1-orbifold-uniformization-of-complex-algebraic-variety-by-stable-parabolic-higgs-bundle)  
+3. [Auditable Graph-Guided Root Cause Analysis for Kubernetes Incidents](/202606/09/2606.08590v1-auditable-graph-guided-root-cause-analysis-for-kubernetes-incidents)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+4. [A solution to Csikvári's conjecture and the largest matching root of $k$-graphs](/202606/09/2606.08054v1-a-solution-to-csikvris-conjecture-and-the-largest-matching-root-of-k-graphs)  
    标签：评分：8.4/10
    evidence：检索回退候选
-3. [Boundary behaviour of the Volterra square-root process](/202606/08/2606.07290v1-boundary-behaviour-of-the-volterra-square-root-process)  
+5. [Arithmetic exceptionality of generalized Chebyshev polynomials of the second kind](/202606/09/2606.08125v1-arithmetic-exceptionality-of-generalized-chebyshev-polynomials-of-the-second-kind)  
    标签：评分：8.4/10
    evidence：检索回退候选
-4. [Detective scaffolding for within-session reasoning development: a three-phase framework evaluated in polymer engineering and pre-university outreach](/202606/08/2606.07279v1-detective-scaffolding-for-within-session-reasoning-development-a-three-phase-framework-evaluated-in-polymer-engineering-and-pre-university-outreach)  
+6. [A New Level Set Formulation for Improved Dirichlet Eigenvalue Minimizers](/202606/09/2606.07979v1-a-new-level-set-formulation-for-improved-dirichlet-eigenvalue-minimizers)  
    标签：评分：8.3/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Skeletal-Anchored Dual Harmonics for Structured 3D Modeling](/202606/08/2606.07337v1-skeletal-anchored-dual-harmonics-for-structured-3d-modeling)  
+1. [On the Vinberg Family of K3 Surfaces](/202606/09/2606.07849v1-on-the-vinberg-family-of-k3-surfaces)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
+2. [GPT-Micro: A large language paradigm for accelerated, inexpensive, and thermodynamics-consistent discovery of constitutive models in manufacturing](/202606/09/2606.08238v1-gpt-micro-a-large-language-paradigm-for-accelerated-inexpensive-and-thermodynamics-consistent-discovery-of-constitutive-models-in-manufacturing)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+3. [Vision-Guided Dual-Arm Humanoid Robotic Disassembly of End-of-Life 18650 Lithium-ion Battery Packs](/202606/09/2606.08152v1-vision-guided-dual-arm-humanoid-robotic-disassembly-of-end-of-life-18650-lithium-ion-battery-packs)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+4. [Wispy to Voluminous: Prior-free Multi-view Capture of Strand-level Facial Hair](/202606/09/2606.08041v1-wispy-to-voluminous-prior-free-multi-view-capture-of-strand-level-facial-hair)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+5. [Two Bridges, One Pathway: From VLMs to Generalizable VLAs with Embodied Trajectory-Coupled Data](/202606/09/2606.08520v1-two-bridges-one-pathway-from-vlms-to-generalizable-vlas-with-embodied-trajectory-coupled-data)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+6. [A Unified Framework for Contraction Stability Analysis of Heterogeneous Grid-Forming Inverters](/202606/09/2606.08434v1-a-unified-framework-for-contraction-stability-analysis-of-heterogeneous-grid-forming-inverters)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+7. [Matrix representations and distance metrics for unlabeled ranked phylogenetic networks](/202606/09/2606.08409v1-matrix-representations-and-distance-metrics-for-unlabeled-ranked-phylogenetic-networks)  
    标签：评分：7.8/10
    evidence：检索回退候选
-2. [RETROSPECT: RETROsynthesis via Sequential Prediction, and Chemically Transformed-ranking](/202606/08/2606.07181v1-retrospect-retrosynthesis-via-sequential-prediction-and-chemically-transformed-ranking)  
+8. [Advancing Branch-and-Price for Graph Coloring: New Pricing Strategies and Benchmark Results](/202606/09/2606.08356v1-advancing-branch-and-price-for-graph-coloring-new-pricing-strategies-and-benchmark-results)  
    标签：评分：7.8/10
    evidence：检索回退候选
-3. [DPAgent-in-the-Middle: Agentic Defense and Repair Against AI-Groomed Deceptive Patterns](/202606/08/2606.06914v1-dpagent-in-the-middle-agentic-defense-and-repair-against-ai-groomed-deceptive-patterns)  
-   标签：评分：7.7/10
+9. [Active Source-free Domain Adaptation in Open-set Medical Image Segmentation via Decomposed Uncertainty and Prototype Discrepancy](/202606/09/2606.08749v1-active-source-free-domain-adaptation-in-open-set-medical-image-segmentation-via-decomposed-uncertainty-and-prototype-discrepancy)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-4. [Three-dimensional hydro-cluttered locomotion by an undulatory robot](/202606/08/2606.06829v1-three-dimensional-hydro-cluttered-locomotion-by-an-undulatory-robot)  
-   标签：评分：7.6/10
+10. [Self-Supervised Vision Transformers for CBCT-Based Detection of Temporomandibular Joint Osteoarthritis](/202606/09/2606.08364v1-self-supervised-vision-transformers-for-cbct-based-detection-of-temporomandibular-joint-osteoarthritis)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-5. [Breaking the Lock-in: Diversifying Text-to-Image Generation via Representation Modulation](/202606/08/2606.06813v1-breaking-the-lock-in-diversifying-text-to-image-generation-via-representation-modulation)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-6. [Earliest query answering over streamed trees](/202606/08/2606.07408v1-earliest-query-answering-over-streamed-trees)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-7. [DSU-Net: An Attention-Enhanced Dense Skip U-Net for Breast Lesion Segmentation in Mammographic Images](/202606/08/2606.06537v1-dsu-net-an-attention-enhanced-dense-skip-u-net-for-breast-lesion-segmentation-in-mammographic-images)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-8. [Multimodal Approaches for Visually-Rich Document Type Classification: A Comparative Analysis](/202606/08/2606.02162v1-multimodal-approaches-for-visually-rich-document-type-classification-a-comparative-analysis)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-9. [Cross-modal linkage risk in clinical vision-language models](/202606/08/2606.02276v1-cross-modal-linkage-risk-in-clinical-vision-language-models)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-10. [CAD-to-CT Registration of Cylindrical Objects via Ellipse-Based Axis Estimation](/202606/08/2606.02935v1-cad-to-ct-registration-of-cylindrical-objects-via-ellipse-based-axis-estimation)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [Cross-Modality Feature Fusion Based on Structured State Space Duality for Multimodal Image Registration Network](/202606/08/2606.03341v1-cross-modality-feature-fusion-based-on-structured-state-space-duality-for-multimodal-image-registration-network)  
-   标签：评分：6.0/10
+11. [CheXanatomy: Anatomy-Aware Vision-Language Modeling for Chest Radiographs](/202606/09/2606.08420v1-chexanatomy-anatomy-aware-vision-language-modeling-for-chest-radiographs)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
