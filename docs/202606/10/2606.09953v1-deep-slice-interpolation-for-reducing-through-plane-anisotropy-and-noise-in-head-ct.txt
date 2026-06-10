@@ -1,0 +1,902 @@
+Title: Deep Slice Interpolation for Reducing Through-Plane Anisotropy and Noise in Head CT
+
+URL Source: https://arxiv.org/pdf/2606.09953v1
+
+Published Time: Wed, 10 Jun 2026 00:07:07 GMT
+
+Number of Pages: 36
+
+Markdown Content:
+# Deep Slice Interpolation for Reducing Through-Plane Anisotropy and Noise in Head CT 
+
+## Luis Cortés-Ferre 1, Miguel A. Gutiérrez-Naranjo 1, and Marcin Balcerzyk 2,3 1Department of Computer Science and Artificial Intelligence, University of Seville, Avda. Reina Mercedes s/n, 41012 Sevilla, Spain 
+
+> 2
+
+## Bioaraba Health Research Institute, New Technologies and Information Systems in Health Research Group, 01009 Vitoria-Gasteiz, Spain 
+
+> 3
+
+## IKERBASQUE, Basque Foundation of Science, Plaza Euskadi 5, 48009 Bilbao, Spain 
+
+Abstract 
+
+Head computed tomography (CT) typically uses sub-millimeter in-plane resolution but 2–5 mm through-plane spacing, creating substantial anisotropy that degrades multiplanar reconstructions, volumetric measurements such as hematoma volume estimation, and downstream algorithms that assume near-isotropic voxels. We present a deep learning system that synthesizes intermediate CT slices from pairs of neighboring axial slices, halving the effective through-plane spacing. The system improves three-dimensional visualization while simultaneously producing inherently denoised outputs, yielding two complementary benefits from a single inference pass. To build a reliable system, we systematically evaluate pixel-wise losses, namely mean squared error (MSE) and mean absolute error (L1); structural-similarity losses, namely the structural similarity index (SSIM) and its multi-scale variant (MS-SSIM); and hybrid combinations. On a held-out test set, all converged models outperform classical interpolation baselines and pretrained video frame interpolation methods (RIFE, FILM) on all structural measures, with MS-SSIM+L1 offering the strongest balanced profile. We also document training instability in SSIM-family losses and identify partial remedies: the standard numerical fixes eliminate the dominant failure mode but leave residual divergence at smaller batch sizes. All results are reported with patient-level bootstrap confidence intervals and paired statistical tests. As an illustration, we apply the system to an out-of-distribution head CT series from Hospital Universitario Virgen del Rocío: the model synthesizes intermediate slices and exhibits on the real slices the implicit-denoising signature predicted by our theoretical analysis, supporting in a single external case that interpolation quality and implicit denoising are not confined to the training distribution. 
+
+Keywords: computed tomography (CT); slice interpolation; image denoising; U-Net; EfficientNetV2; SSIM. 
+
+# 1 Introduction 
+
+Head computed tomography (CT) volumes are frequently reconstructed with markedly anisotropic voxel spacing, typically exhibiting sub-millimeter in-plane resolution but 2–5 mm through-plane spacing, a recon-struction convention that improves per-slice signal-to-noise ratio and matches established reading workflows. This anisotropy degrades continuity in multiplanar visualizations, introduces stair-step artifacts in coronal and sagittal views, and adversely affects both visual assessment and downstream pipelines that assume near-isotropic sampling, including volumetric measurements such as hematoma quantification and automated triage systems. Reducing the effective slice spacing through interpolation, if not done during image acquisition or reconstruction, can therefore improve three-dimensional visualization for surgical planning, quantitative analysis, and the reliability of learning-based clinical tools. We present a deep learning system for head CT slice interpolation that synthesizes an intermediate axial slice Ik+1 from two neighboring slices (Ik, I k+2 ). The system uses a U-Net with an EfficientNetV2-S encoder, 1
+
+> arXiv:2606.09953v1 [eess.IV] 8 Jun 2026
+
+trained on the RSNA 2019 Intracranial Hemorrhage Detection dataset [ 1], which was used in prior work on intracranial hemorrhage detection [ 2]. The scope of this work is restricted to non-contrast head CT: the training data, Hounsfield unit (HU) window, and target through-plane spacing are all chosen for this setting, and we make no claim of generalization to other anatomical regions, other modalities, or different acquisition protocols. Cross-anatomy transfer is discussed explicitly as a limitation (Section 5.7) and identified as future work. The contributions of this work are: 1. A deep learning system for head CT slice interpolation that outperforms classical baselines and pretrained video frame interpolation models on all structural metrics. Video frame interpolation is a natural transfer source because it addresses the same core problem (synthesizing an intermediate image from two neighboring observations), albeit in the temporal rather than spatial domain; we benchmark RIFE [ 3] and FILM [ 4] to quantify the domain gap. 2. A systematic loss function evaluation under a fixed architecture and training protocol, providing practical guidance on which losses and settings are reliable or unreliable. As part of this analysis, we identify systematic training divergence in SSIM-family losses traceable to numerical conditioning of the SSIM denominator, and provide actionable remedies. 3. A finding that regression-based synthesis inherits the denoising property of conditional-expectation estima-tion [ 5, 6], as leveraged for image restoration from noisy targets by Lehtinen et al. [7], connecting slice interpolation to the low-dose CT denoising literature and delivering interpolation and implicit denoising from a single model. The remainder of this paper is organized as follows. Section 2 reviews through-plane CT super-resolution, video frame interpolation, loss-function comparisons, and low-dose CT denoising. Section 3 describes the dataset, the U-Net with EfficientNetV2-S architecture, the eleven loss configurations evaluated, and the patient-level statistical protocol. Section 4 reports held-out test performance with bootstrap confidence intervals and paired Wilcoxon tests, together with a quantitative ROI-level measurement of implicit denoising. Section 5 analyzes loss–metric alignment, SSIM training instability, implicit denoising as a consequence of regression-based synthesis, an out-of-distribution case study, the effect of pathology on interpolation difficulty, and limitations. Section 6 summarizes the findings and outlines directions for future work. 
+
+# 2 Related Work 
+
+## 2.1 CT slice interpolation and through-plane super-resolution 
+
+Through-plane resolution enhancement in CT, often termed super-resolution (i.e., recovering spatial detail beyond the acquired sampling), has been approached with both classical and learning-based methods. Spline and polynomial interpolation methods have long been standard in medical image processing [ 8 ], but these methods cannot recover anatomical detail absent from the acquired slices. Peng et al. [ 9] proposed SAINT, a spatially aware interpolation network for CT slice synthesis that upsamples volumes along the through-plane axis by an arbitrary integer factor (not limited to the 2× midpoint setting we target), demonstrating that learned models recover structural detail beyond what classical methods produce. In the broader medical super-resolution literature, Chen et al. [ 10 ] applied 3D dense networks to brain MRI super-resolution, and Zhao et al. [ 11 ] developed SMORE for through-plane MRI enhancement using self-supervised training on the acquired high-resolution in-plane data. More recently, Song et al. [ 12 ] proposed I 3Net, combining inter-slice spatial features with intra-slice frequency-domain learning for CT slice synthesis. These works establish that through-plane synthesis is a well-studied problem, but systematic comparisons of loss functions within a fixed architecture are rare; most papers report a single loss choice without controlled experiments isolating the effect of individual components. Moreover, these works report aggregate metrics without stratifying evaluation by pathology presence, leaving open whether interpolation quality is maintained in clinically critical abnormal regions. This question is addressed in Section 4.3. 
+
+> 2
+
+## 2.2 Video frame interpolation and cross-domain transfer 
+
+CT slice interpolation is structurally analogous to video frame interpolation (VFI), where an intermediate frame is synthesized from two temporally adjacent frames. Optical-flow-based VFI methods such as RIFE [ 3]estimate bidirectional intermediate flows with a lightweight IFNet, achieving real-time performance. FILM [ 4]extends flow-based interpolation to large motions using a multi-scale feature extractor and a frame synthesis network. Hybrid methods such as AdaCoF [ 13 ] jointly predict spatially adaptive kernel weights and offset vectors, generalizing both kernel-based and flow-based approaches. While these architectures achieve state-of-the-art results on natural video benchmarks, their direct application to medical imaging is limited: CT slices lack temporal motion, the displacement between slices is purely spatial (through-plane anatomy change), and the intensity semantics differ (calibrated HU vs. uncalibrated RGB). Recent work has begun bridging this gap: Gambini et al. [14 ] applied video frame interpolation to MRI and CT volumes, Kim et al. [15 ]proposed UVI-Net for unsupervised 4D medical interpolation, and Sarmad et al. [16 ] combined transfer learning from pretrained 2D super-resolution networks with a self-supervised consistency loss for 3D volume super-resolution. 
+
+## 2.3 U-Net and encoder-decoder architectures 
+
+U-Net [ 17 ] introduced multiscale feature fusion via skip connections for biomedical image segmentation, and its variants have since become the dominant architecture for medical image segmentation and synthesis. Replacing the U-Net encoder with pretrained classification backbones, a strategy popularized by open-source toolkits [ 18 ], reuses the visual feature detectors (edges, textures, shapes) that convolutional filters learn during ImageNet pretraining, enabling effective training on medical tasks with limited labelled data. EfficientNetV2 [ 19 ] offers a favorable parameter-accuracy trade-off through fused MBConv blocks, making it an efficient encoder choice. For image synthesis specifically, Isola et al. [20 ] demonstrated that U-Net generators with skip connections outperform encoder-decoder alternatives in paired image-to-image translation, a finding relevant to medical imaging contexts where spatial correspondence between input and output is preserved. 
+
+## 2.4 Loss functions, training stability, and numerical conditioning 
+
+The choice of training loss significantly affects reconstruction quality, yet systematic comparisons are sparse. Zhao et al. [ 21 ] compared L1, L2, SSIM, and MS-SSIM losses across image restoration tasks including super-resolution, finding that a combined loss formed as a weighted sum of MS-SSIM and L1 achieves the best scores on both distortion and perceptual quality metrics. SSIM [ 22 ] and its multiscale extension MS-SSIM [ 23 ]optimize windowed structural similarity, emphasizing luminance, contrast, and structure rather than pointwise error. However, SSIM-based losses can exhibit numerical instability in practice: the small constants that stabilize the SSIM denominator must be set carefully to avoid division-by-near-zero in low-variance image regions. Kastryulin et al. [24 ] surveyed differentiable image quality metrics and found that even correct SSIM implementations produce inconsistent correlation values across libraries. More broadly, deep learning papers overwhelmingly report successful runs, yet training instability is common in practice. Reinke et al. [ 25 ]highlighted that metric selection and reporting practices vary widely in medical imaging and advocated for standardized evaluation frameworks. Training divergence patterns, i.e., configurations that fail to converge or produce degenerate outputs, are rarely analyzed systematically, yet they carry direct engineering value for practitioners adopting these losses. 
+
+## 2.5 Low-dose CT denoising and implicit noise suppression 
+
+CT noise arises from photon counting statistics and electronic interference, is spatially correlated and reconstruction-kernel-dependent, and degrades diagnostic performance, particularly at reduced radiation doses and high axial resolution; recent reviews survey the deep-learning-based methods that address this problem [26]. Modern CT scanners compensate for the increased noise associated with low-dose acquisition through a combination of hardware and algorithmic strategies that act across the entire imaging chain. Advances in detector efficiency, bow-tie filtration, and automatic tube-current modulation improve photon utilization and reduce quantum noise at the source, while projection-space preprocessing suppresses stochastic fluctuations 
+
+> 3
+
+before reconstruction [ 27 ]. Contemporary reconstruction methods, particularly iterative reconstruction [ 28 ]and, more recently, deep-learning-based reconstruction [ 29 ], further mitigate noise by incorporating accurate system models, statistical priors, and learned anatomical features, enabling substantial noise reduction without compromising spatial resolution or texture fidelity. These techniques act during acquisition and reconstruction; the regression-based denoising described below, and inherited by our interpolation model, is complementary: it operates on already-reconstructed volumes where upstream options are no longer available. Deep learning approaches to low-dose CT reconstruction, notably encoder–decoder networks trained with MSE loss, have demonstrated simultaneous noise suppression, structural preservation, and improved lesion detection in a clinical reader study [ 29 ]. The underlying statistical mechanism is the classical regression identity that the predictor minimizing the mean squared error equals the conditional expectation of the target [ 5, 6]; when the noise on the target averages to zero given the inputs (a zero-conditional-mean assumption, i.e., the inputs do not systematically bias the noise up or down), this conditional expectation equals the underlying signal, so regression-trained networks act as implicit denoisers even when the training targets themselves are noisy; in other words, the model tends to recover the underlying signal rather than reproduce the noise. Lehtinen et al. [7] leveraged this identity to show that a clean training target is not required. They trained image-restoration networks on pairs consisting of two independent noisy observations of the same underlying scene , using one as the input and the other as the target under a standard regression loss. Because the two noise terms are independent and satisfy the zero-conditional-mean assumption, the regression identity still makes the clean signal the minimizer of the loss in expectation, so the trained network recovers that signal even though no clean image was ever used as a target. This is the central finding of Noise2Noise: supervised denoising is possible without clean targets. In our setup, we do not have two noisy measurements of the same slice, but we do have three distinct adjacent slices: the inputs (Ik, I k+2 ) and the target Ik+1 each carry their own noise, and the underlying signal itself differs across them because anatomy varies along the through-plane axis. What transfers is therefore not the Noise2Noise construction but the underlying conditional-expectation identity itself, and our interpolation model, trained with regression losses on noisy CT slices, inherits the same implicit-denoising behavior (see Section 5.4 for a precise statement and derivation). 
+
+# 3 Materials and Methods 
+
+## 3.1 Dataset and preprocessing 
+
+We use the RSNA Intracranial Hemorrhage Detection dataset [ 1], which provides slice-level multi-label annota-tions for five hemorrhage subtypes (epidural, subdural, subarachnoid, intraparenchymal, intraventricular) plus an any -hemorrhage flag. These categories are RSNA challenge labels rather than ICD-10/ICD-11 hemorrhage subtypes. The dataset is distributed through the Kaggle competition platform under the competition’s data-use agreement; our training code, model configurations, and evaluation scripts are released separately (see Section A). The RSNA dataset is multi-institutional with heterogeneous acquisition protocols; reported inter-slice spacing typically falls in the 2.5–5 mm range with sub-millimeter in-plane resolution. Synthesizing one intermediate slice between each pair of acquired slices halves the effective through-plane spacing from 
+
+∼5 mm to ∼2.5 mm. DICOM slices are windowed with center 44 HU and width 128 HU. We clamp the upper bound at 107 HU so that the windowed interval covers 128 integer HU steps and discretizes uniformly to the 256 levels of 8-bit PNG storage (two levels per HU); the effective HU window is therefore [−20 HU , 107 HU ]. The windowed slices are converted to grayscale PNG and normalized to [0 , 1] , so that −20 HU maps to 0 and 107 HU to 
+
+1. All training, evaluation, and interpolation operate on these [0 , 1] -normalized intensities; for clarity we report intensity ranges in HU units throughout the paper. Values outside [−20 HU , 107 HU ] are saturated at preprocessing, and the model is neither trained nor calibrated for out-of-window content. The prior hemorrhage detection work [ 2] used three HU windows stacked as RGB channels. For the single-channel interpolation task, we selected this window to cover brain parenchyma ( ∼20 –45 HU) and acute hemorrhage ( ∼60 –80 HU); it is wider than the standard brain window (center 40 HU, width 80 HU, range 
+
+[0 HU , 80 HU ]) and leaves headroom on both sides of the clinically relevant intensities. Air (below −20 HU) and bone (above 107 HU) still fall outside the window. We use a standard patient-level split into training, validation, and test sets: 30 patients are held out as the test set, and the remaining 18,870 patients are split 80/20 into training (15,096 patients, 570,562 triplets) 
+
+> 4
+
+and validation (3,774 patients, 141,747 triplets). 9.3% of RSNA patients ( 1,755 of 18 ,900 ) are associated with multiple CT studies; we treat each study as an independent sequence when constructing triplets, so no triplet spans two studies. The patient-level split assigns all studies of a given patient to a single partition, and the 30 held-out test patients are additionally restricted to those with exactly one study so that patient-level paired comparisons are unambiguous. The 30 test patients were selected to enable the patient-level paired tests reported in Section 4.2. From the subset of patients with exactly one CT study, patients were selected to enrich the test set for pathology while guaranteeing representation of every hemorrhage subtype: for each of the 5 subtypes, 5 patients containing that subtype were randomly selected (without replacement across subtypes) and removed from the candidate pool; 5 additional patients were then drawn uniformly at random from the remaining pool, which contained both hemorrhage and normal studies. This yielded 27 patients carrying at least one hemorrhage subtype and 3 purely normal patients, totaling 968 interpolation triplets. The pathology enrichment is intentional: the clinically motivated question is whether interpolation quality holds on abnormal anatomy, where structural fidelity matters most; the 3 normal patients (572 slice-level triplets) provide a sanity check that performance does not degrade on normal cases. At the slice level, 396 triplets (41%) contain hemorrhage and 572 (59%) do not; this hemorrhage prevalence is substantially higher than in unselected head-CT cohorts. The test-set patient IDs are released as a frozen artefact. Hemorrhage labels are multi-label (190 of 396 triplets carry more than one subtype), so “any-of” counts exceed the total: subdural ( n = 189 ), subarachnoid ( n = 184 ), intraparenchymal ( n = 132 ), intraventricular ( n = 114 ), and epidural ( n = 44 ); these per-subtype counts support the hemorrhage-stratified analysis of Section 4.3. 
+
+## 3.2 Task definition 
+
+Given consecutive triplets (Ik, I k+1 , I k+2 ), input is X = [ Ik, I k+2 ] (2 channels), target is Y = Ik+1 , and the model’s prediction is denoted ˆY . This formulation assumes that the target slice is equidistant from the two input slices. The RSNA dataset is largely acquired at a single fixed inter-slice spacing per patient, so this assumption holds for the majority of cases; a small number of test patients contain variable-spacing series, for which the equidistance assumption is approximate. 
+
+## 3.3 Model and augmentation 
+
+We hold the network architecture fixed across all experiments in order to isolate the impact of training design choices. Accordingly, we do not claim universality of the reported findings across different architectural designs. The architecture is a U-Net [ 17 ] with an EfficientNetV2-S encoder [ 19 ] (Figure 1); implementation libraries and versions are listed in Section A. The encoder produces features at four skip-connection levels (channel dimensions 24 , 48 , 64 , 160 at strides 2, 4, 8, 16 ) plus a 256 -channel bottleneck at stride 32 . The bottleneck feeds the decoder, and the four skip-connection levels are concatenated into the corresponding decoder stages. The decoder consists of five upsampling blocks with output channels (256 , 128 , 64 , 32 , 16) ;each block doubles the spatial resolution, concatenates the upsampled feature map with its encoder skip (the final block, operating at full resolution, has no skip), and applies two 3 × 3 Conv–BatchNorm–ReLU sub-blocks. A final 3 × 3 convolution maps the 16-channel feature map to a single-channel output, with no output activation applied: the task is regression, and the target range [0 , 1] is controlled by the normalized data and the bounded losses of Section 3.4. The encoder is initialized from ImageNet-pretrained weights; the decoder and segmentation head are initialized from scratch: decoder convolutions use Kaiming-uniform weight initialization for ReLU [ 30 ] (fan-in mode, zero bias), batch normalization layers are set to (weight = 1 ,bias = 0 ), and the final 3 × 3 head uses Xavier-uniform weight initialization [ 31 ] with zero bias. Because ImageNet pretraining uses 3-channel RGB input while our task has 2-channel input (Ik, I k+2 ), the first convolutional layer (stem) is adapted by keeping the first two of the three pretrained RGB filters (dropping the blue channel) and rescaling them by 3/2 to approximately preserve the activation magnitude at the stem output. Table 1 summarizes the model’s computational profile. Figure 2 shows the patch geometry shared by training-time sampling and test-time inference. Each training sample draws one 256 × 256 view from a discrete pool: the nine overlapping center crops of Figure 2(a), plus a full-slice Lanczos [ 32 ] downsample to 256 × 256 (not shown in the figure). One of these ten options is drawn per training sample with weighted random sampling: the central crop carries twice the weight of each                                              
+
+> 5Input
+> 2×256 ×256
+> Stage 1
+> 24 ×128 ×128
+> Stage 2
+> 48 ×64 ×64
+> Stage 3
+> 64 ×32 ×32
+> Stage 4
+> 160 ×16 ×16
+> Stage 5 (bottleneck)
+> 256 ×8×8
+> Decoder 5
+> + 3 ×3conv
+> 1×256 ×256
+> Decoder 4
+> 32 ×128 ×128
+> Decoder 3
+> 64 ×64 ×64
+> Decoder 2
+> 128 ×32 ×32
+> Decoder 1
+> 256 ×16 ×16
+> 160 64 48 24
+
+EfficientNetV2-S Encoder 
+
+U-Net Decoder  
+
+> [Ik, I k+2 ]
+> ˆIk+1
+
+Figure 1: U-Net + EfficientNetV2-S architecture for CT slice interpolation. Top row: encoder (blue), left-to-right in decreasing spatial resolution. Bottom row: decoder (orange), right-to-left in increasing spatial resolution. Columns are aligned by spatial resolution: the leftmost column carries the 2-channel input [Ik , I k+2 ] and the final decoder block fused with its 3 × 3 conv output projection (producing the single-channel prediction ˆIk+1 ); the next four columns pair each encoder stage with the decoder block that consumes its skip connection (dashed, annotated with the skip channel count); the rightmost column carries the shared bottleneck. The absence of a skip arrow in the leftmost column reflects the fact that the final decoder block has no encoder skip. All dimensions shown correspond to the 256 × 256 
+
+patch resolution used at both training and inference time; at test time, 13 such patch predictions are reassembled into a 512 × 512 composite (see Section 3.3). 
+
+Table 1: Model complexity (U-Net + EfficientNetV2-S). Training and test-time inference both operate on 256 × 256 
+
+patches; each test prediction is reassembled from 13 patches (9 overlapping center crops + 4 corner patches) into a 
+
+512 × 512 composite (see Section 3.3). GFLOPs are reported as 2× multiply–accumulate operations (the convention used by fvcore and ptflops). Property Value Total parameters 22.1 M Encoder (pretrained) 19.8 M Decoder (random init) 2.2 M Segmentation head ( 3×3 conv) <0.1 M GFLOPs per 256 × 256 patch 12.4 GFLOPs per reconstructed slice (13 patches) 161 
+
+off-center crop, and the Lanczos option carries half. Normalizing the weights to sum to 1 yields selection probabilities of ≈ 0.19 for the central crop, ≈ 0.095 for each of the eight off-center crops, and ≈ 0.048 for the Lanczos downsample. After the spatial pick we apply an independent 50% horizontal flip, 50% vertical flip, and a 50% chance of rotation uniformly drawn from [−15 ◦, +15 ◦]; all three transforms are applied identically to Ik, Ik+1 , and Ik+2 to preserve triplet alignment. At test time, each 512 × 512 slice is reconstructed from 13 256 × 256 patches: the same nine overlapping center crops (Figure 2(a)) are averaged over their overlaps to produce the central 384 × 384 band, and four non-overlapping corner patches C1–C4 (Figure 2(b)) tile the full slice; the averaged nine-crop band is then overlaid on top, so only the outer 64 -pixel strip of each corner patch contributes to the final composite (Figure 2(c)). The composite is compared against the 512 × 512 
+
+target, preserving direct comparability with the classical and VFI baselines which produce full-resolution predictions natively. Validation drives early stopping and best-epoch checkpoint selection; it evaluates the model on each of the nine 256 × 256 center crops and averages the resulting metrics. 
+
+## 3.4 Loss families and numerical stability 
+
+We evaluate four single-term losses (two pixel-wise and two structural) and two combined-loss families (SSIM+L1 and MS-SSIM+L1) whose mixing weight α is swept across configurations. All losses operate on              
+
+> 6512 ×512
+> (a) 9 overlapping center crops
+> 512 ×512
+> C1 C2
+> C3 C4
+> (b) 4 corner patches
+> 512 ×512
+> central 384 ×384
+> from (a)
+> C1 C2
+> C3 C4
+> (c) Composite: (a) over (b), 13 patches
+
+Figure 2: Patch geometry shared by training-time sampling and test-time reconstruction. (a) Nine overlapping 
+
+256 × 256 crops whose top-left corners form a 3 × 3 grid at 64-pixel stride in the 512 × 512 slice; their union covers the central 384 × 384 band (solid blue outline). Translucent fills overlap so deeper color indicates regions covered by more crops; the dashed outline marks one representative crop (top-left of the grid) to indicate the 256 × 256 scale of a single view. At training time one crop is drawn per sample; at test time their predictions are averaged over overlaps to reconstruct the central band. (b) Four non-overlapping 256 × 256 corner patches C1–C4 with top-left corners at (y, x ) = (0 , 0) , (0 , 256) , (256 , 0) , (256 , 256) , tiling the full 512 × 512 slice. (c) Test-time composite: the central 384 × 384 band from (a) is placed on top of the four corner patches from (b), yielding a 13-patch 512 × 512 
+
+prediction that is directly comparable to the classical and VFI baselines. 
+
+predictions ˆY and targets Y normalized to [0 , 1] and indexed over N pixels. 
+
+Pixel-wise losses. The two pixel-wise losses are the mean squared error and the mean absolute error, 
+
+LMSE ( ˆY , Y ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ ˆyi − yi
+
+2, LL1 ( ˆY , Y ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ˆyi − yi . (1) Both are standard regression losses whose minimizers are well-known conditional statistics: LMSE has the conditional mean E[Y | X] as its minimizer, and LL1 the conditional median [ 5, 6]; this property is what underpins the implicit-denoising argument developed in Section 5.4. The theoretical argument applies to these pixel-wise losses specifically; SSIM-based losses are not conditional-mean or -median estimators and so fall outside it, but are nonetheless measured to denoise empirically at reduced strength (Section 4.4). 
+
+Structural losses. The single-scale structural similarity index (SSIM) [ 22 ] is computed on sliding 11 × 11 
+
+Gaussian-weighted windows with σ = 1 .5. For aligned windows x, y with local means μx, μ y , variances σ2
+
+> x
+
+, σ 2 
+
+> y
+
+,and covariance σxy ,
+
+SSIM( x, y ) = 
+
+ 2μxμy + C1
+
+  2σxy + C2
+
+ μ2 
+
+> x
+
++ μ2 
+
+> y
+
++ C1
+
+  σ2 
+
+> x
+
++ σ2 
+
+> y
+
++ C2
+
+ , Ck = ( KkL)2, (2) where L = 1 is the dynamic range of our [0 , 1] -normalized intensities (Section 3.1) and (K1, K 2) are small dimensionless scalars whose only role is to keep the denominator bounded away from zero in low-variance regions. Wang et al. [22 ] propose the defaults (K1, K 2) = (0 .01 , 0.03) , which we retain for the evaluation metric ,so that the reported SSIM numbers are comparable to prior literature and preserve the discriminating power characterised in Section D, but modify for training as a numerical-conditioning knob (see below). The image-level index SSIM ( ˆY , Y ) is the mean of Equation (2) over all windows, and the loss is LSSIM = 1 − SSIM ( ˆY , Y ).Multi-scale SSIM [ 23 ] decomposes Equation (2) as SSIM = l · c · s (luminance, contrast, and structure) and evaluates these components at M = 5 dyadically downsampled resolutions, indexed j = 1 (finest) to j = M
+
+(coarsest). Contrast cj and structure sj are aggregated across all scales, while luminance is retained only at 
+
+> 7
+
+the coarsest scale, lM , since it is a low-frequency property that does not benefit from multi-scale repetition: 
+
+MS -SSIM( ˆY , Y ) = lM ( ˆY , Y )αM
+
+> M
+
+Y
+
+> j=1
+
+cj ( ˆY , Y )βj sj ( ˆY , Y )γj
+
+, (3) with exponents fixed to the calibrated weights of Wang 1 et al. [23 ]. The training loss is LMS -SSIM =1 − MS -SSIM( ˆY , Y ).
+
+Combined losses. Combined losses pair a structural term with a pixel-wise term, following Zhao et al. [21 ], to combine the low-frequency fidelity of pixel-wise losses with the local structural sensitivity of SSIM. The two combined-loss families are 
+
+LSSIM+L1 (α) = α LSSIM + (1 − α) LL1 , (4) 
+
+LMS -SSIM+L1 (α) = α LMS -SSIM + (1 − α) LL1 , (5) with α ∈ { 0.2, 0.3, 0.5, 0.8} swept across configurations; the primary reported model and the reference for all paired tests is LMS -SSIM+L1 at α = 0 .5.
+
+Numerical conditioning of SSIM-based training losses. SSIM and MS-SSIM are rational functions whose denominator (μ2 
+
+> x
+
++ μ2 
+
+> y
+
++ C1)( σ2 
+
+> x
+
++ σ2 
+
+> y
+
++ C2) can collapse towards its C-floors in low-texture regions, primarily through the contrast/structure factor σ2 
+
+> x
+
++ σ2 
+
+> y
+
++ C2 in uniform brain parenchyma and large CSF pools, and through both factors in background air (which clips to 0 under our normalization). With L = 1 the Wang et al. defaults evaluate to C1 = 10 −4 and C2 = 9 ×10 −4. On a random sample of 5000 training slices under the brain window, we compute the 11 ×11 Gaussian-weighted local variance (the same window operator that appears inside SSIM, with σ = 1 .5) at every pixel of every slice. Restricted to windows whose local mean intensity exceeds 0.15 (a threshold that corresponds to approximately −1 HU under the [−20 HU , 107 HU ]
+
+brain window, chosen to exclude background air while retaining soft tissue, CSF, parenchyma, and bone), the median local variance is 1.0×10 −3, numerically indistinguishable from the default C2 = 9 ×10 −4. In those windows the denominator σ2 
+
+> x
+
++ σ2 
+
+> y
+
++ C2 is dominated by the stability floor rather than by signal, and the resulting near-zero-denominator regime produces large, oscillatory gradients and overflow to NaN during early training. We therefore combine two interventions, each addressing a distinct failure mode of the raw formulation: 1. Larger K2. We set K1 = 0 .01 and K2 = 0 .4 for all SSIM-based training losses, raising C2 from 9×10 −4
+
+to 0.16 (roughly two orders of magnitude). On the same 5000-slice sample, C2 = 0 .16 exceeds 99 .0% 
+
+of all window variances and 96 .5% of those above the background-air threshold defined above, so the denominator-stability floor of Equation (2) dominates the natural within-window variance in all but the highest-contrast edges. K1 = 0 .01 is retained because the luminance-term denominator μ2 
+
+> x
+
++ μ2 
+
+> y
+
++ C1 is not the limiting factor in our data. The choice is restricted to the training loss; test-set SSIM and MS-SSIM remain reported at the Wang et al. defaults for comparability with prior work. Section D quantifies the evaluation-metric sensitivity to K2: on the same test predictions, reporting at K2 = 0 .4 rather than 0.03 
+
+uniformly inflates mean SSIM by ≈ 0.09 but compresses the inter-model spread by a factor of 1.57 , so the Wang et al. choice at evaluation is both the literature-comparable and the more discriminating setting. 2. FP32 autocast exclusion. SSIM’s variance and covariance terms are second-order statistics computed via the identity σ2 = E[X2] − (E[X]) 2, i.e., the mean of the squared pixel values in the window minus the squared window mean. In low-texture windows these two quantities are close, so their difference is the small tail left after many matching leading digits. This subtraction of near-equal numbers is catastrophic in half precision ( float16 , the IEEE 16-bit floating-point format used by default in mixed-precision training): most of the matching digits are lost, and the result can emerge with essentially random sign. Mathematically σ2 is non-negative; computed through this identity in float16 , it can be returned slightly negative. This contaminates two operations in implementations that follow this algebraic form: the                       
+
+> 1We follow the standard convention βj=γj=wjfor j= 1 , . . . , M with αM=βM, and P
+> jwj= 1 , using w=(0 .0448 ,0.2856 ,0.3001 ,0.2363 ,0.1333) .8
+
+Table 2: Shared training hyperparameters across all experiments. Parameter Value Optimizer AdamW, (β1, β 2, ε ) = (0 .9, 0.999 , 10 −8), weight decay = 0 .01 
+
+Scheduler Linear warmup (5 epochs, 0 → peak), then cosine to ηmin = 10 −6
+
+Gradient clipping ∥·∥ 2 ≤ 1
+
+Max epochs 500 (early stopping triggers first) Early stopping monitor: validation loss (min); patience = 15 ; min. delta = 10 −4
+
+Default batch size 96 (varied: 32, 64, 96) SSIM window 11 × 11 (Wang et al. default) MS-SSIM scales 5 (Wang et al. default) Train / validation split 80% / 20% of non-test patients, patient-wise Test set 30 patients (subtype-stratified selection) Hardware 1× NVIDIA GeForce RTX 3080 Ti (12 GB) 
+
+σ2 
+
+> x
+
++ σ2 
+
+> y
+
++ C2 denominator of Equation (2) can flip sign or pass through zero, and the MS-SSIM aggregate Q 
+
+> j
+
+(cj sj )wj raises possibly-negative per-scale factors to fractional exponents wj , yielding NaN; the resulting NaN gradient then propagates through backpropagation and terminates the run. We therefore compute every SSIM and MS-SSIM forward pass in full float32 precision 2, while the convolutional backbone remains in mixed precision for throughput. Interventions 1–2 eliminated the most common failure mode (within-epoch NaN at initialization) but did not eliminate training-time divergence (Section B) entirely: a substantial fraction of SSIM-family configurations at smaller batch sizes and at particular learning rates still diverged. The full divergence structure and its dependence on learning rate and batch size are analyzed in Section 5.2, and the per-family, per-batch-size pass/fail accounting is given in Appendix B. 
+
+Hyperparameter sweep. Each loss family was trained across learning rates in the range [10 −4, 3×10 −3]
+
+at the default batch size of 96. SSIM-family configurations additionally include smaller batch sizes where indicated, and three non-SSIM runs (two L1, one MSE) are repeated at batch size 64 as a stability check; the per-family, per-batch-size coverage is tabulated in Table 8. The mixing weight α ∈ { 0.2, 0.3, 0.5, 0.8} is varied in combined-loss configurations as in Equations (4)–(5). Five MS-SSIM+L1 recovery-attempt fine-tunes, additional to this systematic sweep, start from diverged MS-SSIM+L1 checkpoints at learning rate (lr) 
+
+∈ { 5×10 −5, 10 −4, 3×10 −4}, batch size (bs) = 64 , and a 300-epoch budget (constant LR for three of the five); all five diverged and are included in the divergence accounting of Appendix B but do not enter any reported metric. All remaining hyperparameters are fixed as described in Section 3.5. 
+
+## 3.5 Optimization and training protocol 
+
+All experiments use AdamW [ 33 ] with default (β1, β 2, ε ) and weight decay 0.01 . The learning rate follows a linear warmup over the first 5 epochs from 0 to the configured peak and then cosine-anneals to ηmin = 10 −6
+
+over the remaining 495 epochs of the 500-epoch budget; gradients are clipped at ∥·∥ 2 ≤ 1. Training is mixed-precision, with the SSIM and MS-SSIM forward passes kept in float32 as described in intervention 2 of Section 3.4. Early stopping monitors the validation loss with patience 15 and minimum delta 10 −4; the monitored quantity is loss-family-specific by construction, so each run is halted against its own validation trajectory rather than a shared surrogate. The train/validation split is patient-wise (no slices from a validation patient appear in training). Table 2 lists the shared hyperparameters; environment, hardware, seeding, and determinism settings are reported in Section A.   
+
+> 2The SSIM subgraph runs with the autocast context disabled and its inputs cast to float32 ; the convolutional backbone remains in mixed precision, the PyTorch AMP default that keeps most operators in half precision while automatically promoting numerically sensitive reductions to float32 .9
+
+## 3.6 Evaluation metrics 
+
+We report five complementary metrics: the structural similarity index (SSIM) and its multi-scale variant (MS-SSIM), mean absolute error (MAE), gradient MAE, and peak signal-to-noise ratio (PSNR). Higher is better for SSIM, MS-SSIM, and PSNR; lower is better for MAE and gradient MAE. All metrics are computed on the reconstructed 512 × 512 prediction and target slices (Figure 2(c)) in the same [0 , 1] -normalized representation used for training, i.e. after the center-44 HU / width-128 HU window of Section 3.1; no further windowing or rescaling is applied at evaluation time. The concrete definitions are as follows. 
+
+• SSIM, MS-SSIM. As defined by Equations (2)–(3) with 11 × 11 Gaussian windows, M = 5 scales, the calibrated weights of Wang et al. [ 23 ], w = (0 .0448 , 0.2856 , 0.3001 , 0.2363 , 0.1333) , and the Wang et al. [ 22 ]defaults (K1, K 2) = (0 .01 , 0.03) restored for evaluation, in contrast to the training-only choice K2 = 0 .4
+
+motivated in intervention 1 of Section 3.4. 
+
+• MAE. Pixel-wise mean absolute error, 1
+
+> N
+
+P
+
+> i
+
+|ˆyi −yi|; identical in definition to LL1 of Equation (1), reported here as a metric on the normalized intensities. 
+
+• Gradient MAE. Edge-preservation metric: 3 × 3 Sobel operators are applied to ˆY and Y separately in the horizontal and vertical directions, gradient magnitudes ∥∇ I∥ =
+
+q
+
+G2 
+
+> x
+
++ G2 
+
+> y
+
+are computed for each, and the metric is the mean absolute error between the two magnitude maps. 
+
+• PSNR. PSNR ( ˆY , Y ) = 10 log 10 
+
+ L2/MSE ( ˆY , Y ) in decibels, with peak intensity L = 1 ; pairs with 
+
+MSE = 0 are assigned +∞ and excluded from averages. Metrics are evaluated on every interpolated slice of every test triplet; slice-level values are averaged within each patient to form the patient-level quantities used in the statistical analysis of Section 3.8. Because the reference middle slice Ik+1 carries acquisition noise, a model that perfectly recovers the conditional-expectation signal of Section 5.4 would differ from it by the suppressed noise; see Section 5.7 for the implications when comparing top-performing losses. 
+
+## 3.7 ROI-level noise quantification 
+
+We quantify the implicit-denoising property analysed in Section 5.4 via the ROI-level protocol below. To quantify within-tissue noise in held-out test predictions, we measure the pixel standard deviation in three anatomically fixed white-matter regions of interest (ROIs) per slice: left and right centrum semiovale, and pons. Each ROI is a 16 × 16 -pixel patch placed by a brain-mask-based heuristic (centroid and bounding box of the largest connected component at threshold 0.05 ); ROIs that extend outside the brain mask, overlap a hemorrhage-labelled slice, or contain intensity outliers exceeding three times the patient median ROI standard deviation are rejected. Of 968 × 3 = 2904 candidate ROI–triplet combinations, 1262 are retained after rejection ( 396 dropped for hemorrhage overlap, 183 for geometry, 219 for outliers, 18 pons ROIs unplaceable). Within each surviving ROI we compute the pixel standard deviation σROI of the acquired middle slice and of each model’s prediction, and define the noise-reduction ratio η = ( σacq − σpred )/σ acq (positive: the prediction has lower in-ROI variance than the acquired reference). Per-patient η is the mean over surviving ROIs within each triplet and then over triplets within each patient; we test each model against zero with a paired Wilcoxon signed-rank across the 28 patients with any surviving ROI, and apply Benjamini–Hochberg FDR across the 5-model family. The radially-averaged noise power spectrum (NPS) of the same ROIs, computed following ICRU 54 conventions, complements the scalar analysis by showing which spatial frequencies are suppressed. 
+
+## 3.8 Statistical analysis 
+
+Primary inference is patient-level (30 independent patients). The paired metric differences are heavy-tailed, so we use nonparametric procedures throughout: 1. compute metric means per patient; 2. estimate mean and 95% CI via nonparametric percentile bootstrap (10,000 resamples) [34]; 
+
+> 10
+
+3. perform two-sided paired Wilcoxon signed-rank tests [ 35 ] of each candidate against the reference model (MS-SSIM+L1, 0.5/0.5), a one-vs-reference design rather than an all-pairs omnibus, with the reference designated a priori (rationale and candidate list in Section 4.2). Patient-level pairing ensures that each model comparison tests whether one loss consistently outperforms the other across the same 30 anatomies, thereby controlling for inter-patient variance rather than relying on absolute metric magnitudes. We adopt a significance level of α = 0 .05 for all tests. To control the false discovery rate across the patient-level paired-test family (50 tests: 10 candidate models 
+
+× 5 reported metrics; full enumeration in Section 4.2), we apply the Benjamini–Hochberg procedure [36] at 
+
+q < 0.05 ; BH-adjusted q-values are reported alongside raw p-values. Slice-level analyses are also computed for transparency, but we avoid treating slice-level p-values as primary due to within-patient dependence. 
+
+Exploratory subgroup analysis. Separate from the primary patient-level paired comparisons, Section 4.3 reports an exploratory, post-hoc subgroup analysis testing whether slice-level metrics differ between hemorrhage and normal target slices. Because the two subgroups are different slices (not paired), we use the two-sample Mann–Whitney U test (two-sided), with Benjamini–Hochberg FDR applied jointly across the 8 × 3 primary-metric hemorrhage-analysis family and a patient-level cluster bootstrap reported as an independence-aware sensitivity check; effect-size and bootstrap definitions are given in Section C. 
+
+Resolution limits. No a priori power calculation was performed; reported effect sizes are observed rather than targeted. The two-sided exact Wilcoxon signed-rank test at n = 30 has a minimum attainable p-value of 1.86 × 10 −9, which bounds patient-level significance claims from below. Slice-level tests are reported for transparency but can be anti-conservative under within-patient dependence; the hemorrhage-stratification analysis therefore reports patient-level cluster-bootstrap p-values as an independence-aware sensitivity check. 
+
+# 4 Results 
+
+## 4.1 Held-out test performance (patient-level primary analysis) 
+
+All four primary loss families (SSIM s, L1, MS-SSIM+L1, MSE) converged within the 500-epoch budget; the full configuration registry, including per-run learning rates and termination epochs, is in Appendix B. Validation metrics on 256 × 256 crops are not directly comparable to the test metrics on the reassembled 
+
+512 × 512 composite, whose outer 64 -pixel near-zero border inflates structural scores; we therefore report the held-out test analysis as the primary comparison. The primary analysis is conducted on the 30-patient held-out test set: per-patient metric means are computed within each patient and then summarized across patients with 95% bootstrap confidence intervals under the protocol of Section 3.8. Table 3 reports five per-image metrics (SSIM, MS-SSIM, MAE, gradient MAE, and PSNR) for the two classical baselines, the two pretrained VFI models, and four learned configura-tions; the paragraphs that follow group these rows into baselines, VFI transfer, and the controlled versus separately tuned learned runs. Three baseline categories are included: two classical methods (pixel-wise mean and cubic spline interpola-tion along the z-axis), and two pretrained VFI models applied directly to CT without fine-tuning (RIFE [ 3]and FILM [ 4]). The classical baselines represent naive interpolation and establish a floor rather than a clinical standard of care. RIFE and FILM, trained on natural video, sit between the classical and learned models on structural metrics (SSIM 0.847 –0.848 , vs. ∼0.78 classical and ∼0.89 learned), confirming that natural-video priors transfer partially but not fully to CT. Numerically, every domain-specific model in Table 3 exceeds both baseline categories on SSIM and MS-SSIM; in the patient-level paired analysis, the reference model improves over all four baselines on both structural metrics at the Wilcoxon floor ( p = 1 .86 ×10 −9). Among the learned models, three (L1, MS-SSIM+L1, MSE) share identical optimization settings (lr 
+
+= 8 ×10 −4, batch size 96) and constitute the controlled comparison. The SSIM s model used a higher learning rate ( 3×10 −3) and smaller batch size (32); its results are included because they demonstrate what SSIM loss can achieve under favorable hyperparameters, but they represent a separately tuned configuration rather than a controlled data point (see Section 5.2). 
+
+> 11
+
+Table 3: Primary test-set results (patient-level, 30 patients). Three learned models (L1, MS-SSIM+L1, MSE) share identical optimization settings (lr = 8 ×10 −4, batch size 96) and constitute the controlled comparison. The subscript s
+
+on SSIM s denotes the training-stability variant ( K2 = 0 .4) run with a separate hyperparameter setting; see Section 5.2. Bold marks the per-column best; ties at the third decimal place are not bolded. The reference is the noisy acquired middle slice; small inter-model deltas may reflect noise-matching rather than signal recovery (see Section 5.7).                                                            
+
+> Method SSIM ↑MS-SSIM ↑MAE ↓Grad-MAE ↓PSNR ↑
+> Cubic interpolation baseline 0.778 [0.766, 0.791] 0.823 [0.815, 0.831] 0.0432 [0.0417, 0.0448] 0.116 [0.110, 0.122] 19.051 [18.766, 19.332] Mean interpolation baseline 0.784 [0.773, 0.796] 0.822 [0.815, 0.830] 0.0436 [0.0421, 0.0452] 0.112 [0.107, 0.118] 19.025 [18.753, 19.284] RIFE [3] 0.847 [0.839, 0.855] 0.887 [0.882, 0.893] 0.0262 [0.0249, 0.0276] 0.0798 [0.0757, 0.0841] 22.307 [21.849, 22.773] FILM [4] 0.848 [0.840, 0.856] 0.891 [0.885, 0.896] 0.0255 [0.0242, 0.0269] 0.0817 [0.0774, 0.0860] 22.425 [21.935, 22.912]
+> Controlled comparison (lr = 8 ×10 −4, batch size 96)
+> L1 0.890 [0.881, 0.899] 0.936 [0.931, 0.941] 0.0166 [0.0154, 0.0178] 0.0717 [0.0666, 0.0766] 25.402 [24.773, 26.057] MS-SSIM+L1 (ref.) 0.888 [0.879, 0.897] 0.936 [0.931, 0.941] 0.0172 [0.0160, 0.0184] 0.0726 [0.0678, 0.0774] 25.435 [24.864, 26.030] MSE 0.871 [0.862, 0.881] 0.931 [0.926, 0.937] 0.0199 [0.0186, 0.0212] 0.0774 [0.0724, 0.0824] 25.399 [24.854, 25.972]
+> Separately tuned; controlled SSIM run at lr = 8 ×10 −4catastrophically failed (test SSIM = 0 .067 ; see Section 5.2)
+> SSIM s(lr = 3 ×10 −3, bs 32) 0.890 [0.881, 0.899] 0.935 [0.930, 0.940] 0.0192 [0.0180, 0.0204] 0.0714 [0.0669, 0.0760] 24.955 [24.401, 25.510]
+
+Table 4: Patient-level paired improvements vs. reference (MS-SSIM+L1). Positive ∆ = candidate better. Raw two-sided paired Wilcoxon signed-rank p-values are shown; Benjamini–Hochberg FDR correction over the full 50-test family leaves every significance decision at p < 0.05 unchanged (see Section 3.8). Bootstrap CI endpoints use 10,000 resamples. The full patient-level 50-test table is released as a tabular artefact under Section A, and contains, e.g., the paired MS-SSIM test for L1 vs. the reference (narrowly significant at p = 0 .0087 ), not tabulated here.                                                                 
+
+> Candidate ∆SSIM p∆MAE p∆PSNR p
+> Cubic baseline −0.1096 [ −0.1145, −0.1048] 1.86 ×10 −9−0.0260 [ −0.0272, −0.0248] 1.86 ×10 −9−6.384 [ −6.846, −5.935] 1.86 ×10 −9
+> Mean baseline −0.1039 [ −0.1082, −0.0998] 1.86 ×10 −9−0.0264 [ −0.0276, −0.0252] 1.86 ×10 −9−6.410 [ −6.892, −5.931] 1.86 ×10 −9
+> RIFE [3] −0.0405 [ −0.0436, −0.0377] 1.86 ×10 −9−0.0090 [ −0.0097, −0.0084] 1.86 ×10 −9−3.128 [ −3.452, −2.831] 1.86 ×10 −9
+> FILM [4] −0.0396 [ −0.0424, −0.0370] 1.86 ×10 −9−0.0083 [ −0.0090, −0.0077] 1.86 ×10 −9−3.010 [ −3.278, −2.747] 1.86 ×10 −9
+> SSIM s+0.0017 [0.0011, 0.0023] 1.19 ×10 −6−0.0020 [ −0.0021, −0.0019] 1.86 ×10 −9−0.479 [ −0.561, −0.406] 1.86 ×10 −9
+> L1 +0.0021 [0.0018, 0.0025] 1.86 ×10 −9+0.0006 [0.0005, 0.0007] 1.86 ×10 −9−0.033 [ −0.119, 0.069] 0.171 MSE −0.0170 [ −0.0184, −0.0157] 1.86 ×10 −9−0.0027 [ −0.0029, −0.0025] 1.86 ×10 −9−0.035 [ −0.141, 0.051] 0.761
+
+No single loss dominates all metrics within the controlled subset: L1 leads MAE, MS-SSIM+L1 has the numerically highest PSNR, and L1 and MS-SSIM+L1 tie on MS-SSIM. The separately tuned SSIM s achieves the lowest (best) gradient MAE, with L1 effectively tied for the highest SSIM at the third decimal. 
+
+## 4.2 Paired tests vs reference model 
+
+Following the patient-level protocol of Section 3.8, we test whether any candidate model (classical, VFI, or alternative learned-loss configuration) produces a patient-level improvement over the reference model, 
+
+LMS -SSIM+L1 at α = 0 .5. This reference was designated a priori with respect to the test set: the MS-SSIM +L1 family itself follows the hybrid perceptual +pixel recipe of Zhao et al. [ 21 ], and among configurations trained under the controlled hyperparameter setting (lr = 8 ×10 −4, batch size 96), the α = 0 .5 weighting trained stably to early stopping and was retained as the controlled-comparison candidate (full registry in Appendix B). No test-set metric was used in selecting the reference. We report patient-level paired improvements (positive values mean better candidate under each metric direction convention). The 10 candidates comprise 4 baselines (pixel-wise mean, cubic z-interpolation, RIFE, FILM) and 6 non-reference learned runs: SSIM s, L1, MSE, the catastrophically failed controlled SSIM run at lr = 8 ×10 −4,a lower-learning-rate L1 configuration, and a second MS-SSIM+L1 weighting. The reference model itself is excluded from the candidate list. The five reported metrics of Section 3.6 (SSIM, MS-SSIM, MAE, gradient MAE, PSNR) are evaluated, yielding 10 × 5 = 50 tests. Table 4 reports a representative subset (SSIM, MAE, PSNR); the full patient-level 50-test table with BH-adjusted q-values is released as a tabular artefact under Section A. The majority of p-values fall at the Wilcoxon floor for n = 30 pairs ( 1.86 × 10 −9), so Benjamini–Hochberg FDR correction (see Section 3.8) leaves every significance decision at p < 0.05 unchanged. The few non-significant comparisons are small learned-model differences, including PSNR for models with near-identical performance (e.g., MSE PSNR p = 0 .761 , L1 PSNR p = 0 .171 ) and MS-SSIM contrasts omitted from Table 4. 
+
+12 Table 5: Slice-level performance stratified by hemorrhage presence (396 hemorrhage, 572 normal triplets). ↑ higher is better; ↓ lower is better. Best value per column in bold . Bootstrap 95% CIs are slice-level and understate true patient-level uncertainty; they are provided for descriptive completeness. Inferential tests are reported separately in Table 9 (Section C).                                              
+
+> SSIM ↑MAE ↓
+> Method Hemorrhage Normal Hemorrhage Normal Cubic baseline 0.759 [0.753, 0.765] 0.789 [0.782, 0.796] 0.039 [0.038, 0.041] 0.046 [0.045, 0.047] Mean baseline 0.768 [0.762, 0.773] 0.792 [0.786, 0.799] 0.039 [0.038, 0.040] 0.047 [0.046, 0.048] RIFE baseline 0.827 [0.823, 0.832] 0.859 [0.853, 0.865] 0.024 [0.023, 0.026] 0.028 [0.026, 0.029] FILM baseline 0.828 [0.823, 0.833] 0.861 [0.854, 0.867] 0.024 [0.023, 0.025] 0.027 [0.025, 0.028] SSIM s0.873 [0.869, 0.877] 0.899 [0.894, 0.904] 0.020 [0.019, 0.020] 0.019 [0.018, 0.020] L1 0.873 [0.868, 0.877] 0.900 [0.895, 0.904] 0.017 [0.016, 0.018] 0.017 [0.016, 0.018] MS-SSIM+L1 (ref.) 0.871 [0.866, 0.875] 0.897 [0.892, 0.902] 0.018 [0.017, 0.018] 0.017 [0.016, 0.018] MSE 0.856 [0.851, 0.860] 0.879 [0.873, 0.884] 0.020 [0.019, 0.021] 0.020 [0.019, 0.021]
+
+Because paired testing can detect very small but consistent directional differences, we report confidence intervals alongside p-values so that readers can judge practical significance from the effect magnitudes rather than from p-values alone. 
+
+## 4.3 Hemorrhage stratification 
+
+Recall that the 30-patient test set is enriched for hemorrhage subtypes (Section 3.1); the slice-level prevalence below (41% hemorrhage) does not reflect unselected clinical cohorts. Table 5 stratifies test-set performance by hemorrhage presence at the slice level, using the RSNA any -subtype label on the target middle slice Ik+1 
+
+of each triplet. Hemorrhage slices ( n = 396 ) yield lower SSIM than normal slices ( n = 572 ) across every evaluated method (classical, VFI, and learned) with a typical gap of 0.02 –0.03 .We tested this gap inferentially using a two-sided Mann–Whitney U test per (method, metric) cell over the 8 methods and 3 primary metrics (SSIM, MAE, PSNR), a patient-level cluster bootstrap ( pcb ; 10,000 resamples) to account for within-patient dependence, and Benjamini–Hochberg FDR control [ 36 ] over the full 
+
+8 × 3 = 24 -test family. Full methodology, effect-size definitions, and q-values are in Section C (Table 9). The analysis was designed after seeing Table 5 and is therefore post-hoc / exploratory. The SSIM gap (hemorrhage < normal) is unanimous across the 8 methods and survives the cluster bootstrap in 7 of 8 cases at pcb ≤ 0.018 ; the Mean baseline is marginal ( pcb = 0 .056 ). For MAE and PSNR the test family splits by method class: classical baselines show hemorrhage-normal gaps significant under both the asymptotic and cluster-bootstrap p; VFI baselines show the same pattern for PSNR but not MAE; and the four learned models show small effects ( |r| ≤ 0.10 ) that are marginally significant asymptotically but do 
+
+not survive the patient-level bootstrap ( pcb ∈ [0 .14 , 0.34] ). We therefore interpret the hemorrhage-vs-normal effect in learned models as an SSIM phenomenon; the mechanism is discussed in Section 5.6. 
+
+## 4.4 Implicit denoising: noise reduction in uniform ROIs 
+
+The conditional-expectation reading of regression losses (Section 5.4) predicts that the pixel-wise losses should suppress acquisition noise that is unpredictable from the input slices. Following the protocol of Section 3.7, we measured within-tissue noise in three anatomically fixed white-matter ROIs (left and right centrum semiovale, pons) on the held-out test set. Table 6 summarises the patient-level results. The three pixel-wise regression losses (L1, MSE, and MS-SSIM+L1) achieve median η of 26 .0–26 .3% with tight 95% patient-bootstrap CIs well above zero, and all survive BH correction at q ≤ 2.9×10 −6. SSIM s denoises less aggressively (median 
+
+η = 18 .8% , CI [11 .1, 21 .1]% , q = 1 .3×10 −3) but still significantly, consistent with SSIM’s local-variance terms preserving part of the acquisition-noise texture by construction. The negative control linear_mean is the arithmetic midpoint of the two neighbour slices: although simple averaging can reduce independent noise when anatomy is aligned, it is not anatomy-aware in the through-plane direction. Here it shows median 
+
+η = −5.3% , adding in-ROI variance relative to the acquired reference, as expected from averaging across inter-slice anatomical variation. The BH-significant result here confirms the test’s direction sensitivity rather                                                                        
+
+> 13 Table 6: Quantitative noise reduction in uniform white-matter ROIs ( n= 28 patients with surviving ROIs; 1262
+> ROI observations). η= ( σacq −σpred )/σ acq : positive indicates lower in-ROI variance than the acquired reference.
+> 95% CI from patient-level bootstrap ( 10 ,000 resamples). Raw pfrom two-sided paired Wilcoxon signed-rank; qfrom Benjamini–Hochberg FDR across the 5-model family. linear_mean is the midpoint-average negative control and is observed to add variance in this analysis. Model Median η(%) 95% CI (%) Raw pBH q
+> L1 +26 .3[+15 .2,+38 .6] 7.45 ×10 −83.73 ×10 −7
+> MSE +26 .0[+13 .5,+38 .9] 2.29 ×10 −62.86 ×10 −6
+> MS-SSIM+L1 (ref.) +26 .1[+15 .7,+35 .4] 1.54 ×10 −62.86 ×10 −6
+> SSIM s+18 .8[+11 .1,+21 .1] 1.29 ×10 −31.29 ×10 −3
+> linear_mean (neg. control) −5.3[−22 .6,+4 .1] 1.88 ×10 −62.86 ×10 −6
+
+than denoising. Figure 3 shows that the pixel-wise regression models suppress NPS across essentially the entire frequency band in the uniform ROIs; SSIM s shows a smaller, qualitatively similar suppression profile. 
+
+## 4.5 Qualitative examples 
+
+Figures 4 and 5 show representative outputs from the model that achieved the highest test-set SSIM: the SSIM loss at learning rate 3 × 10 −3 (SSIM s, epoch 44). Each panel shows, with in-image titles identifying every cell: top row, left input slice Ik, ground-truth middle slice Ik+1 , right input slice Ik+2 ; bottom row, pixel-wise mean of the two input slices (mean baseline), predicted interpolation ˆIk+1 , and a 2× zoom of a 
+
+160 × 160 region of interest shown for the ground truth and the prediction side by side. The zoom region is centred on the basal-ganglia / ventricular band and is indicated by a yellow locator rectangle drawn on the prediction panel, so that small-scale structural differences between ground truth and prediction can be assessed directly rather than inferred from the 512 × 512 views. 
+
+Selection rule. From the 30 held-out test patients (968 triplets), we hand-picked mid-brain axial slices (ventricular / basal-ganglia level), where anatomy varies more smoothly than at the skull base or vertex. Selection was not random and was not driven by a ranked metric: the two patients shown are the same patients used throughout the paper for qualitative material (Figures 6 to 9) to keep cross-figure consistency. These panels therefore illustrate typical behaviour at mid-brain levels from two test cases; they are not 
+
+claimed to be worst-case or best-case, and a systematic worst-by-SSIM failure example across the full test set is not shown here (out-of-sample failure assessment is deferred to the planned radiologist reader study; see Section 5.7). Patient identifiers are those of the public RSNA 2019 Intracranial Hemorrhage Detection dataset [1]; no additional identifiers are introduced. 
+
+Display window. All CT images are displayed with the brain window used for preprocessing: center 
+
+44 HU, width 128 HU (range [−20 HU , 107 HU ], linearly mapped to [0 , 1] ; see Section 3). No auto-contrast or per-image normalisation is applied in the figures. Orientation follows radiological convention (viewer’s left = patient’s right). 
+
+Pathology labels. Hemorrhage status is taken verbatim from the RSNA slice-level labels of the target (middle) slice. Figure 4 shows patient ID_615f69e3 (triplet index 14; target slice order 15 of 32; axial fraction 
+
+≈ 0.48 ), whose RSNA label is any = 0 on every slice; the right basal-ganglia hyperintensity is therefore not labelled as hemorrhage. The top panel of Figure 5 (and the bottom subfigure of Figure 6) shows patient 
+
+ID_fc4fcd34 (triplet index 16; axial fraction ≈ 0.52 ), whose target slice carries positive RSNA labels for all five hemorrhage subtypes. The bottom panel of Figure 5 is a consecutive slice from the same normal patient as Figure 4. Figure 6 extends the comparison to include VFI baselines (RIFE and FILM) alongside our model, illustrating the structural fidelity gap that underlies the quantitative results in Table 3: our model most closely matches the ground truth, while RIFE and FILM produce plausible but less accurate outputs, particularly near bone boundaries and hemorrhage margins. 
+
+> 14
+
+0.2 0.4 0.6 0.8 1.0 1.2 1.4 
+
+Spatial frequency (cycles/mm) 
+
+10 6
+
+10 5
+
+10 4
+
+10 3
+
+10 2
+
+> NPS (mm 2)
+
+## Radial noise power spectrum 
+
+## (uniform white-matter ROIs) 
+
+> Acquired
+> Linear mean
+> L1
+> MSE
+> MS-SSIM+L1
+> SSIM
+
+Figure 3: Radially-averaged 1D noise power spectrum in uniform white-matter ROIs, averaged over 28 test patients (median pixel spacing 0.488 mm/px). Curves compare the acquired-slice NPS to the prediction NPS of each model on the same ROIs. Pixel-wise regression losses (L1, MSE, MS-SSIM+L1) suppress NPS across essentially the full frequency band; SSIM s shows a smaller but qualitatively similar reduction. The linear_mean negative control adds variance. 
+
+> 15
+
+Figure 4: Qualitative interpolation result at the mid-brain ventricular / basal-ganglia level. Patient ID_615f69e3 ,target triplet index 14; RSNA label any = 0 . Model: SSIM loss (lr = 3 ×10 −3). Detail cell: 2× zoom of a 160 × 160 
+
+basal-ganglia / ventricular ROI; the yellow rectangle marks the zoom origin. Brain window and radiological convention as described in the text. The posterior-right low-intensity halo is the head-support artefact discussed in Section 5.7. The predicted slice is visibly smoother than the acquired reference; this is the implicit-denoising property analysed in Section 5.4 and quantified at the ROI level in Section 4.4.    
+
+> 16 (a) Mid-brain hemorrhage case; target slice carries positive RSNA labels for multiple hemorrhage subtypes (including intraparenchymal, visible as the right-sided hyperintense focus).
+> (b) Consecutive mid-brain normal slice from the same patient as Figure 4 ( ID_615f69e3 ;RSNA any = 0 ).
+
+Figure 5: Additional qualitative examples at mid-brain axial levels: hemorrhage case (top) and consecutive normal slice (bottom). Model, display window, zoom layout, and orientation follow Figure 4. The posterior-right halo is the head-support artefact discussed in Section 5.7. The predicted slice is visibly smoother than the acquired reference; this is the implicit-denoising property analysed in Section 5.4 and quantified at the ROI level in Section 4.4.      
+
+> 17 (a) Patient ID_615f69e3 , triplet index 14 (mid-brain ventricular / basal-ganglia level; RSNA label any = 0 ); same slice as Figure 4.
+> (b) Patient ID_fc4fcd34 , triplet index 16 (mid-brain hemorrhage; positive RSNA labels for all five hemorrhage subtypes on the target slice).
+
+Figure 6: Cross-method qualitative comparison on two mid-brain test slices. Top row of each panel: left input slice, ground truth, right input slice. Bottom row: our SSIM s model, RIFE, FILM, and mean baseline. RIFE and FILM produce plausible but structurally less accurate outputs, particularly near bone boundaries and hemorrhage margins; the mean baseline is visibly blurred. Brain window; radiological convention.         
+
+> 18 Ground truth SSIM L1 MS-SSIM+L1 MSE
+> Mean input |error| (MAE=0.0256) |error| (MAE=0.0224) |error| (MAE=0.0232) |error| (MAE=0.0253)
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> Absolute error
+
+Figure 7: Predictions and pixel-wise absolute error maps for four loss functions on the same test slice as Figure 4 (patient ID_615f69e3 , target triplet index 14). Layout is a 2 × 5 grid. Top row: ground truth followed by model predictions for SSIM s (lr = 3 × 10 −3, batch size 32), L1, MS-SSIM+L1, and MSE (left to right). Bottom row: mean-of-adjacent-inputs baseline, followed by per-loss absolute error maps | ˆY − Y | in the same column order, on a shared viridis scale (colour bar at right, “Absolute error”) whose upper bound is the 99 th percentile of the pooled error values across the four loss maps, so that the colour range is directly comparable across panels. All four losses concentrate errors at high-contrast boundaries (skull, bone/air interfaces, and the patient-support region at the posterior field of view); brain parenchyma errors are comparatively low, with a residual diffuse noise-like component. Slice-level MAE printed in each sub-panel: SSIM s 0.0256 , L1 0.0224 , MS-SSIM+L1 0.0232 , MSE 0.0253 ; L1 achieves the lowest MAE on this individual slice. These slice-level values are for this single example only and are not directly comparable to the patient-level means in Table 3. Grayscale panels use the brain window (center 44 HU, width 
+
+128 HU). Radiological convention. 
+
+19 5 Discussion 
+
+## 5.1 Loss–metric alignment explains the absence of a single best model 
+
+No single loss dominates all metrics, and the differences among the top three learned models are small (Tables 3 and 4). L1 attains the lowest MAE, the metric it directly minimizes. MS-SSIM+L1 has the numerically highest PSNR among the controlled-comparison models (L1, MS-SSIM+L1, MSE, which share optimizer settings), but the paired tests do not distinguish it from L1 or MSE on PSNR. SSIM s ties L1 for top SSIM but pays a small MAE penalty, because SSIM’s luminance and contrast terms are normalized ratios whose values are insensitive to small constant offsets that nonetheless accumulate in MAE. MSE is uniformly dominated or tied by at least one other loss on every structural metric. These alignments are consistent with each loss excelling on the metric it most directly optimizes. However, “best model” is only meaningful relative to a stated evaluation criterion. 
+
+## 5.2 SSIM loss fragility and the role of numerical conditioning 
+
+The most striking result is the contrast between SSIM at lr = 3 × 10 −3 (test SSIM 0.890 ) and SSIM at lr = 8 × 10 −4 (test SSIM 0.067 , catastrophic failure). The latter’s test MAE of 11 .2 (on [0 , 1] -normalized data) indicates that model outputs diverged far outside the valid intensity range rather than collapsing to a constant prediction. Both used the same architecture and data; they differed in learning rate and batch size (32 vs. 96 ). Root-cause analysis identified one dominant numerical failure mode in the SSIM stability constant 
+
+C2 = ( K2 · L)2: with default K2 = 0 .03 this yields C2 = 0 .0009 for data range L = 1 , which provides inadequate numerical stabilization when covariance denominators approach zero during early training. Setting 
+
+K2 = 0 .4 (C2 = 0 .16 ), together with the FP32 autocast exclusion of Section 3.4, eliminated the common near-zero-denominator / low-precision NaN failure at initialization. It did not eliminate residual training fragility, as shown by the divergence and degenerate-output patterns below. Under the operational definition of Section B, 18 of the 33 SSIM-family runs diverged. Divergent runs spanned all tested weight ratios (SSIM/L1 from 0.2/0.8 to 0.8/0.2) and learning rates ( 1 × 10 −4 to 8 × 10 −4); the full per-family, per-batch-size accounting is given in Table 8. The successful SSIM configuration (batch size 32, learning rate 3 × 10 −3) avoided this failure in our registry, plausibly through larger per-sample gradient variance that acted as implicit regularization. However, because this configuration differs from the other primary models in both batch size (32 vs. 96) and learning rate ( 3×10 −3 vs. 8×10 −4), the individual contributions of loss function, learning rate, and batch size cannot be disentangled. Consequently, SSIM s’s leading structural similarity should be interpreted as evidence of what SSIM loss can achieve under favorable conditions, not as a controlled comparison against the other losses. Regardless of mechanism, the sensitivity of SSIM loss to these implementation details, where a 3.75 × change in learning rate produces the difference between near-optimal test SSIM ( 0.890 ) and catastrophic failure ( 0.067 ), represents a practical hazard for practitioners adopting SSIM-based training objectives even in the presence of the K2/FP32 safeguards. 
+
+## 5.3 Training instability as a systematic finding 
+
+Training divergence was concentrated in SSIM-family losses, and divergence rates were amplified at smaller batch sizes. Under the operational definition of Section B, the SSIM+L1 and MS-SSIM+L1 subfamilies accounted for the largest absolute divergence counts: 9 of 15 SSIM+L1 and 9 of 14 MS-SSIM+L1 runs diverged (see Table 8); in addition, among the 6 SSIM+L1 runs that reached early stopping, 3 produced degenerate validation SSIM < 0.13 , representing a distinct failure mode not captured by the NaN-based divergence criterion. Reducing batch size from 96 to 64 raised the divergence rate from 10 /25 = 40% to 
+
+11 /13 ≈ 85% across all registered loss families (Table 8); in particular, L1 at lr = 1 ×10 −4 completed at batch size 96 but diverged at batch size 64 , illustrating that batch-size reduction can destabilise losses that were otherwise stable at the same learning rate. Among the non-SSIM losses, MSE and L1 completed training at batch size 96 with the default learning rate ( 8×10 −4). Training divergence is rarely analyzed systematically in the literature. We argue that the divergence rate and its structure constitute a genuine finding: SSIM-family losses require explicit numerical conditioning, and batch size interacts with learning rate in ways that standard hyperparameter guidance does not address. 
+
+> 20
+
+Characterizing these divergence patterns enables other groups to avoid unstable regions of the configuration space. 
+
+## 5.4 Implicit denoising as a property of regression-based synthesis 
+
+A visible property of the model outputs in Figures 4 and 5 is the absence of the acquisition noise texture that is present in the original CT slices. This noise suppression is not a novel finding but a consequence of the classical regression identity from estimation theory (standard textbook result, see e.g. Bishop [ 5] or Hastie et al. [6]): for any square-integrable target Y and input X,
+
+arg min  
+
+> f
+
+E(f (X) − Y )2 = E[Y | X], (6) the minimizer of the L2 risk being the conditional mean. If the target decomposes as Y = S(X) + N with 
+
+E[N | X] = 0 , then E[Y | X] = S(X), so the L2-optimal predictor recovers the conditional-mean signal even when the individual targets are noisy. This holds under square-integrability of Y and the zero-conditional-mean assumption on N ; the stronger independence N ⊥ X simplifies variance analysis but is not required for (6) . The L1 risk is minimized by the conditional median, which coincides with S(X) only when the noise conditional on X is symmetric about zero. SSIM-based losses are neither mean nor median estimators (the SSIM map is a non-linear, data-dependent functional of local moments), so we do not claim they inherit the identity; any smoothness in their outputs is treated as an empirical observation, not a consequence of (6). This identity predates deep learning by decades and underpins classical regression theory. Its modern leverage in image restoration is due to Lehtinen et al. [7], whose Noise2Noise framework showed that when 
+
+two independent noisy observations of the same underlying signal are available as input–target pairs, a clean target is unnecessary for training: the identity still recovers E[Y | X] = S(X). Our setting is not Noise2Noise: we have a single noisy target Ik+1 conditioned on adjacent inputs (Ik, I k+2 ), not two noisy observations of the same slice. What we rely on is the older and weaker conditional-expectation identity (6) itself, which applies to any regression-based synthesis task trained with an L2 (or L1, under symmetry) loss. The observed noise suppression is therefore consistent with this identity and does not require the Noise2Noise construction. Two caveats apply when moving from (6) to calling the output “denoised”. First, CT noise is signal-dependent (Poisson/photon counting) and spatially correlated by the reconstruction kernel [ 26 ]; these properties do not invalidate (6) but mean that the recovered E[Y | X] is a conditional-mean estimate under whatever joint distribution the training data induce, not a guaranteed recovery of an idealized clean signal. Second, E[N | X] = 0 is plausible for reconstructed CT in approximation but cannot be verified from our data; systematic biases (beam hardening, partial-volume averaging) would appear as structured residuals rather than noise-like texture. This implicit denoising is directly relevant to CT imaging, where noise is a well-known clinical problem. The low-dose CT reconstruction literature addresses noise using a closely related approach: training encoder– decoder networks with regression losses (typically MSE) on paired low-dose/normal-dose CT images, where the normal-dose scan serves as a (near-)clean supervisory target. Chen et al. [ 29 ] demonstrated that a residual encoder–decoder CNN (RED-CNN) trained with MSE loss on such pairs achieved simultaneous noise suppression, structural preservation, and improved lesion detection, evaluated favorably by radiologists in a clinical reader study. The comparison to our setting is an analogy, not an equivalence: RED-CNN is fully supervised with an approximately clean target and is optimized to minimize distance to that target, whereas our network has no clean slice available and minimizes distance to the noisy acquired slice Ik+1 
+
+conditioned on its neighbors. Both setups are instances of regression-based synthesis with an L2 or L2-like loss and therefore share the same underlying estimator (6) , but the supervisory signals and what is implicitly being estimated differ. Figures 8 and 9 illustrate this implicit-denoising behaviour across 10 consecutive slices for a hemorrhage and a normal patient, respectively. For each acquired slice Ik+1 , the model is given the two neighboring slices (Ik, I k+2 ) and predicts the middle slice. The difference maps (column 3) are dominated by spatially diffuse, noise-like texture rather than obvious anatomical loss at this display scale, consistent with the model suppressing acquisition noise while retaining the main anatomical structures. The effect is visible in both pathological and normal examples; a quantitative ROI-based analysis is given in Section 4.4. From a clinical perspective, the denoised interpolated slices may improve visibility of subtle findings such as small hemorrhages or low-contrast lesions, analogous to the diagnostic benefits demonstrated for 
+
+> 21
+
+deep learning-based CT reconstruction [ 29 ]. However, the altered noise texture may appear unfamiliar to radiologists accustomed to conventional CT appearance, and whether reduced noise enhances or impairs diagnostic confidence remains an open question. A direct qualitative anchor for the noise-removal effect is the cerebrospinal fluid (CSF) in the lateral ventricles of a normal patient: CSF has approximately uniform composition and HU value, so any in-region intensity variability in the acquired slice is dominated by acquisition noise rather than tissue structure. The predicted ventricular regions in Figure 9 are visibly smoother than the acquired counterparts while ventricular boundaries are preserved, consistent with the conditional-expectation reading of (6) on a region whose underlying signal is approximately spatially constant by physiology. The ROI-level results in Section 4.4 (Table 6) make this empirical: outputs from the pixel-wise regression losses have median in-tissue variance ≈26% below the noisy acquired reference, supporting the Equation (6) reading directly. The weaker denoising by SSIM s and the variance increase in the averaging baseline are empirical comparisons rather than direct consequences of the regression identity, but they are consistent with the idea that learned regression suppresses unpredictable texture more effectively than anatomy-agnostic interpolation. Two caveats apply. First, the analysis is ROI-based and characterises within-tissue uniformity rather than absolute noise power at the image level. Second, NPS computed in uniform white-matter ROIs does not characterise the model’s behaviour at high-contrast edges, where the denoising–sharpness trade-off is most clinically consequential. 
+
+## 5.5 External case study: predicted residual signature on an out-of-distribution scan 
+
+The RSNA-internal evidence of Section 4.4 shows that the trained models reduce variance in uniform white-matter ROIs, consistent with acquisition-noise suppression and with the conditional-expectation interpretation of Equation (6). A complementary test is to take that interpretation out of the training distribution and turn it into a falsifiable prediction : if the network is behaving as a conditional-expectation estimator and not simply memorising RSNA noise texture, its residual on a scan with a known, independently measurable structural property should follow the form the theory prescribes. We report such a test on a single out-of-distribution head CT series from a Spanish hospital that contributed no data to training. We present this as a case study, not an external-validation cohort. 
+
+Scan and geometry. The series ( HUVR-1 ; acquired on a GE LightSpeed16 scanner with the SOFT reconstruction kernel; slice thickness 3.70 mm; in-plane spacing 0.488 mm; gantry tilt ≈ 25 ◦) contains N = 32 
+
+reconstructed axial slices with a deliberate change of through-plane spacing along the z axis. From the DICOM ImagePositionPatient coordinates, the inter-slice spacing is ≈ 2.75 mm for slices k = 1 –17 (slices 
+
+overlap : nominal thickness 3.70 mm > spacing 2.75 mm ) and ≈ 5.50 mm for slices k = 18 –32 (slices do not overlap : a ≈ 1.8 mm gap separates adjacent 3.70 mm-thick slabs). This mixed-spacing geometry is incidental to the case selection but turns out to be structurally informative, as explained below. 
+
+Data-side structural hypothesis. Suppose the source reconstruction contributes a small, parity-locked additive offset to alternate axial slices on top of a smooth through-plane signal, 
+
+real k(x, y ) = s(zk, x, y ) + ( −1) k b(x, y ), (7) with |b| ≪ tissue contrast. Such offsets arise in multi-slice helical CT reconstruction when the through-plane interpolation weights between detector rows differ systematically for odd and even reconstructed slices; the exact mechanism is scanner- and protocol-dependent and need not be assumed or verified here. Our triplet formulation predicts ˆIk = f (Ik−1, I k+1 ) and therefore sees inputs that share the same parity, opposite to the target. Under Equation (7), the linear interpolation baseline flin (Ik−1, I k+1 ) = ( Ik−1 + Ik+1 )/2 produces the residual ˆI lin  
+
+> k
+
+− real k =   12 s(zk−1) + 12 s(zk+1 ) − s(zk)| {z }
+
+> smooth anatomy residual
+
+− 2 ( −1) k b, (8) so any data-side parity bias appears in the residual with twice its amplitude and opposite sign on alternate slices. This algebraic doubling makes the linear baseline a built-in amplifier for data-side parity structure,    
+
+> 22 Original Denoised |Original Denoised|
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> Absolute difference
+
+Figure 8: Implicit denoising across 10 consecutive slices (hemorrhage patient). Column 1: original noisy acquired slice. Column 2: model prediction from neighboring slices. Column 3: absolute difference, showing predominantly noise-like texture removal. Gross hemorrhagic and anatomical structures remain visible, but diagnostic preservation requires reader validation. 
+
+23 Original Denoised |Original Denoised| 
+
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> Absolute difference
+
+Figure 9: Implicit denoising across 10 consecutive slices at normal (non-hemorrhage) axial levels from the same patient as Figure 4. The difference maps show predominantly spatially diffuse, noise-like residuals, consistent with the pattern in Figure 8. 
+
+24 and provides a per-slice scalar test: take the per-slice mean of the residual and look at the Nyquist-frequency (period-two) bin of its DFT along the slice axis. If the parity-locked component is not inferable from (Ik−1, I k+1 ) beyond its shared input parity, a learned conditional-expectation estimator should regress that target-specific component towards zero. Under Equation (6), the residual of a trained model should therefore retain the parity structure but at reduced 
+
+amplitude relative to the linear baseline. The conditional-expectation interpretation predicts two things simultaneously on this scan: (i) a period-two component in the linear-baseline residual with Nyquist amplitude 
+
+≈ 2b; and (ii) systematic attenuation of that amplitude by trained models. 
+
+Empirical test. Figure 10 shows diff maps ˆIk − real k for four consecutive slices in the coarse-spacing region across the real reference and all five trained losses; the red/blue sign flip on alternate slices is directly visible and is consistent across every loss. We measured the data-side amplitude b directly, with no predictor involved, by taking the mean HU value of each brain-windowed real slice and reading off the Nyquist component of its DFT along the slice axis (Figure 11, bottom-right): in the coarse region k ≥ 18 the parity amplitude is 
+
+0.22 HU. The linear-baseline residual Nyquist amplitude, measured the same way on the same slice subset, is 0.40 HU, within 0.03 HU of the 2b ≈ 0.43 HU predicted by Equation (8) (using unrounded b = 0 .217 HU; the rounded display value 2 × 0.22 = 0 .44 HU differs from the measurement by 0.04 HU and both match the prediction to within display precision). For the five trained losses the residual parity amplitude is 0.30 –0.33 HU (mean 0.31 HU), a ≈ 22% reduction relative to the linear baseline. Table 7 summarises the amplitudes and the fraction of residual energy at the Nyquist bin; in the coarse region the period-two component accounts for 49 –59% of the mean-centred residual energy for every predictor, i.e. dominates the spectrum. 
+
+Interpretation. Three observations support the conditional-expectation reading. First, the linear-baseline amplitude matches the theoretical 2b doubling to well below 1 HU, confirming that the period-two component is a property of the DICOM pixel data rather than a model fabrication. Second, every trained loss attenuates this data-side amplitude (Table 7) without being given an explicit parity indicator: this is consistent with a regressor treating target-specific, poorly predictable components as noise and pushing them towards zero, the same general mechanism invoked for the ROI-level noise suppression of Section 4.4 but tested on a different signal (a structural parity bias, not stochastic acquisition noise) on out-of-distribution data. Third, the effect is clearest in the coarse-spacing region: the full-range parity energy fraction is 13% for the linear baseline and similar for every trained model, versus 49 –59% in the coarse subregion. A plausible explanation is that overlapping slices below k = 18 share more z-content ( ≈ 26% z-overlap: thickness 3.70 mm vs. spacing 
+
+2.75 mm), increasing the smooth-anatomy residual in Equation (8) and making the period-two component less dominant. The geometry of this particular scan therefore provides a cleaner region in which to observe the parity residual. A residual with this structure is not a failure of the model. Any part of the target that is not inferrable from the inputs must, by construction, leave a trace in the residual; the absence of such a trace would indicate leakage or memorisation. The result is therefore better read as: on a hospital scan the models have never seen, with a measurable data-side property whose interaction with the triplet formulation is derivable from first principles, each trained loss produces a residual of the shape and magnitude the conditional-expectation identity predicts. 
+
+Scope. Three limitations apply to the quantitative claims. (i) n = 1 scan from one scanner vendor and one protocol; the ≈ 22% attenuation number should not be read as a population statistic and in particular cannot be generalised to other scanners or reconstruction kernels. (ii) Amplitudes are measured on brain-windowed pixel data ( [−20 HU , 107 HU ]), so values outside that window are clipped before the residual is formed; for the slice-mean-level signal this is negligible but the measurement cannot speak to parity effects in bone or extracranial air. (iii) The mechanism attribution in Equation (7) is phenomenological: the parity bias is demonstrated in the pixel data, but the GE reconstruction pipeline that produced it is not observed by us. The linear-baseline doubling test and the model-side attenuation are independent of any particular physical cause. 
+
+> 25
+
+Figure 10: Four consecutive reconstructed slices from HUVR-1 in the coarse-spacing region ( k ≥ 18 ; ≈ 1.8 mm gap between non-overlapping 3.70 mm-thick slabs) and their model residuals. Leftmost column: acquired slice (brain window, center 44 HU, width 128 HU). Remaining columns: signed diff ˆIk − real k for each trained loss; red > 0, blue < 0;saturation ± the 99th-percentile absolute diff across all models and coarse-region slices, so colour magnitudes are directly comparable across rows and across losses. The sign of the diff flips between consecutive slices and is consistent across every loss, the signature predicted by Equation (8). Quantitative evidence and spectral decomposition are given in Figure 11 and Table 7. Images shown in radiological convention. 
+
+## 5.6 Effect of pathology on interpolation difficulty 
+
+The hemorrhage-vs-normal SSIM gap is consistent across every evaluated method and survives the patient-level cluster bootstrap in 7 of 8 cases (Mean baseline marginal at pcb = 0 .056 ; Table 5; full inferential tests in Section C, Table 9). For the classical and VFI baselines, MAE and PSNR nominally favour hemorrhage slices, an artefact of globally blurred outputs whose error is dominated by parenchymal texture rather than focal lesion structure. For the learned models, by contrast, the small nominal MAE and PSNR gaps do not survive the patient-level bootstrap, so the pathology effect in that regime is an SSIM phenomenon rather than a uniform drop in reconstruction accuracy. This is consistent with SSIM penalising the structural ambiguity introduced by focal, high-contrast lesions (localised error that per-pixel summaries dilute over the whole slice), and the related ill-posedness when a lesion lies between acquired slices is discussed under partial-volume effects (Section 5.7).                           
+
+> 26 Figure 11: Quantitative decomposition of the residual on HUVR-1 . Top-left: per-slice mean signed residual in HU for each predictor, across the middle-slice range k∈[2 , N −1] ; the dashed vertical line marks the transition from the overlap region to the coarse-spacing region. Top-right: normalised spectrum |FFT |/total of the mean-centred residual restricted to the coarse-spacing region ( k≥18 ,L= 14 ), with the rightmost (Nyquist) bin corresponding to period-two structure along the slice axis. Bottom-left: mean HU value of each brain-windowed acquired slice (no predictor involved); the dashed vertical line marks the spacing regime change. Bottom-right: the same real-data signal in the coarse region after subtracting a linear trend, revealing a period-two oscillation; alternate slices are shaded to make the parity alignment explicit. The Nyquist amplitude of this bottom-right signal, 0.22 HU (unrounded 0.217 HU), is the direct measurement of bin Equation (7). The algebraic prediction 2b≈0.43 HU matches the measured linear-baseline residual amplitude ( 0.40 HU) to within 0.03 HU.
+
+## 5.7 Limitations 
+
+Single anatomy, acquisition protocol, and operating range. All data are axial head CT from the RSNA 2019 dataset, acquired and preprocessed within the brain window (center 44 HU, width 128 HU; 
+
+[−20 HU , 107 HU ]). Preprocessing saturates values outside this range, so the model neither interpolates nor denoises bone, calcification, or extracranial air in their native HU ranges: those structures enter the network already clipped to the window boundaries. This is a scope choice matched to the diagnostic use case (parenchymal hemorrhage assessment) rather than a general-purpose CT interpolator. Generalization to other anatomies (chest, abdomen), other modalities (MRI), or other clinical windows (bone, lung, soft-tissue) is untested and would require retraining on the corresponding windowed data; head CT also has relatively homogeneous tissue contrast compared to abdominal CT, which may favor simpler losses. 
+
+Metrics against a noisy reference, and absence of perceptual/distribution-level metrics. 
+
+All reported MAE/SSIM/PSNR compare the prediction to the acquired middle slice, which itself contains acquisition noise. A model that perfectly recovered the conditional-expectation signal (Section 5.4) would differ from this reference precisely by the noise it suppresses, and would therefore score somewhat worse on per-pixel metrics than a model that reproduces the noise. Small metric differences between top-performing losses should thus be read as potentially reflecting noise-matching fidelity rather than signal-recovery quality, which motivates the quantitative denoising analysis in Section 4.4. The reported metrics are also all per-image structural or intensity-based: learned perceptual metrics (e.g., LPIPS) and distribution-level metrics (e.g., FID) are not included as reported outcomes because their calibration for medical imaging is not established                                               
+
+> 27 Table 7: Parity amplitude of the per-slice mean residual on HUVR-1 , along with the direct measurement of the data-side amplitude bfrom the acquired real series. Parity frac. is the fraction of mean-centred residual energy at the Nyquist (period-two) bin of the slice-axis DFT. parity amp (coarse) is the Nyquist amplitude in HU on the coarse-spacing subrange ( k≥18 ,L= 14 ). The direct real-series row reports bitself, not a residual. Theory predicts a linear-baseline residual amplitude of 2b≈0.43 HU (using the unrounded measurement b= 0 .217 HU); measured is
+> 0.40 HU (bolded in the table). Predictor Parity frac. (full) Parity frac. (coarse) Parity amp (coarse, HU) Linear baseline 0.13 0.55 0.40
+> SSIM 0.11 0.53 0.30
+> SSIM+L1 0.08 0.59 0.30
+> L1 0.10 0.49 0.31
+> MSE 0.10 0.56 0.33
+> MS-SSIM+L1 0.10 0.55 0.31
+> Real series (direct) 0.01 0.05 0.22
+
+and they rely on feature extractors trained on natural images; these could nonetheless reveal failure modes such as mode collapse or systematic texture shifts that per-image structural metrics miss. 
+
+Partial-volume effects. At the typical inter-slice spacing of ∼5 mm, structures smaller than the slice thickness (e.g., small vessels, thin hemorrhage layers) may appear on one acquired slice and be absent from its neighbors. The model is then asked to interpolate anatomy not represented in either input, which is fundamentally ill-posed and may produce hallucinated or missing structures in the synthesized slice. The same ill-posedness affects head-support and head-holder material whose cross-sectional footprint differs between Ik
+
+and Ik+2 : the network tends to output a diffuse low-intensity halo at those locations rather than either of the two input footprints, and this is the source of the posterior-right haze visible on the prediction panels of Figures 4 and 5. The artefact is extracranial and does not affect parenchymal structures, but it is a visible reminder that the model minimises a regression loss under through-plane ambiguity rather than performing geometry-aware reasoning about the support device. 
+
+No clinical validation and limited cross-architecture comparison. Interpolated slices have not been evaluated by radiologists for diagnostic acceptability; metric improvements do not necessarily translate to clinical utility, and subtle artifacts in synthesized slices could be diagnostically misleading. On the architectural side, we benchmark against pretrained VFI methods (RIFE [ 3], FILM [ 4]) as external baselines, but do not compare against dedicated medical image interpolation architectures such as SAINT [ 9] or I3Net [ 12 ], nor against alternative encoder backbones. By design, this work holds architecture constant (U-Net + EfficientNetV2-S) to isolate the effect of loss function choice; a blinded radiologist reader study and a systematic cross-architecture comparison under matched training budget are identified as the highest-priority next steps in Section 5.8. 
+
+## 5.8 Future work 
+
+Several directions are prioritized. 
+
+• Radiologist reader study. Conduct a blinded reader study with N = 3 board-certified radiologists using a forced-choice (or Likert) diagnostic-acceptability rating on acquired vs. synthesized slices, with diagnostic confidence and acceptability as the primary endpoint and inter-rater agreement (Cohen’s/Fleiss’ κ) as a secondary endpoint, closing the clinical-validation gap flagged in Section 5.7; a natural downstream extension is to train an intracranial hemorrhage classifier of fixed architecture on native-spacing vs. interpolated-spacing volumes, building on prior detection work on this dataset [ 2], to test whether the improved through-plane resolution and implicit denoising translate into higher detection accuracy. 
+
+• Cross-anatomy validation. Re-evaluate the loss comparison and denoising findings on non-head CT with different HU windows and tissue contrasts, e.g. public chest and abdominal CT datasets, to establish whether the present recommendations generalize or are anatomy-specific. 
+
+• Cross-architecture comparison. Benchmark the U-Net + EfficientNetV2-S backbone against dedicated 
+
+> 28
+
+medical slice-synthesis architectures (SAINT [ 9] and I 3Net [ 12 ]) under a matched training budget and with loss held constant at MS-SSIM+L1, isolating architecture effects from loss-function and optimization effects. 
+
+# 6 Conclusion 
+
+We have presented a deep learning system for head CT that halves the effective through-plane spacing while simultaneously producing denoised outputs, delivering interpolation and implicit denoising from a single pass. The system, based on a U-Net with EfficientNetV2-S encoder, outperforms classical interpolation and pretrained video frame interpolation baselines on all structural metrics. A systematic evaluation of 41 
+
+configurations reveals that no single loss dominates all metrics: L1 produces the lowest pixel error, MS-SSIM+L1 yields the highest PSNR, and SSIM s and L1 tie for the highest structural similarity. The inter-loss differences among the top-performing models (SSIM s, L1, MS-SSIM+L1) are mostly significant in patient-level paired testing ( p < 10 −8 for most comparisons) but small in magnitude ( ∆SSIM ≤ 0.002 ). At the controlled hyperparameter setting (lr = 8 ×10 −4, batch size 96), MS-SSIM+L1 emerges as a reliable default, achieving competitive performance across all metrics; the family as a whole remains stability-sensitive at smaller batch sizes (Table 8). A key finding from the training process is the systematic instability of SSIM-family losses, traced to insufficient denominator conditioning ( K2 = 0 .03 ): SSIM-containing configurations accounted for 18 /22 
+
+divergent runs under the operational definition of Section B, and increasing K2 to 0.4 eliminates the dominant failure mode. Residual divergence at smaller batch sizes persists even with this safeguard, so K2 = 0 .4 should be treated as necessary but not sufficient. This cautions against treating SSIM-based objectives as drop-in replacements for pixel-wise losses. Consistent with the classical conditional-expectation property of regression losses, leveraged in the Noise2Noise framework by Lehtinen et al. [7], the regression-trained models produce inherently denoised interpolations: the network learns the anatomical signal rather than the acquisition noise, a property well characterized in the low-dose CT literature [ 29 ]. This connects slice interpolation to the established benefits of deep learning-based CT noise reduction. Key limitations include the single-anatomy scope (head CT only) and the absence of clinical validation; cross-anatomy generalization and a radiologist reader study to assess the diagnostic impact of the denoised interpolations are planned as next steps before clinical deployment. 
+
+# Acknowledgements 
+
+MAGN thanks IMUS-Maria de Maeztu grant CEX2024-001517-M (Apoyo a Unidades de Excelencia María de Maeztu) for supporting this research, funded by MICIU/AEI/10.13039/501100011033. The HUVR patient whose scan contributed to this study was recruited thanks to a grant from Consejería de Igualdad, Salud y Políticas Sociales de Andalucía, Spain (PI-0136-2012). 
+
+# A Data Availability and Reproducibility 
+
+Data. The RSNA 2019 Intracranial Hemorrhage Detection dataset [ 1] is publicly available through the Kaggle competition platform under the competition’s data-use agreement; redistribution of the DICOM series is therefore not permitted, and researchers must accept the agreement on Kaggle to download the raw data. The preprocessing pipeline that converts the raw archive to the windowed PNG tensors used here is released with the paper, configured through the DATASETS_DIR environment variable. 
+
+External case-study scan. The out-of-distribution scan analysed in Section 5.5 ( HUVR-1 ) was obtained from Hospital Universitario Virgen del Rocío, Seville, Spain. The research project was overseen and approved by the Ethics Committee of the Hospital Universitario Virgen del Rocío (Cod. CEI2012PI/228), and patient identifiers were removed prior to transfer. The scan is used exclusively for illustration of the residual-structure argument of Section 5.5; no training or hyperparameter selection used data from this source. Redistribution of the raw DICOM series is not permitted under the data-use agreement. Derived artefacts (anonymised 
+
+> 29
+
+per-slice mean HU values and per-predictor residual Nyquist amplitudes reported in Table 7) are released with the paper so that the case study can be re-inspected without access to pixel data. 
+
+Splits. The train/validation/test patient assignment is materialized as a split column in the prepro-cessed dataset table (30 test patients, stratified by hemorrhage subtype; train/val 80/20 of the remaining patients). Dataset-side ordering and augmentation sampling use numpy.random.default_rng(seed=42) ;the same seed = 42 is used for the statistical bootstrap throughout. Consistent with Section 3.5, we retain 
+
+cudnn.benchmark=True and do not enforce kernel-level determinism, so bit-exact reproducibility across GPUs or driver versions is not guaranteed. 
+
+Environment. Python 3.13 , PyTorch 2.10 .0 with bundled CUDA 12 runtime ( nvidia-cudnn-cu12 
+
+9.10 .2), torchvision 0.25 .0, timm 1.0.24 (EfficientNetV2-S encoder via segmentation-models-pytorch 0.5.0), 
+
+pytorch_msssim 1.0.0, and lpips 0.1.4. Exact pins for all transitive dependencies are frozen in the released lockfile and declared in the project manifest; uv sync reconstructs the environment. Training uses PyTorch automatic mixed precision with torch.compile (default mode); the SSIM/MS-SSIM float32 carve-out is described in intervention 2 of Section 3.4. 
+
+Hardware and compute. All training runs were executed on a single NVIDIA GeForce RTX 3080 Ti (12 GB VRAM; driver 535 .247 .01 ). Per-epoch wall-clock is ≈ 400 –550 s at the default batch size of 96 ;individual runs terminated by early stopping (patience 15 ) at 20 –40 epochs, corresponding to ≈ 2–6 h each. The full 41-configuration registry therefore represents on the order of 120 GPU-hours. Per-run configuration and per-epoch wall-clock are released alongside the paper. 
+
+Artefacts. All tables and figures derive from tabular artefacts released alongside the paper, covering patient- and slice-level metrics and their aggregated summaries, paired Wilcoxon tests with BH-adjusted 
+
+q-values, hemorrhage stratification, VFI baseline metrics, DICOM spacing characterization, and model complexity. These are regenerated end-to-end from trained checkpoints by the released analysis pipeline. 
+
+Entry points. After environment setup and dataset-path configuration, the training pipeline of Section 3.5 is reproduced through the entry-point commands documented in the repository README: queueing the 41 configurations, training, and inspecting metrics. Source, configurations, and tabular artefacts are released at 
+
+https://github.com/Keredu/deep-slice-interpolation .
+
+# B Experiment Scope 
+
+The configuration registry contains 41 queued configurations spanning the six loss families evaluated in the primary paper (Section 3.4): MSE, L1, SSIM, MS-SSIM, SSIM+L1, and MS-SSIM+L1. 
+
+Operational definition of divergence. Throughout this paper, a training run is called divergent if and only if training terminated prematurely because a NaN or ±∞ value was detected in the loss (registry status NAN_VALUE_DETECTED ). A run that reached the early-stopping criterion is called completed (status 
+
+EARLY_STOPPING ); this includes a small number of runs that completed with degenerate outputs (discussed in Section 5.2), which are flagged separately when relevant and are not counted as divergent under this definition. The definition is machine-checked from the per-run termination record rather than derived from validation-curve heuristics, so every count below is directly reproducible from the released training registry. Under this definition, 22 of the 41 runs diverged and 19 completed to early stopping. Table 8 gives the full accounting, cross-tabulated by loss family and batch size; this is the single authoritative source for the counts cited in Section 5.2 and in the divergence discussion of Section 5. SSIM-containing losses account for 18 /22 (≈ 82% ) of divergent runs; within that subtotal, divergence is concentrated in the two-term combinations SSIM+L1 ( 9/15 ) and MS-SSIM+L1 ( 9/14 ). Among the 4
+
+divergent non-SSIM runs, 2 occurred at batch size 96 and 2 at batch size 64 . The rate of divergence is highest at batch size 64 (11 /13 ≈ 85% ), lower at batch size 96 (10 /25 = 40% ), and lowest at batch size 32 (1/3), indicating that reducing batch size amplified per-run divergence prevalence. The complete experiment registry, including per-run learning rates, seeds, and termination epochs, is released with the source repository. 
+
+> 30
+
+Loss family bs=32 bs=64 bs=96 Total Diverged Completed 
+
+SSIM-containing 
+
+SSIM 2/0 0/0 1/0 3 0 3MS-SSIM 0/0 0/0 1/0 1 0 1SSIM+L1 0/1 1/1 5/7 15 9 6MS-SSIM+L1 0/0 0/8 5/1 14 9 5
+
+SSIM-family subtotal 2/1 1/9 12/8 33 18 15 
+
+Non-SSIM 
+
+MSE 0/0 1/0 1/1 3 1 2L1 0/0 0/2 2/1 5 3 2
+
+Non-SSIM subtotal 0/0 1/2 3/2 8 4 4
+
+Grand total 2/1 2/11 15/10 41 22 19 
+
+Table 8: Per-family, per-batch-size accounting of the training registry. Each cell shows completed / diverged at that batch size. The “Total” column sums completed + diverged for that family; “Diverged” uses the operational definition in Section B (registry status NAN_VALUE_DETECTED ). Counts are reproducible from the released training registry. 
+
+# C Full hemorrhage-stratification inferential tests 
+
+This appendix gives the full inferential table summarised in Section 4.3 (Table 5). For each of the 8 methods and 3 primary metrics (SSIM, MAE, PSNR), we ran a two-sided Mann–Whitney U test 3 comparing hemorrhage- and normal-slice metric distributions, and applied Benjamini–Hochberg FDR control [ 36 ] jointly over the full 8 × 3 = 24 -test family to obtain q-values. The analysis was designed after seeing the descriptive results of Table 5 and is therefore post-hoc / exploratory ; it was not pre-registered. Because slices within a patient are not i.i.d., the asymptotic Mann–Whitney p overstates evidence. We therefore also report a cluster-bootstrap p (pcb ): resample patients with replacement (10,000 resamples), recompute the standardized U -statistic z = ( U − n1n2/2) /pn1n2(n1 + n2 + 1) /12 on each resample, and invert the two-sided percentile CI for z at zero [ 34 ]. We treat pcb as the primary independence-aware p-value; the BH-corrected asymptotic q is reported for transparency but is not corrected for within-patient clustering. Effect size is reported as (i) the Hodges–Lehmann shift estimator 4 and (ii) the rank-biserial correlation 5
+
+Full numerical results for the three primary metrics in this exploratory analysis are released with the source repository.                        
+
+> 3[37 ]. We use scipy.stats.mannwhitneyu (two-sided, continuity corrected, method=’auto’ ). The two groups are different slices, so the paired Wilcoxon of Section 3.8 does not apply and the two-sample rank-sum test is the appropriate nonparametric choice.
+> 4[38 ]. Median of all pairwise differences xhem
+> i−xnorm
+> j, with 95% cluster-bootstrap CI from the same 10,000 patient resamples.
+> 5[39 ]. r= 2 U1/(n1n2)−1with U1=U(hem ,norm ); positive rmeans hemorrhage slices score higher (i.e. better for SSIM/PSNR, worse for MAE). 31
+
+Table 9: Exploratory (post-hoc) inferential tests for Table 5: Mann–Whitney U comparing hemorrhage ( nh = 396 ) vs. normal ( nn = 572 ) slice-level metric distributions, two-sided. Shift = Hodges–Lehmann b∆ with 95% cluster-bootstrap CI (brackets). r = rank-biserial effect size; sign convention: positive r = hemorrhage scores higher (i.e. better for SSIM/PSNR, worse for MAE). pasym = asymptotic Mann–Whitney p; pcb = patient-level cluster-bootstrap p (10,000 resamples); qBH = Benjamini–Hochberg adjusted q from the asymptotic p, computed jointly over the full 8 × 3 = 24 -test family. The Decision column summarises the joint outcome: ✓ = BH-significant and bootstrap-robust ( qBH < 0.05 
+
+and pcb < 0.05 ); † = BH-significant but not bootstrap-robust ( qBH < 0.05 and pcb ≥ 0.05 ), i.e. the asymptotic BH decision does not survive the patient-level bootstrap; — = not BH-significant ( qBH ≥ 0.05 ). Recall that q-values do not correct for within-patient clustering, which is why we treat pcb as the primary independence-aware p-value. 
+
+Metric Method Shift [95% CI] r pasym pcb qBH Decision SSIM ↑
+
+Cubic baseline −0.023 [ −0.042 , −0.005] −0.18 2.7×10 −6 0.018 5.4×10 −6 ✓
+
+Mean baseline −0.018 [ −0.037 , +0 .000] −0.14 1.5×10 −4 0.056 2.6×10 −4 †
+
+RIFE baseline −0.029 [ −0.045 , −0.013] −0.23 1.4×10 −9 < 0.001 3.6×10 −9 ✓
+
+FILM baseline −0.030 [ −0.046 , −0.014] −0.23 1.2×10 −9 < 0.001 3.5×10 −9 ✓
+
+SSIM s −0.025 [ −0.041 , −0.010] −0.25 8.4×10 −11 0.001 2.9×10 −10 ✓
+
+L1 −0.026 [ −0.043 , −0.010] −0.25 4.9×10 −11 < 0.001 2.2×10 −10 ✓
+
+MS-SSIM+L1 (ref.) −0.026 [ −0.043 , −0.010] −0.25 5.6×10 −11 < 0.001 2.2×10 −10 ✓
+
+MSE −0.023 [ −0.041 , −0.006] −0.20 1.3×10 −7 0.008 2.8×10 −7 ✓
+
+MAE ↓
+
+Cubic baseline −0.007 [ −0.011 , −0.003] −0.26 3.6×10 −12 < 0.001 2.1×10 −11 ✓
+
+Mean baseline −0.009 [ −0.013 , −0.005] −0.32 3.2×10 −17 < 0.001 2.6×10 −16 ✓
+
+RIFE baseline −0.001 [ −0.004 , +0 .002] −0.03 0.41 0.65 0.41 —FILM baseline +0 .001 [ −0.002 , +0 .004] +0 .03 0.36 0.61 0.38 —SSIM s +0 .002 [ −0.001 , +0 .004] +0 .09 0.013 0.14 0.017 †
+
+L1 +0 .002 [ −0.001 , +0 .004] +0 .10 0.010 0.15 0.016 †
+
+MS-SSIM+L1 (ref.) +0 .002 [ −0.001 , +0 .004] +0 .10 0.011 0.17 0.017 †
+
+MSE +0 .002 [ −0.001 , +0 .004] +0 .08 0.028 0.22 0.035 †
+
+PSNR ↑
+
+Cubic baseline +1 .66 [+0 .95 , +2 .37] +0 .37 1.2×10 −22 < 0.001 1.5×10 −21 ✓
+
+Mean baseline +1 .87 [+1 .18 , +2 .58] +0 .42 3.4×10 −28 < 0.001 8.1×10 −27 ✓
+
+RIFE baseline +1 .74 [+0 .55 , +3 .02] +0 .22 4.4×10 −9 0.004 1.1×10 −8 ✓
+
+FILM baseline +1 .26 [+0 .06 , +2 .52] +0 .16 1.8×10 −5 0.041 3.2×10 −5 ✓
+
+SSIM s +0 .73 [ −0.40 , +1 .93] +0 .10 0.012 0.21 0.017 †
+
+L1 +0 .61 [ −0.57 , +1 .82] +0 .08 0.039 0.31 0.045 †
+
+MS-SSIM+L1 (ref.) +0 .59 [ −0.51 , +1 .77] +0 .08 0.038 0.31 0.045 †
+
+MSE +0 .52 [ −0.56 , +1 .61] +0 .07 0.051 0.34 0.055 —
+
+32 D SSIM evaluation sensitivity to the stability constant K2
+
+Training-time SSIM-based losses use K2 = 0 .4 as the numerical-conditioning constant (intervention 1 of Section 3.4), whereas test-time SSIM and MS-SSIM are reported at the Wang et al. [ 22 ] default K2 = 0 .03 
+
+so that the numbers are comparable to prior literature. This appendix quantifies the metric impact of that reporting choice: for each trained model in Table 3, we recompute SSIM and MS-SSIM on the same held-out test predictions at both K2 settings and report the per-model mean delta. The analysis concerns the evaluation metric only; the trained model weights are identical between the two columns. Table 10 reports the per-model summary. Evaluating at K2 = 0 .4 (matching the training-time conditioning constant) uniformly inflates mean test SSIM by 0.085 –0.093 and mean test MS-SSIM by 0.055 –0.063 across the six converged models. The direction of the shift is a direct consequence of a larger K2: the denominator 
+
+σ2 
+
+> x
+
++ σ2 
+
+> y
+
++ C2 of Equation (2) gains a larger additive floor, which pushes the per-window SSIM towards 1 in the many low-texture windows characteristic of brain CT under the [−20 HU , 107 HU ] brain window. Despite the large absolute shift, the headline model ordering is preserved. The per-model mean SSIM rankings agree across K2 values at the extremes of the table (L1 at lr = 8 ×10 −4 ranks first under both settings; MSE ranks last under both); the only re-ordering occurs between the three mid-ranked models, whose mean SSIM differences are below 0.002 under K2 = 0 .03 and below 0.0013 under K2 = 0 .4, within the per-patient bootstrap CIs reported in Table 3. More importantly, K2 = 0 .03 is the more discriminating of the two evaluation settings. The inter-model spread in mean SSIM across the six converged models is 0.0192 at K2 = 0 .03 versus 0.0122 at K2 = 0 .4
+
+(a 1.57 × compression under the larger K2). Paired Wilcoxon signed-rank tests on per-patient differences between the top L1 model and the MSE model reach p = 1 .86 ×10 −9 under K2 = 0 .03 for both SSIM and MS-SSIM, whereas under K2 = 0 .4 the same comparison weakens to p = 4 .34 ×10 −3 for MS-SSIM (six orders of magnitude weaker) while remaining at p = 1 .86 ×10 −9 for SSIM. Reporting at K2 = 0 .03 therefore preserves discriminating power and is the conservative choice for model comparison. The degenerate SSIM-family checkpoint ssim_lr8e-4_1b8c15 (one of the early-stopping-completed runs whose predictions are discussed in Section 5.2) is included in the table for completeness; its very low SSIM values at both K2 settings reflect the degenerate outputs of that run rather than a property of the K2 choice.                                                                       
+
+> Table 10: Test-set SSIM and MS-SSIM under the two K2evaluation settings. ∆ = mean (K2= 0 .03) −mean (K2= 0 .4)
+> on per-patient means ( n= 30 test patients). Training-time interventions (including K2= 0 .4in the loss) are unchanged; the model weights evaluated are identical across columns. Bold rows are the models reported in Table 3.
+> Model SSIM MS-SSIM
+> K2= 0 .03 K2= 0 .4∆K2= 0 .03 K2= 0 .4∆
+> L1 ( lr = 8 ×10 −4)0.8902 0.9761 −0.0859 0.9361 0.9910 −0.0549
+> L1 ( lr = 1 ×10 −4)0.8782 0.9709 −0.0928 0.9264 0.9894 −0.0630
+> MSE ( lr = 8 ×10 −4)0.8710 0.9639 −0.0929 0.9315 0.9912 −0.0598
+> SSIM ( lr = 3 ×10 −3)0.8897 0.9748 −0.0850 0.9353 0.9902 −0.0549
+> MS-SSIM+L1 ( lr = 8 ×10 −4,bc1d65 )0.8880 0.9755 −0.0875 0.9356 0.9913 −0.0557
+> MS-SSIM+L1 ( lr = 8 ×10 −4,e6d845 )0.8856 0.9740 −0.0883 0.9349 0.9905 −0.0556
+> SSIM ( lr = 8 ×10 −4, degenerate) 0.0672 0.1488 −0.0816 0.0371 0.1691 −0.1320
+
+# References 
+
+[1] Adam E. Flanders, Luciano M. Prevedello, George Shih, Safwan S. Halabi, Jayashree Kalpathy-Cramer, Robyn Ball, John T. Mongan, Anouk Stein, Felipe C. Kitamura, Matthew P. Lungren, Gagandeep Choudhary, Lesley Cala, Luiz Coelho, Monique Mogensen, Fanny Morón, Elka Miller, Ichiro Ikuta, Vahe Zohrabian, Olivia McDonnell, Christie Lincoln, Lubdha Shah, David Joyner, Amit Agarwal, Ryan K. Lee, and Jaya and Nath. Construction of a machine learning dataset through collaboration: The rsna 2019 brain ct hemorrhage challenge. Radiology: Artificial Intelligence , 2(3):e190211, 2020. doi:10.1148/ryai.2020190211. URL https://doi.org/10.1148/ryai.2020190211 . PMID: 33937827. 
+
+> 33
+
+[2] Luis Cortés-Ferre, Miguel Angel Gutiérrez-Naranjo, Juan José Egea-Guerrero, Soledad Pérez-Sánchez, and Marcin Balcerzyk. Deep learning applied to intracranial hemorrhage detection. Journal of Imaging , 9(2), 2023. ISSN 2313-433X. doi:10.3390/jimaging9020037. URL https://www.mdpi.com/2313-433X/9/2/37 .[3] Zhewei Huang, Tianyuan Zhang, Wen Heng, Boxin Shi, and Shuchang Zhou. Real-time intermediate flow estimation for video frame interpolation. In Shai Avidan, Gabriel Brostow, Moustapha Cissé, Giovanni Maria Farinella, and Tal Hassner, editors, Computer Vision – ECCV 2022 , pages 624–642, Cham, 2022. Springer Nature Switzerland. ISBN 978-3-031-19781-9. [4] Fitsum Reda, Janne Kontkanen, Eric Tabellion, Deqing Sun, Caroline Pantofaru, and Brian Curless. Film: Frame interpolation for large motion. In European Conference on Computer Vision (ECCV) , 2022. [5] C.M. Bishop. Pattern Recognition and Machine Learning by Christopher M. Bishop . Springer Sci-ence+Business Media, LLC, 2006. URL https://books.google.es/books?id=Y44SyAEACAAJ .[6] T. Hastie, R. Tibshirani, and J. Friedman. The Elements of Statistical Learning: Data Mining, Inference, and Prediction, Second Edition . Springer Series in Statistics. Springer New York, 2009. ISBN 9780387848587. URL https://books.google.es/books?id=tVIjmNS3Ob8C .[7] Jaakko Lehtinen, Jacob Munkberg, Jon Hasselgren, Samuli Laine, Tero Karras, Miika Aittala, and Timo Aila. Noise2Noise: Learning image restoration without clean data. In Jennifer Dy and Andreas Krause, editors, Proceedings of the 35th International Conference on Machine Learning , volume 80 of Proceedings of Machine Learning Research , pages 2965–2974. PMLR, 10–15 Jul 2018. URL https: //proceedings.mlr.press/v80/lehtinen18a.html .[8] T.M. Lehmann, C. Gonner, and K. Spitzer. Survey: interpolation methods in medical image processing. 
+
+IEEE Transactions on Medical Imaging , 18(11):1049–1075, 1999. doi:10.1109/42.816070. [9] Cheng Peng, Wei-An Lin, Haofu Liao, Rama Chellappa, and S. Kevin Zhou. Saint: Spatially aware interpolation network for medical slice synthesis. In 2020 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 7747–7756, 2020. doi:10.1109/CVPR42600.2020.00777. [10] Yuhua Chen, Yibin Xie, Zhengwei Zhou, Feng Shi, Anthony G. Christodoulou, and Debiao Li. Brain mri super resolution using 3d deep densely connected neural networks. In 2018 IEEE 15th International Symposium on Biomedical Imaging (ISBI 2018) , pages 739–742, 2018. doi:10.1109/ISBI.2018.8363679. [11] Can Zhao, Blake E. Dewey, Dzung L. Pham, Peter A. Calabresi, Daniel S. Reich, and Jerry L. Prince. Smore: A self-supervised anti-aliasing and super-resolution algorithm for mri using deep learning. IEEE Transactions on Medical Imaging , 40(3):805–817, 2021. doi:10.1109/TMI.2020.3037187. [12] Haofei Song, Xintian Mao, Jing Yu, Qingli Li, and Yan Wang. I ³net: Inter-intra-slice interpolation network for medical slice synthesis. IEEE Transactions on Medical Imaging , 43:3306–3318, 2024. URL 
+
+https://api.semanticscholar.org/CorpusID:269407969 .[13] Hyeongmin Lee, Taeoh Kim, Tae young Chung, Daehyun Pak, Yuseok Ban, and Sangyoun Lee. Adacof: Adaptive collaboration of flows for video frame interpolation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2020. [14] Laura Gambini, Cian Gabbett, Luke Doolan, Lewys Jones, Jonathan N. Coleman, Paddy Gilligan, and Stefano Sanvito. Video frame interpolation neural network for 3d tomography across different length scales. Nature Communications , 15(1):7962, Sep 2024. ISSN 2041-1723. doi:10.1038/s41467-024-52260-2. URL https://doi.org/10.1038/s41467-024-52260-2 .[15] JungEun Kim, Hangyul Yoon, Geondo Park, Kyungsu Kim, and Eunho Yang. Data-efficient unsupervised interpolation without any intermediate frame for 4d medical images, 2024. URL https://arxiv.org/ abs/2404.01464 .
+
+> 34
+
+[16] Muhammad Sarmad, Leonardo Carlos Ruspini, and Frank Lindseth. Sit-sr 3d: Self-supervised slice interpolation via transfer learning for 3d volume super-resolution. Pattern Recognition Letters , 166: 97–104, 2023. ISSN 0167-8655. doi:https://doi.org/10.1016/j.patrec.2023.01.008. URL https://www. sciencedirect.com/science/article/pii/S0167865523000144 .[17] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image segmentation. In Medical Image Computing and Computer-Assisted Intervention – MICCAI 2015 ,volume 9351 of Lecture Notes in Computer Science , pages 234–241. Springer, 2015. doi:10.1007/978-3-319-24574-4_28. [18] Pavel Iakubovskii. Segmentation models pytorch. https://github.com/qubvel/segmentation_models. pytorch , 2019. [19] Mingxing Tan and Quoc V. Le. Efficientnetv2: Smaller models and faster training. In International Con-ference on Machine Learning , 2021. URL https://api.semanticscholar.org/CorpusID:232478903 .[20] Phillip Isola, Jun-Yan Zhu, Tinghui Zhou, and Alexei A. Efros. Image-to-image translation with conditional adversarial networks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 5967–5976, 2017. doi:10.1109/CVPR.2017.632. [21] Hang Zhao, Orazio Gallo, Iuri Frosio, and Jan Kautz. Loss functions for image restoration with neural networks. IEEE Transactions on Computational Imaging , 3:47–57, 2017. URL https://api. semanticscholar.org/CorpusID:5334482 .[22] Zhou Wang, A.C. Bovik, H.R. Sheikh, and E.P. Simoncelli. Image quality assessment: from er-ror visibility to structural similarity. IEEE Transactions on Image Processing , 13(4):600–612, 2004. doi:10.1109/TIP.2003.819861. [23] Z. Wang, E.P. Simoncelli, and A.C. Bovik. Multiscale structural similarity for image quality assessment. In The Thrity-Seventh Asilomar Conference on Signals, Systems & Computers, 2003 , volume 2, pages 1398–1402 Vol.2, 2003. doi:10.1109/ACSSC.2003.1292216. [24] Sergey Kastryulin, Jamil Zakirov, Denis Prokopenko, and Dmitry V. Dylov. Pytorch image quality: Metrics for image quality assessment, 2022. URL https://arxiv.org/abs/2208.14818 .[25] Annika Reinke, Minu D. Tizabi, Michael Baumgartner, Matthias Eisenmann, Doreen Heckmann-Nötzel, A. Emre Kavur, Tim Rädsch, Carole H. Sudre, Laura Acion, Michela Antonelli, Tal Arbel, Spyridon Bakas, Arriel Benis, Florian Buettner, M. Jorge Cardoso, Veronika Cheplygina, Jianxu Chen, Evangelia Christodoulou, Beth A. Cimini, Keyvan Farahani, Luciana Ferrer, Adrian Galdran, Bram van Ginneken, Ben Glocker, Patrick Godau, Daniel A. Hashimoto, Michael M. Hoffman, Merel Huisman, Fabian Isensee, Pierre Jannin, Charles E. Kahn, Dagmar Kainmueller, Bernhard Kainz, Alexandros Karargyris, Jens Kleesiek, Florian Kofler, Thijs Kooi, Annette Kopp-Schneider, Michal Kozubek, Anna Kreshuk, Tahsin Kurc, Bennett A. Landman, Geert Litjens, Amin Madani, Klaus Maier-Hein, Anne L. Martel, Erik Meijering, Bjoern Menze, Karel G. M. Moons, Henning Müller, Brennan Nichyporuk, Felix Nickel, Jens Petersen, Susanne M. Rafelski, Nasir Rajpoot, Mauricio Reyes, Michael A. Riegler, Nicola Rieke, Julio Saez-Rodriguez, Clara I. Sánchez, Shravya Shetty, Ronald M. Summers, Abdel A. Taha, Aleksei Tiulpin, Sotirios A. Tsaftaris, Ben Van Calster, Gaël Varoquaux, Ziv R. Yaniv, Paul F. Jäger, and Lena Maier-Hein. Understanding metric-related pitfalls in image analysis validation. Nature Methods , 21(2):182–194, Feb 2024. ISSN 1548-7105. doi:10.1038/s41592-023-02150-0. URL https://doi.org/10.1038/s41592-023-02150-0 .[26] Hongchi Chen, Qiuxia Li, Lazhen Zhou, and Fangzuo Li. Deep learning-based algorithms for low-dose ct imaging: A review. European Journal of Radiology , 172:111355, 2024. ISSN 0720-048X. doi:https://doi.org/10.1016/j.ejrad.2024.111355. URL https://www.sciencedirect.com/science/ article/pii/S0720048X24000718 .[27] Armando Manduca, Lifeng Yu, Joshua D. Trzasko, Natalia Khaylova, James M. Kofler, Cynthia M. McCollough, and Joel G. Fletcher. Projection space denoising with bilateral filtering and ct noise modeling 
+
+> 35
+
+for dose reduction in ct. Medical Physics , 36(11):4911–4919, 2009. doi:https://doi.org/10.1118/1.3232004. URL https://aapm.onlinelibrary.wiley.com/doi/abs/10.1118/1.3232004 .[28] Thorsten Klink, Verena Obmann, Johannes Heverhagen, Alexander Stork, Gerhard Adam, and Philipp Begemann. Reducing CT radiation dose with iterative reconstruction algorithms: the influence of scan and reconstruction parameters on image quality and CTDIvol. Eur. J. Radiol. , 83(9):1645–1654, September 2014. [29] Hu Chen, Yi Zhang, Mannudeep K Kalra, Feng Lin, Yang Chen, Peixi Liao, Jiliu Zhou, and Ge Wang. Low-dose CT with a residual encoder-decoder convolutional neural network. IEEE Trans. Med. Imaging ,36(12):2524–2535, December 2017. [30] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Delving deep into rectifiers: Surpassing human-level performance on ImageNet classification. In Proceedings of the IEEE International Conference on Computer Vision (ICCV) , pages 1026–1034, 2015. doi:10.1109/ICCV.2015.123. [31] Xavier Glorot and Yoshua Bengio. Understanding the difficulty of training deep feedforward neural networks. In Proceedings of the Thirteenth International Conference on Artificial Intelligence and Statistics (AISTATS) , volume 9, pages 249–256, 2010. [32] Claude E. Duchon. Lanczos filtering in one and two dimensions. Journal of Applied Meteorology , 18(8): 1016–1022, 1979. doi:10.1175/1520-0450(1979)018<1016:LFIOAT>2.0.CO;2. [33] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on Learning Representations , 2019. URL https://openreview.net/forum?id=Bkg6RiCqY7 .[34] B. Efron. Bootstrap methods: Another look at the jackknife. The Annals of Statistics , 7(1):1–26, 1979. URL http://www.jstor.org/stable/2958830 . Full publication date: Jan., 1979. [35] Frank Wilcoxon. Individual comparisons by ranking methods. Biometrics Bulletin , 1(6):80–83, 1945. URL https://api.semanticscholar.org/CorpusID:53662922 .[36] Yoav Benjamini and Yosef Hochberg. Controlling the false discovery rate: A practical and powerful approach to multiple testing. Journal of the Royal Statistical Society: Series B (Methodological) , 57(1):289– 300, 1995. doi:https://doi.org/10.1111/j.2517-6161.1995.tb02031.x. URL https://rss.onlinelibrary. wiley.com/doi/abs/10.1111/j.2517-6161.1995.tb02031.x .[37] H. B. Mann and D. R. Whitney. On a Test of Whether one of Two Random Variables is Stochastically Larger than the Other. The Annals of Mathematical Statistics , 18(1):50 – 60, 1947. doi:10.1214/aoms/1177730491. URL https://doi.org/10.1214/aoms/1177730491 .[38] J. L. Hodges Jr. and E. L. Lehmann. Estimates of Location Based on Rank Tests. The Annals of Mathematical Statistics , 34(2):598 – 611, 1963. doi:10.1214/aoms/1177704172. URL https://doi.org/ 10.1214/aoms/1177704172 .[39] Dave Kerby. The simple difference formula: An approach to teaching nonparametric correlation. 
+
+Comprehensive Psychology , 3, 01 2014. doi:10.2466/11.IT.3.1.
