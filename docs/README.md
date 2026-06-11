@@ -6,67 +6,70 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-10
-- 运行时间：2026-06-11 06:04:15 UTC+8
+- 最新运行日期：2026-06-11
+- 运行时间：2026-06-12 04:53:40 UTC+8
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：4
+- 本次总论文数：16
+- 精读区：5
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
-- 精读：《Perceptive Behavior Foundation Model: Adapting Human Motion Priors to Robot-Centric Terrain》（8.3/10）, 《What Went Wrong with Data Lakes? A 15-Year Reality Check from the Field》（8.1/10）
-- 速读：《Area and water-capacity statistics for upper hulls of Dyck paths》（7.9/10）, 《Square Metric Spaces》（7.8/10）, 《Improving PET/CT-Based Whole-Body Lesion Segmentation Using Prediction Uncertainty-Augmented Models》（7.3/10）
+- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
+- 精读：《PJ-RoPE: A Fourier-Jet-Affine Position Space for Relative Attention》（8.4/10）, 《HE-DAP: Homomorphic Encryption-based Dynamic Adaptive Parameter Optimization for Statistical Computation》（8.2/10）
+- 速读：《Workload-Aware Autotuning of Block Size in Square-Root Decomposition》（7.9/10）, 《Biased Random Walk on $\mathbb Z_+$ with Traps of Linearly Increasing Depth》（7.9/10）, 《KV-Control: Parameter-Efficient K/V Injection for Trajectory-Controlled Text-to-Motion》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/10/README](/202606/10/README)
+- 详情：[/202606/11/README](/202606/11/README)
 
 ### 精读区论文标签
-1. [Perceptive Behavior Foundation Model: Adapting Human Motion Priors to Robot-Centric Terrain](/202606/10/2606.08059v1-perceptive-behavior-foundation-model-adapting-human-motion-priors-to-robot-centric-terrain)  
-   标签：评分：8.3/10
+1. [PJ-RoPE: A Fourier-Jet-Affine Position Space for Relative Attention](/202606/11/2606.05345v1-pj-rope-a-fourier-jet-affine-position-space-for-relative-attention)  
+   标签：评分：8.4/10
    evidence：检索回退候选
-2. [What Went Wrong with Data Lakes? A 15-Year Reality Check from the Field](/202606/10/2606.08266v1-what-went-wrong-with-data-lakes-a-15-year-reality-check-from-the-field)  
-   标签：评分：8.1/10
+2. [HE-DAP: Homomorphic Encryption-based Dynamic Adaptive Parameter Optimization for Statistical Computation](/202606/11/2606.10477v1-he-dap-homomorphic-encryption-based-dynamic-adaptive-parameter-optimization-for-statistical-computation)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-3. [Cyclotomic extensions in stable homotopy theory](/202606/10/2606.08166v1-cyclotomic-extensions-in-stable-homotopy-theory)  
-   标签：评分：8.0/10
+3. [Vaught's Conjecture for Unions of Products of Rooted Trees](/202606/11/2606.12014v1-vaughts-conjecture-for-unions-of-products-of-rooted-trees)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-4. [Sigma-Branch: Hierarchical Single-Path Network Reconstruction for Dynamic Inference with Reduced Active Parameters](/202606/10/2606.09924v1-sigma-branch-hierarchical-single-path-network-reconstruction-for-dynamic-inference-with-reduced-active-parameters)  
+4. [On the Modelling of the Hydrodynamic Drag of Mangroves](/202606/11/2606.11653v1-on-the-modelling-of-the-hydrodynamic-drag-of-mangroves)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+5. [Learning Manifold and Itô Dynamics with Branched Neural Rough Differential Equations](/202606/11/2606.05272v1-learning-manifold-and-it-dynamics-with-branched-neural-rough-differential-equations)  
    标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Area and water-capacity statistics for upper hulls of Dyck paths](/202606/10/2606.08834v1-area-and-water-capacity-statistics-for-upper-hulls-of-dyck-paths)  
+1. [Workload-Aware Autotuning of Block Size in Square-Root Decomposition](/202606/11/2606.06145v1-workload-aware-autotuning-of-block-size-in-square-root-decomposition)  
    标签：评分：7.9/10
    evidence：检索回退候选
-2. [Square Metric Spaces](/202606/10/2606.08821v1-square-metric-spaces)  
+2. [Biased Random Walk on $\mathbb Z_+$ with Traps of Linearly Increasing Depth](/202606/11/2606.05830v1-biased-random-walk-on-mathbb-z-with-traps-of-linearly-increasing-depth)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+3. [KV-Control: Parameter-Efficient K/V Injection for Trajectory-Controlled Text-to-Motion](/202606/11/2606.05624v1-kv-control-parameter-efficient-kv-injection-for-trajectory-controlled-text-to-motion)  
    标签：评分：7.8/10
    evidence：检索回退候选
-3. [Improving PET/CT-Based Whole-Body Lesion Segmentation Using Prediction Uncertainty-Augmented Models](/202606/10/2606.10115v1-improving-petct-based-whole-body-lesion-segmentation-using-prediction-uncertainty-augmented-models)  
-   标签：评分：7.3/10
+4. [StableRCA: Robust Graph-Agnostic Mechanism-Level Root Cause Analysis](/202606/11/2606.05636v1-stablerca-robust-graph-agnostic-mechanism-level-root-cause-analysis)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-4. [Maximum Matching Accuracy: An Instance Segmentation Evaluation Metric Utilizing Globally Optimal Matching](/202606/10/2606.10107v1-maximum-matching-accuracy-an-instance-segmentation-evaluation-metric-utilizing-globally-optimal-matching)  
-   标签：评分：7.2/10
+5. [Anomaly Detection and Root Cause Analysis for Microservice Systems](/202606/11/2606.09942v1-anomaly-detection-and-root-cause-analysis-for-microservice-systems)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-5. [vesselFM-CT: Segmenting All Blood Vessels in CT Images for System-Level Cardiovascular Analysis](/202606/10/2606.09400v1-vesselfm-ct-segmenting-all-blood-vessels-in-ct-images-for-system-level-cardiovascular-analysis)  
-   标签：评分：7.1/10
+6. [A correlated refinement of the double double ramification cycle](/202606/11/2606.11154v1-a-correlated-refinement-of-the-double-double-ramification-cycle)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-6. [3D Oral Modelling with Improved Vertex Distribution Using Matching-Based Learning](/202606/10/2606.07907v1-3d-oral-modelling-with-improved-vertex-distribution-using-matching-based-learning)  
-   标签：评分：7.0/10
+7. [Quantum Algorithm for Nonlinear and Stochastic Homogenization via a Young-Measure based Linear Programming Formulation](/202606/11/2606.06165v1-quantum-algorithm-for-nonlinear-and-stochastic-homogenization-via-a-young-measure-based-linear-programming-formulation)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-7. [Shift-Dependent Asymmetry: Orthogonal Inverse Low-Rank Adaptation for Federated Medical Segmentation](/202606/10/2606.08687v1-shift-dependent-asymmetry-orthogonal-inverse-low-rank-adaptation-for-federated-medical-segmentation)  
-   标签：评分：6.7/10
+8. [DisPOSE: Projected Polystochastic Diffusion for Self-Supervised Multi-View 3D Human Pose Estimation](/202606/11/2606.07419v1-dispose-projected-polystochastic-diffusion-for-self-supervised-multi-view-3d-human-pose-estimation)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-8. [Deep Slice Interpolation for Reducing Through-Plane Anisotropy and Noise in Head CT](/202606/10/2606.09953v1-deep-slice-interpolation-for-reducing-through-plane-anisotropy-and-noise-in-head-ct)  
+9. [Exotic and inverted Kloosterman sums over semisimple algebras](/202606/11/2606.05771v1-exotic-and-inverted-kloosterman-sums-over-semisimple-algebras)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+10. [AsyncWebRL: Efficient Multi-Step RL for Visual Web Agents](/202606/11/2606.05597v1-asyncwebrl-efficient-multi-step-rl-for-visual-web-agents)  
    标签：评分：6.6/10
    evidence：检索回退候选
-9. [A Vision-language Framework for Comparative Reasoning in Radiology](/202606/10/2606.06407v2-a-vision-language-framework-for-comparative-reasoning-in-radiology)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-10. [Cranio-Diff: Diffusion-based Cross-domain Craniofacial Reconstruction with 2D X-ray Skull Guidance and Structural Identity Constraints](/202606/10/2606.09699v1-cranio-diff-diffusion-based-cross-domain-craniofacial-reconstruction-with-2d-x-ray-skull-guidance-and-structural-identity-constraints)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-11. [Segmentation-Assisted Brain MRI Synthesis with Cross-Image Multi-Contrast Feature Memory Bank Retrieval Augmentation](/202606/10/2606.08421v1-segmentation-assisted-brain-mri-synthesis-with-cross-image-multi-contrast-feature-memory-bank-retrieval-augmentation)  
-   标签：评分：6.3/10
+11. [Gender Artifacts from Art History to Text-to-Image Generation](/202606/11/2606.05829v1-gender-artifacts-from-art-history-to-text-to-image-generation)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
