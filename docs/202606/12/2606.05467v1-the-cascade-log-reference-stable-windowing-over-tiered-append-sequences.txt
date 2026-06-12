@@ -1,0 +1,810 @@
+Title: The Cascade Log: Reference-Stable Windowing over Tiered Append Sequences
+
+URL Source: https://arxiv.org/pdf/2606.05467v1
+
+Published Time: Fri, 05 Jun 2026 00:24:55 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# The Cascade Log: Reference-Stable Windowing over Tiered Append Sequences 
+
+Faruk Alpay ∗ Levent Sarıoğlu 
+
+Department of Computer Engineering, Bahçeşehir University, Istanbul, Turkey 
+
+{faruk.alpay, levent.sarioglu}@bahcesehir.edu.tr 
+
+Abstract 
+
+A long-running, append-mostly sequence of records—edits in an interactive session, events in an event-sourced store, revisions in a version-controlled working set—cannot be kept fully materialised, so it is layered into tiers: a hot working set over progressively colder strata into which aged records are folded and summarised. Records nonetheless carry stable handles that are referenced across tier boundaries, and resolving a handle must stay correct as its target migrates downward. We show that the obvious tiered design silently violates this requirement at exactly the tier boundaries: under a realistic access mixture a quarter of cross-window references resolve to a stale, wrong, or absent record, and after sustained folding more than ninety-eight percent of the history becomes unaddressable. The Cascade Log removes these failures. A single persistent coalescing interval map over handles is the sole authority on each handle’s live version; folding coalesces a contiguous run into one interval node in a single split–merge splice. Our central result is a tight characterisation of this structure by its fragmentation 𝐴 —the number of index pieces, namely live handles plus maximal same-digest runs. The map uses Θ( 𝐴 ) space, resolves a point in 𝑂 (log 𝐴 ), reports a 𝑘 -handle range in 𝑂 (log 𝐴 + 𝑘 ), and updates in 𝑂 (( 𝑎 /𝐵 + 𝑠 ) log 𝐴 ) over 
+
+𝑎 appends and 𝑠 supersedes; matching Ω( 𝐴 ) space and Ω(log 𝐴 + 𝑘 ) query lower bounds hold for any 
+
+reference-stable, ordered, bounded-working-set structure, and an adversary forces 𝐴 = Θ (𝑠 ). The index is thus instance-optimal— 𝑜 (𝑛 ) when appends dominate, Θ(𝑠 ) under adversarial edits, and then no structure does better. Resolution is total, snapshot-consistent, and anomaly-free; the working set is independent of history length; and the design transfers to external memory at 𝑂 (log 𝛽 𝐴 ) I/Os. A reference implementation and a reproducible study to 10 6 records, including adversarial and distribution-free workloads and a copy-on-write ordered-map baseline, trace 𝐴 directly and confirm the bounds. 
+
+# 1 Introduction 
+
+Many systems are organised around a single growing sequence of immutable records that is appended to far more often than it is read in full: the edit history of an interactive session, the event log of an event-sourced application, the revision stream of a version-controlled working set, the chunk sequence of an incremental indexer, the tuple stream of a continuous analytic query. The sequence quickly outgrows fast memory, so it is tiered . A bounded hot stratum holds the recent records fully materialised; aged records are folded in contiguous blocks into colder strata, where a block is replaced by a compact digest that summarises it. Tiering is what keeps the materialised working set bounded as the history grows without limit, and it is the same idea that underlies log-structured storage [19].  
+
+> ∗Correspondence: alpay@lightcap.ai .
+
+1
+
+> arXiv:2606.05467v1 [cs.DS] 3 Jun 2026
+
+The records are not independent. Each carries a stable handle , and records reference earlier handles: an edit refers to the region it revises, an event to the entity it mutates, a derived chunk to its source. A consumer resolves a handle to obtain the record’s current version, and assembles a bounded window of related records around a query. The difficulty is that references cross tier boundaries. A handle minted while its target was hot is followed later, after the target has been folded into a cold digest; a handle is edited after the block holding it was already summarised; a window is assembled while a fold is in flight. At each of these boundaries the obvious tiered design fails in a way that is easy to miss because every individual tier is internally consistent—the defect lives only in the transition between tiers. We make the failure precise as three cross-tier reference anomalies . A dangling resolution returns nothing for a handle that was appended and never deleted, because folding reclaimed its addressing entry. A stale 
+
+resolution returns a superseded version, because no tier holds the authoritative one. A snapshot-skew window mixes records read before and after a fold and is therefore not a consistent view of any single instant. Section 6 quantifies them: with a hot stratum of a few hundred records over a history of tens of thousands, a tiered log leaves under two percent of the history addressable and mis-resolves roughly a quarter of references drawn from a realistic access mixture. This paper presents the Cascade Log, a tiered append structure for which resolution is provably free of all three anomalies while the working set stays bounded. Three ingredients combine: 
+
+• a versioned interval index (Section 3.1)—one persistent search tree, shared across snapshots by path copying [ 13 , 23 ]—which spans every stratum and is the single authority on where each handle’s current version lives, so resolution never depends on the order in which tiers are probed; 
+
+• a coalescing interval map (Section 3.2)—folding a contiguous run collapses it to a single interval node in one 𝑂 (log 𝑛 ) splice, so compaction is amortised 𝑂 (1) per appended record and the index is sublinear, while a folded handle still resolves through its digest; and 
+
+• snapshot tokens (Section 3.3)—immutable roots that serve reads as of any past instant, making windows consistent by construction. Windows are chosen (Section 3.5) by diffusing relevance from the query over the reference graph with a personalised random walk [ 9, 14 ] and then solving a standard budgeted maximum-coverage instance over the candidates [ 16 , 18 ]. The selection layer applies known algorithms; our concern is the structure beneath it that keeps the candidates resolvable, snapshot-consistent, and cheap to gather. 
+
+Contributions. The data-structural result is a tight characterisation of reference-stable compaction by its 
+
+fragmentation .(i) The coalescing persistent interval map (Section 3): a persistent ordered map whose entries are intervals, where a folded contiguous run of handles is one node installed by a single split–merge splice, with a precisely specified update sequence— append , materialise , summarise , stab .(ii) A tight fragmentation trade-off (Theorem 4.10, Theorem 4.11)—the central result. With 𝐴 the number of index pieces (live handles plus same-digest runs), the map uses Θ( 𝐴 ) space, resolves in 𝑂 (log 𝐴 ),reports a 𝑘 -range in 𝑂 (log 𝐴 + 𝑘 ), and updates in 𝑂 (( 𝑎 /𝐵 + 𝑠 ) log 𝐴 ); matching lower bounds force 
+
+Ω( 𝐴 ) space and Ω(log 𝐴 + 𝑘 ) query for any reference-stable, ordered, bounded-working-set structure, and an adversary drives 𝐴 = Θ (𝑠 ). The index is thus instance-optimal: 𝑜 (𝑛 ) on append-dominated histories and Θ(𝑠 ) under adversarial edits—and then so is any competitor’s. (iii) Supporting bounds: a space bound that versions cannot be lossily compressed below Ω(𝑛 log 𝑡 )
+
+bits (Theorem 4.5), an ordered-range separation from hash indexes (Proposition 4.6), and a fully specified external-memory realisation with 𝑂 (log 𝛽 𝐴 )-I/O resolve and fold and 𝑂 (log 𝛽 𝐴 + 𝑘 /𝛽 ) range 2(Theorem 4.12). (iv) Correctness, conceded to be immediate from the single-authority invariant: resolution is total (Theorem 4.1), snapshot-consistent (Theorem 4.2), and anomaly-free (Theorem 4.4) under an explicit partial-persistence model; the work is the cost of maintaining the invariant, above. (v) A reference implementation, an oracle-checked anomaly model, and a reproducible study to 10 6 records with adversarial and distribution-free workloads against a copy-on-write ordered-map (multiversion-B-tree) baseline (Section 6). A budgeted-window layer (Section 3.5) is included as an application; its guarantees are standard maximum coverage and not part of the core claim. 
+
+# 2 Model 
+
+Records, handles, versions. The structure stores a sequence of records appended over time. Appending a record mints a fresh handle from a monotonically increasing counter; the 𝑘 -th appended record has handle 𝑘 .A record may be superseded by a later version of the same handle, modelling an in-place edit, so a handle denotes a logical record whose content evolves through versions 0, 1, 2, . . . Each handle ℎ carries a set of out-references 𝑅 (ℎ) to earlier handles; the directed graph 𝐺 = (𝑉, 𝐸 ) with 𝐸 = {( ℎ, ℎ ′) : ℎ′ ∈ 𝑅 (ℎ)} is the 
+
+reference graph .
+
+Strata and folding. Records occupy a sequence of strata 𝑇 0, 𝑇 1, . . . with the hot stratum 𝑇 0 holding the recent records fully materialised. When the number of materialised records exceeds a capacity 𝐶 , the oldest are demoted; once a block of 𝐵 demoted records accumulates it is folded into a digest , a fixed-footprint object that summarises the block. A cost 𝑐 (ℎ) > 0 (think bytes or tokens) is charged for each materialised version; a digest costs 𝑂 (1) irrespective of 𝐵 .
+
+Operations. A structure supports Append ( 𝑝, 𝑐, 𝑅 ) → ℎ, Supersede (ℎ, 𝑝, 𝑐 ) → 𝑣 , Resolve (ℎ, 𝜏 ) return-ing the version of ℎ live at instant 𝜏 (or the current instant), and Window (𝑞, 𝛽 ) returning a budgeted set of records relevant to a query handle 𝑞 within cost budget 𝛽 .
+
+Persistence model. Updates ( Append , Supersede , fold) apply only to the newest version and produce a linear sequence of versions 𝐷 0, 𝐷 1, . . . ; we index them by an integer epoch , the count of updates applied. The structure is therefore partially persistent in the sense of Driscoll et al. [13]: any past epoch is read-only and queryable, but the history does not branch—there is no operation that forks an alternate timeline. A 
+
+snapshot token names an epoch; Resolve (ℎ, 𝜏 ) with a token reads version 𝐷 𝜏 . We make the retention policy explicit because it governs both correctness and space: 
+
+• Ephemeral mode retains only the current epoch. Past epochs are not queryable, and a version superseded by a later update becomes unreachable and is reclaimed; the space bound (Theorem 4.7) is stated for this mode. 
+
+• Retained mode keeps a caller-chosen set of tokens; the epochs they name remain queryable, and the path-copied state they reach is kept alive and counted in the space bound. Reclamation is by reachability from the current root and the retained tokens (reference counting suffices, as the version graph is acyclic). A digest is reachable, hence retained, exactly while some live or retained epoch maps a handle to it; once every handle of a digest has been superseded and no retained token predates those edits, the digest is reclaimed. 3versioned interval map 
+
+(persistent)      
+
+> Resolve (ℎ, 𝜏 )
+> Window (𝑞, 𝛽 )
+> hot stratum: live singletons (materialised)
+> ←append
+> digest digest
+> cold: each summarised run is one node →one digest
+> stab
+> stab
+> Window (𝑞, 𝛽 )
+
+Figure 1: The Cascade Log. Appends enter the hot stratum 𝑇 0; aged blocks fold into digests in colder strata. The versioned interval map spans the working set and the digests and resolves every handle to its live version—a materialised hot record (solid) or a digest reached by stabbing its summarised interval node (dashed). Immutable roots of the map serve snapshot-consistent windows. 
+
+“Resolve against any past instant” thus means any retained epoch, not an arbitrary one—no claim is made about epochs whose tokens were not kept. 
+
+Correct resolution. Let ver ★𝜏 (ℎ) and pay ★𝜏 (ℎ) be the true version and payload of ℎ at instant 𝜏 . A summarised resolution returns  ℎ, ver ★𝜏 (ℎ), 𝜎 (pay ★𝜏 (ℎ)) , where 𝜎 is the digest’s summary map; it is version-faithful 
+
+always and payload-faithful exactly when 𝜎 is the identity. A resolution 𝜌 = Resolve (ℎ, 𝜏 ) is correct when ℎ
+
+exists at 𝜏 and 𝜌 reports the handle ℎ with version ver ★𝜏 (ℎ): correctness and the anomaly classification below concern identity and version only, a guarantee strictly weaker than payload-faithful resolution, which holds iff 
+
+𝜎 = id . We classify an incorrect resolution as one of the following cross-tier anomalies .
+
+Definition 2.1 (Cross-tier anomalies) . A resolution of an existing handle ℎ at instant 𝜏 is dangling if it returns nothing; stale if it returns a version 𝑣 < ver ★𝜏 (ℎ); corrupt if it returns a different handle or, for a materialised result, a payload other than pay ★𝜏 (ℎ). A window is snapshot-skewed if its members are resolved against two instants separated by a fold, so that no single instant explains the window. These anomalies are the formal content of the informal claim that “a hidden defect appears in the transition between layers”: each is triggered only by a reference whose target crosses a stratum boundary during folding. 
+
+# 3 The Cascade Log 
+
+Figure 1 shows the structure. A single index spans all strata; folding moves payloads downward but leaves the index total; immutable roots capture snapshots. 
+
+3.1 The versioned interval map 
+
+The index is a persistent ordered map over handles whose entries are intervals , not individual keys. A live handle is a singleton interval [ℎ, ℎ ] carrying its current version and payload; a maximal contiguous run of summarised handles is a single interval node [𝑎, 𝑏 ] that names a digest and stands for every handle it spans. We call it the versioned interval map ( vii ). It supports four operations: 
+
+• stab (ℎ) – locate the interval containing ℎ (𝑂 (log 𝑛 )); 
+
+• append (ℎ) – add a singleton for a new maximal handle; 4Algorithm 1 Fold of a demoted block: one splice per contiguous run 
+
+Require: demoted block {( ℎ𝑖 , 𝑣 𝑖 )} ; current root 𝑟  
+
+> 1:
+
+drop any ℎ𝑖 re-edited since demotion (it is live again); sort the rest  
+
+> 2:
+
+for each maximal contiguous run [𝑎, 𝑏 ] of the survivors do  
+
+> 3:
+
+𝑑 ← { ℎ ↦ → ( 𝑣 ℎ, summary (payload ℎ)) : ℎ ∈ [ 𝑎, 𝑏 ] }  
+
+> 4:
+
+𝑟 ← vii .summarise (𝑟, 𝑎, 𝑏, 𝑑 ) ⊲ one 𝑂 (log 𝑛 ) splice; 𝑏 −𝑎 +1 nodes → 1 
+
+> 5:
+
+release the run’s payloads from the working set  
+
+> 6:
+
+end for  
+
+> 7:
+
+return updated root 𝑟 
+
+• materialise (ℎ) – make ℎ a live singleton, splitting the run that holds it into the parts below and above 
+
+ℎ; and 
+
+• summarise (𝑎, 𝑏, 𝑑 ) – replace the live singletons of a contiguous range by one interval node pointing at digest 𝑑 .The last is a genuine interval (range) update and the first a point-stabbing query, which is what makes the structure an interval object rather than a per-handle dictionary: a folded run of any length occupies one node, so the map holds one node per live handle plus one per summarised run—sublinear in 𝑛 when folding dominates (Section 6). The map is persistent by path copying: every update allocates 𝑂 (log 𝑛 ) fresh nodes along one root-to-leaf path and shares all other subtrees with the previous version, so the previous root remains a valid, immutable view [ 13 , 23 ]. The reference implementation uses a treap with priorities a fixed hash of the interval’s lower endpoint, giving expected height 𝑂 (log 𝑛 ) with reproducible shape [ 24 ]; any persistent balanced search tree yields worst-case 𝑂 (log 𝑛 ) and may be substituted. Because the vii is the sole record of each handle’s live location, resolution consults one authority rather than probing strata in order; this is the source of the absence of stale and snapshot-skew anomalies. 
+
+3.2 Folding by coalescing runs 
+
+When records age out of the working set they are demoted; once a block of 𝐵 has accumulated it is folded. Folding a maximal contiguous run [𝑎, 𝑏 ] of demoted singletons is a single summarise : the run is split out of the map and one interval node spliced back in its place, in 𝑂 (log 𝑛 ) regardless of 𝑏 − 𝑎 + 1 (Algorithm 1). An append-dominated stream demotes contiguous handles, so a whole block folds in one splice; edits that re-materialise old handles break runs, and each such fragmentation is one extra splice charged to the edit (Theorem 4.7). The bulky payloads leave the working set; what is retained, per folded handle, is its exact version inside the digest. Line 4 is the mechanism: a run collapses to one node in a single split/merge, so the index work to fold a block is one splice per contiguous run, not one update per handle. A design that instead rewrites each handle’s entry—a hash spine (Section 5), or any per-key forwarding scheme—keeps a linear index and does Θ(𝐵 )
+
+index work per block; Theorem 4.7 charges the difference. 
+
+Digest semantics. A digest stores, for each handle it covers, that handle’s exact version and a faithful summary of its payload (line 3); the summary is a function of the folded bytes, not an arbitrary value. Resolution therefore returns the correct handle and version for a summarised record always, and the summary in place of the original bytes—the only approximation folding introduces, and one an application opts into by choosing summary (the identity map makes the digest lossless). A per-digest membership filter [ 7 ] only 5Algorithm 2 Resolve (ℎ, 𝜏 )
+
+Require: handle ℎ; instant token 𝜏 (default: current root)  
+
+> 1:
+
+𝐼 ← vii .stab (𝜏, ℎ ) ⊲ the interval containing ℎ 
+
+> 2:
+
+if 𝐼 = ∅ then return ∅ ⊲ ℎ not present at 𝜏  
+
+> 3:
+
+end if  
+
+> 4:
+
+if 𝐼 is a live singleton then return ⟨ℎ, 𝐼. version , 𝐼. payload , materialised ⟩ 
+
+> 5:
+
+end if  
+
+> 6:
+
+(𝑣 ℎ, 𝑠 ℎ) ← digest [ 𝐼. digest ] [ ℎ] 
+
+> 7:
+
+return ⟨ℎ, 𝑣 ℎ, 𝑠 ℎ, summarised ⟩
+
+accelerates negative probes across digests; it never participates in correctness, which is decided by the map, so a filter false positive costs one wasted digest lookup and never a wrong answer. 
+
+3.3 Snapshots and resolution 
+
+A snapshot is taken by retaining the current immutable root as a token; holding a token keeps that version of the vii alive. Algorithm 2 resolves a handle against the current root or any token in 𝑂 (log 𝑛 ): it locates the entry and returns the materialised payload (live) or the digest-backed view (summarised). Resolving every member of a window against one token yields a view of a single instant. Appending splices a fresh maximal singleton in one pass; superseding makes the handle a live singleton, so the new version is authoritative the instant it is written, regardless of any older copy lingering in a digest. 
+
+3.4 Cross-tier range reporting 
+
+Reporting all handles in a key range that straddles the working set and several digests is an in-order traversal of the vii between two endpoints, expanding each summarised interval it meets, and costs 𝑂 (log 𝑛 + 𝑘 ) for 𝑘 
+
+reported handles. A per-stratum design would search each stratum’s index separately; the classical way to recover a single logarithmic search across ordered layers is fractional cascading [ 11 ], and layered probabilistic search lists are an alternative [ 20 ]. The Cascade Log attains the 𝑂 (log 𝑛 + 𝑘 ) bound directly because its one ordered map already spans the working set and the digests. A hash index over handles cannot report a key range at all without enumerating its whole contents. 
+
+3.5 Application: budgeted windows 
+
+This subsection is an application layer over the structure, not part of the core data-structural contribution; its guarantees are inherited from budgeted maximum coverage and a reader interested only in the index may skip it. A window around a query handle 𝑞 is chosen in two stages. First, relevance is diffused from 𝑞 over the reference graph by a personalised random walk with restart on 𝑞 —a personalised PageRank whose stationary distribution concentrates on the citation neighbourhood of 𝑞 [9 , 14 ]. Second, among the candidates a subset 𝑆 is chosen to maximise the covered relevance 𝑓 (𝑆 ) = Í𝑣 ∈cover (𝑆 ) 𝑤 (𝑣 ), where cover (𝑢 ) is 𝑢 
+
+together with the handles it references and 𝑤 is the diffused weight, subject to Í𝑢 ∈𝑆 𝑐 (𝑢 ) ≤ 𝛽 . Since 
+
+𝑓 is a weighted coverage function—monotone and submodular—the task is exactly budgeted maximum coverage [16 ]. Two algorithms apply. The linear-time cost–benefit greedy of Algorithm 3, which returns the better of its density-greedy run and the best single feasible record, attains 12 (1 − 1/𝑒 ) of the optimum; the partial-enumeration of Algorithm 4, which seeds the greedy from every feasible set of at most three 6Algorithm 3 Window (𝑞, 𝛽 ): simple greedy, 12 (1 − 1/𝑒 ) 
+
+> 1:
+
+𝑤 ← PersonalizedPageRank (𝐺, seed = 𝑞 ) 
+
+> 2:
+
+candidates ← resolvable handles near 𝑞 ; cover (𝑢 ) ← { 𝑢 } ∪ 𝑅 (𝑢 ) 
+
+> 3:
+
+𝑆 ← ∅ ; 𝑈 ← ∅ ; spent ← 0 
+
+> 4:
+
+while some feasible 𝑢 remains do  
+
+> 5:
+
+𝑢 ★ ← arg max 𝑢 : spent +𝑐 (𝑢 ) ≤ 𝛽 
+
+Í𝑣 ∈cover (𝑢 )\ 𝑈 𝑤 (𝑣 )
+
+𝑐 (𝑢 ) 
+
+> 6:
+
+𝑆 ← 𝑆 ∪ { 𝑢 ★}; 𝑈 ← 𝑈 ∪ cover (𝑢 ★); spent += 𝑐 (𝑢 ★) 
+
+> 7:
+
+end while  
+
+> 8:
+
+return arg max { 𝑓 (𝑆 ), max 𝑢 : 𝑐 (𝑢 ) ≤ 𝛽 𝑓 ({ 𝑢 }) } , materialised via Resolve 
+
+Algorithm 4 Window + (𝑞, 𝛽 ): partial enumeration, 1 − 1/𝑒  
+
+> 1:
+
+compute 𝑤 , candidates, cover as in Algorithm 3  
+
+> 2:
+
+𝑆 ★ ← ∅  
+
+> 3:
+
+for each feasible seed 𝐻 ⊆ candidates with |𝐻 | ≤ 3 do  
+
+> 4:
+
+𝑆 ← 𝐻  
+
+> 5:
+
+while some feasible 𝑢 ∉ 𝑆 remains do  
+
+> 6:
+
+𝑆 ← 𝑆 ∪ { arg max 𝑢 1 
+
+> 𝑐 (𝑢 )
+
+Í𝑣 ∈cover (𝑢 )\ cover (𝑆 ) 𝑤 (𝑣 )} ⊲ spent + 𝑐 (𝑢 ) ≤ 𝛽  
+
+> 7:
+
+end while  
+
+> 8:
+
+if 𝑓 (𝑆 ) > 𝑓 (𝑆 ★) then  
+
+> 9:
+
+𝑆 ★ ← 𝑆  
+
+> 10:
+
+end if  
+
+> 11:
+
+end for  
+
+> 12:
+
+return 𝑆 ★, materialised via Resolve 
+
+records, attains 1 − 1/𝑒 . The prefix heuristic—taking records in decreasing relevance until the budget is spent—ignores both cost-effectiveness and the overlap between revealed contexts, and has no constant-factor guarantee (Proposition 4.14). The guarantee is over the candidate pool C( 𝑞 ) the diffusion produces and the cost–coverage instance on it; it does not bound the loss from candidate generation—from truncating the personalised-PageRank neighbourhood, or from an optimal record lying outside C( 𝑞 ). The cost 𝑐 (𝑢 ) is a single static weight standing for a record’s logical size, its materialisation cost, and the digest lookup a summarised record incurs; budgeted coverage treats it as fixed, while the live structure has tier-dependent access costs, so the guarantee is exact for the abstracted instance and indicative for the system. This selection layer is standard—a reduction to budgeted maximum coverage with its known guarantees [ 16 , 18 ]; the contribution here is the structure beneath it that makes candidates resolvable, snapshot-consistent, and cheap to gather (Section 3.4), and Proposition 4.14 is the textbook knapsack–coverage gap, included only to show the prefix heuristic is unsafe. 
+
+# 4 Analysis 
+
+Throughout, 𝑛 is the number of handles ever appended. 
+
+Theorem 4.1 (Totality) . For every handle ℎ and every instant 𝜏 at or after ℎ’s append, Resolve (ℎ, 𝜏 ) returns a defined view with identity ℎ.Proof. We show the invariant that the live root contains an entry for every appended handle. Appending inserts 7a live singleton. Superseding makes the handle a live singleton, preserving presence. Folding (Algorithm 1, line 4) replaces a run of live singletons by one summarised interval node naming a digest that retains every handle’s version; the handles stay covered and the digest is never discarded. No operation removes a handle from the map. Hence the live root, and by persistence every root derived from it at an instant 𝜏 ≥ append (ℎ),covers ℎ, on which Algorithm 2 returns a defined view with identity ℎ. □
+
+Theorem 4.2 (Snapshot consistency) . Fix a retained token naming epoch 𝜏 . Every resolution against that token returns the value prescribed by the canonical sequential execution truncated after its first 𝜏 updates. Consequently a window all of whose members are resolved against one token is a consistent snapshot of epoch 
+
+𝜏 and is never snapshot-skewed. Proof. A token is an immutable root produced by path copying: each update derives a new root from the previous one without mutating any existing node [ 13 ]. Hence the root at epoch 𝜏 is, node for node, the tree obtained by applying exactly the first 𝜏 updates of the linear history (Section 2); reading any set of handles against it returns the state after update 𝜏 and no later update. A window built from one token therefore cannot mix pre- and post-fold states. □
+
+Remark 4.3 (Concurrent readers) . The structure as specified is sequential, but its immutability gives the single-writer, many-reader model for free, and that model is exactly the read path of multiversion concurrency control [ 6 ]: a writer serialises updates and publishes each new root with one atomic pointer store, while readers load the pointer once and traverse the immutable tree it names. Readers never block, never coordinate, and each observes a consistent snapshot; every operation linearises at its publish (writer) or load (reader), so the object is linearizable in the sense of Herlihy and Wing [15] . This is the regime the motivating applications read in—snapshot-isolation queries and time-travel reads run against exactly such immutable versions—and the working set keeps a writer’s update local. A multi-writer, lock-free design, where concurrent writers merge into one version order, is genuinely open and is the main limitation of the present primitive. 
+
+Theorem 4.4 (Anomaly-freedom) . No execution of the Cascade Log produces a dangling, stale, corrupt, or snapshot-skewed resolution. Proof. Dangling is excluded by Theorem 4.1. For stale and corrupt, fix a token at instant 𝜏 and a handle ℎ; in that root ℎ carries the version written by the most recent append or supersede of ℎ at or before 𝜏 , since both write ℎ as a live singleton and folding copies the version verbatim into the digest. Algorithm 2 returns exactly that version and the handle ℎ, with a payload that is the materialised value when live and the faithful digest summary when summarised; hence the version equals ver ★𝜏 (ℎ), the identity is ℎ, and a materialised payload equals pay ★𝜏 (ℎ). So no resolution is stale or corrupt. Snapshot-skew is excluded by Theorem 4.2. □
+
+The three guarantees above are by construction: a single authoritative map that never discards a version makes them near-immediate, and we claim no subtlety in the invariant proofs. The substance is the cost 
+
+at which they hold (Theorem 4.7) and the sense in which that cost is forced. How cheaply can a folded handle’s version be kept? Theorem 4.5 answers this and is best read as a space statement that no lossy payload summary can evade: a structure free to summarise payloads arbitrarily must still retain Ω(𝑛 log 𝑡 ) bits to recover exact versions across folds. It is a supporting bound on the cold digests—it shows versions cannot be lossily compressed—and is deliberately not the structural claim: the bound that pins down the index and establishes optimality of the interval representation is the fragmentation trade-off (Theorem 4.10), and the cost of ordered access is Theorem 4.6. Theorem 4.5 rules out only the economy of summarising versions along with the payloads they annotate. 8Theorem 4.5 (Space lower bound for exact versions across folds) . Work in the bit-probe model: a data structure is a string of memory bits, and an operation reads and writes bits at addresses of its choosing. Consider a block of 𝐵 handles, each of which the workload may independently leave unedited or supersede to one of 𝑡 − 1 distinguishable later versions ( 𝑡 ≥ 2). Let 𝑆 be the memory bits the structure retains after the block is folded and reads while answering a later Resolve of a block handle for its version . If every such 
+
+Resolve returns the handle’s current version for all 𝑡 𝐵 edit patterns—whatever (possibly lossy ) summary of the payloads the structure also keeps—then |𝑆 | ≥ 𝐵 log 2 𝑡 ; over 𝑚 disjoint folded blocks the retained version state is Ω(𝑛 log 𝑡 ) bits. Proof. Fix the decoder: the version Resolve (ℎ) returns after the fold is a deterministic function of the bits in 
+
+𝑆 and the (workload-independent) query address; any payload summary the structure keeps is irrelevant to the version it reports. Run the workload for an edit pattern 𝑥 ∈ { 0, . . . , 𝑡 − 1}𝐵 , fold the block, and read off the 𝐵 
+
+version answers; by correctness they reveal the current version of every handle, hence 𝑥 . So 𝑥 ↦ → 𝑆 (𝑥 ) is injective on its 𝑡 𝐵 inputs, its range has at least 𝑡 𝐵 values, and |𝑆 | ≥ log 2 𝑡 𝐵 = 𝐵 log 2 𝑡 . The blocks are disjoint, so the bounds add, giving Ω(𝑚𝐵 log 𝑡 ) = Ω (𝑛 log 𝑡 ). □
+
+In the Cascade Log this irreducible information lives in the digests: a digest records each handle’s version in 𝑂 (log 𝑡 ) bits, so the digests occupy 𝑂 (𝑛 log 𝑡 ) bits, meeting Theorem 4.5. The interval map adds only 𝑂 (1)
+
+words per live handle and per summarised run, which is 𝑜 (𝑛 ) when folding dominates (Theorem 4.7)—so the bound is met by the cold digests, not by a per-handle index. We claim no more: Theorem 4.5 bounds the bits any structure must keep recoverable, and the digests realise it up to the encoding of a version; a succinct or compressed version map could lower the constant at a time cost, which we do not rule out. What the bound does exclude is the family that keeps 𝑜 (log 𝑡 ) bits per folded handle—in particular the fold that discards versions, which restarts a re-edited handle at version one (a stale read) or loses it (a dangling read), the collapse measured in Section 6. The version bound says nothing about query cost or about the order the Cascade Log maintains; that cost has its own, separate lower bound, and it is where the Cascade Log genuinely parts from a hash. 
+
+Proposition 4.6 (Ordered range is not free) . A hash index over 𝑛 handles—expected 𝑂 (1) point resolution, no order—has no range-reporting algorithm faster than testing every stored handle, so it answers a range query in Θ(𝑛 ) time independent of the output size 𝑘 (Section 6 confirms this for HashSpine ). Sub-linear range and predecessor search require an ordered layout and even then cannot be done in 𝑂 (1) cell probes per query within the space the Cascade Log uses [ 3 , 21 ]. The Cascade Log reports a range of 𝑘 handles in 
+
+𝑂 (log 𝑛 + 𝑘 ) (Section 3.4) and resolves a point in 𝑂 (log 𝑛 ); the logarithmic factor over a hash is the price of the ordered, snapshot-consistent access a hash cannot provide at all. 
+
+Theorem 4.7 (Total work and space) . Run any sequence of operations on an initially empty Cascade Log with hot capacity 𝐶 and fold block 𝐵 , comprising 𝑎 appends and 𝑠 supersedes and the folds they trigger; let 
+
+𝑛 = 𝑎 . Then: 
+
+(a) Per operation. Append, supersede, and resolve each cost 𝑂 (log 𝑛 ) expected and allocate 𝑂 (log 𝑛 ) index nodes; range reporting costs 𝑂 (log 𝑛 + 𝑘 ). The bounds are expected over the treap’s hashed priorities and become worst-case if the vii is realised with a deterministic persistent balanced tree (Section 3.1); all bounds below are stated this way. 
+
+(b) Compaction. A fold splices one interval node per maximal contiguous run of demoted handles, 𝑂 (log 𝑛 )
+
+each, independent of the run length . Compacting the appended records uses 𝑂 (𝑎 /𝐵 ) splices—amortised 
+
+𝑂 (1) index work per appended record once 𝐵 = Ω (log 𝑛 )—while each supersede fragments at most one 
+
+9run and triggers at most one further splice, 𝑂 (log 𝑛 ) charged to that supersede. Payload compaction is 
+
+𝑂 (1) amortised per record. 
+
+(c) Working set. At most 𝐶 + 𝐵 records are materialised at any instant, so the working set is 𝑂 (( 𝐶 + 𝐵 )𝑐 max ),independent of 𝑛 .
+
+(d) Index. The map holds 𝑂 (𝐿 + Φ) nodes, 𝐿 ≤ 𝐶 + 𝐵 live and Φ summarised runs with Φ ≤ 1 + 𝑠 ; an append-dominated history has Φ = 𝑂 (𝑎 /𝐵 ), an 𝑜 (𝑛 ) index. 
+
+(e) Cold store and reclamation. Digests hold 𝑂 (𝑛 log 𝑡 ) bits (Theorem 4.5); an entry is reclaimed when its handle is re-materialised and a digest when its last entry is, by reference counting in 𝑂 (1) each, so in ephemeral mode the live digest content is the number of currently summarised handles, ≤ 𝑛 .
+
+(f) Retained snapshots. Retained roots share every subtree they have in common, so the overhead is the number of distinct nodes path-copied by updates within the kept epochs’ reachability— 𝑂 (𝑈 ret log 𝑛 )
+
+words for 𝑈 ret such updates—not 𝑅 copies of the tree. This sharing is why retaining 𝑅 tokens raises the index to a small constant per handle rather than by a factor of 𝑅 (Figure 3 measures it). The total time over the sequence is 𝑂 (( 𝑎 + 𝑠 ) log 𝑛 ).Proof. (a) append , materialise (a split and a merge) and stab each follow one root-to-leaf path of the treap, of expected length 𝑂 (log 𝑛 ), copying only that path; range reporting visits 𝑂 (log 𝑛 ) boundary nodes and 
+
+𝑂 (𝑘 ) interior ones. (b) summarise (𝑎, 𝑏, 𝑑 ) is two splits and two merges, 𝑂 (log 𝑛 ) regardless of 𝑏 − 𝑎 + 1,replacing the run’s nodes by one. A handle never re-materialised since its append is, when demoted, part of the still-untouched tail of the append order and hence contiguous with its neighbours, so compacting the 𝑎 
+
+appends uses 𝑂 (𝑎 /𝐵 ) runs of one splice each. A supersede makes its handle a live singleton, splitting at most one summarised run (one extra node, and one extra splice when that fragment later folds); both are 𝑂 (log 𝑛 )
+
+charged to the supersede. A digest over a run of length 𝐵 ′ is built in 𝑂 (𝐵 ′) and charged 𝑂 (1) to each of its members [ 27 ]. (c) Demotion fires whenever more than 𝐶 records are active and a block of 𝐵 folds together, so the materialised count stays in [ 𝐶, 𝐶 + 𝐵 ]. (d) Immediate from the interval representation; each supersede creates at most one new run boundary, so Φ ≤ 1 + 𝑠 . (e) A re-materialisation deletes the handle’s digest entry; versions form a forest, so reference counting frees entries and digests in 𝑂 (1) each. (f) A path-copied node is freed once unreachable from the live root and every retained token. Summing (a) over the 𝑎 + 𝑠 operations and adding (b) gives total time 𝑂 (( 𝑎 + 𝑠 ) log 𝑛 ). □
+
+Remark 4.8 (Explicit potential for the amortised fold) . The charge in Theorem 4.7(b) is witnessed by the potential Φ = 𝜅 (log 𝑛 ) 𝑝 , where 𝑝 is the number of demoted handles not yet folded and 𝜅 exceeds the per-splice constant. Each append or supersede demotes at most one handle, raising Φ by 𝜅 log 𝑛 , folded into its 𝑂 (log 𝑛 ) amortised cost; folding a contiguous run of ℓ ≥ 1 handles does one 𝑂 (log 𝑛 ) splice (a split ,
+
+split , merge , merge that copies two 𝑂 (log 𝑛 ) boundary paths and discards the interior subtree of the run) while releasing 𝜅ℓ log 𝑛 ≥ 𝜅 log 𝑛 potential, so its amortised cost is non-positive. A supersede that fragments a summarised run pays the split’s 𝑂 (log 𝑛 ) directly; the fragment’s eventual re-fold is covered by the same potential when its handle re-demotes. Digest construction and the copied digest pointer are 𝑂 (1) per folded handle, and retained tokens only delay node reclamation, not the charge. The sum is 𝑂 (( 𝑎 + 𝑠 ) log 𝑛 ).The bounds so far are stated in 𝑛 . The sharper and, we think, central statement is in terms of how 
+
+fragmented the folded history is, because that is the quantity an adversary controls and the quantity against which the structure is optimal. 
+
+Definition 4.9 (Fragmentation) . At an instant let ℓ be the number of live (materialised) handles and 𝜌 the number of maximal runs of consecutive handles that map to one common digest. The fragmentation is 10 𝐴 = ℓ + 𝜌 : exactly the number of nodes in the Cascade Log’s interval map, since each live handle is one singleton node and each maximal same-digest run is one node. 
+
+Theorem 4.10 (Fragmentation trade-off) . Write 𝐴 for the fragmentation (Theorem 4.9). 
+
+(a) Upper bounds. The Cascade Log stores Θ( 𝐴 ) index nodes; it resolves a point in 𝑂 (log 𝐴 ) and reports a range of 𝑘 handles in 𝑂 (log 𝐴 + 𝑘 ) (expected; worst case with a deterministic balanced tree); and over 
+
+𝑎 appends and 𝑠 supersedes the total update work is 𝑂  (𝑎 /𝐵 + 𝑠 ) log 𝐴 , with 𝐴 = 𝑂 (1 + 𝑎 /𝐵 + 𝑠 )
+
+throughout. 
+
+(b) Space lower bound. Any structure that resolves every handle and reports ordered handle ranges must store Ω( 𝐴 ) words of index on a state of fragmentation 𝐴 ≤ 𝑛 1− 𝜀 , even if it summarises payloads arbitrarily. 
+
+(c) Query lower bound. Reporting the 𝑘 handles of a range requires Ω(log 𝐴 + 𝑘 ) (the log 𝐴 by predecessor search among the 𝐴 runs, Proposition 4.6). 
+
+(d) Adversary. For every block size 𝐵 and every 𝑠 ≤ 𝑛 /2, an oblivious sequence of 𝑠 supersedes against any structure with 𝑜 (𝑛 ) materialised payloads drives the fragmentation to 𝐴 = Θ (𝑠 ); the maximum 
+
+𝐴 = Θ (𝑛 ) is reached at 𝑠 = Θ (𝑛 ).Proof. (a) The interval map has one node per live handle and one per same-digest run, so 𝐴 nodes and height 
+
+𝑂 (log 𝐴 ); stab , append , materialise , and summarise each walk one root-to-leaf path, and range reporting visits 𝑂 (log 𝐴 ) boundary nodes plus the 𝑂 (𝑘 ) reported handles, expanding summarised runs in place. The update total is Theorem 4.8 with log 𝑛 read as the live height log 𝐴 : the 𝑎 appends fold in 𝑂 (𝑎 /𝐵 ) splices and the 𝑠 supersedes in 𝑂 (𝑠 ) splices, each 𝑂 (log 𝐴 ). A supersede raises 𝐴 by at most two and a fold lowers it, so 
+
+𝐴 = 𝑂 (1 + 𝑎 /𝐵 + 𝑠 ).(b) Consider states in which the 𝑛 handles are cut into 𝐴 maximal runs with adjacent runs in distinct digests, the 𝐴 − 1 boundaries placed at any 𝐴 − 1 of the 𝑛 − 1 gaps. There are  𝑛 −1
+
+> 𝐴 −1
+
+ ≥ ( 𝑛 /𝐴 ) 𝐴 −1 placements, so the family has Ω( 𝐴 log (𝑛 /𝐴 )) states. A structure meeting the premises distinguishes them: a range query over [1, 𝑖 ] together with the resolutions of its endpoints reveals the digest on each side of gap 𝑖 , so scanning the gaps recovers every boundary and hence the state; the payload summaries play no part. Its memory is therefore an injective code for the family and occupies Ω( 𝐴 log (𝑛 /𝐴 )) = Ω ( 𝐴 ) words of Θ(log 𝑛 ) bits for 
+
+𝐴 ≤ 𝑛 1− 𝜀 . The Ω( 𝐴 ) index is met by the Cascade Log’s 𝐴 nodes. (c) To output 𝑘 handles costs Ω(𝑘 ); locating the range endpoint among the 𝐴 runs is predecessor search, not 𝑂 (1) in the cell-probe model within this space (Proposition 4.6), giving the additive Ω(log 𝐴 ).(d) Append 𝑛 handles and fold them into one run ( 𝐴 = 1). Now supersede the handles at positions ⌊𝑖𝑛 /𝑠 ⌋,
+
+𝑖 = 0, . . . , 𝑠 − 1, for 𝑠 ≤ 𝑛 /2 so consecutive edits are at least two handles apart. Each supersede materialises a handle interior to a summarised run, splitting it; with only 𝑜 (𝑛 ) payloads materialisable the handle is demoted again before the sweep returns to its neighbourhood and is re-folded into a fresh digest, so the split it made survives as a distinct-digest boundary. Because the edits are spaced, the boundaries do not merge, leaving 
+
+Θ(𝑠 ) of them, so 𝐴 = Θ (𝑠 ); the largest 𝐴 = Θ (𝑛 ) occurs at 𝑠 = Θ (𝑛 ), while editing every handle re-coalesces the run and lowers 𝐴 again—graceful, and visible in Figure 7. □
+
+Corollary 4.11 (Instance optimality of the index) . On every operation sequence the Cascade Log’s index is within a constant factor of the smallest any reference-stable, ordered, bounded-working-set structure can use: it is Θ( 𝐴 ), and Ω( 𝐴 ) is forced (Theorem 4.10b). The index is therefore 𝑜 (𝑛 ) exactly when the history is append-dominated ( 𝐴 = 𝑂 (𝑎 /𝐵 )) and grows to Θ(𝑠 ) only when the edits are adversarially fragmenting—and then so must any competitor’s. The empirical index/ 𝑛 curve of Figure 6 and the adversarial Figure 7 trace 𝐴 
+
+directly. 
+
+11 Theorem 4.12 (External-memory I/O complexity) . Realise the interval map as a persistent (𝑎, 𝑏 )-tree with 
+
+𝑎 = ⌈𝛽 /2⌉, 𝑏 = 𝛽 , one page per node holding up to 𝛽 interval entries, and store each digest as the ⌈𝐵 ′/𝛽 ⌉
+
+consecutive pages holding the (version , 𝜎 (payload )) records of its run of length 𝐵 ′. In the I/O model with page size 𝛽 [1]: 
+
+(i) Resolve of a live handle costs 𝑂 (log 𝛽 𝐴 ) I/Os; of a summarised handle, 𝑂 (log 𝛽 𝐴 ) to stab its interval node plus one digest-page read. 
+
+(ii) reporting a 𝑘 -handle range costs 𝑂 (log 𝛽 𝐴 + 𝑘 /𝛽 ) I/Os: the 𝑂 (log 𝛽 𝐴 ) boundary pages, then for each summarised run it meets the ⌈𝐵 ′/𝛽 ⌉ digest pages holding that run’s handles, which sum to 𝑂 (𝑘 /𝛽 ).
+
+(iii) a supersede ( materialise ) and a fold ( summarise ) are 𝑂 (1) ( 𝑎, 𝑏 )-tree split/merge restructurings, each copying the 𝑂 (log 𝛽 𝐴 ) pages on one root-to-leaf path for persistence—so 𝑂 (log 𝛽 𝐴 ) page writes, 
+
+independent of the run length 𝐵 ′, where a per-handle scheme writes Θ  𝐵 ′ 
+
+> 𝛽
+
+log 𝛽 𝑛  pages. 
+
+(iv) the 𝐶 + 𝐵 live payloads occupy 𝑂  (𝐶 + 𝐵 )𝑐 max /𝛽  hot pages and the digests the cold pages; a retained snapshot freezes the 𝑂 (log 𝛽 𝐴 ) pages on the copied path. Proof. Heights and split/merge page counts are the standard (𝑎, 𝑏 )-tree bounds for 𝐴 keys [ 2, 12 ]. Asummarised handle’s interval entry records its digest’s first page and the handle’s in-run offset, so its record is read in one further I/O; a range meeting a run reads that run’s ⌈𝐵 ′/𝛽 ⌉ digest pages, and the handles reported over all runs total 𝑘 , giving 𝑂 (𝑘 /𝛽 ) beyond the boundary path. Node copying rewrites exactly the touched path, and coalescing makes a fold one restructuring per run. Buffering updates lowers writes to the 
+
+𝑂 ( 1 
+
+> 𝛽
+
+log 𝛽 𝑛 ) amortised regime of write-optimised indexes [10, 19] at the usual read cost. □
+
+Theorem 4.13 (Budgeted window approximation) . Let 𝑆 ★ maximise 𝑓 (𝑆 ) = Í𝑣 ∈cover (𝑆 ) 𝑤 (𝑣 ) subject to 
+
+Í𝑢 ∈𝑆 𝑐 (𝑢 ) ≤ 𝛽 . Algorithm 3 returns a feasible set with 𝑓 (𝑆 ) ≥ 12 (1 − 1/𝑒 ) 𝑓 (𝑆 ★), and Algorithm 4 returns a feasible set with 𝑓 (𝑆 ) ≥ ( 1 − 1/𝑒 ) 𝑓 (𝑆 ★). If 𝑓 is modular (records reveal disjoint context), prefix-by-rank is optimal under a cardinality budget. Proof. 𝑓 is non-negative, monotone—adding a record only enlarges cover (𝑆 )—and submodular, as the marginal Í𝑣 ∈cover (𝑢 )\ cover (𝑆 ) 𝑤 (𝑣 ) is non-increasing in 𝑆 ; with weights 𝑤 ≥ 0 it is a weighted coverage function, so the instance is budgeted maximum coverage. For such instances the modified greedy of Algorithm 3 attains 12 (1 − 1/𝑒 ) and the size-three partial enumeration of Algorithm 4 attains 1 − 1/𝑒 [16 ], the cardinality tightness of the latter being classical [ 18 ]. If 𝑓 is modular, 𝑓 (𝑆 ) = Í𝑢 ∈𝑆 𝑔 (𝑢 ) with 𝑔 (𝑢 ) = 𝑤 (𝑢 ),and a cardinality budget is maximised by the highest-value items—prefix-by-rank. □
+
+Proposition 4.14 (Prefix-by-rank has no constant-factor guarantee) . For every 𝑘 there is a budgeted maximum-coverage instance on which prefix-by-rank covers a 1+𝜖 𝑘 fraction of the optimum, while Algorithm 3 and Algorithm 4 are optimal. Proof. Take one decoy record of relevance 1 + 𝜖 and cost 𝛽 that reveals only itself, and 𝑘 records of relevance 
+
+1 and cost 𝛽 /𝑘 that reveal pairwise-disjoint elements. Prefix-by-rank orders by relevance, takes the decoy first, exhausts the budget, and covers 1 + 𝜖 . The 𝑘 cheap records have density 𝑘 /𝛽 , above the decoy’s (1 + 𝜖 )/ 𝛽 ,so both greedies take them and cover 𝑘 , which is also the optimum; the ratio for prefix is (1 + 𝜖 )/ 𝑘 → 0.Section 6 confirms the gap numerically. □
+
+Because the recent records are the cheapest to resolve and the most often queried, the Cascade Log also exhibits the working-set behaviour studied for self-adjusting structures [ 25 , 26 ]: queries that stay within the hot stratum touch only materialised payloads. 12 5 Implementation 
+
+The reference implementation is a self-contained Python package. The vii is a path-copying treap (standard library only); the Cascade Log adds the strata, folding, digests, and windows. Four comparison structures share the operation interface. Flat keeps every version materialised in one table. NaiveTier keeps a bounded hot table over a cold tier that is folded by discarding all per-handle state; ForwardTier adds a never-reclaimed per-handle version counter, which restores version authority but not addressability. The progression NaiveTier →ForwardTier →Cascade Log isolates the two mechanisms—version authority and post-fold addressability. HashSpine is the strong baseline: it is the Cascade Log stripped of persistence and order, a single hash map that is the sole version authority and retains the same constant-size spine through folding. It is therefore anomaly-free and bounded in working set, and resolves in expected 𝑂 (1), matching the Cascade Log on every current-state metric; what it cannot do is read a past epoch (it keeps no version history) or report an ordered key range across strata in 𝑂 (log 𝑛 + 𝑘 ) (a hash imposes no order). It isolates precisely what the persistent, ordered index buys. An independent oracle tracks the exact current and historical version of every handle and classifies each resolution by Definition 2.1. All workloads and measurements are seeded and reproduce bit-for-bit; the package, the result files, and the figure scripts accompany the paper as ancillary files. 
+
+# 6 Empirical study 
+
+Workload. A workload is an append-mostly stream: each step appends a record—with a few references drawn toward recent handles with a heavy tail to old ones—or, with probability 0.3, supersedes an existing handle chosen with a bias toward older records, so that edits reach handles that have already been folded. Record costs are log-normal. Accesses follow a mixture that is local (recency-biased) with probability 0.75 
+
+and global (uniform over the whole history) otherwise, modelling references both to the recent working set and to long-lived anchors. Unless noted, the hot capacity is 𝐶 = 256 and the fold block 𝐵 = 64 .
+
+Reference integrity. Table 1 reports a run of 4 × 10 4 operations ( 𝑛 = 27 ,894 handles) under 5 × 10 4
+
+accesses. The tiered baselines NaiveTier and ForwardTier keep a small footprint yet mis-resolve about a quarter of accesses and leave only 1.3% of the history addressable; ForwardTier ’s version counter removes the stale reads that afflict NaiveTier but cannot recover the folded records. Flat is correct but materialises every payload. HashSpine and the Cascade Log run the identical ageing and folding policy: both are anomaly-free, fully addressable, and bounded in working set, with the same 7,038 -unit working set against Flat ’s 6.7 × 10 5,so reference integrity costs essentially nothing. They differ in the index . The hash spine keeps one entry per handle ( 27 ,894 nodes); the Cascade Log coalesces folded runs and keeps 10 ,983 , so its total footprint ( 45 ,608 )is below the hash spine’s ( 62 ,519 ) even though it additionally serves snapshot-consistent past-epoch reads and ordered cross-tier ranges (Table 2). The ordered, persistent index is not a cost paid for those capabilities; here it is cheaper than the hash that lacks them. Figure 2 sweeps the hot capacity. As the working set tightens, both tiered baselines lose addressability— from 59% down to under 0.5% of the history—and their access-anomaly rate climbs toward the share of accesses that reach beyond the hot stratum, while the Cascade Log stays at zero anomalies and full addressability throughout. The separation between NaiveTier and ForwardTier is exactly the stale component, which the version counter removes. 13 Table 1: One operating point ( 𝑛 = 27 ,894 handles, 5 × 10 4 accesses, 𝐶 =256 , 𝐵 =64 ). “Addressable” is the fraction of the whole history that still resolves; “working set” is the materialised payload; “index” is the number of index nodes; “total” is the whole materialised footprint (working set, index, and cold digests), in abstract units. Design Anomaly rate Addressable Working set Index nodes Total                                                                         
+
+> Flat 0.000 1.000 670 ,507 27 ,894 670 ,507
+> NaiveTier 0.249 0.013 13 ,295 371 13 ,295
+> ForwardTier 0.248 0.013 41 ,189 371 41 ,189
+> HashSpine 0.000 1.000 7,038 27 ,894 62 ,519
+> Cascade Log 0.000 1.000 7,038 10 ,983 45 ,608
+> Table 2: Capabilities at a bounded working set. Among designs that bound the working set, only the Cascade Log is anomaly-free and serves snapshot-consistent past-epoch reads and reports ordered cross-tier ranges; the price is
+> 𝑂 (log 𝑛 )rather than expected 𝑂 (1)resolution. Design Anomaly-free Bounded W.S. Snapshots Ordered range Resolve
+> Flat yes no no no 𝑂 (1)
+> NaiveTier no yes no no 𝑂 (1)
+> ForwardTier no yes no no 𝑂 (1)
+> HashSpine yes yes no no 𝑂 (1)
+> Cascade Log yes yes yes yes 𝑂 (log 𝑛 )
+
+Footprint and scaling. Figure 3 grows the history to 𝑛 ≈ 4 × 10 5 (half a million operations). Flat grows linearly at the average payload size. The Cascade Log’s working set —its materialised payload—stays flat at about seven thousand units, independent of 𝑛 , as Theorem 4.7 predicts in ephemeral mode; its total grows linearly but about nineteen times below full materialisation at the largest size (a ratio that widens with record size), and below HashSpine throughout because its index coalesces (next paragraph). Retaining 𝑅 snapshot tokens raises the index from one node per handle to about 3.8 at 𝑅 = 100 (Figure 3), the retained-mode overhead of Theorem 4.7, growing sub-linearly per token as tokens share structure. 
+
+Compaction cost and the index. Figure 4 measures the index work of folding. With no edits a fold block is a single contiguous run and collapses in exactly one splice, so the splices per record fall as 1/𝐵 and the amortised index cost of compaction vanishes with the block size—the 𝑂 (1)-per-appended-record claim of Theorem 4.7(b). Edits fragment runs, each fragmentation adding one splice, so the curves rise with the edit rate but stay essentially flat in 𝐵 . The same coalescing shrinks the index (Figure 4): the Cascade Log indexes the history in a number of nodes that is a decreasing fraction of 𝑛 (about 0.23 here under a 15% edit rate, and 1/𝐵 for append-only) against the hash spine’s one node per handle. The Cascade Log therefore folds in amortised constant index work per appended record and indexes the history in 𝑜 (𝑛 ) nodes, where a per-handle forwarding design does Θ(𝐵 ) work per block and keeps 𝑛 nodes. 
+
+A persistent ordered map, and ordered range. To isolate what coalescing contributes—as opposed to ordering and persistence, which a copy-on-write ordered map already provides—we add a fifth structure, 
+
+PersistentMap : the Cascade Log’s policy over a persistent treap that keeps one node per handle and rewrites each folded handle individually, with no coalescing; it is the in-memory analogue of a multiversion or copy-on-write 𝐵 -tree [ 4]. It is anomaly-free and serves snapshots and ordered range like the Cascade Log, but its index is 𝑛 nodes and each fold does Θ(𝐵 log 𝑛 ) index writes. Figure 5 (left) confirms the gap: at 𝑛 = 10 5
+
+14 27
+
+> 29
+> 211
+> 213
+> hot capacity (records)
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> anomaly rate (mixed access)
+> Flat
+> ForwardTier
+> NaiveTier
+> Cascade Log
+> 27
+> 29
+> 211
+> 213
+> hot capacity (records)
+> 10 −2
+> 10 −1
+> 10 0
+> history addressable (fraction)
+
+Figure 2: Reference integrity as the hot capacity tightens (capacity decreases to the right). Left: anomaly rate under the mixed access stream. Right: fraction of the whole history that still resolves (log scale). Flat and the Cascade Log coincide at zero anomalies and full addressability; the tiered baselines degrade. 
+
+the Cascade Log’s coalesced index is 4.3× smaller and its folds do 6× fewer index writes, with ordering and persistence held fixed—so coalescing is the sole cause of the smaller index. Figure 5 (right) measures the ordered capability HashSpine lacks (Proposition 4.6): reporting a range of 𝑘 handles, the Cascade Log costs 
+
+𝑂 (log 𝑛 + 𝑘 ) and tracks 𝑘 , while HashSpine must scan its whole table at ≈ 2.9 ms per query independent of 
+
+𝑘 —two to three orders of magnitude slower until 𝑘 nears 𝑛 .
+
+Robustness across the edit rate. Figure 6 repeats the integrity and index measurements across supersede probabilities from 0.1 to 0.5, five seeds each, with 95% confidence intervals. The Cascade Log and HashSpine 
+
+hold exactly zero anomalies throughout, while NaiveTier and ForwardTier sit near 0.25 with tight spread. The right panel is the honest face of the index claim: the Cascade Log’s index/ 𝑛 ratio climbs from 0.18 at a 
+
+10% edit rate to 0.58 at 50% , well above the append-only floor 1/𝐵 . The index is 𝑜 (𝑛 ) only when appends dominate, and a smaller-constant Θ(𝑛 ) under sustained edits—exactly the qualified claim, shown rather than asserted. 
+
+Adversarial fragmentation. Figure 7 drives the worst case of Theorem 4.10: after appending 6 × 10 4
+
+records it supersedes 𝑠 handles at evenly spaced positions—the pattern that maximises fragmentation—and traces the index size directly. It grows linearly in 𝑠 , 𝐴 = Θ (𝑠 ) at about two nodes per edit, for both the spread adversary and a distribution-free random-position variant, rising toward the 𝑛 -node ceiling near 𝑠 ≈ 𝑛 /2 and never exceeding PersistentMap ’s 𝑛 ; once nearly every handle has been edited the re-materialised handles re-fold contiguously and 𝐴 collapses back toward 𝑂 (𝑎 /𝐵 ). The right panel confirms resolution stays 𝑂 (log 𝐴 )
+
+even at maximum fragmentation, tracking log 2 𝐴 . The structure degrades gracefully and exactly to the bound: its index is the fragmentation—no more, and by Theorem 4.10(b) no less than any reference-stable ordered structure must pay. 
+
+Latency. Figure 8 (left) reports resolution latency to 𝑛 = 10 6. The Cascade Log resolves in 0.7–4.1 𝜇 s, scaling as the logarithm of its coalesced index; the index height stays below the 2 log 2 𝑛 guide (right panel) precisely because folded runs collapse. HashSpine resolves by one hash probe in about 0.8 𝜇 s at 𝑛 = 10 6—a 15 10 3 10 4 10 5       
+
+> records appended, n
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> materialised footprint (units)  Flat (full payloads)
+> HashSpine (total)
+> Cascade Log (total)
+> NaiveTier (loses history)
+> Cascade working set 020 40 60 80 100
+> retained snapshot tokens, R
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> 3.5
+> index nodes per handle  ephemeral (1 node / handle)
+
+Figure 3: Left: materialised footprint versus history length (log–log); the Cascade Log working set (dashed) is bounded, and its total stays below HashSpine and far below Flat . Right: retained-mode index size against the number of retained snapshot tokens (Theorem 4.7). 
+
+constant factor below the Cascade Log, the price it pays for the ordered, snapshot-consistent access a hash cannot give. Append is a single logarithmic splice per operation. 
+
+Windows. Figure 9 evaluates window selection on a reference graph of 4000 records, averaging over recent anchors and budgets expressed as a fraction of the candidate cost. The partial-enumeration of Algorithm 4 is indistinguishable from the exact optimum (computed by brute force and a mixed-integer program), staying above 0.99 of it and—like the simple greedy of Algorithm 3, whose worst case here is 0.85 —never below its guarantee. The prefix heuristic trails by up to thirteen points of coverage at tight budgets. The gap is unbounded in the worst case: on the constructed family of Proposition 4.14, Figure 9 shows prefix-by-rank falling as (1 + 𝜖 )/ 𝑘 while both greedies stay at the optimum. Simple-greedy windows are selected in under a millisecond; the partial enumeration costs tens of milliseconds on these candidate sets. 
+
+Summary. Among designs that bound the working set, HashSpine and the Cascade Log are the anomaly-free ones; the tiered baselines that are not lose almost the entire history. Against the hash spine the Cascade Log gives up a constant factor in resolution latency and, in return, coalesces its index—to 𝑜 (𝑛 ) nodes on append-dominated streams, and a smaller constant times 𝑛 under sustained edits, in both regimes below the hash spine’s 𝑛 —folds in amortised constant index work per appended record, and serves snapshot-consistent past-epoch reads and ordered cross-tier ranges that a hash cannot. Theorem 4.5 shows the per-handle version both retain cannot be lossily compressed, and Proposition 4.6 that the ordered range the Cascade Log adds is provably beyond a hash. 
+
+# 7 Related work 
+
+Persistence. Path copying and node copying make pointer structures persistent at logarithmic or constant amortised overhead [ 13 ], and persistent search trees underlie classical multiversion queries [ 23 ]. The vii 
+
+uses persistence not for geometric queries but to make each fold and edit produce an immutable instant that 16 24 25 26 27 28
+
+fold block B   
+
+> 10 −2
+> 10 −1
+> index splices per record
+> edit rate 0
+> edit rate 0.1
+> edit rate 0.2
+> edit rate 0.4
+> 1=B (append-only) 10 310 410 5
+
+records appended, n  
+
+> 10 3
+> 10 4
+> 10 5
+> index nodes
+> HashSpine index ( =n)
+> Cascade index (coalesced)
+> n
+
+Figure 4: Left: index splices per folded record versus block size 𝐵 . Append-only folding (edit rate 0) lies on 1/𝐵 —one splice per block—so its per-record index work vanishes with 𝐵 ; edits add a flat, rate-proportional fragmentation charge. Right: index nodes versus 𝑛 ; the Cascade Log coalesces folded runs to an 𝑜 (𝑛 ) index, while the hash spine keeps 𝑛 
+
+entries. 10 4 10 5          
+
+> records appended, n
+> 10 3
+> 10 4
+> 10 5
+> index nodes
+> PersistentMap ( =n)
+> Cascade Log (coalesced)
+> n
+> 10 410 5
+> records appended, n
+> 10 3
+> 10 4
+> 10 5
+> index writes during folds  PersistentMap inserts ( O(Blog n))
+> Cascade Log splices ( 1/run) 10 010 110 210 310 4
+
+range size, k (handles reported)      
+
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> range-query latency ( ¹s)  HashSpine (scans n)
+> Cascade Log ( O(log n+k))
+> /k
+
+Figure 5: Left: index nodes versus 𝑛 for the Cascade Log and PersistentMap (an ordered, persistent map without coalescing); coalescing alone accounts for the gap. Right: ordered-range latency versus the number of handles reported 
+
+𝑘 ; the Cascade Log scales as 𝑘 while the order-less HashSpine pays a full scan. 
+
+windows can be read against; the snapshot consistency of Theorem 4.2 follows from persistence rather than from locking, in the linearizable sense of Herlihy and Wing [15]. 
+
+Tiered and write-optimised storage. Folding aged blocks into summaries is the organising idea of the log-structured merge-tree [ 19 ], where membership filters [ 7 ] avoid fruitless probes into cold levels and amortised analysis bounds the merge cost [ 5, 27 ]. These designs optimise throughput for opaque keys; the Cascade Log adds what they do not track—a stable per-record handle that must keep resolving across the very compaction that moves its target. 
+
+External memory. The motivating setting is tiered storage, and Theorem 4.12 carries the design into the I/O model [ 1 ]: an (𝑎, 𝑏 )-tree realisation [ 2, 12 ] resolves and folds in 𝑂 (log 𝛽 𝑛 ) I/Os and reports a range in 
+
+𝑂 (log 𝛽 𝑛 + 𝑘 /𝛽 ), bounded below by the dictionary update–query trade-off of Brodal and Fagerberg [10] that the log-structured merge-tree also navigates. Our measurements are RAM-resident (Section 6); a paginated implementation and a head-to-head against tuned LSM and B-tree stores are the systems counterpart this 17 0.1 0.2 0.3 0.4 0.5              
+
+> edit rate (supersede probability)
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> anomaly rate (mixed access)
+> NaiveTier
+> ForwardTier
+> Cascade Log
+> 0.1 0.2 0.3 0.4 0.5
+> edit rate (supersede probability)
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> index nodes  = n
+> 1=B (append-only)
+> Cascade index = n Figure 6: Robustness over five seeds per point ( 95% confidence intervals). Left: anomaly rate versus edit rate; the Cascade Log stays at zero. Right: the Cascade Log index as a fraction of 𝑛 rises with the edit rate (append-only floor
+> 1/𝐵 dotted), so the 𝑜 (𝑛 )index is an append-dominance property, not a universal one.
+
+paper does not attempt. 
+
+Multiversion and temporal indexing. Serving a read as of a past instant is the business of multiversion concurrency control [ 6] and of versioned and temporal indexes—the asymptotically optimal multiversion B-tree [ 4 ] and the access methods surveyed by Salzberg and Tsotras [22] —which answer time-travel queries at scale and concurrently. These index opaque keys and keep every version; the Cascade Log differs in the two ways that define its niche. It bounds the materialised working set by lossily summarising aged records (Theorem 2.1), trading payload fidelity for a footprint independent of history length, where a multiversion B-tree retains every version in full; and it guarantees reference integrity , a stable handle resolving to the right version across the compaction that summarises its target, which the versioned-index literature does not pose because its keys neither migrate nor summarise. The two are complementary: a multiversion B-tree is one concurrent, external-memory realisation of the persistent ordered map the Cascade Log needs (Theorem 4.12), and the Cascade Log’s own contribution is the coalescing fold and the cross-tier guarantees layered on it. 
+
+Layered search. Searching ordered layers in one logarithmic pass is the province of fractional cascading [ 11 ]and of probabilistic layered lists [ 20 ]; B-trees give the external-memory counterpart [ 12 ]. The Cascade Log’s cross-tier reporting reaches the same 𝑂 (log 𝑛 + 𝑘 ) through a single multiversion index, and any of these techniques may realise it over per-stratum indexes instead. 
+
+Ranking and selection. Diffusing relevance by a personalised random walk is personalised PageRank [ 9 , 14 ]; choosing a budgeted subset that maximises a submodular coverage is budgeted maximum coverage [ 16 ], whose greedy inherits the classical 1 − 1/𝑒 analysis for submodular maximisation [ 18 ]. The window of Section 3.5 composes the two over the reference graph and recovers prefix-by-rank as the modular special case. 
+
+Sequence buffers and diffs. Editor buffers that keep a long mutable sequence in balanced pieces [ 8 ] and difference algorithms that compute edits between versions [ 17 ] address the per-record content that a Cascade Log record may hold; they are orthogonal to, and composable with, the cross-tier addressing studied here. 18 0 20000 40000 60000         
+
+> spread-out edits, s
+> 0
+> 10000
+> 20000
+> 30000
+> 40000
+> 50000
+> 60000
+> fragmentation  A (index nodes)
+> PersistentMap ( =n)
+> min( s; n )
+> Cascade Log (spread)
+> Cascade Log (random)
+> 10 310 4
+> fragmentation A(index nodes)
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> resolve latency ( ¹s)
+> Cascade Log resolve
+> /log 2A
+
+Figure 7: Adversarial fragmentation (Theorem 4.10). Left: index nodes 𝐴 versus the number of evenly spaced (and randomly placed) edits 𝑠 ; the Cascade Log grows as Θ(𝑠 ) and never exceeds PersistentMap ’s 𝑛 . Right: resolution latency versus 𝐴 , tracking log 2 𝐴 , so queries stay logarithmic even at worst-case fragmentation. 
+
+# 8 Conclusion 
+
+A tiered append sequence keeps its working set bounded, but the obvious way to do so discards the per-record state that lets handles resolve across tier boundaries, and the result fails exactly where the tiers meet. The Cascade Log shows that the two goals are compatible at a price that is provably small: a persistent interval map as the single authority on every handle, folding that coalesces a run into one node in a single splice—so compaction is amortised constant per appended record and the index is sublinear—and digests that keep each handle’s version, the information a lower bound shows is irreducible. The result is resolution that is total, snapshot-consistent, and anomaly-free at logarithmic cost, with a working set independent of history length; the budgeted window is a standard maximum-coverage instance layered on top. The reference implementation is single-threaded and pays the constant factor of a pure-language persistent tree; a concurrent, de-amortised, external-memory realisation (Section 7), and digests that compress versions succinctly, are natural next steps. 
+
+Reproducibility. The implementation, the seeded workloads, the oracle, the benchmark harness, the raw result files, and the figure scripts are provided as ancillary files; a single command regenerates every number, table, and figure (Section A). 
+
+# A Reproduction details 
+
+The ancillary directory anc/ contains a self-contained Python package ( numpy , scipy , matplotlib ,
+
+pytest ; the core structure uses only the standard library). From anc/ , the command ./run_all.sh 
+
+runs the test suite ( python -m pytest cascade/tests , 86 checks), the benchmark harness ( python -m cascade.bench ), the extended study ( python -m cascade.extra ), and the figure scripts ( python -m cascade.plots ). Every workload is seeded, so the numbers reproduce bit-for-bit; the seeds are the literal arguments to gen_plan in cascade/bench.py and cascade/extra.py . Each experiment writes one CSV to anc/results/ with a header row naming every column, and each figure reads exactly one such file; Table 3 maps result files to artifacts. Runtimes were measured on an Apple silicon laptop with CPython 3.𝑥 ;the harness completes in roughly thirteen minutes and the extended study in about half a minute. The 19 10 3 10 4 10 5 10 6
+
+records, n
+
+0.25 
+
+0.50 
+
+0.75 
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+> resolve latency ( ¹s)
+
+Cascade Log 
+
+HashSpine 
+
+Flat 
+
+NaiveTier 
+
+10 3 10 4 10 5 10 6
+
+records, n
+
+20 
+
+25 
+
+30 
+
+35 
+
+40 
+
+> index height
+
+VII height 
+
+2log 2 nFigure 8: Left: resolution latency versus history length to 𝑛 = 10 6 (log 𝑥 ); HashSpine is a constant factor below the Cascade Log, the tiered baselines faster still but unable to read the past or, for NaiveTier , correctly. Right: vii height against a 2 log 2 𝑛 guide—logarithmic with a small constant. 0.2 0.4 0.6 0.8                     
+
+> budget (fraction of candidate cost)
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> relevance coverage (normalised)
+> optimal
+> partial enum. ( 1¡1=e )
+> simple greedy ( 12(1 ¡1=e ))
+> prefix-by-rank
+> 0.2 0.4 0.6 0.8
+> budget (fraction of candidate cost)
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> approximation ratio (worst case)
+> partial / optimal (min)
+> simple / optimal (min)
+> 1¡1=e
+> 12(1 ¡1=e )21222324252627
+> adversarial size k
+> 10 −2
+> 10 −1
+> 10 0
+> coverage / optimum
+> partial enum. / opt
+> simple greedy / opt
+> prefix-by-rank / opt
+
+Figure 9: Budgeted windows. Left pair: relevance coverage and worst-case approximation ratio of prefix-by-rank, the simple greedy ( 12 (1 − 1/𝑒 )), the partial enumeration ( 1 − 1/𝑒 ), and the optimum. Right: on the family of Proposition 4.14, prefix-by-rank is a Θ(1/𝑘 ) fraction of the optimum while both greedies are optimal (log–log). 
+
+implementation is a single-threaded reference in a managed language, so absolute latencies carry the constant factor of CPython and are reported only relative to the in-house baselines run identically; the asymptotic claims, not the constants, are the contribution. 
+
+# References 
+
+[1] Alok Aggarwal and Jeffrey Scott Vitter. The input/output complexity of sorting and related problems. Communi-cations of the ACM , 31(9):1116–1127, 1988. doi: 10.1145/48529.48535. [2] Rudolf Bayer and Edward M. McCreight. Organization and maintenance of large ordered indexes. Acta Informatica ,1(3):173–189, 1972. doi: 10.1007/BF00288683. [3] Paul Beame and Faith E. Fich. Optimal bounds for the predecessor problem and related problems. Journal of Computer and System Sciences , 65(1):38–72, 2002. doi: 10.1006/jcss.2002.1822. [4] Bruno Becker, Stephan Gschwind, Thomas Ohler, Bernhard Seeger, and Peter Widmayer. An asymptotically optimal multiversion B-tree. The VLDB Journal , 5(4):264–275, 1996. doi: 10.1007/s007780050028. 
+
+20 Table 3: Result files and the artifacts they produce. File ( anc/results/ ) Artifact 
+
+headline.csv Table 1 
+
+anomaly_vs_capacity.csv Figure 2 
+
+scaling.csv Figure 3, Figure 4 
+
+fold.csv Figure 4 
+
+latency.csv Figure 8 
+
+window.csv , adversarial.csv Figure 9 
+
+snapshot_overhead.csv Figure 3 
+
+pmap.csv , range.csv Figure 5 
+
+sweep.csv Figure 6 
+
+frag_vs_edits.csv , frag_latency.csv Figure 7 [5] Jon Louis Bentley and James B. Saxe. Decomposable searching problems I: Static-to-dynamic transformation. 
+
+Journal of Algorithms , 1(4):301–358, 1980. doi: 10.1016/0196-6774(80)90015-2. [6] Philip A. Bernstein and Nathan Goodman. Multiversion concurrency control—theory and algorithms. ACM Transactions on Database Systems , 8(4):465–483, 1983. doi: 10.1145/319996.319998. [7] Burton H. Bloom. Space/time trade-offs in hash coding with allowable errors. Communications of the ACM , 13 (7):422–426, 1970. doi: 10.1145/362686.362692. [8] Hans-J. Boehm, Russ Atkinson, and Michael Plass. Ropes: An alternative to strings. Software: Practice and Experience , 25(12):1315–1330, 1995. doi: 10.1002/spe.4380251203. [9] Sergey Brin and Lawrence Page. The anatomy of a large-scale hypertextual Web search engine. Computer Networks and ISDN Systems , 30(1–7):107–117, 1998. doi: 10.1016/S0169-7552(98)00110-X. [10] Gerth Stølting Brodal and Rolf Fagerberg. Lower bounds for external memory dictionaries. In Proceedings of the Fourteenth Annual ACM-SIAM Symposium on Discrete Algorithms (SODA) , pages 546–554, 2003. [11] Bernard Chazelle and Leonidas J. Guibas. Fractional cascading: I. a data structuring technique. Algorithmica , 1 (2):133–162, 1986. doi: 10.1007/BF01840440. [12] Douglas Comer. The ubiquitous B-tree. ACM Computing Surveys , 11(2):121–137, 1979. doi: 10.1145/356770. 356776. [13] James R. Driscoll, Neil Sarnak, Daniel D. Sleator, and Robert E. Tarjan. Making data structures persistent. Journal of Computer and System Sciences , 38(1):86–124, 1989. doi: 10.1016/0022-0000(89)90034-2. [14] Taher H. Haveliwala. Topic-sensitive PageRank: A context-sensitive ranking algorithm for Web search. IEEE Transactions on Knowledge and Data Engineering , 15(4):784–796, 2003. doi: 10.1109/TKDE.2003.1208999. [15] Maurice P. Herlihy and Jeannette M. Wing. Linearizability: A correctness condition for concurrent objects. ACM Transactions on Programming Languages and Systems , 12(3):463–492, 1990. doi: 10.1145/78969.78972. [16] Samir Khuller, Anna Moss, and Joseph (Seffi) Naor. The budgeted maximum coverage problem. Information Processing Letters , 70(1):39–45, 1999. doi: 10.1016/S0020-0190(99)00031-9. [17] Eugene W. Myers. An O(ND) difference algorithm and its variations. Algorithmica , 1(1–4):251–266, 1986. doi: 10.1007/BF01840446. [18] George L. Nemhauser, Laurence A. Wolsey, and Marshall L. Fisher. An analysis of approximations for maximizing submodular set functions—I. Mathematical Programming , 14(1):265–294, 1978. doi: 10.1007/BF01588971. 
+
+21 [19] Patrick O’Neil, Edward Cheng, Dieter Gawlick, and Elizabeth O’Neil. The log-structured merge-tree (LSM-tree). 
+
+Acta Informatica , 33(4):351–385, 1996. doi: 10.1007/s002360050048. [20] William Pugh. Skip lists: A probabilistic alternative to balanced trees. Communications of the ACM , 33(6): 668–676, 1990. doi: 10.1145/78973.78977. [21] Mihai P ˇatraşcu and Mikkel Thorup. Time-space trade-offs for predecessor search. In Proceedings of the Thirty-Eighth Annual ACM Symposium on Theory of Computing (STOC) , pages 232–240, 2006. doi: 10.1145/ 1132516.1132551. [22] Betty Salzberg and Vassilis J. Tsotras. Comparison of access methods for time-evolving data. ACM Computing Surveys , 31(2):158–221, 1999. doi: 10.1145/319806.319816. [23] Neil Sarnak and Robert E. Tarjan. Planar point location using persistent search trees. Communications of the ACM , 29(7):669–679, 1986. doi: 10.1145/6138.6151. [24] Raimund Seidel and Cecilia R. Aragon. Randomized search trees. Algorithmica , 16(4–5):464–497, 1996. doi: 10.1007/BF01940876. [25] Daniel D. Sleator and Robert E. Tarjan. Amortized efficiency of list update and paging rules. Communications of the ACM , 28(2):202–208, 1985. doi: 10.1145/2786.2793. [26] Daniel D. Sleator and Robert E. Tarjan. Self-adjusting binary search trees. Journal of the ACM , 32(3):652–686, 1985. doi: 10.1145/3828.3835. [27] Robert E. Tarjan. Amortized computational complexity. SIAM Journal on Algebraic and Discrete Methods , 6(2): 306–318, 1985. doi: 10.1137/0606031. 
+
+22
