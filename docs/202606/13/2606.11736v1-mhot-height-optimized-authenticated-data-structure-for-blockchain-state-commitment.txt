@@ -1,0 +1,2026 @@
+Title: MHOT: Height-Optimized Authenticated Data Structure for Blockchain State Commitment
+
+URL Source: https://arxiv.org/pdf/2606.11736v1
+
+Published Time: Thu, 11 Jun 2026 00:38:55 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# MHOT : Height-Optimized Authenticated Data Structure for Blockchain State Commitment 
+
+## Sipeng Xie ∗, Qianhong Wu ∗, Minghang Li ∗, Qiyuan Gao ∗, Bo Qin †, Qin Wang ‡
+
+## Abstract 
+
+State root computation dominates (~78%) blockchain block processing time. Ethereum’s canonical authenticated data structure, i.e., Merkle Patricia Trie (MPT), suffers from se-vere tree-height growth and is vulnerable to Nurgle attacks 
+
+(S&P’24), where adversaries inflate path depth via hash col-lisions and degrade system performance at negligible cost. Existing defenses increase node fanout (span) to bound tree height, but higher span inflates proof size exponentially. Prior work mitigates this trade-off using vector commitments, at the cost of trusted setup or expensive verification. We present M HOT , a height-optimal authenticated data structure for blockchain state commitment that preserves stan-dard hash-based verification without trusted setup. Unlike MPT’s fixed-prefix indexing, which couples span and fanout exponentially, M HOT indexes by discriminative bits that ac-tually distinguish keys, achieving adaptive span with linear fanout coupling and provably minimal height. To prevent high fanout from inflating proofs, we introduce hierarchical proofs ,a two-layer Merkle construction that reduces per-node proof overhead from O(k) to O(log k).On Ethereum mainnet workloads, M HOT achieves up to 
+
+9× higher write throughput, 4× lower write amplification, and 2× smaller proofs than MPT. Under Nurgle attacks, even when the adversary consumes an entire block’s gas budget, MHOT maintains a 0% attack success rate (v.s., 99.97% for MPT). Our results, somewhat surprisingly, show that height optimality (not new crypto primitives!) is the key abstraction for scalable and attack-resilient blockchain state commitment. 
+
+## 1 Introduction 
+
+State root computation consumes 70–80% of total block pro-cessing time in modern blockchain systems [18,20,31,40,52]. 
+
+> ∗Beihang University
+> †Renmin University of China ( B)
+> ‡Independent Accepted by USENIX Security 2026
+
+Every block must commit to a cryptographic digest of the en-tire state so that light clients can verify query results without trusting full nodes. This authenticated commitment step, not transaction execution, has become the binding constraint on end-to-end block throughput and confirmation latency. Execution-layer optimizations reduced the cost of every-thing except commitment. Transaction-level parallelism [27, 28, 41, 49], instruction-level acceleration [17, 32, 46, 60, 61], and decoupled state storage architectures [13,18,24,47,52,55, 58] all improve execution throughput but cannot amortize the cost of updating the authenticated data structure (ADS), be-cause commitment requires rehashing dependent node paths. Modern execution clients such as Erigon and Reth accordingly treat the ADS as a dedicated commitment engine [24, 47], making its write throughput the primary bottleneck. 
+
+Limitations of current approaches (Table 1). The Merkle Patricia Trie (MPT), Ethereum’s canonical authenticated state structure [56], stores state in a Merkle-authenticated key-value trie. Lookups and updates follow the hexadecimal digits of a key from the root to a leaf, so each update rehashes every node on that path. As Ethereum’s state has grown, average path depth has reached 8 to 11 levels [18]; the Nurgle at-tack [31] exploits the same prefix structure by choosing keys with long common prefixes and pushing selected paths toward the worst case. Partitioning, checkpointing, and in-memory upper-level caching, as in Chainspace [3], RainBlock [48], and LMPTs [20], improve scalability and average-case latency, but they preserve prefix-based traversal and leave worst-case height and Nurgle resistance unresolved. Unfortunately, the limitation is structural. In a prefix-based trie, each tree level consumes a fixed number of contiguous key bits. We call this per-level bit-width the span (s). A node that consumes s bits must provide a child slot for every possible s-bit pattern; we call this number of child slots the fanout . In a prefix-based trie, fanout = 2span ,so the two quantities are coupled exponentially .The apparent defense against adversarially shared prefixes is to increase the span so that each level consumes more key bits. However, large span inflates both node size and member-
+
+> arXiv:2606.11736v1 [cs.CR] 10 Jun 2026
+
+Table 1: Comparison of ADS approaches for uniformly random 256-bit keys (e.g., Keccak-256 derived storage keys in Ethereum).                                                                                                                                        
+
+> Approach Crypto Primitive Optimization Height Nurgle Resistance Range Proof for Trie Key
+> MPT [56] Standard Hash Baseline ≤max (64 ,O(log 16 N)) ✗(low span) ✓[O(m+log 16 N)]RainBlock [48] Standard Hash Storage (DSM-Tree) ≤max (64 ,O(log 16 N)) ✗(low span) ✓[O(m+log 16 N)]LMPTs [20] Standard Hash Storage (Mem/Disk Layering) ≤max (64 ,O(log 16 N)) ✗(low span) ✓[O(m+log 16 N)]Prefix MPT [18] Standard Hash Storage (Sequential Locality) ≤max (64 ,O(log 16 N)) ✗(low span) ✓[O(m+log 16 N)]DMM-Trie [52] Standard Hash Storage (Delta-encoded) ≤max (64 ,O(log 16 N)) ✗(low span) ✓[O(m+log 16 N)]Unified Binary [9] Standard Hash SNARK-Friendly (Binary) ≤max (256 ,O(log 2N)) ✗(low span) ✓[O(m+log 2N)]LVMT [40] Vector Comm. VC-based (High-span + HMT) ≤max (16 ,O(log 65536 N)) + O(log 2(Epoch ×∆)) ✓(high span) Not Native Verkle Trie [37] Vector Comm. VC-based (High-span + stem) ≤max (32 ,O(log 256 N)) ✓(high span) Not Native
+> MHOT Standard Hash Cross-layer (Adaptive Span + Bit-indexing + SIMD) ≤max (⌈256
+> k−1⌉,O(log kN)) ≤max (⌈256
+> k−1⌉,O(log kN)) ≤max (⌈256
+> k−1⌉,O(log kN)) ✓(adaptive span) ✓[O(m+log kN)][O(m+log kN)][O(m+log kN)]
+
+ship proofs, which must include sibling hashes at every level. For example, bounding the worst-case depth to at most 10 for 256-bit keys requires s ≥ 26 , resulting in roughly 67 million child slots per node. This span–proof trade-off implies that no prefix-based scheme can simultaneously guarantee bounded worst-case height and compact membership proofs. Vector-commitment alternatives (e.g., Verkle tries [37], LVMT [40]) avoid this trade-off by algebraically decoupling proof size from fanout. However, both rely on trusted setup ceremonies and pairing-based elliptic-curve commitments, introducing trust assumptions and higher arithmetic costs that hash-based schemes do not require. Moreover, neither pro-vides native support for range proofs, which are essential for verified state synchronization. 
+
+Our approach: height optimality without cryptography. 
+
+The key observation behind our approach is that prefix in-dexing causes the span–proof trade-off . This observation mo-tivates our use of Height-Optimized Tries (HOT) [6] as the structural foundation. HOT branches on discriminative bits rather than on fixed prefixes. A discriminative bit is a bit position where at least two keys in the current subtree differ. Prefix-based indexing consumes bits at fixed positions regardless of whether they distinguish any keys; discriminative-bit indexing consumes a bit only where keys actually diverge. This difference lets HOT achieve provably minimal height among radix tries for any given key set. Discriminative-bit indexing couples span and fanout linearly , since a compound node with fanout k
+
+consumes up to k − 1 discriminative bits, compared to the log 2 k contiguous bits resolved by a prefix-based node of the same fanout. This linear coupling gives compound nodes enough span to absorb adversarial insertions without imme-diate depth growth. When restructuring is needed, HOT’s structure-adapting insertion algorithm places the new key to preserve the height-optimized invariant. These properties prevent long shared prefixes from directly turning into long root-to-leaf paths. MHOT inherits HOT’s wide compound nodes, but this may create a new authentication cost. A direct hash-based proof for a child would include all k − 1 sibling hashes inside the compound node, so proof size grows linearly with fanout and, in M HOT , with span. We address this with hierarchical proof ,a two-layer Merkle architecture where each compound node maintains an internal Merkle tree over its children. Proving membership of a child then requires only O(log k) sibling hashes from this internal tree. Thus, proof size grows only logarithmically with M HOT ’s fanout and, due to HOT’s linear span–fanout coupling, only logarithmically with its realized span. This is different from a prefix-indexed trie: because its fanout grows as 2span , the same internal Merkle tree would still leave proof size linear in span. Another challenge is that HOT was originally designed for in-memory indexing and does not support persistence or authentication [6]. The original work explicitly identifies disk-based deployment as an open challenge, since discriminative-bit tracking breaks the prefix locality relied upon by tradi-tional persistent tries. Adapting HOT to M HOT therefore requires preserving its structural invariants while adding content-addressable persistence and cryptographically bind-ing state roots. The search and insertion logic must remain intact, and membership, multipoint, and range proofs must be generated and verified against those roots. We resolve these limitations in M HOT by making HOT-style nodes content-addressable, so node identifiers and state roots follow deterministically from the trie structure. This design makes M HOT persistent and cryptographically binding, while a parallel height-stratified commit pipeline and an LSM-tree-friendly layout control commitment and storage costs. 
+
+Our contribution. We present M HOT , an instantiation of HOT that supports both persistence and authenticated com-mitment, composing naturally with content-addressable, copy-on-write storage backends. Beyond throughput, M HOT ’s com-pound node design provides structural resistance to Nurgle attacks. Even when an adversary controls an entire block’s gas budget, prefix collisions are absorbed through internal restructuring without propagating depth increases. Evaluation under Ethereum mainnet workloads shows MHOT achieves up to 9 × higher write throughput and 4 ×
+
+lower write amplification than MPT-based implementations, with 2 × smaller proofs. Under Nurgle attack conditions, MHOT exhibits a 0% attack success rate, in contrast to the 99.97% success rate observed for MPT. In short, we make the following contributions: • We identify span-proof coupling as the structural rea-son prefix-based authenticated tries cannot easily com-bine low worst-case height with compact proofs. M HOT 
+
+avoids this coupling through HOT’s linear span-fanout relation and therefore uses only standard hash commit-ments rather than relying on vector commitments. • We adapt HOT to blockchain state commitment, pre-senting M HOT as a height-optimized ADS that resists adversarial key distributions through discriminative-bit tracking and high-fanout compound nodes. • We design hierarchical proofs , a two-layer Merkle con-struction that reduces per-node proof overhead from 
+
+O(k) to O(log k), breaking the linear dependence of proof size on span. • We resolve the open problem identified in the origi-nal HOT work [6] on disk-based deployment through content-addressable indexing, a parallel height-stratified commit pipeline, and an LSM-tree-friendly layout for persistent keys. • We benchmark M HOT against MPT, RainBlock, and LVMT under Ethereum mainnet workloads, demonstrat-ing up to 9 × higher throughput and 2 × smaller proofs. 
+
+## 2 Why Existing Solutions Fail 
+
+Each ADS existing approach (Table 1) sacrifices at least one of listed properties: acceptable worst-case height, Nurgle re-sistance, transparent setup, or native range proofs. The root cause is prefix-based indexing. We dig into it. 
+
+## 2.1 The MPT Limitation 
+
+Ethereum stores its state in a Merkle Patricia Trie (MPT). To locate a value, the trie reads the key one hex digit at a time and follows the matching child pointer downward. When two keys share a prefix, they ride the same path until their digits diverge, at which point the trie forks. Branches that only a single key traverses are not kept as individual levels. Instead, the whole stretch is compressed into one node that remembers the shared prefix. Values sit at the leaves. Formally, the forking nodes are branch nodes, the compressed stretches are extension nodes, and the value-bearing endpoints are leaf nodes. This design, a Patricia-compressed radix trie, strips out unary chains but preserves the fixed-prefix indexing rule. Every update walks a root-to-leaf path, so changing any entry recomputes hashes along that whole path. Ethereum implements this trie with content-addressed, copy-on-write nodes. Each materialized node is identified by the hash of its serialized content. Modifying a key-value pair creates a new leaf representation and recomputes hashes along the path from that leaf to the root (Figure 1). For a realized path of depth d, one state modification requires O(d)
+
+hash computations and O(d) node writes or lookups. Measure-ments show that average MPT depth on Ethereum mainnet has grown from 8 to 11 levels as state size increases. A single block now triggers over 8,700 disk I/O operations [18]. This depth-dependent performance creates a denial-of-service (DoS) vector. The Nurgle attack [31] exploits the MPT’s prefix-based indexing and Patricia compression to deepen realized trie paths. Attackers search for keys whose hashed trie indices share long prefixes with existing keys. Because the MPT routes keys by prefix, these keys traverse the same trie region before diverging. When such a key is in-serted into a region where Patricia compression has collapsed a long shared prefix into one extension node, the insertion forces that node to split. A compressed path is materialized into additional branch and extension nodes, increasing the realized root-to-leaf depth by 1–2 levels per insertion. Later accesses to the affected keys require more node traversals, hash verifications, and disk lookups. Because Ethereum’s gas pricing charges per opcode rather than per node traversed [31], the attacker pays almost nothing while validators absorb the I/O cost of the deepened paths. Current mitigations, including historical data pruning [34] and gas repricing [5], address symptoms rather than the structural root cause. 
+
+## 2.2 The Span–Proof Trade-off 
+
+Storage and system-level mitigations. Several approaches reduce authenticated-state cost without changing the local indexing rule. RainBlock [48] decouples storage from con-sensus through sharded in-memory state. LMPTs [20] keep recent-update tries in memory and store larger snapshot tries on disk. Chainspace [3] splits smart-contract state across shards, builds commitments for shard-local state and history, and certifies those commitments through shard-level quorum signatures. ChainKV [18] exploits sequential key locality through prefix-based storage. Letus [52] uses delta-encoded state representation. These mitigations improve normal-case performance and can reduce the short-term cost of adversarial accesses, but they do not remove the local depth mechanism exploited by Nurgle [31]. If a shard, checkpoint, or cache-backed com-ponent still uses a fixed-prefix trie, an adversary can target keys whose distinguishing prefixes fall below the cached or partitioned boundary. The attack surface narrows or shifts, but the local tree still routes by fixed prefixes. With a fixed 16-ary branching factor, each node consumes 4 prefix bits per level, so 256-bit keys have worst-case depth 64. Storage and system-level mitigations therefore complement, rather than replace, a local authenticated structure whose height resists adversarial prefix construction. 
+
+The exponential coupling. Prefix-based indexing couples span and fanout exponentially (§1), making high-span nodes intractable. The exponential blowup extends to proofs and commitment computation. A naive membership proof must include all sibling hashes at each tree level, yielding O(d · 2s)State Root    
+
+> (Hash 0x...)
+> Extension Node
+> [Prefix `0x1`]
+> Branch Node
+> [16 slots]
+> Leaf Node A
+> (Key:A,
+> Value:"Alice")
+> State Root
+> (Hash 0x...)
+> Extension Node
+> [Prefix `0x1`]
+> Branch Node
+> [16 slots]
+> State Root
+> (Hash 0x...)
+> Extension Node
+> [Prefix `0x1`]
+> Branch Node
+> [16 slots]
+> Leaf Node B
+> (Key:B,
+> Value:"Bob")
+> Leaf Node A
+> (Key:A,
+> Value:"Alice1")
+> Leaf Node B
+> (Key:B,
+> Value:"Bob2")
+> Block N Block N+1 Block N+2
+> Shared Node Reference Original Nodes (Block N)
+> New Nodes (Block N+1) New Nodes (Block N+2)
+
+Figure 1: Cross-block node sharing in MPT under copy-on-write semantics. When accounts are modified, only af-fected paths change. Unchanged subtrees remain shared. Such append-only structure requires O(d) writes per modification, where d is the path length from leaf to root. hash values in the proof. Hierarchical hashing reduces this to O(d · s) hashes, but each node still requires O(2s) hash computations during commitment. Prefix-based indexing thus forces a choice: low depth with impractically large fanout, or practical node sizes with deep trees vulnerable to attack. 
+
+Cryptographic approaches. Vector-commitment schemes sidestep this trade-off by decoupling proof size from fanout through algebraic techniques. Verkle trees [37] use inner-product arguments to achieve O(1) proof size per node with 256-ary fanout. LVMT [40] extends this principle to 216 -ary nodes via KZG polynomial commitments [35], achieving 
+
+O(1) updates through version-value separation. Both Verkle trees and LVMT require trusted setup cer-emonies whose compromise would enable proof forgery. Their pairing-based verification also imposes higher costs on resource-constrained light clients than standard hashing does. LVMT inherits the Authenticated Multipoint Evalua-tion Tree’s in-place update model and thus cannot support historical state queries [40, 54]. Neither natively supports range proofs, proofs that all keys within a specified interval satisfy certain properties, a capability essential for state syn-chronization protocols. Prefix-based indexing is the shared root cause of both camps’ limitations. Storage-layer optimizations preserve transparency and range proofs but inherit Nurgle vulnerability because their low span cannot absorb adversarial insertions. Cryptographic solutions achieve Nurgle resistance through high span but sacrifice transparency and range proofs. Achiev-ing attack-resistant depth without these trade-offs requires an indexing paradigm that decouples span from fanout. 
+
+## 3 Key Primitives 3.1 Authenticated Data Structures 
+
+An authenticated data structure (ADS) allows an untrusted prover to certify data-operation correctness without requiring the verifier to possess the entire dataset [43]. Formally, an ADS provides three core primitives. 
+
+• Commit. Given a dataset D, produce a short cryptographic digest C that binds to D. In blockchain terminology, C
+
+corresponds to the state root stored in block headers. 
+
+• Prove. Given a query q and its result a, generate a proof π
+
+demonstrating that a is the correct answer for q under the committed dataset. 
+
+• Verify. Given the commitment C, query q, claimed result 
+
+a, and proof π, compute Verify (C, q, a, π) ∈ { 0, 1} to de-termine whether a is authentic. A secure ADS has two properties. Computational binding 
+
+makes proof forgery computationally infeasible. Succinctness 
+
+bounds proof size |π| and verification time to O(log |D|), with some constructions achieving O(1) for both [35, 37]. Consensus protocols agree only on block headers contain-ing the state root, not the full state. Blockchains therefore rely on ADS to make these compact commitments verifiable, enabling light clients to verify query responses against the block header rather than trusting RPC providers. Modern execution clients (e.g., Erigon [24], Reth [47]) de-couple plain state storage from ADS. The underlying database handles execution-layer I/O directly, while the client prop-agates state updates to ADS for commitment maintenance. Under this architecture, the ADS functions as a dedicated 
+
+commitment engine . Its primary performance metric is write throughput , measured as batch updates committed per second. 
+
+## 3.2 Height-Optimized Trie 
+
+HOT [6] breaks exponential coupling (§2.2) by branching on 
+
+discriminative bits rather than contiguous prefixes. Given a set of keys K within a subtree, a bit position i is discriminative if at least two keys in K differ at that position. The discriminative bit positions of K are 
+
+D(K) = { i | ∃ ka, kb ∈ K, bit i(ka)̸ = bit i(kb) }.
+
+Prefix-based indexing, in contrast, consumes a fixed block of contiguous bits at each level regardless of whether those bits distinguish any keys. Discriminative-bit indexing couples span and fanout lin-early . A compound node with fanout k consumes up to k − 1discriminative bits at arbitrary positions. A prefix-based node with the same fanout resolves only log 2 k contiguous bits per level, requiring far more levels to cover the full key. Con-cretely, a compound node with k = 27 entries consumes up to 26 discriminative bits, well within practical limits. Node            
+
+> {A,B}
+> insert CNode
+> {A,B, C}
+> Internal Node
+> (h=1) insert Y
+> Leaf X
+> ... ...
+> Internal Node
+> (h=2)
+> ... ...
+> Node
+> {X, Y}
+> Parent
+> (h=2)
+> Full Child Node
+> {A,B,C}
+> Parent
+> (h=2)
+> Left Child
+> {A,C}
+> Right Child
+> {B, C}
+> Parent has sufficient capacity
+> Parent
+> (h=3)
+> Full Child
+> {A,B,C}
+> Sibiling S
+> (h=2)
+> Parent
+> (h=3)
+> New M
+> (h=2)
+> Sibiling S
+> (h=2)
+> Left Child
+> {A,C}
+> (a) normal insert (b) leaf pushdown
+> (c) parent pull-up (d) intermediate node create
+> insert D
+> ( cause splits )
+> insert D
+> ( create M )
+> M containing {B, D}
+
+Figure 2: HOT insertion mechanisms with fanout k = 3 .(a) Normal Insert : the new key is added when the node has capacity. (b) Leaf pushdown : a collision creates a new child node containing both entries. (c) Parent pull-up : overflow propagates upward when hchild + 1 = hparent ; this is the only path that increases global tree height. (d) Intermediate node creation : when hchild + 1 < hparent , an intermediate node ab-sorbs the split within the height gap. 
+
+Compound nodes aggregate multiple binary decisions into a single node containing up to k entries, where k = 32 is typical. Each compound node stores three components. The 
+
+extraction mask identifies discriminative bit positions within this node’s scope. The sparse partial keys record only the discriminative bits for each entry. The entry data holds either a child pointer or a leaf value. The result is adaptive span . In dense key regions, a node covers few bit positions with many entries; in sparse regions, a node spans many positions with few entries. Tree height adapts to actual key distribution rather than following fixed prefix widths. For any key set and fanout parameter k, HOT achieves provably minimal height among radix tries [6]. For uniformly random 256-bit keys with k = 32 , this yields a theoretical minimum depth of ⌈256 /31 ⌉ = 9 levels, nearly 6× fewer than the 52 levels required by a prefix-based trie with the same fanout (log 2 32 = 5 bits per level). Earlier work measures path length in depth , while HOT uses height following [6]; both count compound-node hops from root to leaf. HOT defines the height of an internal node 
+
+n as h(n) = max i h(ci) + 1 , and h(n) = 0 for leaves. Unequal child heights create height gaps , which allow new nodes to be absorbed without increasing the global tree height. HOT preserves height optimality via four insertion modes (Figure 2) that adapt the structure based on node height rela-tions [6]. Only Parent Pull-Up increases global height, while 
+
+Normal Insert , Leaf Pushdown , and Intermediate Node Cre-ation perform local restructuring that may lengthen individual paths. §6.6 examines whether such local path increases can be exploited for Nurgle-style attacks. Binna et al. [6] prove that HOT’s dynamic construction produces the same structure as Static Minimum Height Par-titioning (SMHP) [36] of the underlying binary Patricia trie. This equivalence guarantees that HOT minimizes compound nodes on any root-to-leaf path. 
+
+Structural determinism means that a given key set produces an identical trie structure regardless of insertion order. HOT inherits this property from its underlying Patricia trie repre-sentation, since both the Patricia trie and SMHP partitioning are uniquely determined by the key set [6]. These properties establish HOT as the structural basis for blockchain state commitment, but the original design operates in memory and provides no persistence or authentication. 
+
+## 4 Persistent Authentication for HOT 
+
+MHOT extends HOT with persistent authentication, enabling their use as a blockchain state commitment engine. We in-troduce a set of orthogonal extensions that build on top of HOT’s core algorithms without modifying them. We first outline requirements in §4.1. We then present key components: We introduce content-addressable persistence to provide deterministic node identifiers while inheriting crypto-graphic authentication (§4.2). We design a two-layer Merkle construction that reduces per-node proof overhead from O(k)
+
+to O(log k) (§4.3). We develop a batched commit pipeline that defers and parallelizes hash computation, eliminating redundant work when insertions share ancestors (§4.4). We apply storage-layer optimizations that exploit HOT’s struc-tural properties to improve disk I/O efficiency (§4.5). 
+
+## 4.1 Design Requirements 
+
+A blockchain authenticated data structure must satisfy five requirements. Short commit paths reduce the computation per update, directly affecting block execution time. Structural determinism guarantees that identical key sets produce iden-tical tree structures, a prerequisite for validators to agree on state roots. Trust minimization avoids trusted third parties, re-stricting security assumptions to cryptography alone. Memory efficiency reduces disk I/O by caching frequently accessed state in memory. Attack resistance prevents adversaries from exploiting structural flaws to extend storage paths and exhaust client I/O [4, 8, 11, 12, 31, 33, 56]. Short commit paths and structural determinism follow from HOT’s height optimality and greedy partitioning, while mem-ory efficiency derives from adaptive linearized node layout and SIMD-accelerated operations; we validate attack resis-tance empirically (§6). Two design challenges remain. First, the original HOT’s page-based node identifiers are machine-dependent and carry no cryptographic meaning; content-addressable indexing (§4.2) resolves this by deriving each identifier from the hash of its content, satisfying trust min-imization without a trusted setup. Second, embedding au-thentication in high-fanout compound nodes risks inflating proof size; our authentication mechanism targets logarithmic overhead to keep proofs practical (§4.3). 4.2 Content-Addressable Persistence 
+
+Indexing HOT nodes demands a custom strategy; approaches that work for conventional tries fail for HOT’s compound-node structure. We consider and reject two naive alternatives before arriving at our solution. Traditional radix tries index nodes by path prefix, but HOT’s compound nodes track only discriminative bits with-out recording complete prefixes, so prefix-based indexing does not apply. One might instead use accumulated discrimi-native bits as identifiers; however, HOT’s insertion algorithm dynamically adjusts which bits are discriminative, causing cascading identifier updates across affected subtrees. We design M HOT around content-addressable indexing, where each node’s database key equals the hash of its serial-ized content. This scheme exploits HOT’s structural determin-ism (§3.2), which guarantees that identical key sets yield iden-tical tree structures. A node’s content depends uniquely on the keys it covers, since extraction masks, sparse partial keys, and child references are all determined by those keys; identical logical nodes therefore produce identical hashes regardless of creation time, so all validators derive the same identifiers for the same state. Hash-based indexing also requires no trusted setup, satisfying the trust minimization requirement. Like MPT [56], content-addressable storage inherits copy-on-write semantics (see Figure 1), where modifying any node invalidates its hash and all ancestor references. This approach expands child references from the original 4–8-byte pointers to 40-byte identifiers (Figure 3), adding up to ∼1 KB per fully-populated node at k = 32 . We accept this overhead because uniform, fixed-format references simplify serialization and eliminate branching in traversal code. MHOT fixes the key length at 256 bits to match the output of Keccak-256 used for Ethereum’s storage key derivation. As a result, extraction masks and sparse partial keys have fixed maximum sizes and are stored in fixed-length fields, while only the child reference array grows dynamically with the number of entries. This layout enables simple, single-pass serialization. Figure 3 illustrates the node structure. 
+
+## 4.3 Hierarchical Proof 
+
+Each compound node embeds k child hashes, so proof size grows linearly with fanout. A naive inclusion proof must contain all k − 1 sibling hashes at each level so the verifier can reconstruct parent hashes up to the root, yielding O(h · k)
+
+hashes per proof. With 32-byte Keccak-256 hashes, this totals 
+
+h(k−1) · 32 ≈ 5 KB for typical parameters ( k = 32, h = 5). We address this using a two-layer Merkle architecture that trades additional commitment-time computation for compact proofs. Each compound node computes a Children Merkle Root (CMR), a binary Merkle root over its k child hashes. Membership proofs then include only O(log k) binary Merkle siblings per node, instead of all k − 1 child hashes, reducing mask  partial keys  child references     
+
+> fixed fixed variable
+> temp_id
+> TEMP
+> FINAL
+> Theight version hash
+> T
+
+Figure 3: Node layout in M HOT . The top panel shows a com-pound node with fixed-size metadata and variable-length child array. The bottom panel shows two child reference formats. FINAL references store version, height, and hash; T EMP ref-erences store a temporary ID for deferred hashing. per-node overhead from O(k) to O(log k). For k = 32 , this yields roughly a 6× reduction in hash overhead. In practice, single-point proofs are about 1.1–1.4 KB, compared to 2.3– 2.9 KB for MPT (§6). We adopt binary Merkle trees to preserve standard hash-based verification without trusted setup. Although each CMR incurs O(k) hashing cost at commit time, this overhead is ab-sorbed by the batched commit pipeline (§4.4). §5.1 formalizes the construction and extends it to compact multiproofs. 
+
+## 4.4 Batch Commit Pipeline 
+
+Each insertion rehashes the entire root-to-leaf path. When multiple insertions share ancestors, naive processing repeat-edly rehashes the same dirty nodes , i.e., nodes modified since the last commit. We eliminate this redundancy by proposing three optimizations as below. 
+
+Deferred hashing. We defer hashing until block commit us-ing mixed child references . Each reference stores a type tag distinguishing finalized hashes from temporary IDs. During insertion, dirty nodes receive temporary IDs and enter a pend-ing map. Parents reference these temporary IDs rather than hashes, deferring computation until commit. Copy-on-write occurs at most once per node per block. Once a node enters the pending map with a temporary ID, subsequent traversals update it in place rather than cloning. When an insertion first modifies a finalized node, we clone it into the pending map (Algorithm 1, lines 11–12); subsequent insertions that traverse the same node find a temporary ref-erence and update it in place without cloning (line 9). The resulting memory overhead is O(h) pending nodes per inser-tion, where h is tree height. 
+
+Height-stratified batch commit. At block boundaries, we finalize all pending nodes in one batched traversal (cf. Al-gorithm 2). Correct ordering requires processing children before parents. HOT derives this order from each node’s height (recall §3.2); since children have strictly lower heights, ascending height order satisfies the dependency. We group Algorithm 1 Insert with Deferred Hashing 
+
+Require: key K, value v, tree T , pending map P
+
+Ensure: A temporary ID referencing the updated root  
+
+> 1:
+
+P[ALLOC ()] ← (LEAF (K, v), 0); cid ← allocated ID  
+
+> 2:
+
+path ← ⟨⟩ ; r ← T.root  
+
+> 3:
+
+while r is internal do  
+
+> 4:
+
+n ← GET (r); s ← SLOT (n, K) ▷ extract discriminative bits, match partial keys  
+
+> 5:
+
+path .PUSH (( n, s, r)) ; r ← n.ch [s] 
+
+> 6:
+
+end while  
+
+> 7:
+
+for all (n, s, r) ∈ path in reverse do  
+
+> 8:
+
+if r.tag = TEMP then ▷ in P: update in place  
+
+> 9:
+
+P[r.id ].n.ch [s] ← cid ; cid ← r.id  
+
+> 10:
+
+else ▷ finalized: clone once  
+
+> 11:
+
+n′ ← CLONE (n); n′.ch [s] ← cid  
+
+> 12:
+
+P[ALLOC ()] ← (n′, n′.ht ); cid ← allocated ID  
+
+> 13:
+
+end if  
+
+> 14:
+
+end for  
+
+> 15:
+
+return cid 
+
+nodes by height and process from leaves upward, replacing temporary references with finalized hashes at each level. 
+
+Parallel execution. Nodes at the same height share no data dependencies, allowing concurrent hash computation within each level. Processing advances to the next height only after synchronizing all hashes at the current height. Correctness follows because temporary references always point to children at strictly lower heights, so each level reads only from entries that prior levels finalized in F (cf. Algorithm 2). Because HOT records node height as a built-in property, MHOT can use height directly to schedule commit. Nodes at the same height have no Merkle dependencies on one another, so they can be hashed in parallel with one barrier between lev-els, without fine-grained synchronization or uneven subtree splits. The same height grouping aligns with the storage lay-out in §4.5, allowing finalized nodes to be flushed in locality-preserving batches. MPT-style tries do not expose this height order directly, so recovering such a schedule requires extra bookkeeping [29]. 
+
+## 4.5 Storage Optimizations 
+
+Embedding hashes enlarges node footprint; three techniques mitigate this overhead. 
+
+Metadata compression. We serialize only populated fields. The extraction mask stores positions of set bits rather than a full 256-bit vector; sparse partial keys use adaptive bit widths. All fields concatenate without internal pointers, so serializa-tion completes in a single pass. 
+
+Write ordering. We batch writes across multiple blocks. Each block computes its state root immediately, but nodes accumu-late in memory until a configurable flush threshold triggers 
+
+Algorithm 2 Height-Stratified Batch Commit 
+
+Require: pending map P: ID → (node, height), version v
+
+Ensure: Root reference (v, hash ) 
+
+> 1:
+
+F ← /0 ▷ temp ID → finalized ref  
+
+> 2:
+
+for h ← 0 to max (P.heights ) do  
+
+> 3:
+
+for all (id , n) ∈ P at height h do in parallel  
+
+> 4:
+
+for all c in n.ch do  
+
+> 5:
+
+if c.tag = TEMP then c ← F[c.id ] 
+
+> 6:
+
+end if  
+
+> 7:
+
+end for  
+
+> 8:
+
+F[id ] ← (v, HASH (SER (n)))  
+
+> 9:
+
+end for  
+
+> 10:
+
+end for  
+
+> 11:
+
+return F[root _id ]
+
+a single batch write. Each database key consists of a 64-bit prefix followed by the 256-bit content hash, totaling 40 bytes. The prefix encodes a 1-bit type flag distinguishing leaves from internal nodes, a 55-bit version number recording the block of creation, and an 8-bit height value. Version-prefixed ordering groups nodes by creation block, while the height suffix clusters same-height nodes within each block. This lay-out aligns with M HOT ’s height-stratified commit and enables sequential batch reads during traversal. Sorting keys before writing yields locality that LSM-tree storage engines exploit for efficient ingestion [18, 45]. 
+
+Asynchronous persistence. We decouple state root compu-tation from disk I/O by delegating writes to a background thread, avoiding stalls during block execution. When multiple batches complete before a flush finishes, pending writes coa-lesce into a single disk operation, amortizing fsync overhead. The underlying LSM-tree engine’s write-ahead log ensures durability; committed data remains recoverable even if a crash precedes the next flush. The next section formalizes M HOT ’s proof mechanisms (§5), followed by performance evaluation (§6). 
+
+## 5 Proof Mechanisms 
+
+MHOT supports four proof types within a unified framework: 
+
+single-point membership and non-membership proofs, multi-point membership proofs , lower bound proofs , and range proofs . This section formalizes each mechanism with proof sketches; Appendix B gives the full game-based security proofs. 
+
+## 5.1 Two-Layer Merkle Architecture 
+
+The naive approach of including all children’s hashes directly in each proof node yields proof sizes of O(h · k), where h
+
+is tree height and k is fanout. For typical parameters ( k =32 , n = 10 8), this produces approximately 5KB per proof— unacceptable for bandwidth-constrained applications. MHOT addresses this through a two-layer Merkle archi-tecture. The inter-node layer maintains the tree structure connecting compound nodes. The intra-node layer introduces a Merkle tree [44] over children within each compound node, enabling logarithmic-size proofs for child membership. 
+
+Definition 1 (Children Merkle Root) . For a compound node N with children C = ( c0, . . . , c|N|− 1), the children Merkle root is defined as: 
+
+CMR (N) = MerkleRoot (H(c0), H(c1), . . . , H(c|N|− 1)) (1) 
+
+where the Merkle tree is padded to the next power of 2 using a canonical zero hash. 
+
+Definition 2 (Node Content Hash) . The node content hash of a compound node N incorporates all structural information: Hcontent (N) = H(M ∥ S ∥ CMR (N) ∥ L) (2) 
+
+where M denotes extraction masks (32 bytes), S denotes sparse partial keys ( |N| × 4 bytes), and L denotes child leaf counts ( |N| × 4 bytes). 
+
+This architecture reduces per-node overhead from O(k) to 
+
+O(log k) hashes. 
+
+Definition 3 (Node Proof Entry) . For a compound node Nand child index set J ⊆ [0, |N|) with t = |J|:
+
+NPE (N, J) =   J, M, S, L, η, v, ΠCMR 
+
+> J
+
+| {z } 
+
+> intra-node proof
+
+ (3) 
+
+where ΠCMR  
+
+> J
+
+is a compact Merkle multiproof for children 
+
+{c j : j ∈ J} within CMR (N), requiring O(t · (log k − log t)) 
+
+sibling hashes [7]. When t = 1, this reduces to a standard Merkle proof with O (log k) siblings. 
+
+All proof types discussed in the following embed ΠCMR 
+
+> J
+
+within each node entry, ensuring proof size scales with 
+
+O(log k) rather than O(k) per node. 
+
+## 5.2 Single-Point Proofs 
+
+MHOT ’s single-point proofs rely on the fact that HOT search constitutes an optimistic search . Unlike traditional Patricia tries where searching for a non-existent key may fail mid-traversal, HOT’s sparse matching semantics guarantee that search always reaches some leaf—though this leaf may differ from the query key. The search only matches discriminative bits at each node; the reached leaf shares all discriminative bit values with the query but is not guaranteed to be lexico-graphically adjacent. A final comparison between the reached leaf and the query key determines membership. 
+
+Lemma 1 (HOT Optimistic Search Invariant) . For any non-empty HOT trie T and any query key K , the optimistic search procedure terminates at exactly one leaf node K′ that agrees with K on all discriminative bits encountered during traversal, regardless of whether K exists in T . Proof sketch (Lemma 1). HOT search at each internal node computes dense (K, M) and finds the last index j satisfying 
+
+(dense ∧ sparse [ j]) = sparse [ j]. By the HOT construction in-variant, the first sparse partial key is always 0 (corresponding to the leftmost subtree). Since (dense ∧ 0) = 0 holds for all dense values, at least one match exists at every non-empty node. The search thus proceeds deterministically to a unique leaf that matches the query on all discriminative bits. How-ever, non-discriminative bits may differ, so the final leaf K′
+
+must be compared against K to determine membership. This invariant unifies membership and non-membership proofs as they both execute identical search algorithms, dif-fering only in the final comparison. 
+
+Corollary 2 (Proof Unification) . Membership and non-membership proofs share identical proof generation and path verification algorithms. The distinction lies only in the final predicate: 
+
+ProofType (K, K0) = 
+
+(
+
+Membership if K 0 = KNon-Membership if K 0̸ = K (4) 
+
+where K 0 denotes the key of the leaf reached by searching K. 
+
+Membership proof. For a key K with associated value V , the membership proof takes the form: 
+
+πmem (K) = ( K,V, vleaf , Path ) (5) where Path = ( NPE (N0, J0), . . . , NPE (Nh−1, Jh−1)) traces the search path from root to leaf, with |Ji| = 1 for single-point proofs. Algorithm 3 presents the verification procedure. 
+
+Non-membership proof. For a key K not present in the trie, the non-membership proof includes the neighbor leaf (K′,V ′)
+
+reached by executing the same search algorithm. Verification additionally checks that both K and K′ route through identical children at every node, ensuring K′ is indeed the leaf that HOT search would reach for K.
+
+Theorem 3 (Single-Point Soundness) . If verification suc-ceeds, then with overwhelming probability 1 − negl (λ):1. For membership proofs: (K,V ) ∈ T2. For non-membership proofs: K /∈ TProof sketch (Theorem 3). By collision resistance of H, the bottom-up hash reconstruction produces a unique sequence of node hashes. The routing consistency check ensures K
+
+traverses exactly the claimed path. For the final hash to match Algorithm 3 Membership Proof Verification 
+
+Require: proof π, expected root R
+
+Ensure: TRUE if proof is valid 
+
+▷ Phase 1: Verify routing consistency  
+
+> 1:
+
+for all entry ∈ π.path do  
+
+> 2:
+
+d ← DENSE KEY (π.key , entry .masks ) 
+
+> 3:
+
+j ← SEARCH SPARSE (d, entry .sparse_keys ) 
+
+> 4:
+
+if j̸ = entry .child_idx then  
+
+> 5:
+
+return FALSE ▷ Routing mismatch  
+
+> 6:
+
+end if  
+
+> 7:
+
+end for 
+
+▷ Phase 2: Reconstruct hashes bottom-up  
+
+> 8:
+
+hchild ← Hleaf (π.key , π.value ) 
+
+> 9:
+
+for all entry ∈ π.path .REVERSED () do  
+
+> 10:
+
+cmr ← RECONSTRUCT CMR (hchild , entry ) 
+
+> 11:
+
+hchild ← H(entry .masks ∥ entry .sparse_keys  
+
+> 12:
+
+∥ cmr ∥ entry .leaf_counts ) 
+
+> 13:
+
+end for 
+
+▷ Phase 3: Compare with expected root  
+
+> 14:
+
+return hchild = R.content_hash the root commitment, either the path authentically exists or the adversary found a hash collision. The latter occurs with probability at most negl (λ). For non-membership, Lemma 1 guarantees that the optimistic search uniquely determines the leaf K′ reached for query K, proving no other leaf could be found by the same search procedure. 
+
+## 5.3 Multi-Point Membership Proof 
+
+A naive approach to verifying m membership proofs requires 
+
+O(m · h · (k − 1)) sibling hashes. M HOT reduces this through two optimizations: path sharing (keys traversing the same node share that node’s metadata) and compact multiproofs 
+
+(proving t children within a node requires O(t(log k − log t)) 
+
+sibling hashes rather than O(t(k − 1)) ). 
+
+Definition 4 (Compact Merkle Multiproof) . Given a Merkle tree T with leaves L and a subset I ⊆ [0, |L|) of indices to prove, a compact multiproof consists of: 
+
+πmulti = ( I, Σ) (6) 
+
+where Σ represents the minimal set of sibling hashes needed to reconstruct the root from proven leaves {L[i] : i ∈ I}.
+
+Compact multiproofs exploit shared ancestors among the m
+
+proven leaves to eliminate redundant sibling hashes, reducing proof size from the naive m · h to as few as h + m − 1 when leaves are clustered [7]. The compact multiproof generation algorithm (Algorithm 5 traverses the tree bottom-up, collecting sibling hashes only for nodes where one child is known but the other is not. 
+
+Multi-point HOT proof. For a set of keys K = {K1, . . . , Km}:
+
+πmulti (K) = ( Entries , Levels ) (7) where Entries contains tuples (Ki,Vi, vi) sorted by key, and Levels organizes NPEs by depth with compact multiproofs at each node. 
+
+Theorem 4 (Multi-Proof Soundness) . If verification succeeds, then all key-value pairs (Ki,Vi) exist in the trie committed by the root, with overwhelming probability. Proof sketch (Theorem 4). Each key Ki must pass the same routing consistency and hash reconstruction checks as in single-point verification (Theorem 3). Path sharing and com-pact multiproofs reduce proof size but do not weaken security: shared nodes are verified once with the same rigor, and mul-tiproofs authenticate the same child hashes as independent proofs would. Forging any (Ki,Vi) requires finding a hash collision. 
+
+## 5.4 Lower Bound Proof 
+
+Lower bound queries—finding the smallest key ≥ Q—are fundamental to range operations in authenticated storage sys-tems. Unlike membership queries where the search target either exists or does not, lower bound queries must locate a key that may differ from the query itself. In prefix-organized tries such as MPT, siblings represent lexicographically adjacent key ranges, making neighbor iden-tification straightforward. HOT organizes nodes by discrim-inative bits instead, so siblings may span non-contiguous ranges. We therefore construct lower bound proofs by authen-ticating the search path that HOT’s bit-comparison traversal follows to locate the smallest key ≥ Q.
+
+Definition 5 (Lower Bound Query) . For a query key Q , the lower bound operation lb (Q) returns the smallest key K ≥ Qpresent in the trie, or ⊥ if no such key exists. 
+
+A critical subtlety arises from the nature of optimistic search. The search finds a leaf K′ that matches the query 
+
+Q on all discriminative bits encountered during traversal, but 
+
+K′ need not be lexicographically close to Q—the two may dif-fer arbitrarily on non-discriminative bits. When searching for 
+
+Q terminates at leaf K′ where K′̸ = Q, let d = diffbit (Q, K′)
+
+denote the first differing bit position. Three cases arise: 
+
+• Exact match (K′ = Q): The query key exists; K′ is trivially the lower bound. 
+
+• Overshot (Q[d] = 0 , K′[d] = 1 ): The search entered a right subtree, so Q < K′ lexicographically. However, K′ may not be minimal within this subtree; the true lower bound is the leftmost leaf reachable from the fork point. 
+
+• Undershot (Q[d] = 1, K′[d] = 0): The search ended in a left subtree where all keys are less than Q. The algorithm must examine right siblings at the fork point to find a subtree containing keys ≥ Q.The lower bound proof must authenticate both the leaf K′
+
+reached by optimistic search and the path to the actual result. 
+
+Definition 6 (Lower Bound Proof) . For query Q , the lower bound proof structure is: 
+
+πlb (Q) = ( Q, Path , K′,V ′, v′, Adj , Kresult ,Vresult ) (8) 
+
+comprising the query key, the authenticated search path to the leaf (K′,V ′, v′) reached by optimistic search, optional adjustment information Adj for non-exact matches, and the actual lower bound result (Kresult ,Vresult ).
+
+When K′̸ = Q, the adjustment information specifies how to navigate from the search path to the true lower bound: Adj = ( d, b, f , AdjPath ) (9) where d = diffbit (Q, K′) is the first differing bit, b = Q[d]
+
+indicates overshot ( b = 0) or undershot ( b = 1), f is the fork depth, and AdjPath authenticates the path from the fork point to the result leaf. 
+
+Definition 7 (Fork Depth) . The fork depth f identifies where the query’s hypothetical path would diverge from the path to the leaf reached by optimistic search: f = max {i : d ∈ disc _bits (Path [i]) } (10) 
+
+where disc _bits (·) extracts the set of discriminative bit posi-tions encoded in a node’s extraction masks. 
+
+Lemma 5 (Lower Bound Correctness) . The adjustment algo-rithm correctly computes lb (Q).Proof sketch (Lemma 5). Let d = diffbit (Q, K′) denote the first bit position where the query and the reached leaf dif-fer. 
+
+Overshot case (Q[d] = 0 , K′[d] = 1 ): At fork depth f , the search entered a subtree rooted at a node whose discriminative bit at position d directed the search rightward. All keys K in this subtree share bit d = 1, hence satisfy K > Q lexicograph-ically. The minimum key in this subtree (found by repeatedly taking the leftmost child from the fork point) is therefore the smallest key exceeding Q. Note that this minimum need not be K′ itself, as K′ may reside anywhere within the subtree. 
+
+Undershot case (Q[d] = 1, K′[d] = 0): The search termi-nated in a left subtree where all keys share bit d = 0, hence are lexicographically smaller than Q. The algorithm must find the first right sibling at the fork point whose subtree contains keys ≥ Q, then descend to that subtree’s minimum. 
+
+Verification. The verifier must ensure that the claimed re-sult is indeed the minimum key ≥ Q, not merely some key satisfying the bound. Four checks enforce correctness: 
+
+• Path integrity. The search path must authenticate K′ against the committed root via bottom-up hash reconstruction. 
+
+• Search consistency : Both Q and K′ must route identically through each path node—i.e., produce the same dense key and thus select the same child—confirming K′ is the leaf that optimistic search reaches for Q.
+
+• Fork depth correctness. The verifier independently recom-putes f from the Merkle-committed extraction masks, re-jecting any mismatch with the claimed value. 
+
+• Structural minimality. For overshot cases, every entry in AdjPath must have child index 0 (leftmost descent); for undershot cases, the first adjustment entry must be the im-mediate right sibling at the fork point. These constraints ensure the result is minimal. 
+
+Theorem 6 (Lower Bound Soundness) . If verification suc-ceeds, then K result = lb (Q) with overwhelming probability. Proof sketch (Theorem 6). The verifier independently recom-putes the fork depth f from the Merkle-committed extraction masks using Definition 7, preventing adversarial manipulation of the branching point. Structural constraints enforce mini-mality: in the overshot case, each entry in AdjPath must have child index 0 (leftmost descent); in the undershot case, the first adjustment entry must be the immediate right sibling of the search path’s child at the fork point. The adjustment path must reconstruct to the same node content hash as the search path at depth f , cryptographically binding it to the committed trie structure. Any attempt to return a non-minimal key will produce a root hash mismatch. 
+
+## 5.5 Range Proof 
+
+Range queries are essential for authenticated storage applica-tions such as blockchain state synchronization, where clients must verify that a returned dataset contains exactly the entries within specified bounds [1, 26]. The central challenge is com-pleteness : an adversarial prover might return a subset of the true range, omitting entries to deceive the verifier. 
+
+Definition 8 (Range Query) . For an interval [first , last ), the range query returns all key-value pairs (K,V ) satisfying first ≤ K < last. 
+
+MHOT constructs range proofs by composing lower bound proofs with multi-point proofs. The lower bound proofs (Sec-tion 5.4) establish the range boundaries, while the multi-point proof (Section 5.3) authenticates all entries within. 
+
+Definition 9 (HOT Range Proof) . For interval [first , last ):
+
+πrange = ( first , last , πLlb , πRlb , πmulti ) (11) 
+
+where πLlb authenticates lb (first ), πRlb authenticates lb (last ),and πmulti proves membership of all entries in the range. 
+
+Rank-based completeness verification. Efficient complete-ness verification builds on the rank function , which counts the number of keys preceding a given key in the trie’s total order. Since each node records the leaf counts of its child sub-trees and commits them in the node content hash, the verifier can derive ranks directly from the boundary proofs, without enumerating all keys in the queried range. 
+
+Definition 10 (Rank) . For a key K in trie T , the rank is the count of smaller keys: 
+
+rank (K) = |{ K′ ∈ T : K′ < K}| (12) 
+
+Lemma 7 (Rank Computation from Path) . Given the search path for key K, the rank can be computed as: 
+
+rank (K) = 
+
+> h−1
+
+# ∑
+
+> i=0
+> child_idx i−1
+
+# ∑
+
+> j=0
+
+lc (path [i].children [ j]) (13) 
+
+Proof sketch (Lemma 7). At each level i of the search path, all children with indices j < child_idx i contain keys lexicograph-ically smaller than K, since sparse partial keys maintain sorted order within each compound node. The lc field, committed in the node content hash, records the total number of leaves in each child’s subtree. Summing these counts across all path levels yields the total number of keys preceding K.This rank computation enables O(1) completeness ver-ification: the verifier simply checks whether |entries | =
+
+rank (last ) − rank (first ). If an adversary omits even a single entry, the count mismatch triggers rejection. Algorithm 4 presents the complete verification procedure. The verification algorithm enforces a critical security in-variant: boundary proofs must be verified before accepting any entries. This ordering prevents empty-proof attacks where an adversary provides valid but incomplete entry lists. The rank-based count check then ensures exactly the correct num-ber of entries appears. 
+
+Theorem 8 (Range Proof Soundness) . If verification suc-ceeds, the entries contain exactly all keys K satisfying first ≤
+
+K < last. Proof sketch (Theorem 8). The proof composes three secu-rity guarantees. First, by Theorem 6 (Lower Bound Sound-ness), the boundary proofs πL 
+
+> lb
+
+and πR 
+
+> lb
+
+correctly identify lb (first ) and lb (last ). Second, by Lemma 7 (Rank Com-putation), the verifier accurately computes rank (first ) and rank (last ) from these authenticated paths; since rank (last ) −
+
+rank (first ) equals exactly |{ K : first ≤ K < last }| , any count mismatch with |entries | reveals an omission attack. Third, by Theorem 4 (Multi-Proof Soundness), every entry in πmulti 
+
+authentically exists in the committed trie. These guarantees ensure the returned entries are the keys in [first , last ).
+
+## 6 Evaluation 
+
+We evaluate M HOT along four dimensions (formed by ques-tions). Q1. Does M HOT improve write throughput compared 
+
+Algorithm 4 Range Proof Verification 
+
+Require: proof π, expected root R
+
+Ensure: TRUE if proof is valid 
+
+▷ Verify boundary proofs first (prevents omission attacks)  
+
+> 1:
+
+if not VERIFY LB (π.πL
+
+> lb
+
+, R) then return FALSE 2: end if  
+
+> 3:
+
+if not VERIFY LB (π.πR
+
+> lb
+
+, R) then return FALSE 4: end if  
+
+> 5:
+
+if π.first ≥ π.last then  
+
+> 6:
+
+return π.entries = /0 
+
+> 7:
+
+end if  
+
+> 8:
+
+if not VERIFY MULTI (π.πmulti , R) then return FALSE 9: end if 
+
+▷ Rank-based count verification  
+
+> 10:
+
+rL ← COMPUTE RANK (π.first , π.πL
+
+> lb
+
+) 
+
+> 11:
+
+rR ← COMPUTE RANK (π.last , π.πR
+
+> lb
+
+) 
+
+> 12:
+
+if rR − rL̸ = |π.entries | then  
+
+> 13:
+
+return FALSE ▷ Omission detected  
+
+> 14:
+
+end if 
+
+▷ Verify ordering and boundaries  
+
+> 15:
+
+for all i ∈ [1, |π.entries |) do  
+
+> 16:
+
+if π.entries [i].key ≤ π.entries [i − 1].key then  
+
+> 17:
+
+return FALSE 18: end if  
+
+> 19:
+
+end for  
+
+> 20:
+
+return TRUE 
+
+to existing authenticated data structures? Q2. Does M HOT ’s batched persistence strategy reduce write amplification (WA)? 
+
+Q3. How does tree height vary across workloads, and what are the implications for proof size? Q4. Does M HOT ’s compound node design mitigate Nurgle attacks? 
+
+## 6.1 Experimental Setup 
+
+Implementation. We implement all systems in Rust with release optimizations. RocksDB [23] serves as the underlying key-value store with a 2 GB LRU cache. We report the median of five independent runs; ranges in tables indicate variation across scales or configurations. 
+
+Hardware. We run experiments on an AWS EC2 instance with an 8-vCPU Intel Xeon Scalable processor (Sapphire Rapids, 3.2 GHz), 64 GB RAM, and EBS-optimized storage providing baseline 12,000 IOPS with burst capacity up to 40,000 IOPS. 
+
+Baselines. We compare M HOT against three representative systems under the benchmark setup used by LVMT [40]. (i) MPT is Ethereum’s current authenticated state structure based on the Merkle Patricia Trie [56]. (ii) LVMT is a layered versioned multipoint trie that leverages KZG polynomial com-mitments to achieve O(1) root updates [40]. (iii) RainBlock adopts DSM-TREE, a distributed sharded Merkle tree design optimized for in-memory storage [48]. The RainBlock-style configuration keeps the upper six levels in memory and pages deeper nodes from RocksDB, matching LVMT’s layered-storage baseline [40]. For LVMT, we use the recommended configuration of 16 bits per level, resulting in a fanout of 216 = 65 ,536 per layer. We do not evaluate its History Merkle Tree functionality, as this component is not available in the open-source implementation. 
+
+Workloads. We evaluate two types of workloads. (i) The syn-thetic workload first populates the tree with 100k–1M entries, followed by 100 epochs, each consisting of 100,000 random updates. (ii) The real-world trace workload replays Ethereum mainnet blocks 13,500,000–13,510,000, grouped into 200 epochs of 50 blocks each, in accordance with LVMT’s rec-ommended configuration. 
+
+## 6.2 Write Throughput (Figure 4) 
+
+Write throughput measures how fast the commitment engine processes batch updates (§3.1). We denote M HOT with asyn-chronous flush as M HOT -AF (asynchronous flush). 
+
+Synthetic workloads. At 100k keys, M HOT -AF reaches 260k ops/s, outperforming MPT (29k ops/s) by 9 ×. LVMT and RainBlock reach 120k and 108k ops/s respectively—roughly half of M HOT ’s throughput. Synchronous-flush M HOT vari-ants hit 200k ops/s, still 7 × faster than MPT. As tree size grows, all systems show throughput degrada-tion. At 500k keys, M HOT -AF maintains 135k ops/s while LVMT drops to 90k ops/s and RainBlock to 50k ops/s. At 1M keys, M HOT -AF delivers 104k ops/s versus MPT’s 17k ops/s (6 ×), LVMT’s 80k ops/s (1.3 ×), and RainBlock’s 38k ops/s (2.7 ×). At larger scales, LVMT’s O(1) root update com-plexity narrows the gap, though M HOT retains an advantage through reduced tree traversal depth. 
+
+Real-world trace. Under Ethereum mainnet traces, M HOT -AF reaches 130k ops/s, outperforming LVMT (72k ops/s) by 1.8 ×, RainBlock (55k ops/s) by 2.4 ×, and MPT (20k ops/s) by 6.5 ×. The real-world trace exhibits higher key locality than synthetic workloads, benefiting M HOT ’s cache-friendly compound node layout. Blake3 variants outperform Keccak variants by 3–5% due to Blake3’s lower computational over-head. For Ethereum compatibility, Keccak remains the default despite this modest penalty. 
+
+## 6.3 Write Amplification (Figure 5) 
+
+Synthetic workloads. At 100k keys, M HOT records aver-age WA of 0.9, greatly lower than MPT’s 2.7, a three times reduction. LVMT records the lowest WA (0.8) due to its LSM-tree-style append-only storage. RainBlock falls to 1.45. As tree size grows, MPT’s WA rises from 2.7 at 100k to 4.8 at 1M keys, reflecting the cost of maintaining deep Merkle 100k 500k 1m Real 
+
+> Workload Scale
+> 0
+> 50
+> 100
+> 150
+> 200
+> 250
+> 300
+> Write Throughput (K ops/s)
+> MHOT-Blake3-AF
+> MHOT-Keccak-AF
+> MHOT-Blake3
+> MHOT-Keccak
+> LVMT
+> RAIN
+> MPT
+
+Figure 4: Write throughput. M HOT -AF denotes asynchronous flush; M HOT without suffix uses synchronous flush. M HOT 
+
+outperforms MPT by 5–9 × across all configurations. 100k 500k 1m Real 
+
+> Workload Scale
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> Average Write Amplification
+> MPT
+> RAIN
+> MHOT-Blake3
+> MHOT-Keccak
+> MHOT-Blake3-AF
+> MHOT-Keccak-AF
+> LVMT
+
+Figure 5: Average write amplification comparison. Lower is better. LVMT achieves the lowest WA via append-only stor-age. M HOT reduces MPT’s WA by 3 × via batched flushing. paths with per-epoch commits. M HOT maintains WA of 0.9– 1.6 across scales, a 3–3.7 × reduction over MPT. LVMT consistently records the lowest WA (0.8–1.0). 
+
+Real-world trace. Under Ethereum mainnet traces, M HOT -AF records WA of 1.1, versus MPT’s 3.2 (2.9 × reduc-tion), RainBlock’s 1.8 (1.6 × reduction), and LVMT’s 1.0. Synchronous-flush M HOT variants show slightly higher WA (1.25) due to more frequent disk commits. MHOT ’s batched flush strategy introduces per-epoch vari-ance: most epochs complete with near-zero WA, while flush epochs reach 4–8 depending on accumulated changes. For aggregate storage efficiency (most relevant to long-running nodes), M HOT ’s lower WA reduces total I/O over time. LVMT records 10–15% lower WA than M HOT , but incurs 3–4 orders of magnitude higher verification latency (§6.5). 
+
+## 6.4 Tree Height Analysis (Figure 6) 
+
+Tree height directly impacts proof size and verification latency. Each additional level requires more node traversals and more sibling hashes in membership proofs. 
+
+Synthetic workloads. Under uniformly distributed keys, LVMT records the lowest tree height of 2 across all scales, reflecting its 216 fanout per level. M HOT maintains height 5–6, while MPT and RainBlock reach 8–9. M HOT ’s compound node design yields 35–40% shallower trees than MPT. 100k 500k 1m Real 
+
+> Workload Scale
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> Tree Height
+> LVMT
+> MHOT
+> MPT
+> RAIN
+
+Figure 6: Tree height comparison. LVMT achieves optimal height under synthetic workloads but degrades to match MPT under real traces. M HOT maintains consistent height. 
+
+Real-world trace. The Ethereum mainnet trace reveals a limitation of fixed-span architectures. LVMT maintains an average height of 2, but individual branches reach depth 9, approaching MPT and RainBlock’s worst-case heights of 10. Real Ethereum addresses cluster within certain prefixes due to contract factories and sequential account creation, causing fixed 16-bit partitioning to produce unbalanced subtrees. MHOT maintains stable height of 6 under real-world traces. Its variable-span compound nodes adapt to local key density by packing discriminative bits greedily, absorbing prefix col-lisions without proportional height increase. This consistency across workloads matters for blockchain deployments where key distributions vary unpredictably. 
+
+## 6.5 Proof Size and Latency 
+
+We evaluate single-point membership proofs across systems (Figure 7 and Table 2), then examine M HOT ’s scalability for multi-point and range proofs (Figure 8). 
+
+Single-point proofs. Figure 7 compares proof size and prove latency across five system configurations and four tree scales (100K–1M synthetic keys plus Ethereum mainnet trace with 1.6M keys). We evaluate two LVMT sampling strategies: ran-dom (best-case, sampling uniformly across keys) and deepest 
+
+(worst-case, targeting keys at maximum tree depth). MHOT -Blake3 achieves the most compact proofs across all scales, ranging from 1,139 bytes at 100K keys to 1,423 bytes under real-world traces. LVMT-random produces larger proofs (2,227–3,011 bytes) due to KZG commitment over-head, while LVMT-deepest reveals worst-case behavior with proofs reaching 4,411–19,123 bytes under real traces (13 ×
+
+larger than M HOT ). MPT proofs range from 2,304 to 2,867 bytes, twice M HOT ’s size. M HOT ’s proof size advantage stems from its two-layer Merkle architecture: the intra-node Merkle tree requires only O(log k) sibling hashes per node rather than O(k), where k = 32 is the maximum fanout. For prove latency, LVMT-random achieves the lowest val-ues (5.1–7.7 μs), while M HOT -Blake3 (8.9–11.9 μs) outper-forms M HOT -Keccak (31.5–42.5 μs) by 3.5 × due to Blake3’s lower computational overhead. LVMT-deepest reaches 10.6– 
+
+Figure 7: Single-point proof comparison across tree scales. Top panel shows proof size; bottom panel shows prove la-tency. LVMT-random represents best-case sampling; LVMT-deepest represents worst-case targeting of deep keys. Table 2: Single-point verification latency. Hash-based schemes operate in microseconds; LVMT’s KZG pairing requires milliseconds.                                 
+
+> System 100K 500K 1M Real
+> MHOT -Blake3 4.4 μs5.1 μs5.4 μs5.3 μsMHOT -Keccak 9.9 μs11.2 μs12.0 μs11.9 μsMPT 10.2 μs11.5 μs12.3 μs12.3 μsLVMT 33–47 ms 32–49 ms 32–51 ms 38–147 ms
+
+61.4 μs under real traces. MPT (6.2–8.9 μs) remains stable. Table 2 presents verification latency. Hash-based schemes (M HOT , MPT) operate in microseconds, while LVMT’s KZG polynomial commitment verification requires milliseconds due to pairing operations. M HOT -Blake3 verifies proofs in 5.3 μs, comparable to MPT (10–12 μs) while providing smaller proofs. LVMT’s verification latency of 32–147 ms represents three to four orders of magnitude overhead com-pared to hash-based schemes, which is a critical trade-off for applications requiring fast verification such as light clients. 
+
+Multi-point and range proofs. Figure 8 shows proof size and latency scaling with batch and range size under Ethereum mainnet traces (1.6M keys). Multi-point proofs grow from 1.4 KB (single key) to 92.6 KB (1000 keys), while range proofs grow from 1.4 KB to 95.7 KB. For latency, multi-point prove time scales from 12 μs to 2.3 ms, while verify time scales from 5.5 μs to 4.9 ms. Range proofs exhibit similar scaling, with prove latency reaching 2.8 ms and verify latency reaching 5.1 ms at 1000 entries. The rank-based completeness verification (§5.5) adds minimal overhead, as rank computa-tion requires only summation over pre-computed leaf counts. Figure 8: Multi-point and range proof scalability under Ethereum mainnet traces (Blake3). Proof size and latency scale linearly with batch size. Verify latency dominates at larger batch sizes due to hash recomputation. Table 3: Nurgle attack on Ethereum mainnet.              
+
+> System Success Rate Depth ∆(avg) Depth ∆(max)
+> MPT 99.97% +2.03 +3 MHOT 0% 00
+
+## 6.6 Nurgle Attack Resistance 
+
+The Nurgle attack [31] exploits prefix collisions to inflate tree depth for targeted keys, increasing their proof costs. We evaluate resistance under the threat model where an adversary controls 52 prefix bits (matching the original Nurgle analy-sis) and commands an entire block’s gas budget (300M gas, approximately 15,000 insertions). 
+
+Experimental setup. We sample 10,000 random keys as attack targets. For each target, the attacker generates colli-sion keys matching the target’s 52-bit prefix and inserts them until either the target’s depth increases or the block’s gas budget is exhausted. For MPT, we employ a round-robin strategy distributing insertions across all targets to maximize attack coverage. For LVMT, we track the depth distribution of both original and attack keys, since its fixed-depth-at-insertion property prevents existing keys from being pushed deeper. 
+
+Attack results (Table 3). MPT proves highly vulnerable: 99.97% of sampled keys experienced depth increases, with average depth rising from 6.88 to 8.91 (+2.03 levels) and maximum depth increasing from 9 to 12. In contrast, M HOT 
+
+exhibits strong resistance: zero successful attacks across all 10,000 targets, even after exhausting an entire block’s gas budget per target. M HOT ’s compound nodes absorb prefix col-lisions through internal restructuring (Leaf Pushdown, Parent Pull-Up) without propagating depth increases. 
+
+LVMT prefix pollution. LVMT presents a different security model: once inserted, a key’s depth is fixed and cannot be increased by subsequent insertions. However, attackers can still pollute prefix regions by inserting keys that occupy slots at shallower levels, forcing future keys into deeper levels. Figure 9 illustrates this effect. Before the attack, 82.3% of keys reside at level 0 and 17.4% at level 1 (average depth 0.18). After inserting 15,000 attack keys targeting specific prefixes, 99.9% of attack keys are placed at level 3, far deeper than 
+
+Figure 9: LVMT key distribution by level before and after Nurgle attack. Attack keys (hatched) concentrate at level 3, polluting targeted prefix regions for future insertions. legitimate keys. Although existing keys remain unaffected, the polluted prefix regions force any future keys sharing these prefixes to be placed at level 3 or deeper. This behavior con-stitutes a degradation-of-service attack against future users whose addresses collide with the targeted prefixes. 
+
+Key experimental findings. Our experiments yield four key findings. M HOT achieves 5–9 × higher write throughput than MPT, reaching up to 260k ops/s at 100k keys and 100k ops/s at 1M keys ( Q1 ). This gain is partly due to reduced write am-plification: M HOT achieves average WA of 0.9–1.6, a 3–4 ×
+
+reduction compared to MPT ( Q2 ). M HOT also maintains a stable tree height of 5–6 levels across all workloads, 35–40% shallower than MPT, resulting in 50% smaller membership proofs (1.1–1.4 KB vs. 2.3–2.9 KB) with comparable verifi-cation latency ( Q3 ). Finally, under the Nurgle threat model with a 15,000-insertion budget, none of the 10,000 sampled keys experienced depth increases ( Q4 ). 
+
+## 7 Discussion 
+
+We discuss two aspects as below. 
+
+## 7.1 Scope and Complementary Mitigations 
+
+Our scope. Our evaluation targets the state commitment bot-tleneck in modern clients. Integrating M HOT into full ex-ecution pipelines would validate its end-to-end impact on block processing. M HOT operates at the ADS layer beneath Ethereum’s account model [56], treating account fields as opaque key-value pairs. It therefore remains compatible with state-clearing semantics [57], proof interfaces [33], and gas ac-counting standards [12]. Deployment can follow an incremen-tal migration path where new commits use M HOT while his-torical proofs remain verifiable against archived MPT roots. Reduced commitment latency may also benefit block val-idation throughput, though quantifying this effect requires end-to-end pipeline evaluation. 
+
+Complementary mitigation strategies. In-memory layering caches reused upper trie levels to reduce authenticated-state cost without changing the local tree. LMPTs [20] keep recent-update tries in memory and the snapshot trie on disk; our RainBlock-style baseline keeps the upper six levels in mem-ory and loads deeper nodes from RocksDB. This helps the normal case where updates reuse upper ancestors, but it does not close the Nurgle path. Adversarial keys share long prefixes and grow paths below the cached levels (a single RTX3080 GPU can manipulate the first 15 MPT layers by colliding 13 nibbles [31]), and the tree still routes by fixed prefixes regardless of how deep the cache extends. Systemic mitigations reorganize state above the local tree. Chainspace [3] splits state across shards and certifies shard-local commitments through quorum signatures, while Rain-Block [48] distributes state in DSM-TREE shards and offloads disk access to storage nodes. These designs expose paral-lelism above the tree at the cost of data placement, network coordination, quorum certification, and cross-shard access, and compose with M HOT , since each shard or checkpoint still requires a local authenticated structure that remains exposed to depth inflation when prefix-based. M HOT fills that local structural role inside layered, partitioned, or checkpointed deployments. 
+
+## 7.2 Future Directions 
+
+Hardware acceleration. Increasing the span to k = 64 [6] exploits AVX-512 instructions on modern processors, further reducing tree height. For spans of k ≥ 256 , scalar implementa-tions suffice because persistent storage I/O dominates latency. Alternatively, algebraic commitments such as vector com-mitments in AMT [40] trade setup transparency for reduced verification overhead. M HOT ’s deferred hashing exposes par-allelism well-suited to GPU acceleration, where nodes at the same height level are mutually independent and map effi-ciently onto GPU SIMD units [22]. 
+
+Storage optimization. Integrating HOT’s leaf-optimized node layout would substantially reduce node sizes through dense-region collapsing and variable-length delta encod-ing [6], though deterministic Merkle hash computation must remain tractable. 
+
+State pruning. Content-addressable, copy-on-write storage creates new node versions on every modification. Version-prefixed database keys allow efficient range deletion of nodes older than a retention threshold, and the underlying LSM-tree engine’s compaction naturally discards tombstoned en-tries. A production deployment would benefit from a config-urable pruning policy that balances historical state availability against storage growth. 
+
+Concurrency. HOT’s copy-on-write semantics with wait-free readers [6] provide a foundation for concurrent access. MHOT ’s immutable nodes already support concurrent reads without synchronization. However, coordinating parallel writ-ers remains an open problem. 
+
+Structural attack analysis. MHOT removes Nurgle’s prefix-collision attack through discriminative-bit indexing, but its structure may open new attack vectors. An adversary could craft keys that concentrate discriminative-bit conflicts within certain subtrees, forcing repeated node splits such as leaf pushdown, parent pull-up, and intermediate node creation. Following Nurgle’s analytical approach, a systematic study would estimate the effort to force such splits, measure the resulting path-length increase per malicious insertion, and evaluate whether these effects produce economic imbalance under the gas pricing model [12]. We leave tight bounds on adversarial path inflation to future work. 
+
+## 8 Related Work 
+
+Protocol-level updates. Ethereum’s roadmap explores replac-ing MPT with alternative state commitment structures. Verkle Trees [37], proposed in EIP-6800 [11], adopt vector commit-ments to achieve constant-size proofs per tree level, enabling stateless client verification. This design relies on a trusted setup; while multi-party computation ceremonies distribute trust, compromise remains possible. As an alternative, EIP-7864 [10] proposes a binary Merkle tree tailored for SNARK-based proof generation, partly motivated by post-quantum concerns of pairing-based schemes [21]. Both approaches require hard forks and incur nontrivial deployment costs, ei-ther through additional trust assumptions or substantial proof generation overhead. In contrast, M HOT demonstrates that performance and ro-bustness gains remain achievable within the existing hash-based commitment model. More importantly, M HOT pre-serves the simplicity of Merkle authentication without in-troducing algebraic verification overhead for deployment. 
+
+Vector commitments. VC literature addresses a different layer, asking how to commit to a value set and open positions with short proofs rather than how state is organized, indexed, or traversed; the two layers compose. When paired with a trie, as in Verkle and LVMT (§2.2), a VC decouples proof size from fanout cryptographically, while M HOT achieves the same decoupling structurally via discriminative-bit indexing and hierarchical proofs, a different design point, not a com-peting one. Pure VC constructions without a tree, such as Aardvark [39] (bucketed dictionary), KVaC [2] (flat key-value commitment), and EDRAX [19] (indexed authenticated ar-ray), target different objectives and do not map onto the axes of Table 1. Proof-aggregation techniques (Pointproofs [30], Hyperproofs [51], Cauchyproofs [42], aSVC [53]) are orthog-onal to the base structure; foundational results [14 – 16] estab-lish the VC primitive, incremental aggregation, and impossi-bility bounds. The lack of native range proofs in LVMT and Verkle (Table 1) reflects engineering status, not a fundamental VC limitation; interval certification needs extra construction that hash-based Merkle proofs avoid. State storage optimization. Beyond modifications to the authenticated tree structure itself, prior work has explored workload-aware optimizations for blockchain state stor-age. Adaptive tree restructuring [38] dynamically promotes frequently accessed nodes toward the root, reducing aver-age access latency for hot state. Hot–cold data separation schemes [25] migrate infrequently accessed state to lower-cost storage tiers while preserving fast access to active ac-counts. These approaches primarily optimize for access fre-quency and locality, rather than the structural properties of the key space. In contrast, M HOT ’s height optimization targets worst-case structural depth induced by key relationships, independent of workload skew. The two strategies are orthogonal and can be naturally composed. 
+
+Storage architecture. Blockchain-aware storage engines mit-igate I/O amplification by exploiting blockchain-specific ac-cess patterns, primarily through two complementary strategies. The first leverages key structure and layout. ChainKV [18] separates state from non-state data using Prefix-MPT to im-prove key locality, while Block-LSM [55] prefixes keys with block numbers to cluster same-block writes and reduce com-paction overhead. The second strategy amortizes commitment cost over time. LETUS [52] employs log-structured delta en-coding across blocks, and COLE [59] applies learned indexes to optimize read-heavy workloads. Modern production clients such as Erigon [24] further adopt flat database designs that decouple state access from commitment computation, effectively treating the authenti-cated data structure as a dedicated commitment engine. M HOT 
+
+follows this decoupling principle and focuses optimization squarely on the commitment bottleneck itself. 
+
+Acceleration techniques. Hardware acceleration comple-ments algorithmic improvements. Deng et al. [22] parallelize MPT hash computation on GPUs via PhaseNU and LockNU algorithms, addressing node-splitting conflicts during con-current updates. This achieves substantial throughput gains for commitment-intensive workloads. Combining GPU paral-lelism with height-optimized structures remains unexplored. MHOT ’s deferred hashing exposes parallelism suited for such acceleration: nodes at the same height level share no data dependencies during hash computation. 
+
+Nurgle mitigation. The attack [31] exploits the predictable structure of MPT to inflate tree depth via adversarial key selection. Current mitigation efforts focus on economic disin-centives or data pruning rather than structural defenses. EIP-4444 [34] enables historical data pruning but leaves the cur-rent state structure unchanged. EIP-4762 [5] proposes gas repricing for witness costs but remains in draft, facing deter-minism challenges. Verkle migration [11, 37] would alter the attack surface but requires ongoing protocol changes. MHOT provides an immediate structural defense. Even when an adversary controls an entire block’s gas budget, MHOT achieves zero successful depth increases, compared to 99.97% attack success rate against MPT. The compound node design absorbs prefix collisions through internal restructuring without propagating depth increases to existing keys. 
+
+Algorithm 5 Compact Multiproof Generation [7]                                                                                      
+
+> Require: leaves L, indices Ito prove
+> Ensure: Compact multiproof π
+> 1: depth ← ⌈ log 2|L|⌉
+> 2: known ← { (depth ,i):i∈I}
+> 3: proof_hashes ← ⟨⟩
+> 4: for ℓ←depth −1downto 0do
+> 5: for i←0to 2ℓ−1do
+> 6: left ←(ℓ+1,2i)∈known 7: right ←(ℓ+1,2i+1)∈known 8: if left and right then
+> 9: known .INSERT (( ℓ, i))
+> 10: else if left or right then
+> 11: s←2i+1if left else 2i
+> 12: proof_hashes .PUSH (HASH (ℓ+1,s))
+> 13: known .INSERT (( ℓ, i))
+> 14: end if
+> 15: end for
+> 16: end for
+> 17: return (I,proof_hashes ,depth )
+
+## 9 Conclusion 
+
+We presented M HOT , a height-optimal authenticated data structure for blockchain state commitment. By adapting height-optimized tries to persistent storage, M HOT achieves substantially higher throughput, lower write amplification, and smaller proofs than MPT, without relying on trusted setup or specialized cryptography. M HOT structurally mitigates Nur-gle attacks, maintaining zero successful depth increases even under worst-case adversarial conditions. Our results show that careful data-structure design can fundamentally improve the scalability and robustness of blockchain state commitment. 
+
+## References 
+
+[1] devp2p/caps/snap.md at master · ethereum/devp2p. URL: https://github.com/ethereum/devp2p/ blob/master/caps/snap.md .[2] Shashank Agrawal and Srinivasan Raghuraman. Kvac: Key-value commitments for blockchains and beyond. In 
+
+International Conference on the Theory and Application of Cryptology and Information Security (ASIACRYPT) ,volume 12493 of LNCS , pages 839–869. Springer, 2020. 
+
+doi:10.1007/978-3-030-64840-4_28 .[3] Mustafa Al-Bassam, Alberto Sonnino, Shehar Bano, Dave Hrycyszyn, and George Danezis. Chainspace: A sharded smart contracts platform. In Network and Distributed System Security Symposium (NDSS) , 2018. 
+
+doi:10.14722/ndss.2018.23241 .[4] Guillaume Ballet and Vitalik Buterin. EIP-3102: Bi-nary trie structure. Ethereum Improvement Propos-als, September 2020. https://eips.ethereum.org/ EIPS/eip-3102 .[5] Guillaume Ballet, Vitalik Buterin, Dankrad Feist, Ig-nacio Hagopian, Tanishq Jasoria, and Gajinder Singh. EIP-4762: Statelessness gas cost changes. Ethereum Im-provement Proposals, February 2022. https://eips. ethereum.org/EIPS/eip-4762 .[6] Robert Binna, Eva Zangerle, Martin Pichl, Günther Specht, and Viktor Leis. Height optimized tries. ACM Transactions on Database Systems (TODS) , 47:1 – 46, 2022. [7] Remco Bloemen. Merkle multi-proofs. Technical Note, 2025. Available at: https://xn--2-umb.com/ 25/merkle-multi-proof/ .[8] Vitalik Buterin. EIP-150: Gas cost changes for io-heavy operations. Ethereum Improvement Proposals, October 2016. https://eips.ethereum.org/EIPS/ eip-150 .[9] Vitalik Buterin, Guillaume Ballet, Dankrad Feist, Igna-cio Hagopian, Kevaundray Wedderburn, Tanishq Jasoria, Gajinder Singh, Danno Ferrin, Piper Merriam, and Got-tfried Herold. EIP-7864: Ethereum state using a unified binary tree. Ethereum Improvement Proposals, January 2025. https://eips-wg.github.io/EIPs/7864/ .[10] Vitalik Buterin, Guillaume Ballet, Dankrad Feist, Igna-cio Hagopian, Kevaundray Wedderburn, Tanishq Jaso-ria, Gajinder Singh, Danno Ferrin, Piper Merriam, and Gottfried Herold. EIP-7864: Ethereum state using a unified binary tree. Ethereum Improvement Proposals, January 2025. https://eips.ethereum.org/EIPS/ eip-7864 .[11] Vitalik Buterin, Dankrad Feist, Kevaundray Wedderburn, Guillaume Ballet, Piper Merriam, Gottfried Herold, Ig-nacio Hagopian, Tanishq Jasoria, Gajinder Singh, and Danno Ferrin. EIP-6800: Ethereum state using a uni-fied verkle tree. Ethereum Improvement Proposals, March 2023. https://eips.ethereum.org/EIPS/ eip-6800 .[12] Vitalik Buterin and Martin Swende. EIP-2929: Gas cost increases for state access opcodes. Ethereum Im-provement Proposals, September 2020. https://eips. ethereum.org/EIPS/eip-2929 .[13] Miao Cai, Xuzhen Jiang, Junru Shen, and Baoliu Ye. Splitdb: Closing the performance gap for lsm-tree-based key-value stores. IEEE Transactions on Computers (TC) , 73:206–220, 2024. [14] Matteo Campanelli, Dario Fiore, Nicola Greco, Dimitris Kolonelos, and Luca Nizzardo. Incrementally aggre-gatable vector commitments and applications to ver-ifiable decentralized storage. In International Con-ference on the Theory and Application of Cryptology and Information Security (ASIACRYPT) , volume 12492 of LNCS , pages 3–35. Springer, 2020. doi:10.1007/ 978-3-030-64834-3_1 .[15] Dario Catalano and Dario Fiore. Vector commitments and their applications. In International Conference on Practice and Theory in Public-Key Cryptography (PKC) ,volume 7778 of LNCS , pages 55–72. Springer, 2013. 
+
+doi:10.1007/978-3-642-36362-7_5 .[16] Dario Catalano, Dario Fiore, Rosario Gennaro, and Emanuele Giunta. On the impossibility of algebraic vector commitments in pairing-free groups. In Theory of Cryptography Conference (TCC) , volume 13748 of 
+
+LNCS , pages 274–299. Springer, 2022. doi:10.1007/ 978-3-031-22365-5_10 .[17] Yang Chen, Zhongxin Guo, Runhuai Li, Shuo Chen, Lidong Zhou, Yajin Zhou, and Xian Zhang. Forerunner: Constraint-based speculative transaction execution for ethereum. In ACM SIGOPS Symposium on Operating Systems Principles (SOSP) , pages 570–587, 2021. [18] Zehao Chen, Bingzhe Li, Xiaojun Cai, Zhiping Jia, Lei Ju, Zili Shao, and Zhaoyan Shen. Chainkv: A semantics-aware key-value store for ethereum system. Proceedings of the ACM on Management of Data (SIGMOD) , 2023. [19] Alexander Chepurnoy, Charalampos Papamanthou, Shravan Srinivasan, and Yupeng Zhang. Edrax: A cryp-tocurrency with stateless transaction validation. Cryp-tology ePrint Archive, Report 2018/968, 2018. https: //eprint.iacr.org/2018/968 .[20] Jemin Andrew Choi, Sidi Mohamed Beillahi, Peilun Li, Andreas G. Veneris, and Fan Long. Lmpts: Eliminating storage bottlenecks for processing blockchain transac-tions. In IEEE International Conference on Blockchain and Cryptocurrency (ICBC) , pages 1–9, 2022. [21] Leo de Castro and Chris Peikert. Functional commit-ments for all functions, with transparent setup. In An-nual International Conference on the Theory and Appli-cations of Cryptographic Techniques (EUROCRYPT) ,2023. [22] Yangshen Deng, Muxi Yan, and Bo Tang. Accelerating merkle patricia trie with gpu. Proceedings of the VLDB Endowment (VLDB) , 17:1856–1869, 2024. [23] Siying Dong, Andrew Kryder, Yanqin Jin, Lin Peng, Kanchan Mehra, Jeremy Yakdus, Wei-Nee Chen, Ab-hishek Sharma, Youngjin Kwon, and Gary J. Katz. RocksDB: Evolution of development, optimization and uses of lsm-based storage. In Proceedings of the 8th Bi-ennial Conference on Innovative Data Systems Research (CIDR) , 2017. [24] Erigon Team. Erigon: Ethereum implementation on the efficiency frontier. GitHub Repository, 2024. Available at: https://github.com/erigontech/erigon .[25] Libo Feng and Xian Deng. An efficient hot/cold data separation scheme for storage optimization in consor-tium blockchain full nodes. Cluster Computing , 28, 2025. [26] Enrique Fynn, Ethan Buchman, Zarko Milosevic, Robert Soulé, and Fernando Pedone. Robust and fast blockchain state synchronization. In Eshcar Hillel, Roberto Palmieri, and Etienne Rivière, editors, 26th Interna-tional Conference on Principles of Distributed Sys-tems, OPODIS 2022, Brussels, Belgium, December 13-15, 2022 , volume 253 of LIPIcs , pages 8:1–8:22. Schloss Dagstuhl - Leibniz-Zentrum für Informatik, 2022. URL: https://doi.org/10.4230/LIPIcs.OPODIS. 2022.8 , doi:10.4230/LIPICS.OPODIS.2022.8 .[27] Péter Garamvölgyi, Yuxi Liu, Dong Zhou, Fan Long, and Ming Wu. Utilizing parallelism in smart contracts on decentralized blockchains by taming application-inherent conflicts. In International Conference on Soft-ware Engineering (ICSE) , pages 2315–2326, 2022. [28] Rati Gelashvili, Alexander Spiegelman, Zhuolun Xiang, George Danezis, Zekun Li, Dahlia Malkhi, Yu Xia, and Runtian Zhou. Block-stm: Scaling blockchain execution by turning ordering curse to a performance blessing. In 
+
+ACM SIGPLAN Annual Symposium on Principles and Practice of Parallel Programming (PPoPP) , pages 232– 244, 2023. [29] Geth Team. Parallel intermediate node fetching (for a single trie). Go Ethereum Issue #28266, 2023. Available at: https://github.com/ethereum/go-ethereum/ issues/28266 . Accessed: 2026-05-18. [30] Sergey Gorbunov, Leonid Reyzin, Hoeteck Wee, and Zhenfei Zhang. Pointproofs: Aggregating proofs for multiple vector commitments. In ACM SIGSAC Con-ference on Computer and Communications Security (CCS) , pages 2007–2023. ACM, 2020. doi:10.1145/ 3372297.3417244 .[31] Zheyuan He, Zihao Li, Ao Qiao, Xiapu Luo, Xiaosong Zhang, Ting Chen, Shuwei Song, Dijun Liu, and Weina Niu. Nurgle: Exacerbating resource consumption in blockchain state storage via mpt manipulation. In IEEE Symposium on Security and Privacy (S&P) , pages 2180– 2197, 2024. [32] Xiaowen Hu, David Zhao, and Bernhard Scholz. Syn-thesizing efficient super-instruction sets for ethereum virtual machine. In ACM SIGPLAN International Work-shop on Virtual Machines and Intermediate Languages (VMIL) , 2024. [33] Simon Jentzsch and Christoph Jentzsch. EIP-1186: Rpc-method to get merkle proofs - eth_getproof. Ethereum Improvement Proposals, June 2018. https://eips. ethereum.org/EIPS/eip-1186 .[34] George Kadianakis, lightclient, and Alex Stokes. EIP-4444: Bound historical data in execution clients. Ethereum Improvement Proposals, November 2021. 
+
+https://eips.ethereum.org/EIPS/eip-4444 .[35] Aniket Kate, Gregory M. Zaverucha, and Ian Goldberg. Constant-size commitments to polynomials and their applications. In International Conference on the Theory and Application of Cryptology and Information Security (ASIACRYPT) , 2010. [36] András Kovács and Tamás Kis. Partitioning of trees for minimizing height and cardinality. Information Process-ing Letters , 89:181–185, 2004. [37] John Kuszmaul. Verkle trees. 2019. Available at: 
+
+https://math.mit.edu/research/highschool/ primes/materials/2018/Kuszmaul.pdf .[38] Oleksandr Kuznetsov, Dzianis Kanonik, Alex Rusnak, Anton Yezhov, and Oleksandr Domin. Adaptive re-structuring of merkle and verkle trees for enhanced blockchain scalability. Internet of Things , 27:101315, 2024. [39] Derek Leung, Yossi Gilad, Sergey Gorbunov, Leonid Reyzin, and Nickolai Zeldovich. Aardvark: An asyn-chronous authenticated dictionary with applications to account-based cryptocurrencies. In 31st USENIX Se-curity Symposium (USENIX Security 22) , pages 4237– 4254. USENIX Association, 2022. [40] Chenxing Li, Sidi Mohamed Beillahi, Guang Yang, Ming Wu, Wei Xu, and Fan Long. Lvmt: An efficient authenticated storage for blockchain. ACM Transactions on Storage , 20(3), June 2024. doi:10.1145/3664818 .[41] Haoran Lin, Hang Feng, Yajin Zhou, and Lei Wu. Par-allelevm: Operation-level concurrent transaction execu-tion for evm-compatible blockchains. In Proceedings of the European Conference on Computer Systems (Eu-roSys) , 2025. [42] Zhongtang Luo, Yanxue Jia, Alejandra Victoria Os-pina Gracia, and Aniket Kate. Cauchyproofs: Batch-updatable vector commitment with easy aggregation and application to stateless blockchains. In IEEE Sym-posium on Security and Privacy (S&P) . IEEE, 2025. 
+
+doi:10.1109/SP61157.2025.00247 .[43] Charles U. Martel, Glen Nuckolls, Premkumar T. De-vanbu, Michael Gertz, April Kwong, and Stuart G. Stub-blebine. A general model for authenticated data struc-tures. Algorithmica , 39:21–41, 2004. [44] Ralph C. Merkle. A digital signature based on a con-ventional encryption function. In Annual International Cryptology Conference , 1987. URL: https://api. semanticscholar.org/CorpusID:28484604 .[45] Patrick O’Neil, Edward Cheng, Dieter Gawlick, and Eliz-abeth O’Neil. The log-structured merge-tree (lsm-tree). 
+
+Acta Informatica , 33(4):351–385, 1996. [46] Rui Pan, Chubo Liu, Guoqing Xiao, Mingxing Duan, Keqin Li, and Kenli Li. An algorithm and architecture co-design for accelerating smart contracts in blockchain. In Annual International Symposium on Computer Archi-tecture (ISCA) , 2023. [47] Paradigm. Reth: Modular, contributor-friendly and blazing-fast implementation of the ethereum protocol in rust. GitHub Repository, 2024. Available at: https: //github.com/paradigmxyz/reth .[48] Soujanya Ponnapalli, Aashaka Shah, Amy Tai, Sou-vik Banerjee, Vijay Chidambaram, Dahlia Malkhi, and Michael Yung Chung Wei. Rainblock: Faster transaction processing in public blockchains. In USENIX Annual Technical Conference (USENIX ATC) , 2020. [49] Xiaodong Qi, Zhihao Chen, Haizhen Zhuo, Quanqing Xu, Chengyu Zhu, Zhao Zhang, Cheqing Jin, Aoying Zhou, Ying Yan, and Hui Zhang. Schain: Scalable con-currency over flexible permissioned blockchain. IEEE International Conference on Data Engineering (ICDE) ,pages 1901–1913, 2023. [50] Victor Shoup. Sequences of games: a tool for taming complexity in security proofs. IACR Cryptol. ePrint Arch. , 2004:332, 2004. [51] Shravan Srinivasan, Alexander Chepurnoy, Charalam-pos Papamanthou, Alin Tomescu, and Yupeng Zhang. Hyperproofs: Aggregating and maintaining proofs in vector commitments. In USENIX Security Symposium ,pages 3001–3018. USENIX, 2022. [52] Shikun Tian, Zhonghao Lu, Haizhen Zhuo, Xiaojing Tang, Peiyi Hong, Shenglong Chen, Dayi Yang, Ying Yan, Zhiyong Jiang, Hui Zhang, and Guofei Jiang. Letus: A log-structured efficient trusted universal blockchain storage. In Companion of the 2024 International Con-ference on Management of Data (SIGMOD) , 2024. [53] Alin Tomescu, Ittai Abraham, Vitalik Buterin, Justin Drake, Dankrad Feist, and Dmitry Khovratovich. Aggre-gatable subvector commitments for stateless cryptocur-rencies. In Security and Cryptography for Networks (SCN) , volume 12238 of LNCS , pages 45–64. Springer, 2020. doi:10.1007/978-3-030-57990-6_3 .[54] Alin Tomescu, Robert Chen, Yiming Zheng, Ittai Abra-ham, Benny Pinkas, Guy Golan-Gueta, and Srinivas De-vadas. Towards scalable threshold cryptosystems. In 
+
+IEEE Symposium on Security and Privacy (S&P) , pages 877–893, 2020. [55] Qian Wei, Zehao Chen, Xiaowei Chen, Yuhao Zhang, Xiaojun Cai, Zhiping Jia, Zhaoyan Shen, Yi Wang, Zili Shao, and Bingzhe Li. A semantic-integrated lsm-tree-based key-value storage engine for blockchain systems. 
+
+IEEE Transactions on Computer-Aided Design of Inte-grated Circuits and Systems (TCAD) , 2024. [56] Gavin Wood. Ethereum: A secure decentralised gen-eralised transaction ledger. Ethereum Yellow Paper, 2014. Available at: https://ethereum.github.io/ yellowpaper/paper.pdf .[57] Gavin Wood. EIP-161: State trie clearing (invariant-preserving alternative). Ethereum Improvement Pro-posals, October 2016. https://eips.ethereum.org/ EIPS/eip-161 .[58] Cuihua Yang, Fan Yang, Quanqing Xu, Yongquan Zhang, and Junqing Liang. Solsdb: Solve the ethereum’s bottleneck caused by storage engine. Future Generation Computer Systems (FGCS) , 160:295–304, 2024. [59] Ce Zhang, Cheng Xu, Haibo Hu, and Jianliang Xu. Cole: A column-based learned storage for blockchain systems. In USENIX Conference on File and Storage Technolo-gies (FAST) , 2023. [60] Shijie Zhang, Ru Cheng, Xinpeng Liu, Jiang Xiao, Hai Jin, and Bo Li. Seer: Accelerating blockchain transac-tion execution by fine-grained branch prediction. Pro-ceedings of the VLDB Endowment (VLDB) , 18(3):822– 835, 2024. [61] Wei Zhou, Changzheng Wei, Ying Yan, Wei Tang, et al. DTVM: Revolutionizing smart contract execu-tion with determinism and compatibility. arXiv preprint arXiv:2504.16552 , 2025. Available at: https://arxiv. org/abs/2504.16552 .
+
+## A Notations (Table 4) B Formal Security Proofs 
+
+This section presents rigorous security proofs for M HOT ’s proof mechanisms using the standard cryptographic game-Table 4: Summary of notation. 
+
+Symbol Description 
+
+s, n, k, h Span, entry count, fanout ( k=32), tree height 
+
+K, V , T Key, value, trie 
+
+H, π, ∥ Hash function, proof, concatenation 
+
+N Compound node 
+
+M, S, L Extraction masks, sparse keys, leaf counts 
+
+η, v, ci Node height, version, i-th child CMR (N) Children Merkle root 
+
+J, t Child index set, t = |J|
+
+NPE (N, J) Node proof entry for children J
+
+ΠCMR  
+
+> J
+
+Intra-node Merkle multiproof 
+
+m, rank (K) Batch size, count of keys < K
+
+lc (c), lb (Q) Leaf count of subtree c, lower bound of Q
+
+λ, negl (λ) Security parameter, negligible function based framework. We establish formal security guarantees by reducing the soundness of each proof type to the collision resistance of the underlying hash function. 
+
+## B.1 Cryptographic Preliminaries 
+
+Definition 11 (Security Parameter) . Let λ ∈ N denote the security parameter. A function f : N → R is negligible in 
+
+λ, written f (λ) = negl (λ), if for every polynomial p(·) there exists λ0 such that f (λ) < 1/p(λ) for all λ > λ0.
+
+Definition 12 (Collision-Resistant Hash Function) . A hash function family H = {Hλ : {0, 1}∗ → { 0, 1}λ}λ∈N is collision-resistant if for all probabilistic polynomial-time (PPT) adver-saries A:
+
+Adv CR  
+
+> H
+
+(A) := Pr 
+
+h
+
+(x, x′) ← A(1λ) :
+
+x̸ = x′ ∧ H(x) = H(x′)
+
+i
+
+≤ negl (λ) (14) 
+
+where the probability is taken over the internal randomness of A.
+
+Lemma 9 (Difference Lemma [50]) . Let A, B, and F be events defined on the same probability space. If A ∧ ¬ F ⇔ B ∧ ¬ F(i.e., A and B are identical conditioned on ¬F), then: 
+
+| Pr [A] − Pr [B]| ≤ Pr [F] (15) 
+
+Proof. We have Pr [A] = Pr [A ∧ F] + Pr [A ∧ ¬ F] and Pr [B] = 
+
+Pr [B ∧ F] + Pr [B ∧ ¬ F]. Since A ∧ ¬ F ⇔ B ∧ ¬ F, we have Pr [A∧¬ F] = Pr [B∧¬ F]. Thus | Pr [A]−Pr [B]| = | Pr [A∧F]−
+
+Pr [B ∧ F]| ≤ Pr [F].Throughout this section, we assume the hash function H
+
+used in M HOT is collision-resistant. This assumption is stan-dard and satisfied by cryptographic hash functions such as SHA-256 and Blake3. 
+
+## B.2 MHOT Proof System Formalization 
+
+Definition 13 (M HOT Proof System) . The MHOT proof sys-tem Π = ( Setup , Commit , Prove , Verify ) consists of four al-gorithms: 
+
+• Setup (1λ) → pp : Outputs public parameters (the hash function description). 
+
+• Commit (T ) → R : Given a trie T , outputs a root commit-ment R = ( Hcontent (Nroot ), v, n) where n is the total entry count. 
+
+• Prove (T, stmt ) → π: Given trie T and statement stmt ,outputs a proof π.
+
+• Verify (R, stmt , π) → { 0, 1}: Outputs 1 (accept) or 0 (re-ject). 
+
+Definition 14 (Statement Types) . MHOT supports the follow-ing statement types: 1. Membership : stmt = ( K,V, mem ) asserts (K,V ) ∈ T . 2. Non-membership : stmt = ( K, nmem ) asserts K /∈
+
+keys (T ).3. Multi-membership : stmt = ( {(Ki,Vi)}mi=1, multi ) as-serts ∀i : (Ki,Vi) ∈ T . 4. Lower bound : stmt = ( Q, Kr,Vr, lb ) asserts lb (Q) = (Kr,Vr).5. Range : stmt = ([ first , last ), entries , range ) asserts 
+
+entries = {(K,V ) ∈ T : first ≤ K < last }.
+
+Binding property of commitments. A fundamental security requirement is that the commitment scheme is computation-ally binding : no efficient adversary can produce two distinct tries with the same commitment. This property is essential for all subsequent soundness proofs. 
+
+Lemma 10 (Commitment Binding) . Under the collision re-sistance assumption, the commitment scheme Commit is com-putationally binding. Formally, for any PPT adversary A:
+
+Pr 
+
+h
+
+(T1, T2) ← A(1λ) :
+
+T1̸ = T2 ∧ Commit (T1) = Commit (T2)
+
+i
+
+≤ negl (λ) (16) 
+
+Proof. We proceed by induction on the maximum height of 
+
+T1 and T2.
+
+Base case (height 1): Both tries consist of single leaf nodes. If Commit (T1) = Commit (T2), then Hleaf (K1,V1) = 
+
+Hleaf (K2,V2). If (K1,V1)̸ = ( K2,V2), this constitutes a hash collision. 
+
+Inductive step: Suppose the lemma holds for all tries of height < h. Consider T1, T2 of height ≤ h with Commit (T1) = 
+
+Commit (T2). This implies Hcontent (N1) = Hcontent (N2) for their root nodes. By Definition 2, if the root content hashes are equal but the node contents differ (i.e., different M, S, CMR , or L), then a collision exists in H. If the node contents are identical includ-ing CMR (N1) = CMR (N2), then by the collision resistance of the Merkle tree construction, the children hash sequences must be identical. By the inductive hypothesis applied to each child subtree, corresponding children must be identical. Hence T1 = T2.Any adversary producing T1̸ = T2 with equal commitments can be converted to a collision finder, establishing the bound. 
+
+Corollary 11 (Unique Preimage) . For any commitment R in the range of Commit , there exists at most one trie T (up to negligible probability) such that Commit (T ) = R. We denote this unique trie as T R when it exists. 
+
+## B.3 Security Games 
+
+We define formal security games for each proof type. In all games, the adversary A is computationally bounded (PPT) and aims to produce a valid proof for a false statement. 
+
+Definition 15 (Trie Extraction from Proof) . The function 
+
+ExtractTrie (π) reconstructs the partial trie structure implied by a proof π = ( K,V, vleaf , Path ). For each path entry Path [i] = ( ji, Mi, Si, Li, ηi, vi, ΠCMR  
+
+> i
+
+), the function constructs node Ni
+
+with extraction masks Mi, sparse keys Si, leaf counts Li, and child hashes from ΠCMR  
+
+> i
+
+. The leaf node ℓ = ( K,V, vleaf ) has hash hℓ = Hleaf (K ∥ V ∥ vleaf ). The returned partial trie Tπ is uniquely determined by π’s hash chain; by Lemma 10, any trie T with Commit (T ) = R must contain this structure. 
+
+Remark 12 (Game Formulation) . Our game formulation avoids the circular dependency of checking against an externally-defined TR. Instead, the winning condition is de-fined in terms of the trie structure implied by the proof itself .Since verification reconstructs the root hash from the proof, any accepting proof implicitly defines a (partial) trie structure. By Lemma 10, this structure is uniquely determined (up to collision probability) by the root commitment R. 
+
+Definition 16 (Single-Proof Extraction) . The function 
+
+ExtractSingleProof (π, i) extracts a valid single-point mem-bership proof for the i -th entry from a multi-point proof π =(Entries , Levels ). It retrieves entry (Ki,Vi, vi) from Entries ,traces the path from root to Ki by routing through nodes in 
+
+Levels , and for each node extracts from the compact multi-proof ΠCMR  
+
+> J
+
+the sibling hashes needed to verify Ki’s child posi-tion. The output is a single-point proof πi = ( Ki,Vi, vi, Path i).
+
+Definition 17 (Rank Computation) . The function 
+
+ComputeRank (πlb ) computes the rank of a key from its lower bound proof: 
+
+ComputeRank (πlb ) = 
+
+> |Path |− 1
+
+# ∑
+
+> i=0
+> ji−1
+
+# ∑
+
+> j=0
+
+Path [i].L[ j] (17) 
+
+where ji is the child index at level i and L[ j] is the leaf count of the j-th child. 
+
+Definition 18 (Advantage) . For each game G, the adversary’s advantage is: 
+
+Adv G
+
+> Π
+
+(A) := Pr [G· 
+
+> Π,A
+
+(λ) = 1] (18) 
+
+where the probability is taken over the randomness of Setup 
+
+and the internal randomness of A. The proof system is sound 
+
+for statement type G if Adv G
+
+> Π
+
+(A) ≤ negl (λ) for all PPT A.
+
+## B.4 Proof of Lemma 1 (Optimistic Search In-variant) 
+
+Full Proof of Lemma 1. We prove by strong induction on tree height h.
+
+Base case ( h = 1): A height-1 trie consists of a single leaf node. Any search trivially terminates at this leaf, which vacuously agrees with the query on all (zero) discriminative bits encountered. 
+
+Inductive step: Assume the lemma holds for all tries of height < h. Consider a trie T of height h with root node N.At node N, the search algorithm computes: 
+
+d = dense (K, M) = M
+
+> i∈bit_positions (M)
+
+K[i] · 2rank (i,M) (19) where M is the extraction mask and K[i] denotes the i-th bit of key K.The algorithm then finds the largest index j such that: 
+
+(d ∧ S[ j]) = S[ j] (20) where S = ( S[0], S[1], . . . , S[|N| − 1]) are the sparse partial keys sorted in ascending order. 
+
+Existence of a match: By the HOT construction invariant, 
+
+S[0] = 0 for all non-empty nodes. This holds because the leftmost subtree corresponds to keys with all extracted bits being 0 in the discriminative positions. Since (d ∧ 0) = 0 =
+
+S[0] always holds, at least one matching index exists. 
+
+Deterministic selection: The search selects the largest matching j, which is unique because the sparse keys are sorted. Specifically, j = max {i : (d ∧S[i]) = S[i]} is well-defined. The search then recurses into child c j, which is a subtrie of height 
+
+< h. By the inductive hypothesis, the search terminates at exactly one leaf in c j that agrees with K on all discriminative bits in that subtrie. 
+
+Discriminative bit agreement: The selected child c j con-tains exactly those keys that match K on the discriminative bits encoded in M. Combined with the inductive guarantee, the final leaf K′ agrees with K on all discriminative bits en-countered throughout the traversal. Note that K′ may differ from K on non-discriminative bits; membership is determined by a final equality check. Game Gmem  
+
+> Π,A
+
+(λ):1. pp ← Setup (1λ)
+
+2. (R, K,V, π) ← A(pp )
+
+3. b ← Verify (R, (K,V, mem ), π)
+
+4. if b = 0 then return 05. Tπ ← ExtractTrie (π)
+
+6. return (K,V ) /∈ Tπ
+
+Game Gnmem  
+
+> Π,A
+
+(λ):1. pp ← Setup (1λ)
+
+2. (R, K, π) ← A(pp )
+
+3. b ← Verify (R, (K, nmem ), π)
+
+4. if b = 0 then return 05. Parse π = ( K′,V ′, Path )
+
+6. return K = K′
+
+Game Gmulti  
+
+> Π,A
+
+(λ):1. pp ← Setup (1λ)
+
+2. (R, {(Ki,Vi)}mi=1, π) ← A(pp )
+
+3. b ← Verify (R, ({(Ki,Vi)}, multi ), π)
+
+4. if b = 0 then return 05. for i = 1 to m do 
+
+6. πi ← ExtractSingleProof (π, i)
+
+7. Tπi ← ExtractTrie (πi)
+
+8. if (Ki,Vi) /∈ Tπi then return 19. return 0
+
+Game Glb  
+
+> Π,A
+
+(λ):1. pp ← Setup (1λ)
+
+2. (R, Q, Kr,Vr, π) ← A(pp )
+
+3. b ← Verify (R, (Q, Kr,Vr, lb ), π)
+
+4. if b = 0 then return 05. Parse π = ( Q, Path , K′,V ′, v′, Adj , Kr,Vr)
+
+6. K∗ ← ComputeLB (π)
+
+7. return Kr̸ = K∗
+
+Game Grange  
+
+> Π,A
+
+(λ):1. pp ← Setup (1λ)
+
+2. (R, first , last , entries , π) ← A(pp )
+
+3. b ← Verify (R, ([ first , last ), entries , range ), π)
+
+4. if b = 0 then return 05. rL ← ComputeRank (π.πL
+
+> lb
+
+)
+
+6. rR ← ComputeRank (π.πR
+
+> lb
+
+)
+
+7. return |entries |̸ = rR − rL
+
+Figure 10: Security games for M HOT proof system soundness. In the membership game Gmem , the adversary wins if verification accepts but (K,V ) /∈ Tπ, where ExtractTrie reconstructs the partial trie from the proof (see Definition 15). In the non-membership game Gnmem , the adversary wins if the reached leaf equals the query key. In Glb , ComputeLB (π) derives the correct lower bound from the authenticated structure. 
+
+## B.5 Proof of Theorem 3 (Single-Point Sound-ness) 
+
+Theorem 13 (Single-Point Soundness — Restated) . For any PPT adversary A:
+
+Adv mem  
+
+> Π
+
+(A) ≤ Adv CR  
+
+> H
+
+(B1) (21) Adv nmem  
+
+> Π
+
+(A) ≤ Adv CR  
+
+> H
+
+(B2) (22) 
+
+for efficiently constructible adversaries B1, B2.Proof. We prove both membership and non-membership soundness via reduction to collision resistance. 
+
+Part 1: Membership Soundness. We construct a collision finder B1 from any adversary A that wins the membership game. The auxiliary functions used in Algorithm 6 are defined as follows. RECONSTRUCT CMR (hchild , j, ΠCMR ) reconstructs the children Merkle root by placing hchild at position j and us-ing sibling hashes from ΠCMR . EXTRACT CMRC OLLISION 
+
+extracts a collision pair when two different child hashes pro-duce the same CMR. EXTRACT ROUTING COLLISION (i, π)
+
+extracts a collision when the claimed child index differs from the computed index. DENSE KEY (K, M) computes the dense partial key by extracting bits from K at positions indicated by mask M. SEARCH SPARSE (d, S) returns the largest index 
+
+j such that (d ∧ S[ j]) = S[ j].
+
+Analysis of B1: The key insight is that B1 does not need access to any external “authentic” trie TR. Instead, B1 checks for internal inconsistencies within the proof π itself. If A wins the membership game, then verification accepts but the claimed (K,V ) is not authentically in the trie commit-ted by R. We analyze the possible attack vectors: 
+
+Case 1: Path structure inconsistency. The proof claims child index ji at some level i, but the routing computation from K and Mi yields j′
+
+> i
+
+̸ = ji. For verification to pass, the CMR reconstruction must place the child hash at position 
+
+ji. However, the correct CMR for the claimed node structure would place it at j′
+
+> i
+
+. Since Verify recomputes the CMR and checks against R, either: • The recomputed CMR differs from the authentic one (hash collision in CMR), or • The node content hash H(Mi ∥ Si ∥ cmr ∥ Li) produces the same value for different inputs (collision in H). 
+
+Case 2: Leaf content forgery. The proof authenticates leaf hash hleaf , but (K,V )̸ = ( K′,V ′) where (K′,V ′) is the au-thentic leaf content. For the hash chain to reach R, we need 
+
+Hleaf (K,V, v) = Hleaf (K′,V ′, v′). If (K,V, v)̸ = ( K′,V ′, v′), this is a collision. 
+
+Case 3: CMR forgery. The intra-node Merkle proof ΠCMR 
+
+> i
+
+authenticates child hchild at position ji, but the authentic CMR has a different child at that position. By collision resistance of the Merkle tree, this requires a collision. In all cases, if A succeeds in the membership game, B1
+
+extracts a collision. Therefore: Adv mem  
+
+> Π
+
+(A) ≤ Adv CR  
+
+> H
+
+(B1) (23) 
+
+Part 2: Non-Membership Soundness. For non-membership, Algorithm 6 Collision Finder BA
+
+> 1
+
+Require: Security parameter 1 λ
+
+Ensure: Hash collision (x, x′) or ⊥ 
+
+> 1:
+
+pp ← Setup (1λ); (R, K,V, π) ← A(pp ) 
+
+> 2:
+
+if Verify (R, (K,V, mem ), π) = 0 then return ⊥ 
+
+> 3:
+
+end if  
+
+> 4:
+
+Parse π = ( K,V, vleaf , Path )
+
+▷ Phase 1: Compute hash chain  
+
+> 5:
+
+h0 ← Hleaf (K∥V ∥vleaf ) 
+
+> 6:
+
+for i ← | Path | − 1 downto 0 do  
+
+> 7:
+
+( ji, Mi, Si, Li, ηi, vi, Πi) ← Path [i] 
+
+> 8:
+
+cmr i ← RECONSTRUCT CMR (h|Path |− 1−i, ji, Πi) 
+
+> 9:
+
+h|Path |− i ← H(Mi∥Si∥cmr i∥Li) 
+
+> 10:
+
+end for 
+
+▷ Phase 2: Check internal consistency  
+
+> 11:
+
+for i ← 0 to |Path | − 1 do  
+
+> 12:
+
+cmr ′ 
+
+> i
+
+← RECOMPUTE CMR (Πi) 
+
+> 13:
+
+if cmr i̸ = cmr ′ 
+
+> i
+
+and both valid then  
+
+> 14:
+
+return EXTRACT CMRC OLLI -
+
+> SION
+
+(h|Path |− 1−i, ji, Πi) 
+
+> 15:
+
+end if  
+
+> 16:
+
+di ← DENSE KEY (K, Mi); j′ 
+
+> i
+
+←
+
+SEARCH SPARSE (di, Si) 
+
+> 17:
+
+if ji̸ = j′ 
+
+> i
+
+then  
+
+> 18:
+
+return EXTRACT ROUTING COLLISION (i, π) 
+
+> 19:
+
+end if  
+
+> 20:
+
+end for 
+
+▷ Phase 3: Internal consistency at leaf level  
+
+> 21:
+
+▷ The proof π claims membership for (K,V ) 
+
+> 22:
+
+▷ Verification computes h0 = Hleaf (K∥V ∥vleaf ) 
+
+> 23:
+
+▷ If verification passes but internal structure inconsistent, collision exists  
+
+> 24:
+
+if A wins ⇒ ∃ level i with inconsistency then  
+
+> 25:
+
+return collision extracted from that level (as shown in Cases 1–3)  
+
+> 26:
+
+end if  
+
+> 27:
+
+return ⊥ ▷ A did not win the proof includes the leaf (K′,V ′) reached by optimistic search and claims K̸ = K′ but both route identically. Suppose A wins: verification accepts but K ∈ keys (TR). By Lemma 1, optimistic search for K terminates at a leaf agreeing with K on all discriminative bits; when K exists, this leaf is K
+
+itself. The proof claims search terminates at K′̸ = K.We construct collision finder B2 in Algorithm 7. 
+
+Analysis of B2: If A wins the non-membership game, then verification accepts (implying K̸ = K′) but K actually exists in 
+
+TR. By Lemma 1, optimistic search for K in TR terminates at a leaf matching K on all discriminative bits; since K exists, this leaf is K itself. The proof’s path authenticates leaf (K′,V ′),which routes identically to K.The key insight is that B2 does not need to “know” the 
+
+Algorithm 7 Collision Finder BA 
+
+> 2
+
+for Non-Membership 
+
+Require: Security parameter 1 λ
+
+Ensure: Hash collision (x, x′) or ⊥ 
+
+> 1:
+
+pp ← Setup (1λ); (R, K, π) ← A(pp ) 
+
+> 2:
+
+if Verify (R, (K, nmem ), π) = 0 then return ⊥ 
+
+> 3:
+
+end if  
+
+> 4:
+
+Parse π = ( K′,V ′, v′, Path ) 
+
+> 5:
+
+if K = K′ then return ⊥ ▷ Adversary failed to win  
+
+> 6:
+
+end if 
+
+▷ Phase 1: Verify routing consistency  
+
+> 7:
+
+for i ← 0 to |Path | − 1 do  
+
+> 8:
+
+dK ← DENSE KEY (K, Path [i].M) 
+
+> 9:
+
+dK′ ← DENSE KEY (K′, Path [i].M) 
+
+> 10:
+
+jK ← SEARCH SPARSE (dK , Path [i].S) 
+
+> 11:
+
+jK′ ← SEARCH SPARSE (dK′ , Path [i].S) 
+
+> 12:
+
+if jK̸ = jK′ then  
+
+> 13:
+
+return ⊥ ▷ K routes differently, not a valid attack  
+
+> 14:
+
+end if  
+
+> 15:
+
+end for 
+
+▷ Phase 2: Extract collision from hash chain  
+
+> 16:
+
+▷ At this point: K̸ = K′ but both route identically to same leaf position  
+
+> 17:
+
+▷ The proof authenticates h = Hleaf (K′∥V ′∥v′) against R 
+
+> 18:
+
+▷ If K truly exists in TR, there must be a leaf with key K 
+
+> 19:
+
+▷ Two distinct leaves at same position ⇒ collision in H 
+
+> 20:
+
+return EXTRACT LEAF COLLISION (π, K, K′)
+
+authentic value (V ∗, v∗). Instead, B2 exploits the following structural argument. 
+
+Collision extraction via structural inconsistency: The proof 
+
+π authenticates a hash chain from leaf K′ to root R. If K ∈ TR
+
+(which must be true for A to win), there also exists a hash chain from leaf K to the same root R. Since K̸ = K′ but both route identically through the trie (verified in Phase 1), they must occupy the same leaf position. • The path Path commits to a unique leaf hash at each position via the CMR structure. • Two distinct keys at the same position implies 
+
+Hleaf (K′∥V ′∥v′) = Hleaf (K∥V ∗∥v∗) for the (unknown) authentic (V ∗, v∗).• Since K̸ = K′, the inputs differ, constituting a collision. The function E XTRACT LEAF COLLISION formalizes this. Specifically, given π and keys K̸ = K′ that route identically: 1. The proof π commits to a unique leaf hash hℓ at the terminal position. 2. If K exists in TR, its leaf must also have hash hℓ (same position, same root). 3. Thus Hleaf (K′∥V ′∥v′) = hℓ = Hleaf (K∥ · ∥· ).4. Since K̸ = K′, the inputs differ, witnessing a collision. The collision witness is (K′∥V ′∥v′) paired with the existence guarantee that some (K∥V ∗∥v∗) hashes to the same value. In the random oracle model, this is a standard “extraction” argument; in the standard model, it suffices for the reduction. Therefore: Adv nmem  
+
+> Π
+
+(A) ≤ Adv CR  
+
+> H
+
+(B2) (24) 
+
+## B.6 Proof of Theorem 4 (Multi-Point Sound-ness) 
+
+Full Proof of Theorem 4. We reduce multi-point soundness to single-point soundness via a standard hybrid argument. Suppose A wins Gmulti  
+
+> Π,A
+
+with probability ε > negl (λ). Con-struct B for Gmem :
+
+Algorithm 8 Single-Point Adversary BA 
+
+> 1:
+
+pp ← Setup (1λ) 
+
+> 2:
+
+(R, {(Ki,Vi)}mi=1, π) ← A(pp ) 
+
+> 3:
+
+if Verify (R, ({(Ki,Vi)}, multi ), π) = 0 then  
+
+> 4:
+
+return ⊥ 
+
+> 5:
+
+end if  
+
+> 6:
+
+i∗ ←R [1, m] ▷ Uniformly random index  
+
+> 7:
+
+πi∗ ← ExtractSingleProof (π, i∗) 
+
+> 8:
+
+return (R, Ki∗ ,Vi∗ , πi∗ )
+
+Extraction of single-point proofs. The multi-point proof 
+
+π = ( Entries , Levels ) contains sufficient information to recon-struct a valid single-point proof πi for each (Ki,Vi):• The entry (Ki,Vi, vi) from Entries. • The path from root to leaf Ki, determined by routing Ki
+
+through the nodes in Levels. • For each node, the compact multiproof ΠCMR  
+
+> J
+
+contains sufficient sibling hashes to verify any individual child 
+
+j ∈ J.
+
+Probability analysis. If A wins, then ∃ i∗ : (Ki∗ ,Vi∗ ) /∈ TR.Let I = {i : (Ki,Vi) /∈ TR} be the set of “bad” indices. Condi-tioned on A winning, |I| ≥ 1. The probability that B’s random choice i∗ falls in I is: Pr [i∗ ∈ I | A wins ] ≥ 1
+
+m (25) Therefore: Adv mem  
+
+> Π
+
+(B) ≥ ε
+
+m (26) By Theorem 13, Adv mem  
+
+> Π
+
+(B) ≤ negl (λ). Since m ≤ | π| ≤ 
+
+poly (λ) (the number of entries is bounded by proof size): 
+
+ε ≤ m · negl (λ) = negl (λ) (27) 
+
+Security of path sharing. Path sharing does not weaken security because each shared node is verified with the same rigor as in independent proofs. The compact multiproof ΠCMR 
+
+> J
+
+for child set J authenticates all children {c j : j ∈ J} against a single CMR. Any forgery in one key’s proof would produce an inconsistency detectable by single-point verification. 
+
+## B.7 Proof of Lemma 5 (Lower Bound Correct-ness) 
+
+Full Proof of Lemma 5. We prove by case analysis on the relationship between query Q and the leaf K′ reached by optimistic search. Let d = diffbit (Q, K′) denote the first bit position where Q
+
+and K′ differ. If K′ = Q, then d = ∞ (no differing bit). 
+
+Case 1: Exact Match ( K′ = Q). The search terminates at a leaf with key K′ = Q. Since Q exists in the trie, lb (Q) = Q =
+
+K′. The algorithm correctly returns K′.
+
+Case 2: Overshot ( Q[d] = 0, K′[d] = 1). The query Q has bit 0 at position d, while K′ has bit 1. Any key with bit pattern matching Q’s prefix up to position d − 1 and having bit 1 at position d is lexicographically greater than Q.At fork depth f , the HOT search entered a subtree S f rooted at a node where the discriminative bit at position d directed the search into the “right” branch (bit 1). By the key distribution property of HOT, all keys in S f have bit 1 at position d, hence all keys in S f satisfy K > Q.The lower bound is the minimum key in S f . To find this minimum, the algorithm descends from the fork point always taking the leftmost child (child index 0), reaching the leftmost leaf in S f .
+
+Correctness: Let Kmin be the leftmost leaf in S f . By the sparse key ordering (Definition 3), children with smaller in-dices contain lexicographically smaller keys. Thus Kmin ≤ K
+
+for all K ∈ S f . Since all keys in S f are > Q, and Kmin is the smallest such key, lb (Q) = Kmin .
+
+Case 3: Undershot ( Q[d] = 1, K′[d] = 0). The query Q has bit 1 at position d, while K′ has bit 0. All keys in the subtree containing K′ have bit 0 at position d, so they are lexicograph-ically less than Q.The algorithm must find a right sibling at the fork point. Let f be the fork depth. The search path at depth f took child 
+
+c j. The algorithm examines siblings c j+1, c j+2, . . . to find the first sibling whose subtree contains keys ≥ Q.
+
+Correctness: By the HOT sparse key ordering, children with larger indices correspond to lexicographically larger key ranges (within the discriminative bits). The first right sibling 
+
+c j′ (where j′ > j) that exists contains keys that: 1. Share the same prefix as Q up to the discriminative bits extracted before depth f .2. Have a larger sparse partial key than c j, implying lexico-graphically larger keys. The minimum key in c j′ ’s subtree is found by leftmost descent, yielding lb (Q).If no right sibling exists at depth f , the algorithm backtracks to depth f −1 and repeats. This process continues until finding a right sibling or determining that no key ≥ Q exists (returning 
+
+⊥). B.8 Proof of Theorem 6 (Lower Bound Sound-ness) 
+
+Full Proof of Theorem 6. We reduce lower bound soundness to collision resistance. Suppose A wins Glb  
+
+> Π,A
+
+with probability ε > negl (λ). This means A produces (R, Q, Kr,Vr, π) such that: • Verify (R, (Q, Kr,Vr, lb ), π) = 1• Kr̸ = K∗ where K∗ is the true lower bound computable from π’s authenticated structure Parse the proof as π = ( Q, Path , K′,V ′, v′, Adj , Kr,Vr).The verification algorithm performs four checks: 
+
+Check 1: Path integrity. Path must authenticate (K′,V ′)
+
+against R via bottom-up hash reconstruction. By Theorem 13, if this check passes, (K′,V ′) is in the trie committed by R
+
+with overwhelming probability. 
+
+Check 2: Search consistency. Both Q and K′ must route iden-tically through Path . The verifier recomputes dense (Q, Mi)
+
+and dense (K′, Mi) at each node and checks they select the same child. This confirms K′ is the leaf that optimistic search reaches for Q.
+
+Check 3: Fork depth correctness. The verifier independently computes the fork depth f from the authenticated extraction masks: 
+
+f = max {i : d ∈ disc_bits (Path [i].M)} (28) where d = diffbit (Q, K′).Crucially, the extraction masks Mi are committed in the node content hash (Definition 2). The adversary cannot claim a different f without providing different masks, which would change the node hash and cause root mismatch. 
+
+Check 4: Structural minimality. For the claimed result 
+
+(Kr,Vr) to differ from lb (Q) while passing verification, the adjustment path Adj must violate the minimality constraints. 
+
+Sub-case 4a: Overshot case with non-leftmost descent. The verifier checks that every entry in AdjPath has child index 0. If the adversary claims index j > 0 at some level but the authentic leftmost child differs, the CMR reconstruction will fail unless a collision exists. 
+
+Sub-case 4b: Undershot case with incorrect sibling. The verifier checks that the first adjustment entry is the immediate right sibling at the fork point. The authentic right sibling is determined by the sparse keys S committed in the fork node’s content hash. Any discrepancy requires forging either the sparse keys (changing node hash) or the CMR (collision). 
+
+Sub-case 4c: Adjustment path leads to wrong leaf. If Adj leads to (Kr,Vr)̸ = lb (Q) but verification passes, the hash chain from Kr must match the chain from the authentic lower bound. By Lemma 10, this implies a collision. 
+
+Conclusion. In all cases, A winning implies a hash collision is extractable. We construct B that runs A, checks each verifi-cation step, and extracts a collision from any inconsistency: Adv lb 
+
+> Π
+
+(A) ≤ Adv CR  
+
+> H
+
+(B) ≤ negl (λ) (29) 
+
+## B.9 Proof of Lemma 7 (Rank Computation) 
+
+Full Proof of Lemma 7. We prove by induction on path depth. 
+
+Claim: For a key K with search path (path [0], . . . , path [h−1]) ,where path [i].child_idx = ji:rank (K) = 
+
+> h−1
+
+# ∑
+
+> i=0
+> ji−1
+
+# ∑
+
+> j=0
+
+lc (path [i].children [ j]) (30) 
+
+Base case ( h = 1): A single-node trie contains one leaf. The path is trivial with j0 = 0 (only one child). The sum is empty, yielding rank (K) = 0 . This is correct, as the only key has no predecessors. 
+
+Inductive step: Assume the formula holds for tries of height 
+
+< h. Consider a trie T of height h with root N.The search for K at root N selects child c j0 (where j0 =
+
+path [0].child_idx ). Within subtrie c j0 , the search continues with path (path [1], . . . , path [h − 1]) .
+
+Key observation: Sparse key ordering. By HOT construc-tion, children of a node are ordered by their sparse partial keys. If j < j′, then all keys in child c j’s subtree are lexicographi-cally smaller than all keys in c j′ ’s subtree. This follows from the fact that sparse partial keys encode the discriminative bit patterns, which determine lexicographic ordering. 
+
+Counting keys smaller than K: The keys smaller than K in 
+
+T consist of: 1. All keys in children c0, c1, . . . , c j0−1 of the root. 2. Keys smaller than K within child c j0 ’s subtree. The count from (1) is: 
+
+> j0−1
+
+# ∑
+
+> j=0
+
+lc (c j) (31) where lc (c j) is the leaf count of subtree c j, stored in the node’s 
+
+L field and committed in the content hash. The count from (2) is rank c j0 (K), the rank of K within the subtrie rooted at c j0 . By the inductive hypothesis: rank c j0 (K) = 
+
+> h−1
+
+# ∑
+
+> i=1
+> ji−1
+
+# ∑
+
+> j=0
+
+lc (path [i].children [ j]) (32) Combining: rank T (K) = 
+
+> j0−1
+
+# ∑
+
+> j=0
+
+lc (c j) + 
+
+> h−1
+
+# ∑
+
+> i=1
+> ji−1
+
+# ∑
+
+> j=0
+
+lc (path [i].children [ j]) 
+
+(33) 
+
+=
+
+> h−1
+
+# ∑
+
+> i=0
+> ji−1
+
+# ∑
+
+> j=0
+
+lc (path [i].children [ j]) (34) which completes the induction. B.10 Proof of Theorem 8 (Range Soundness) 
+
+Theorem 14 (Range Soundness — Restated) . For any PPT adversary A:
+
+Adv range  
+
+> Π
+
+(A) ≤ 2 · Adv lb  
+
+> Π
+
++ Adv multi  
+
+> Π
+
++ negl (λ) (35) 
+
+Full Proof. We prove via a sequence of games, follow-ing the standard game-based methodology. Each transition is classified according to the three canonical types: (1) indistinguishability-based, (2) failure-event-based with Dif-ference Lemma, or (3) bridging steps. 
+
+Game 0: Original range soundness game. This is Grange  
+
+> Π,A
+
+as defined. Let S0 denote the event that A wins. 
+
+Game 0 → Game 1: Abort on boundary proof failure. 
+
+[Type 2: Failure Event Transition] 
+
+Game 1 is identical to Game 0, except we abort (adversary loses) if either boundary proof πL 
+
+> lb
+
+or πR 
+
+> lb
+
+would fail indepen-dent verification. 
+
+Failure event definition: Let F1 be the event that Game 0 accepts but one of the boundary proofs is unsound (i.e., claims an incorrect lower bound). Formally, F1 occurs when: • Verify (R, (first , KLr ,V Lr , lb ), πL
+
+> lb
+
+) = 1 but KLr̸ = lb (first ),or • Verify (R, (last , KRr ,V Rr , lb ), πR
+
+> lb
+
+) = 1 but KRr̸ = lb (last ).
+
+Difference Lemma application: Games 0 and 1 proceed identically unless F1 occurs. Formally, S0 ∧ ¬ F1 ⇔ S1 ∧ ¬ F1.By the Difference Lemma: 
+
+|Pr [S0] − Pr [S1]| ≤ Pr [F1] (36) 
+
+Bounding Pr [F1]: By Theorem 6, each boundary proof has soundness error at most Adv lb 
+
+> Π
+
+. By a union bound over the two boundary proofs: Pr [F1] ≤ 2 · Adv lb  
+
+> Π
+
+(37) 
+
+Game 1 → Game 2: Abort on multi-proof failure. [Type 2: Failure Event Transition] 
+
+Game 2 is identical to Game 1, except we abort if πmulti 
+
+would fail independent verification (i.e., some claimed entry is not in TR). 
+
+Failure event: Let F2 be the event that the multi-proof passes verification but ∃ i : (Ki,Vi) /∈ TR.
+
+Difference Lemma application: S1 ∧ ¬ F2 ⇔ S2 ∧ ¬ F2. By the Difference Lemma and Theorem 4: 
+
+|Pr [S1] − Pr [S2]| ≤ Pr [F2] ≤ Adv multi  
+
+> Π
+
+(38) 
+
+Game 2 → Game 3: Honest verification. [Type 3: Bridging Step] 
+
+In Game 2, all sub-proofs are sound (conditioned on ¬F1 ∧¬F2). Game 3 is a conceptual restatement where we analyze what “honest verification” implies. This is a purely logical transition with Pr [S2] = Pr [S3].
+
+Analysis of Game 3: Information-theoretic argument. 
+
+In Game 3, conditioned on all sub-proofs being sound, the verifier computes: 
+
+rL = rank (first ) (from πL
+
+> lb
+
+) (39) 
+
+rR = rank (last ) (from πR
+
+> lb
+
+) (40) using the authenticated leaf count fields. By Lemma 7, these ranks are computed correctly from the Merkle-committed paths. The expected entry count is rR − rL.The verifier checks |entries | = rR − rL and that all entries are in range [first , last ) with correct ordering. 
+
+Omission attack prevention: Suppose |entries | < |E∗|
+
+where E∗ is the true set of entries in [first , last ). Since the boundary proofs are sound (by conditioning on ¬F1), the ranks rL, rR are correct. By definition, |E∗| = rR − rL. Thus 
+
+|entries | < rR − rL, and the count check fails. 
+
+Insertion attack prevention: Suppose entries contains an en-try (Ki,Vi) where either Ki /∈ [first , last ) or (Ki,Vi) /∈ TR. The ordering check rejects if Ki /∈ [first , last ). By conditioning on 
+
+¬F2, all (Ki,Vi) ∈ TR. Including extra (valid but out-of-range) entries is impossible due to the ordering check. Including exactly rR − rL entries, all in range and in the trie, forces 
+
+entries = E∗. Therefore, Pr [S3] = 0 (adversary cannot win Game 3). 
+
+Combining the transitions. We now combine all game tran-sitions using the triangle inequality. Let εlb = Adv lb  
+
+> Π
+
+and 
+
+εmulti = Adv multi  
+
+> Π
+
+.Adv range  
+
+> Π
+
+(A) = Pr [S0] (41) 
+
+≤ Pr [S1] + |Pr [S0] − Pr [S1]| (42) 
+
+≤ Pr [S1] + 2εlb (43) 
+
+≤ Pr [S2] + |Pr [S1] − Pr [S2]| + 2εlb (44) 
+
+≤ Pr [S2] + εmulti + 2εlb (45) 
+
+= Pr [S3] + εmulti + 2εlb (46) 
+
+= 0 + εmulti + 2εlb (47) 
+
+= 2 · Adv lb  
+
+> Π
+
++ Adv multi  
+
+> Π
+
+(48) 
+
+≤ negl (λ) (49) The final inequality holds since both Adv lb  
+
+> Π
+
+and Adv multi  
+
+> Π
+
+are negligible by Theorems 6 and 4. 
+
+## B.11 Security Summary 
+
+All M HOT proofs achieve computational soundness under the collision resistance assumption for the underlying hash func-tion. The reductions are tight or near-tight (with polynomial loss bounded by the number of entries), ensuring that concrete security level matches that of the hash function. 
+
+Theorem 15 (Main Security Theorem) . Let H be a collision-resistant hash function with advantage bound εCR against Table 5: Summary of security reductions.                            
+
+> Property Reduces To Bound Tightness
+> Commitment binding CR εCR Direct Single-point soundness CR εCR Direct Non-membership soundness CR εCR Direct Multi-point soundness Single-point m·εCR Factor m
+> Lower bound soundness CR εCR Direct Range soundness LB + Multi (m+2)·εCR Factor m+2
+
+τ-time adversaries. Then the MHOT proof system is sound for all statement types against τ′-time adversaries, where: 
+
+• τ′ ≈ τ − O(poly (λ)) (polynomial overhead for proof ver-ification and reduction) 
+
+• Soundness advantage ≤ (m + 2) · εCR for proofs involv-ing m entries In particular, for single-point proofs the reduction is tight (ε′ = εCR ). Proof. Follows directly from combining Lemma 10 and The-orems 13, 4, 6, and 14.
