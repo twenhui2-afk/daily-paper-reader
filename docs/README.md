@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-13
-- 运行时间：2026-06-14 04:55:37 UTC+8
+- 最新运行日期：2026-06-14
+- 运行时间：2026-06-15 05:13:30 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Output-sensitive Sparse Polynomial GCD over Finite Fields is NP-hard》（7.5/10）, 《Bridging the Morphology Gap: Adapting VLA Models to Dexterous Manipulation via Intent-Conditioned Fine-Tuning》（7.5/10）, 《Existential Indifference: Self-Nonpreservation as a Necessary Architectural Condition for Aligned Superintelligence (or: The Suicidal AI)》（7.4/10）
+- 速读：《Anatomically Conditioned Recurrent Refinement for Topology-Aware Circle of Willis Segmentation》（7.4/10）, 《Learning Task-Aware Sampling with Shared Saliency through Density-Equalizing Mappings》（7.2/10）, 《Masked and Predictive Self-Supervised Foundation Models for 3D Brain MRI》（7.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/13/README](/202606/13/README)
+- 详情：[/202606/14/README](/202606/14/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Output-sensitive Sparse Polynomial GCD over Finite Fields is NP-hard](/202606/13/2606.12144v1-output-sensitive-sparse-polynomial-gcd-over-finite-fields-is-np-hard)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-2. [Bridging the Morphology Gap: Adapting VLA Models to Dexterous Manipulation via Intent-Conditioned Fine-Tuning](/202606/13/2606.12109v1-bridging-the-morphology-gap-adapting-vla-models-to-dexterous-manipulation-via-intent-conditioned-fine-tuning)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-3. [Existential Indifference: Self-Nonpreservation as a Necessary Architectural Condition for Aligned Superintelligence (or: The Suicidal AI)](/202606/13/2606.12032v1-existential-indifference-self-nonpreservation-as-a-necessary-architectural-condition-for-aligned-superintelligence-or-the-suicidal-ai)  
+1. [Anatomically Conditioned Recurrent Refinement for Topology-Aware Circle of Willis Segmentation](/202606/14/2606.12319v1-anatomically-conditioned-recurrent-refinement-for-topology-aware-circle-of-willis-segmentation)  
    标签：评分：7.4/10
    evidence：检索回退候选
-4. [Efficient Multinomial Logistic Bandit via Frequent Directions](/202606/13/2606.11968v1-efficient-multinomial-logistic-bandit-via-frequent-directions)  
-   标签：评分：7.4/10
+2. [Learning Task-Aware Sampling with Shared Saliency through Density-Equalizing Mappings](/202606/14/2606.12869v1-learning-task-aware-sampling-with-shared-saliency-through-density-equalizing-mappings)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-5. [MHOT: Height-Optimized Authenticated Data Structure for Blockchain State Commitment](/202606/13/2606.11736v1-mhot-height-optimized-authenticated-data-structure-for-blockchain-state-commitment)  
-   标签：评分：7.3/10
+3. [Masked and Predictive Self-Supervised Foundation Models for 3D Brain MRI](/202606/14/2606.13315v1-masked-and-predictive-self-supervised-foundation-models-for-3d-brain-mri)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-6. [SkillJuror: Measuring How Agent Skill Organization Changes Runtime Behavior](/202606/13/2606.11543v1-skilljuror-measuring-how-agent-skill-organization-changes-runtime-behavior)  
-   标签：评分：7.3/10
+4. [Analyzing and Improving Fine-grained Preference Optimization in Medical LVLMs](/202606/14/2606.12590v1-analyzing-and-improving-fine-grained-preference-optimization-in-medical-lvlms)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-7. [A Hecke algebra isomorphism over close local fields for metaplectic groups](/202606/13/2606.11920v1-a-hecke-algebra-isomorphism-over-close-local-fields-for-metaplectic-groups)  
+5. [Stain-Aware Wavelet Regularization for Instant Adversarial Purification in Histopathology](/202606/14/2606.08745v1-stain-aware-wavelet-regularization-for-instant-adversarial-purification-in-histopathology)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [A new proof for the partition algorithm of the annihilator varieties of highest weight modules](/202606/13/2606.11790v1-a-new-proof-for-the-partition-algorithm-of-the-annihilator-varieties-of-highest-weight-modules)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-9. [Quality Adaptive Angular Margin Learning for Respiratory Sound Classification](/202606/13/2606.11915v1-quality-adaptive-angular-margin-learning-for-respiratory-sound-classification)  
+6. [++nnU-Net: Scaling nnU-Net with Prefix-Based Data Augmentation](/202606/14/2606.10713v1-nnu-net-scaling-nnu-net-with-prefix-based-data-augmentation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Graded identities of the first Weyl algebra and its generalizations](/202606/13/2606.11497v1-graded-identities-of-the-first-weyl-algebra-and-its-generalizations)  
+7. [FSS-Net: Frequency-Spatial Synergy Network with Wavelet Attention for Carotid Artery Ultrasound Segmentation](/202606/14/2606.10378v1-fss-net-frequency-spatial-synergy-network-with-wavelet-attention-for-carotid-artery-ultrasound-segmentation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-11. [Understanding and Detecting Scalability Faults in Large-Scale Distributed Systems](/202606/13/2606.11815v1-understanding-and-detecting-scalability-faults-in-large-scale-distributed-systems)  
+8. [Point-Wise Geometry-Aware Transformer for Partial-to-Full Point Cloud Registration in Computer-Assisted Surgery](/202606/14/2606.13488v1-point-wise-geometry-aware-transformer-for-partial-to-full-point-cloud-registration-in-computer-assisted-surgery)  
    标签：评分：6.8/10
+   evidence：检索回退候选
+9. [DifferSeg: Towards Diverse Multimodal Binary Segmentation via Differential Perception and Frequency Guidance](/202606/14/2606.08906v1-differseg-towards-diverse-multimodal-binary-segmentation-via-differential-perception-and-frequency-guidance)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+10. [Learnable Token Sparsification for Efficient Gigapixel Whole Slide Image Reasoning](/202606/14/2606.08641v1-learnable-token-sparsification-for-efficient-gigapixel-whole-slide-image-reasoning)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+11. [Foveated-Imaging Geometry CT Architecture and Seeded Diffusion Model Enabling Global Super-Resolution Reconstruction](/202606/14/2606.10390v1-foveated-imaging-geometry-ct-architecture-and-seeded-diffusion-model-enabling-global-super-resolution-reconstruction)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
