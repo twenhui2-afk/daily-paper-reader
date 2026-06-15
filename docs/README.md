@@ -6,55 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-14
-- 运行时间：2026-06-15 05:13:30 UTC+8
+- 最新运行日期：2026-06-15
+- 运行时间：2026-06-16 05:39:17 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Anatomically Conditioned Recurrent Refinement for Topology-Aware Circle of Willis Segmentation》（7.4/10）, 《Learning Task-Aware Sampling with Shared Saliency through Density-Equalizing Mappings》（7.2/10）, 《Masked and Predictive Self-Supervised Foundation Models for 3D Brain MRI》（7.2/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《Root Systems, Tits Cones and Imaginary Cones of Brink-Howlett Groupoids》（8.6/10）, 《NetCause: Counterfactual Learning for Root Cause Analysis in Large-Scale Networks》（8.5/10）
+- 速读：《Artin-Schreier Root Stacks and lifts of group actions》（8.0/10）, 《Temporal Backtracking Search for Test-time Generative Video Reasoning》（7.8/10）, 《Diffusion-Network Alignment: An Efficient Algorithm and Explicit Probability Bounds》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/14/README](/202606/14/README)
+- 详情：[/202606/15/README](/202606/15/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Root Systems, Tits Cones and Imaginary Cones of Brink-Howlett Groupoids](/202606/15/2606.12937v1-root-systems-tits-cones-and-imaginary-cones-of-brink-howlett-groupoids)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
+2. [NetCause: Counterfactual Learning for Root Cause Analysis in Large-Scale Networks](/202606/15/2606.13543v1-netcause-counterfactual-learning-for-root-cause-analysis-in-large-scale-networks)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+3. [Root Clusters and Multiclusters over Imperfect Hilbertian Fields](/202606/15/2606.12660v1-root-clusters-and-multiclusters-over-imperfect-hilbertian-fields)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+4. [Roots of polynomials over semirings and hyperfields](/202606/15/2606.13330v1-roots-of-polynomials-over-semirings-and-hyperfields)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
+5. [Graphical Causal Reasoning for Root Cause Analysis in Cloud Networks](/202606/15/2606.13532v1-graphical-causal-reasoning-for-root-cause-analysis-in-cloud-networks)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+6. [The $μ$-extension of iterated integrals and nested sums](/202606/15/2606.12584v1-the--extension-of-iterated-integrals-and-nested-sums)  
+   标签：评分：8.0/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Anatomically Conditioned Recurrent Refinement for Topology-Aware Circle of Willis Segmentation](/202606/14/2606.12319v1-anatomically-conditioned-recurrent-refinement-for-topology-aware-circle-of-willis-segmentation)  
-   标签：评分：7.4/10
+1. [Artin-Schreier Root Stacks and lifts of group actions](/202606/15/2606.14110v1-artin-schreier-root-stacks-and-lifts-of-group-actions)  
+   标签：评分：8.0/10
    evidence：检索回退候选
-2. [Learning Task-Aware Sampling with Shared Saliency through Density-Equalizing Mappings](/202606/14/2606.12869v1-learning-task-aware-sampling-with-shared-saliency-through-density-equalizing-mappings)  
-   标签：评分：7.2/10
+2. [Temporal Backtracking Search for Test-time Generative Video Reasoning](/202606/15/2606.13861v1-temporal-backtracking-search-for-test-time-generative-video-reasoning)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-3. [Masked and Predictive Self-Supervised Foundation Models for 3D Brain MRI](/202606/14/2606.13315v1-masked-and-predictive-self-supervised-foundation-models-for-3d-brain-mri)  
-   标签：评分：7.2/10
+3. [Diffusion-Network Alignment: An Efficient Algorithm and Explicit Probability Bounds](/202606/15/2606.12879v1-diffusion-network-alignment-an-efficient-algorithm-and-explicit-probability-bounds)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-4. [Analyzing and Improving Fine-grained Preference Optimization in Medical LVLMs](/202606/14/2606.12590v1-analyzing-and-improving-fine-grained-preference-optimization-in-medical-lvlms)  
-   标签：评分：7.0/10
+4. [Discrete Fourier Transform Approach to Cyclically Covering Subspaces of $\mathbb{F}^n_q$](/202606/15/2606.13307v1-discrete-fourier-transform-approach-to-cyclically-covering-subspaces-of-mathbbfnq)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-5. [Stain-Aware Wavelet Regularization for Instant Adversarial Purification in Histopathology](/202606/14/2606.08745v1-stain-aware-wavelet-regularization-for-instant-adversarial-purification-in-histopathology)  
+5. [Multi-Field Hybrid Retrieval-Augmented Generation for Maritime Accident Root Cause Analysis](/202606/15/2606.13249v1-multi-field-hybrid-retrieval-augmented-generation-for-maritime-accident-root-cause-analysis)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+6. [Quantum Entanglement of Bethe States](/202606/15/2606.14140v1-quantum-entanglement-of-bethe-states)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+7. [Note on the Maximum Number of Trees Displayed by a Tree-Child Network](/202606/15/2606.14464v1-note-on-the-maximum-number-of-trees-displayed-by-a-tree-child-network)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+8. [Automorphism groups of non-normal affine toric surfaces](/202606/15/2606.14234v1-automorphism-groups-of-non-normal-affine-toric-surfaces)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+9. [SoccerNet 2026 Player-Centric Ball-Action Spotting:Retraining and Post-Processing Extensions to the FOOTPASS Baselines](/202606/15/2606.09679v1-soccernet-2026-player-centric-ball-action-spottingretraining-and-post-processing-extensions-to-the-footpass-baselines)  
    标签：评分：6.9/10
    evidence：检索回退候选
-6. [++nnU-Net: Scaling nnU-Net with Prefix-Based Data Augmentation](/202606/14/2606.10713v1-nnu-net-scaling-nnu-net-with-prefix-based-data-augmentation)  
+10. [Sharp Bounds and Inference in Sample Selection Models with Treatment Endogeneity](/202606/15/2606.09223v1-sharp-bounds-and-inference-in-sample-selection-models-with-treatment-endogeneity)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+11. [The frog model with death and drift on free products of complete graphs](/202606/15/2606.10165v1-the-frog-model-with-death-and-drift-on-free-products-of-complete-graphs)  
    标签：评分：6.8/10
-   evidence：检索回退候选
-7. [FSS-Net: Frequency-Spatial Synergy Network with Wavelet Attention for Carotid Artery Ultrasound Segmentation](/202606/14/2606.10378v1-fss-net-frequency-spatial-synergy-network-with-wavelet-attention-for-carotid-artery-ultrasound-segmentation)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-8. [Point-Wise Geometry-Aware Transformer for Partial-to-Full Point Cloud Registration in Computer-Assisted Surgery](/202606/14/2606.13488v1-point-wise-geometry-aware-transformer-for-partial-to-full-point-cloud-registration-in-computer-assisted-surgery)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-9. [DifferSeg: Towards Diverse Multimodal Binary Segmentation via Differential Perception and Frequency Guidance](/202606/14/2606.08906v1-differseg-towards-diverse-multimodal-binary-segmentation-via-differential-perception-and-frequency-guidance)  
-   标签：评分：6.7/10
-   evidence：检索回退候选
-10. [Learnable Token Sparsification for Efficient Gigapixel Whole Slide Image Reasoning](/202606/14/2606.08641v1-learnable-token-sparsification-for-efficient-gigapixel-whole-slide-image-reasoning)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-11. [Foveated-Imaging Geometry CT Architecture and Seeded Diffusion Model Enabling Global Super-Resolution Reconstruction](/202606/14/2606.10390v1-foveated-imaging-geometry-ct-architecture-and-seeded-diffusion-model-enabling-global-super-resolution-reconstruction)  
-   标签：评分：6.6/10
    evidence：检索回退候选
 
 
