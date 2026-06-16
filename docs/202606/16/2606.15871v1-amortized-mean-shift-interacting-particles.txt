@@ -1,0 +1,1586 @@
+Title: Amortized mean-shift interacting particles
+
+URL Source: https://arxiv.org/pdf/2606.15871v1
+
+Published Time: Tue, 16 Jun 2026 01:19:50 GMT
+
+Number of Pages: 41
+
+Markdown Content:
+# AMORTIZED MEAN -SHIFT INTERACTING PARTICLES 
+
+A P REPRINT 
+
+Ali Siahkoohi 
+
+Department of Computer Science University of Central Florida 
+
+## ABSTRACT 
+
+Bayesian inference for inverse problems is run to evaluate integrals —posterior expectations, tail prob-abilities, and risks—across a stream of observations, not to produce samples for their own sake. The standard estimate averages the integrand over posterior samples, a Monte-Carlo average whose error decays only as the square root of the sample size, so accuracy demands many samples—prohibitive when each one calls a partial-differential-equation forward model. Mean-shift interacting particles need far fewer: in place of independent samples they return a small set of signed-weight nodes—a deterministic quadrature—whose weighted averages estimate those integrals more accurately than an equal number of random draws. Finding the nodes, however, is a per-observation optimization that, in its most accurate form, reads the posterior score at every step—returning in another form the cost the method was meant to save. We introduce amortized mean-shift interacting particles , a learned map that emits the weighted nodes from an observation and a handful of posterior samples in a single forward pass. Training asks only for joint parameter–observation samples and a posterior to draw from—a conditional normalizing flow, an empirical (Nadaraya–Watson) conditional read off the dataset, or any other reference the user can sample—and the map learns to integrate that posterior from samples alone, evaluating neither its density nor its score. Once trained, it generalizes to unseen observations and integrands at any node budget and improves on independent samples in two ways: by reweighting them, provably no worse than the equal weights of Monte-Carlo; and by moving them, which empirically lowers the integration error further. Across closed-form, sampled, learned, and physics-based posteriors—up to a thousand-coefficient groundwater field—it integrates more accurately than the same number of independent samples at every budget, and a posterior-whitened, dimension-aware kernel removes the high-dimensional wall—where an isotropic kernel loses its geometric contrast as the pairwise distances concentrate—and carries the margin into high dimension. The result is a Pareto improvement on Monte-Carlo integration rather than a competitor to drawing more samples .
+
+## 1 Introduction 
+
+Quantifying uncertainty in the solution of an inverse problem is of fundamental importance across the computational sciences, from seismic and medical imaging to estimation constrained by partial differential equations. The unknown 
+
+x ∈ Rdx is observed only through a forward model that maps it to data y ∈ Rdy , and that map is rarely invertible: such inverse problems are typically ill-posed, and a single point estimate cannot express the non-uniqueness of their solution (Stuart, 2010). The Bayesian framework addresses this by characterizing the solution as the posterior distribution given by Bayes’ rule, 
+
+p(x | y) = p(y | x) p(x)
+
+p(y) , (1) in which p(y | x) is the likelihood induced by the forward model and p(x) the prior. The posterior is not the end in itself; it is consulted to extract a statistic of the unknown—a posterior mean, the probability that a quantity of interest exceeds a threshold, or a Bayes risk—and each such statistic is an expectation. Given M independent posterior samples 
+
+> arXiv:2606.15871v1 [stat.CO] 14 Jun 2026
+
+Amortized mean-shift interacting particles A P REPRINT the same draws, repositioned + reweighted      
+
+> i.i.d. draws
+> designed nodes (ours)
+> every node
+> repositioned
+> 4816 32 64
+> node budget M
+> 10 −2
+> 10 −1
+> MMD 2(Q, ρ)
+> below the floor at every budget
+> i.i.d. floor
+> the quadrature
+> beats the floor
+
+Figure 1: The same independent samples, repositioned and reweighted, integrate the posterior below the independent-sample floor—at every budget, in one forward pass. A single set-equivariant network maps an observation and independent samples of the reference ρ to a weighted-node quadrature at any requested resolution. 
+
+(a) On a curved reference (density backdrop), the independent samples (open marks, equal weight) miss the high-mass ridge, while the designed weighted nodes (filled, each connected to its seed) are pulled onto it. (b) For the same network, the squared maximum mean discrepancy to ρ against the node budget: the quadrature sits below the dashed independent-sample floor throughout. Reweighting is provably no worse than the floor (Proposition 2); the configuration the nodes reach is a fixed point of the mean-shift map (Proposition 3). The reference is the two-dimensional banana (Section 7.1 and Table 1). Code on GitHub. 
+
+xi ∼ p(x | y), the expectation of an integrand h is estimated by the Monte-Carlo average 
+
+E[h(x) | y] = 
+
+Z
+
+h(x) p(x | y) d x ≈ 1
+
+M
+
+> M
+
+X
+
+> i=1
+
+h(xi), Var 
+
+h 1
+
+> M
+
+P 
+
+> i
+
+h(xi)
+
+i
+
+= Var p(x|y)[h(x)]  
+
+> M
+
+, (2) whose error, for any fixed integrand h, decays only at the rate 1/√M (O’Hagan, 1991). The deliverable of Bayesian inference is therefore an integral, and the cost of that integral is set by this variance. Drawing the posterior samples that the average in equation (2) consumes is a longstanding challenge in its own right, and much progress has been made on it—Markov chain Monte Carlo (Robert and Casella, 2004; Neal, 2011; Welling and Teh, 2011), variational and interacting-particle methods (Rezende and Mohamed, 2015; Liu and Wang, 2016; Blei et al., 2017; Korba et al., 2020; Aghazade et al., 2026; Siahkoohi et al., 2026), and the amortized variational and simulation-based inference that learn to sample the high-dimensional posteriors these problems present (Papamakarios and Murray, 2016; Greenberg et al., 2019; Cranmer et al., 2020; Radev et al., 2022; Siahkoohi et al., 2023; Orozco et al., 2025). Whichever sampler is used, its draws feed the same Monte-Carlo average and inherit the same Monte-Carlo floor of equation (2) : even an exact sampler lowers the error of a reported expectation only by producing more draws, never by improving the ones in hand. The bottleneck we address is not the fidelity of the samples, but the variance of the estimator they feed. One line of work confronts this estimator variance directly. Mean-shift interacting particles (Belhadji et al., 2026a,b) replace the M independent samples by a small set of weighted nodes—a quadrature—whose weighted average estimates a posterior expectation with a worst-case error, taken over an entire class of integrands at once, below that of the same number of independent samples. A single node set therefore improves every reported expectation simultaneously, in contrast to a control variate, which reduces the variance of one integrand at a time (Assaraf and Caffarel, 1999; Mira et al., 2013; Oates et al., 2017; Siahkoohi and Oh, 2026). The nodes, however, are not free. They are the solution of an optimization—minimizing a discrepancy to the posterior—that is rerun from scratch at every observation, and that reads the posterior density and, in its most accurate form, the posterior score. A simulator exposes neither, and where the likelihood is a partial-differential-equation forward model each score evaluation is itself a forward-and-adjoint solve. The construction is thus neither amortized across a stream of observations nor free of the per-observation density and score evaluations it was meant to spare. 2Amortized mean-shift interacting particles A P REPRINT 
+
+To address these limitations, we propose amortized mean-shift interacting particles : a set-equivariant network that emits the quadrature in a single forward pass, from an observation and a set of independent posterior samples, with no per-observation optimization and no evaluation of the posterior density or score. Because the network reads its reference only through samples, any posterior the user can sample is admissible—a trained conditional flow, a physics-based posterior, or an empirical conditional measure (Belhadji et al., 2026a). Two levers carry the integration error below the Monte-Carlo floor under different guarantees: reweighting the samples by a closed-form optimum is provably no worse than the samples themselves at every budget, while moving the nodes is the larger, empirical gain. Across closed-form, sampled, learned, and physics-based posteriors—up to thousand-coefficient groundwater fields—a single trained map integrates below the Monte-Carlo floor at every node budget, so that the construction does not compete with drawing more samples but is a Pareto improvement on the Monte-Carlo estimator itself (Figure 1). 
+
+1.1 Contributions (1) A score-free quadrature below the independent-sample floor. From samples of any reference posterior, a weighted node set integrates it with lower worst-case error than an equal number of independent samples, reading the posterior only through a sample-estimated kernel mean and self-affinity—never its density or score. Reweighting alone is 
+
+provably no worse than equal weights (Proposition 2); moving the nodes descends below the floor (Section 4), so the construction is a Pareto improvement, not a rival to drawing more samples. 
+
+(2) One network, any node budget, a single forward pass. A single set-equivariant network emits the quadrature at 
+
+any requested node count, trained by maximum-mean-discrepancy regression against the posterior and generalizing across observations, with the weights in closed form so the network learns only where to place the nodes (Section 4). 
+
+(3) One construction across posterior types and dimensions. A single trained map integrates below the floor, at every node budget, on Gaussian and Gaussian-mixture targets across dimension, a curved sampled posterior, a limited-angle tomography posterior, a trained conditional flow, and thousand-coefficient groundwater fields (Section 7); a posterior-whitened kernel removes the high-dimensional wall where an isotropic kernel collapses (Sections B and 4), and an optional per-query finetuning descends below the one-pass emission on exact-score targets while collapsing on sharp ones (Section 5). The remainder of the paper is organized as follows. Section 2 places the neighboring literatures in plain terms—among them the neural posterior estimators that supply the construction’s input rather than competing with its output. Section 3 sets up the integration problem, introduces mean-shift interacting particles and the two ways their nodes are found, and states precisely why neither admits amortization. Section 4 builds the amortized map, Section 5 adds the optional per-query finetuning, and Section 6 collects the guarantees the construction rests on. Section 7 consolidates the evidence across posterior types and dimensions; Section 8 then stress-tests the construction—interrogating the conditioning, the bandwidth, and the resolution dial—before Sections 9 and 10 mark the scope and conclude. 
+
+## 2 Related work 
+
+Amortized mean-shift interacting particles assemble several neighboring literatures, and the contribution is clearest once each has its role. The method borrows its quadrature object, the reweighting that closes it, its network architecture, and its score-free choice of subspace; it generalizes one neighbor—the per-integrand control variate—and consumes another—the posterior estimators that feed it rather than rival it. The paragraphs below assign each thread its role in words, and defer to Sections 3 and 4 the mathematics that makes the connections precise. 
+
+The mean shift supplies the quadrature object. The object the method emits—a small set of weighted nodes whose weighted averages approximate posterior expectations—is the object of Bayesian quadrature and probabilistic integration (O’Hagan, 1991; Rasmussen and Ghahramani, 2003; Briol et al., 2019), and of the kernel-herding and kernel-thinning constructions that compress a distribution into a handful of representative super-samples (Chen et al., 2010; Dwivedi and Mackey, 2021). The construction we build on is the mean shift (Fukunaga and Hostetler, 1975; Comaniciu and Meer, 2002)—classically a mode-seeker that walks a point uphill on a kernel density estimate—recently lifted into a quadrature rule by Belhadji et al. (2026a,b), whose interacting particles settle at a node set whose weighted average integrates a target better than the same number of independent draws. Two of their constructions matter here: a data-driven one that reads the target from samples alone, the route we amortize, and a score-based one that reads the target’s score, the route an optional refinement resumes; the nearest score-built relatives place or prune nodes by reading the score (Chen et al., 2018; Riabiz et al., 2022). We keep their quadrature object, take the target to be a posterior the user supplies, and remove the per-observation re-solve their construction repeats for every new observation. 3Amortized mean-shift interacting particles A P REPRINT 
+
+The conditional control variate is the per-integrand special case. The closest relative is the conditional neural control variate of Siahkoohi and Oh (2026), which learns, for each observation, a correction that cancels the Monte-Carlo variance of one chosen integrand—an auxiliary function whose posterior mean is zero, subtracted from the integrand to shrink its variance. Both sit in the control-variate and control-functional tradition—from classical control variables (Fieller and Hartley, 1954) and the zero-variance principle (Assaraf and Caffarel, 1999; Mira et al., 2013), through kernel and Stein control functionals (Oates et al., 2017; Si et al., 2022; South et al., 2022, 2023; Sun et al., 2023b,a), to their neural parameterizations (Müller et al., 2020; Wan et al., 2020; Bedaque and Oh, 2024; Oh, 2025) and the variance-reduction baselines of reinforcement learning (Greensmith et al., 2004)—each of which cancels the variance of a single integrand. The present method is its all-integrand counterpart: a single weighted node set lowers the error of every integrand at once, reused across integrands rather than refit for each. It inherits that work’s discipline of stating the guarantee relative to the posterior the user commits to, never an inaccessible ground truth. One construction cancels a single integrand at a time; the other integrates them all at once. 
+
+Neural posterior estimation is the input, not a baseline. The reference posterior the method integrates is exactly what likelihood-free posterior estimators produce, and the relationship is consumption, not rivalry. Neural posterior, likelihood, and ratio estimation (Papamakarios and Murray, 2016; Greenberg et al., 2019; Papamakarios et al., 2019; Durkan et al., 2020; Hermans et al., 2020; Kothari et al., 2021), surveyed by Cranmer et al. (2020) and assessed by calibration diagnostics (Talts et al., 2018; Lueckmann et al., 2021), learn an amortized posterior and draw samples from it; a trained conditional flow (Wang et al., 2025), a diffusion posterior sampler (Baldassari et al., 2023; Chung et al., 2023; Pidstrigach et al., 2024), or a conditional generative or transport map (Baptista et al., 2024; Hosseini et al., 2025) is one such posterior. Our map takes that posterior’s samples and hands back its integrals at a lower cost per integral. A learned posterior is therefore the construction’s input—the two are stages of one pipeline—and no claim about how faithfully it approximates the truth is made or needed. 
+
+Bayesian quadrature is the reweighting’s provenance. The closed-form optimal weights that close our emission—a reweighting of a fixed node set toward the region the posterior favors—are the classical weights of Bayesian Monte Carlo and probabilistic integration (O’Hagan, 1991; Rasmussen and Ghahramani, 2003; Briol et al., 2019). The novelty is not the per-observation weight solve, which is old, but amortizing it—together with the node positions—across a stream of observations and across the requested number of nodes, so that one trained map emits the answer in a single forward pass rather than solving anew for every observation. 
+
+Amortized samplers learn a sampler, not a quadrature. Amortized Stein variational gradient descent (Feng et al., 2017) also learns a map that replaces a per-observation iteration, but it emits an evenly weighted cloud of samples and reads the posterior score at every step. Our map reads no score and emits a weighted—and signed—node set built for integration, and on the one axis the two share, the error of the integral, it is favorable against a tuned sampler (Section 7). The two remain different objects: a sampler is the natural choice when the score is in hand and an evenly weighted cloud is wanted, while ours is a score-free, reusable quadrature. The network that emits it—a set of samples and an observation summary passed through attention layers that let the samples coordinate—is a neural process (Garnelo et al., 2018; Kim et al., 2019) with the permutation symmetry of Deep Sets and the Set Transformer (Zaheer et al., 2017; Lee et al., 2019), conditioned on the requested number of nodes through feature-wise modulation (FiLM) (Perez et al., 2018); that symmetry is what lets one trained map serve any number of nodes. 
+
+The informed subspace can be selected without a score. In high dimension the method acts through a low-dimensional summary of the unknown that the data inform, the subject of likelihood-informed subspaces and certified dimension reduction (Cui et al., 2014; Spantini et al., 2015; Cui and Zahm, 2021; Zahm et al., 2022) and of the active-subspace and sufficient-dimension-reduction estimators near them (Cook and Weisberg, 1991; Li, 1991; Cook and Li, 2002; Constantine, 2015). Across that literature the informed directions are read from the score or the forward-model gradient; we recover the same directions from samples alone, keeping the construction score-free from end to end. Borrowed object, borrowed reweighting, borrowed architecture, score-free throughout—the next section makes the borrowings precise. 
+
+## 3 The integration problem and mean-shift interacting particles 
+
+The deliverable of Section 1 is an integral, and its cost is the variance of the Monte-Carlo estimator that produces it. This section confronts that cost. It replaces the random samples by a designed set of weighted nodes whose worst-case integration error is a single tractable quantity (Section 3.1); recalls the construction that finds those nodes—mean-shift interacting particles, mean shift made to interact (Section 3.2)—and the two ways their defining quantities are read, from samples or from a score (Section 3.3); and closes by naming precisely why neither way can be amortized across a 4Amortized mean-shift interacting particles A P REPRINT 
+
+stream of observations (Section 3.4). The reference throughout is the posterior the user commits to, written ρ(· | y⋆)
+
+and never the inaccessible ground-truth posterior it approximates (Remark 1). 
+
+3.1 The integration error is a maximum mean discrepancy 
+
+Keep the budget of Section 1— M function evaluations—but free the two choices the Monte-Carlo estimator left fixed: the equal weights and the random locations. Replace the M samples by a weighted node set, a quadrature 
+
+Q = PMj=1 wj δzj with nodes zj and signed weights wj , and estimate a posterior expectation by the weighted average 
+
+Eρ[h] ≈ P 
+
+> j
+
+wj h(zj ). The weights are signed, not constrained to be non-negative, so Q is a quadrature rule rather than a sample set: its value is in the weighted averages it computes, not in any node taken alone. How good is such a rule? Across the many integrands a posterior must serve, the right measure of error is the worst case. For a characteristic kernel k with reproducing-kernel Hilbert space H, the reproducing property collapses that worst case over the unit ball of H into a single Hilbert-space distance, 
+
+sup 
+
+> ∥h∥H≤1
+
+P 
+
+> j
+
+wj h(zj ) − Eρ[h] = μQ − μρ H = MMD( Q, ρ ), (3) the maximum mean discrepancy between Q and ρ, in which μν = R k(·, x) d ν(x) is the kernel mean embedding of a measure ν (Gretton et al., 2012; Muandet et al., 2017). A single scalar therefore controls the error of every integrand in 
+
+H at once—the maximum mean discrepancy is the quadrature’s worst-case integration error over the unit ball (Briol et al., 2019; Belhadji et al., 2026b)—so pulling the quadrature’s embedding onto the reference’s bounds every integral in that ball simultaneously (Figure 2). Squaring gives the closed quadratic form the construction minimizes, 
+
+MMD 2(Q, ρ ) = w⊤K w − 2 w⊤μ + cρ, Kjl = k(zj , zl), μ j =
+
+Z
+
+k(zj , x) d ρ(x), c ρ =
+
+Z Z 
+
+k(x, x′) d ρ dρ, 
+
+(4) with K the node Gram matrix, μ the kernel mean of ρ at the nodes, and cρ the reference’s self-affinity. Two facts the whole construction rests on are already visible. The Gram K depends on the nodes alone, and the reference enters 
+
+only through the pair (μ, c ρ). Both are expectations under ρ—a kernel-mean average and a kernel double-average—so one machinery serves any reference that can be sampled: a Gaussian, a trained flow, and an empirical conditional measure are scored through the same (μ, c ρ), differing only in how the samples that estimate the pair are produced. That estimate asks for samples of ρ alone —no evaluation of its density, and none of its score. 
+
+Remark 1 (The guarantee is relative to the posterior the user supplies) . The quadrature integrates ρ, the posterior the user commits to, not the ground truth π it approximates. By the triangle inequality, MMD( Q, π ) ≤ MMD( Q, ρ ) + MMD( ρ, π ): the first term is the integration error this paper drives below the Monte-Carlo floor, while the second is the fidelity of the user’s own posterior model (Hosseini and Huang, 2026), which the construction neither touches nor claims to improve, and which is small for a faithful ρ by the user’s modeling effort rather than ours (Siahkoohi and Oh, 2026). Every guarantee below is stated against the supplied reference, never against a truth no estimator of it can access. 
+
+3.2 The quadrature is a mean-shift fixed point 
+
+The quadratic (4) is convex in the weights but not in the nodes, and the node set that minimizes it has a revealing characterization: it is the fixed point of a mean shift . The construction is most easily understood as a classical algorithm made to interact, so we build it from that root. 
+
+Classical mean shift. Given samples x1, . . . , xN of a measure, the kernel density estimate v0(z) = 1
+
+> N
+
+P 
+
+> ℓ
+
+k(xℓ, z)
+
+is a smoothed picture of where their mass lies. Classical mean shift (Fukunaga and Hostetler, 1975; Comaniciu and Meer, 2002) walks a single point uphill on this estimate toward its nearest mode, and its fixed-point step is the ratio of a kernel-weighted average of the samples to their kernel-weighted count, 
+
+z 7 →
+
+P 
+
+> ℓ
+
+xℓ k(xℓ, z)
+
+P 
+
+> ℓ
+
+k(xℓ, z) = z + σ2 
+
+> x
+
+∇ log v0(z), (5) both equalities holding for the squared-exponential kernel of bandwidth σx that we use throughout. A single point seeking a mode is one extreme of quantization; a quadrature is the other, M points spread to cover the whole measure rather than piled on one mode. 
+
+Mean-shift interacting particles. Belhadji et al. (2026a) lift this single-point ascent into a quadrature by letting M
+
+points interact. The nodes that make the discrepancy (4) stationary are the fixed point of a damped iteration 
+
+z ← (1 − λ) z + λ Ψ( z), Ψ( z)i = (K−1V1)i
+
+(K−1v0)i
+
+, v0(z′) = 
+
+Z
+
+k(x, z′) d ρ(x), V1(z′) = 
+
+Z
+
+x k(x, z′) d ρ(x), (6) 5Amortized mean-shift interacting particles A P REPRINT density                                 
+
+> the objects: density +samples density ρ
+> samples xj∼ρ
+> -3 -2 -1 0123
+> evaluation location t
+> kernel mean
+> their kernel-mean embeddings (convolve with k) gap g=μρ−μQ
+> μρ(⋅) = x∼ρk(⋅, x)
+> μQ(⋅) = ∑
+> j
+> wjk(⋅, xj)
+> bumps wjk(⋅, xj)MMD = worst-case error
+> over integrands = ‖ g‖,
+> the gap's size, not its peak
+
+Figure 2: The integration error is the size of the gap between two smoothed curves—the kernel mean of the reference and the kernel mean of the quadrature. (top) A reference density ρ and a handful of nodes drawn from it. 
+
+(bottom) Each measure is convolved with the kernel into its kernel mean embedding, the reference curve μρ and the 
+
+quadrature curve μQ. The maximum mean discrepancy is the worst-case integration error—the supremum, over every integrand of unit norm, of the difference between its averages under ρ and under the quadrature (3) . That supremum is attained by the shaded gap g = μρ − μQ, the worst-case witness, and equals its size : the reproducing-kernel Hilbert space norm ∥μρ − μQ∥H of the whole gap function, not the height at any single point. Driving the quadrature curve onto the reference curve makes every integrand’s error small at once. in which v0 is the kernel mean embedding of the reference at the nodes—the v0 of the density estimate above—and 
+
+V1 its kernel-weighted first moment. The map Ψ is the same average-over-count ratio as classical mean shift, now 
+
+preconditioned by the inverse node Gram K−1. That preconditioner is the interaction: the off-diagonal of K−1 couples the M nodes, so they spread to cover the reference rather than collapse together. With a single node the preconditioner is a scalar and (6) reduces exactly to classical mean shift (Belhadji et al., 2026a); with M nodes it is mean shift made to interact, and its fixed point is the quadrature of ρ. Equivalently, the iteration is preconditioned gradient descent on the discrepancy (4) minimized over the weights, so its fixed points are precisely its stationary node configurations (Belhadji et al., 2026a). We write Ψ in the form it takes for the squared-exponential kernel; the general-kernel map, in which a second auxiliary kernel enters the Gram, is recorded in Section A. 
+
+3.3 Two ways to read the embedding 
+
+Everything in (6) reduces to the pair (v0, V1), the kernel mean embedding of the reference and its first moment, and the two published constructions differ only in how they read it. The data-driven mean shift (Belhadji et al., 2026a) reads the pair from samples and nothing else. Given draws x1, . . . , xL ∼ ρ, it forms the embeddings as kernel sums, 
+
+v0(z′) ≈ 1
+
+L
+
+> L
+
+X
+
+> ℓ=1
+
+k(xℓ, z′), V1(z′) ≈ 1
+
+L
+
+> L
+
+X
+
+> ℓ=1
+
+xℓ k(xℓ, z′), (7) so the mean-shift step is a responsibility-weighted average of the samples, evaluating neither the density of ρ nor its score. This is the score-free route, and the one Section 4 amortizes. The score-based mean shift (Belhadji et al., 2026b), which extends the construction to a reference known only through its unnormalized density, instead reads the same pair 6Amortized mean-shift interacting particles A P REPRINT 
+
+from that density and its score: writing the smoothed step σ2
+
+> x
+
+∇ log v0 as a Gaussian-convolution integral and applying Stein’s identity turns it into the multi-point estimate 
+
+σ2 
+
+> x
+
+∇ log v0(z′) = σ2
+
+> x
+
+X
+
+> q
+
+pq (z′) ∇ log ρ(z′ + σxξq ), ξq ∼ N (0, I), (8) the posterior score ∇ log ρ read at inner points z′ + σxξq and averaged with self-normalized weights pq ∝ ρ(z′ + σxξq ).The two routes reach the same map and differ only in whether the embedding is estimated from samples or from a score. Either way, the map carries one property the amortization will depend on: it sees only the shape of the reference, not its total mass. Scaling ρ by any positive constant scales v0 and V1 together, and the constant cancels in the ratio Ψ,so the nodes are unchanged (Proposition 1). In the conditional setting the canceling constant is the per-observation evidence p(y⋆), so an unknown, observation-varying normalization never reaches the quadrature—the fact that makes amortizing across a stream of observations well-posed, though, as the next subsection shows, not yet free. 
+
+3.4 Why mean-shift interacting particles do not allow amortization 
+
+Mean-shift interacting particles deliver the object this paper wants—a quadrature below the Monte-Carlo floor—but at a cost that, in the settings we care about, is prohibitive. Three obstacles stand between the construction and a posterior consulted across a stream of observations. (i) The quadrature is never available in closed form. The nodes are reached only by iterating (6) to its fixed point, a solve that is per-target and therefore rerun from scratch at every observation once the target is the conditional posterior ρ(· | y⋆). A stream of observations is a stream of independent solves. (ii) The score-based route reads a score the setting does not provide. A simulator delivers joint draws of parameters and data but exposes neither the posterior density nor its score, and where the likelihood is a partial-differential-equation forward model each score evaluation is itself a forward-and-adjoint solve. The most accurate route to a posterior quadrature is, in exactly the settings that motivate it, the most expensive. (iii) The score-free route avoids the score but quantizes the wrong measure. Its embeddings (7) are kernel sums over samples drawn from a single fixed measure, so—however those samples are weighted—the quadrature is of that one 
+
+unconditional measure, carrying no dependence on the observation y⋆. Stripped of the score, the construction is stripped of its tie to the observation. The three obstacles share a shape: the work that produces the quadrature is redone, in full, for every observation. What is absent is a route at once score-free, posterior-conditional, and amortized across observations—a single map that, having paid the cost once at training time, emits the quadrature of any observation’s posterior in one forward pass. Section 4 constructs it. 
+
+## 4 Amortized mean-shift interacting particles 
+
+Mean-shift interacting particles are the right object at the wrong cost: the quadrature beats the Monte-Carlo floor, but reaching it is a per-observation solve that, in its most accurate form, reads the score (Section 3.4). This section keeps the object and removes the cost. A single set-equivariant network emits the quadrature in one forward pass, at any requested resolution M and for any observation y⋆, reading ρ only through its samples—no per-observation solve, no density, and no score. Section 4.1 builds the network as a learned one-step mean shift off the floor; Section 4.2 fixes the reference-agnostic estimand that lets one map serve a Gaussian, a trained flow, a physics posterior, or an empirical conditional measure alike; Section 4.3 trains it by regressing the emitted measure onto ρ with the weights in closed form, so the network learns only where to place the nodes; Section 4.4 explains why moving the nodes, not reweighting them, carries the gain; and Section 4.5 removes the one obstacle that breaks the construction in high dimension. 
+
+4.1 The set-equivariant emission 
+
+We pay that per-observation solve once, at training time, by learning a map from an observation to its quadrature, and we make that map a resolution dial : it accepts a requested node count M and a seed of M independent samples of ρ,and emits a quadrature at that M in a single forward pass. Two questions decide the design—what the network should output, and how one network can serve any M —and the seed answers both. The seed answers the first. The M independent samples z01 , . . . , z0 
+
+> M
+
+∼ ρ(· | y⋆) are exactly the configuration whose equal-weight average is the Monte-Carlo floor, so emitting them unmoved reproduces the floor. The network therefore learns only how to move each node off the floor: it emits a per-node displacement ∆zj and returns zj = z0 
+
+> j
+
++ ∆ zj , so 7Amortized mean-shift interacting particles A P REPRINT 
+
+M i.i.d. samples 
+
+{z0 
+
+> j
+
+} ∼ ρ(· | y⋆) 
+
+> equal weights
+> =the i.i.d. floor
+
+set-equivariant network fθ
+
+self- & cross-attention 
+
+→ per-node displacement ∆zj
+
+designed nodes {zj }   
+
+> signed weights {wj}(closed-form)
+> repositioned & reweighted
+
+Q = X
+
+> j
+
+wj δzj
+
+the quadrature of ρ(· | y⋆)  
+
+> zj=z0
+> j
+> + ∆ zj
+
+y⋆ → s(y⋆)
+
+> informed summary
+
+M →FiLM 
+
+> any resolution
+
+Figure 3: One set-equivariant network turns M independent samples into a weighted quadrature of ρ(· | y⋆)
+
+in a single forward pass, at any M and any observation. (left) The seed is a set of M independent samples 
+
+{z0 
+
+> j
+
+} ∼ ρ(· | y⋆), whose equal-weight average is the independent-sample floor. (center) The network fθ —self-attention among the particles, cross-attention to an informed summary s(y⋆) (Section 4.5), conditioned on M by feature-wise modulation—emits a per-node displacement and returns zj = z0 
+
+> j
+
++∆ zj , so a zero displacement reproduces the floor and any motion is the sub-floor part. (right) The moved nodes carry signed weights (positive up, negative down) and form the quadrature Q = P 
+
+> j
+
+wj δzj ; the weights are not learned but the closed-form unit-sum weights ˆw
+
+of Proposition 2, solved at the emitted nodes. 
+
+Algorithm 1 Amortized quadrature emission (one pass, at requested resolution M )
+
+Require: observation y⋆; requested node count M ; sampler of the posterior ρ(· | y⋆); trained set-equivariant network 
+
+fθ ; parameter bandwidth σx; kernel ridge ε
+
+Ensure: weighted quadrature {(zj , w j )}Mj=1 approximating Eρ[ · | y⋆] 
+
+> 1:
+
+z01: M ← draw M independent samples from ρ(· | y⋆) ▷ the independent-sample seed; equal weights would be the floor  
+
+> 2:
+
+s(y⋆) ← informed observation summary ▷ Section 4.5; raw y⋆ where dy is small  
+
+> 3:
+
+∆z1: M ← fθ
+
+ z01: M , s(y⋆), M  ▷ one forward pass; self-attention among particles, FiLM on M ; zero score, zero iteration  
+
+> 4:
+
+zj ← z0 
+
+> j
+
++ ∆ zj ▷ displacement off the floor  
+
+> 5:
+
+ˆμj ← kernel mean of ρ at zj from the seed samples; Kjl ← kσx (zj , zl); K ← K + εI ▷ ridged node Gram  
+
+> 6:
+
+w ← K−1( ˆ μ + κ 1), with κ fixed by 1⊤w = 1 ▷ unit-sum-constrained weight solve (Proposition 2)  
+
+> 7:
+
+return {(zj , w j )}Mj=1 
+
+a zero displacement reproduces the floor and any move is the sub-floor gain. Nothing else about the rule changes: the reference, the kernel, the budget, and the floor are all held fixed. Only the node positions are learned—and even the weights are not, but follow in closed form (Section 4.3). The seed answers the second question too. Because the network ingests a set of particles, its body is a stack of self-attention blocks (Vaswani et al., 2017) among the M seeds—the coordination and repulsion that turn an indepen-dent bag of samples into an interacting set—interleaved with cross-attention to an informed summary s(y⋆) of the observation (Section 4.5). The set view makes the network permutation-equivariant in the particles, in the manner of Deep Sets (Zaheer et al., 2017) and the Set Transformer (Lee et al., 2019), so M is a free dimension of the input rather than a fixed width of the architecture. Feature-wise modulation (Perez et al., 2018) then conditions the network on the requested M , so one trained map serves every resolution (Figure 3). Learn where to move each node, attend among particles, modulate on M : the three choices together free the construction from a fixed budget. Algorithm 1 states the one-pass emission. The network runs forward once on the seed and the summary to place the nodes, and the emission closes with a single M × M ridged kernel solve for the weights—the closed-form unit-sum weights ˆw that are provably no worse than equal weights (Proposition 2). Nothing iterates, no density is evaluated, and no score is differentiated; the only solve at inference is one linear system. The next subsection fixes what ρ the map reads, and the one after trains it so that this one-pass emission reproduces the quadrature the iteration would have reached. 8Amortized mean-shift interacting particles A P REPRINT 
+
+4.2 The reference-agnostic estimand 
+
+One design choice makes the network indifferent to which posterior it integrates. The objective the next subsection minimizes touches ρ only through the pair (μ, c ρ) of equation (4) —the kernel mean at the nodes and the self-affinity— both expectations under ρ. The reference type changes only how these two numbers are produced, never what the network does with them: closed form for a Gaussian or Gaussian mixture under the squared-exponential kernel; Monte-Carlo averages over the samples of a trained flow or a physics posterior; and kernel sums over reweighted atoms for an empirical conditional measure. Every case is read through the same pair, so the network of Section 4.1 need not know which reference produced it. One reference deserves a closer look, because it ties the construction to the prior score-free evidence and needs no trained model: the Nadaraya–Watson conditional measure (Nadaraya, 1964; Watson, 1964). Given joint samples 
+
+{(xi, yi)}Ni=1 ∼ p(x, y) and a query y⋆, it reweights the dataset by the observation responsibilities, 
+
+ρ(· | y⋆) = X
+
+> i
+
+αi(y⋆) δxi , αi(y⋆) = kσy (yi, y⋆)
+
+P 
+
+> j
+
+kσy (yj , y⋆) , kσy (y, y′) = exp   − ∥ y − y′∥2/2σ2
+
+> y
+
+, (9) with σy the observation bandwidth, distinct from the parameter bandwidth σx. Its kernel mean and self-affinity are again finite kernel sums over the responsibility-weighted atoms, so the same (μ, c ρ) machinery applies with no density and no score. Read as a memorized empirical prior, this measure is a bona-fide posterior the user may commit to, not merely a smoothing of one: for a matched Gaussian observation model the responsibilities are exactly the memorized-prior Bayes weights, and off that matched regime they are a bandwidth-inflated smoothing of them. The parameter bandwidth 
+
+σx then doubles as a de-memorization dial, setting the scale on which the quadrature moves its nodes off the memorized atoms (Siahkoohi and Sabeddu, 2026). With the estimand fixed for any reference, the task reduces to one map that turns those samples into a quadrature. 
+
+4.3 The training objective 
+
+Training has one goal: the emitted measure should match the reference ρ, read in the same squared-exponential kernel at bandwidth σx as the discrepancy (4) . Writing ˆzj for the nodes the network emits and ˆwj for their closed-form weights—both differentiable in the network parameters θ through the M × M kernel solve—the network minimizes the expected squared maximum mean discrepancy between the emitted quadrature and the reference, 
+
+Objective: L(θ) = Ey⋆ Ez01: M ∼ρ(·| y⋆) MMD 2
+
+> kσx
+
+ PMj=1 ˆwj δˆzj , ρ (· | y⋆)
+
+
+
+, M ∼ Uniform {Mmin , . . . , M max }.
+
+(10) Three features carry the design. First, the node count is drawn uniformly per batch, so one map is trained across the whole resolution range it will be queried at. Second, the discrepancy enters ρ only through (μ, c ρ): exact where ρ is closed-form, and a finite-sample estimate where ρ is only sampleable—the same reference-agnostic reading as before. Third, the weights are not learned but are the closed-form unit-sum weights ˆw at the emitted nodes (Proposition 2); the network therefore learns only the node positions—a learned one-step mean shift off the floor—and the gradient flows end to end through both the nodes and the weight solve, with no step through any fixed-point iteration. 
+
+Intuition. The quadrature’s own worst-case error is a discrepancy to the reference, and the mean shift is the iteration that descends it. Rather than imitate that iteration step by step, the network optimizes the discrepancy onto ρ directly, so it is pulled toward the node sets the iteration would not move any further—the quadrature of ρ itself. This is rigorous, not a shortcut: optimizing the discrepancy and distilling the iteration share a fixed-point set (Proposition 3), exactly the configurations the mean shift leaves stationary. 
+
+Remark 2 (What the amortized map buys, and what is proven) . Queried at any M , the map composes with the sample budget rather than competing with it, and the composition splits along the two levers. Reweighting the M seed samples is provably no worse than those same samples at every M (Proposition 2); moving the nodes is the empirically larger gain (Section 4.4). Together they give a Pareto improvement on the Monte-Carlo estimator of ρ, with one leg proven and one empirical. The same split runs across the node count: the closed-form weights are resolution-agnostic by construction, but that the learned positions stay sub-floor at an M unseen in training is an empirical claim, supported by the resolution sweep of Section 8.4, not a theorem. 
+
+Remark 3 (Reusing the map across sample batches) . Because the map reads only a seed set of M independent 
+
+ρ-samples and is set-equivariant, it applies unchanged to any number of independent seed sets at the trained budget M .Drawing K such sets and emitting a quadrature Qk from each gives the pooled mixture ¯Q = 1
+
+> K
+
+P 
+
+> k
+
+Qk, a KM -node weighted quadrature of unit mass. Two facts keep this principled. First, every pooled expectation ¯Q[f ] = 1
+
+> K
+
+P 
+
+> k
+
+Qk[f ]
+
+is the average of K independent estimates of ρ[f ]: it carries the same bias as a single emission but cuts its variance 9Amortized mean-shift interacting particles A P REPRINT -3 -2 -1 0 1 2 3              
+
+> x
+> weight  wj
+> equal weights
+> shaded: reference ρ(backdrop)
+> (a) i.i.d., equal weights
+> -3 -2 -1 0123
+> x
+> seed misses this mode:
+> weights can resize,
+> not relocate
+> (b) reweight (fixed nodes)
+> -3 -2 -1 0123
+> x
+> (c) move + reweight
+> ghost: panel (b) nodes
+> nodes move onto the mass
+
+Figure 4: Two levers against the floor: reweighting resizes the mass at fixed nodes, while moving relocates the nodes themselves. The same reference, integrated three ways in one dimension. (a) Independent samples carry equal weight, the floor. (b) The reweight lever keeps the nodes fixed and rescales their weights toward the high-mass region, the constrained solve that is provably no worse than the floor (Proposition 2)—it can only resize what the random samples already placed. (c) The move-and-reweight lever additionally relocates the nodes onto the reference’s mass, the empirically larger gain (Section 4.4). by 1/K , so pooling is a strict variance reduction of any integral—and of the per-node uncertainty it reports—at no extra training and no node count beyond M . Second, by convexity of the squared maximum mean discrepancy, 
+
+MMD 2( ¯Q, ρ ) ≤ 1
+
+> K
+
+P 
+
+> k
+
+MMD 2(Qk, ρ ), so the pooled measure is never worse than the average single emission, and stays below the M -sample floor whenever the emissions do (Proposition 2). What pooling does not buy is a below-floor result at the larger budget KM : the K batches share one network and do not decorrelate as KM freshly designed nodes would. It is a reuse of the amortized map to suppress Monte-Carlo noise—the device behind the smooth per-pixel uncertainty maps of the reconstruction figures (Figures 13 and 15). 
+
+4.4 Why moving the nodes beats reweighting 
+
+Reweighting is trapped by where the seed landed; moving the nodes is not (Figure 4). The reweight lever matches or beats the floor by construction (Proposition 2), but the larger gain comes from the node positions, so learning where to place them must earn itself against the cheaper option of solving weights at the random samples. The argument is a mechanism, not a rate theorem. 
+
+The trap is a fixed span. The reweighted discrepancy projects the reference’s kernel mean μρ onto the span of the node embeddings {k(·, zj )}; what survives is the part of μρ orthogonal to that span, which no choice of weights can touch. Independent samples fix the span at random, so the surviving residual is whatever the seed happened to miss—a cap set by an accident of sampling. Moving the nodes removes the cap, because it chooses the span: a designed node set places the embeddings where μρ concentrates and shrinks the orthogonal residual that reweighting is stuck with. The gain therefore follows the reference—negligible for a near-Gaussian the samples already cover, large where structure such as separated modes or a curved ridge is under-resolved (Figure 5). 
+
+The 1/v 0 preconditioning carries a node across a gap. The motion is a one-step mean shift, the ratio 
+
+K−1V1/K−1v0 of (6) : the kernel-weighted average of the reference divided by the local node density v0. That division is the mechanism. A node stranded in a low-density gap sees its numerator shrink toward zero, but divided by the equally small v0 it still takes a step of order one toward the mass it should cover, provided the kernel reaches that mass. At the median-heuristic bandwidth, which spans the inter-mode gaps, this carries nodes across the gaps onto modes the seed undersamples, where reweighting leaves them bare (Figure 6). The moved nodes land at a stationary point of the discrepancy (Proposition 3)—the quadrature the iterated mean shift would not move further—which the swept frontier confirms integrates the reference better than the random seed wherever it carries structure (Section 7.1). 
+
+4.5 High dimension: the informed subspace 
+
+Everything so far assumes the kernel sees structure in the nodes; in high ambient dimension it does not. On the ambient 
+
+parameters the squared-exponential kernel degenerates: distinct nodes become near-equidistant and the off-diagonal 10 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64           
+
+> node budget M
+> 10 −2
+> 10 −1
+> MMD 2(Q, ρ)
+> curved ridge: reweighting alone
+> already pulls off the floor
+> banana, d= 2
+> i.i.d. floor
+> the move gain
+> reweight only
+> move + reweight (ours)
+> warm start, finetuned
+> beats the floor
+> 4816 32 64
+> node budget M
+> 10 −2
+> 10 −1
+> d=10 modes: reweighting hugs the
+> floor; the move carries the gain
+> GMM, d= 10
+
+Figure 5: Reweighting alone is provably no worse than the floor at every budget; moving the nodes is the empirically larger gain that descends below it. The squared maximum mean discrepancy to the reference against the node budget, for two representative targets. The independent-sample floor is dashed; stars mark budgets that beat it. 
+
+Reweight only (teal, open marks) hugs the floor from below and never crosses above it (Proposition 2); move and reweight (orange, filled) descends further below, tracked from below by the warm start, finetuned —the non-amortized per-query best the one-pass map nearly matches. The hatched band between the curves is the move gain: the empirical lever, an area rather than a number. On the curved (banana) target reweighting alone already lifts off the floor and the move gain is wide; on the well-separated mixture reweighting hugs the floor and the move-and-reweight leg carries the gain, largest where the reference carries structure random samples under-resolve. (a) i.i.d. seed 
+
+> starved by
+> the seed
+> (b) reweight
+> reweighting
+> cannot fill it
+> (nodes are fixed)
+> (c) move + reweight
+> moving carries nodes
+> across the gap onto it
+
+Figure 6: Reweighting cannot populate a mode the seed undersamples; moving the nodes carries them across the low-density gap onto it. Three views on the same separated Gaussian-mixture reference, shown as a density backdrop with mode anchors marked, under the median-heuristic bandwidth that spans the inter-mode gaps. (a) The seed of independent samples (equal weight) piles on the reached modes and leaves one bare. (b) Reweighting the same nodes (opacity tracking weight magnitude) resizes mass among them, but the bare mode stays bare. (c) The designed nodes 
+
+are relocated across the low-density gap onto the mode the seed missed; only (b) →(c) moves them. The mechanism is the 1/v 0 preconditioning of the mean-shift step (6) : dividing the kernel-weighted average by the local node density keeps the step order-one across the gap whenever the kernel bandwidth spans it. Gram entries become near-equal—the designed set loses the geometric contrast it exploits and collapses to a bag of 
+
+ρ-samples, so the move gain vanishes (Remark 4). The remedy is a change of metric. The kernel is moved onto an informed summary of the posterior—the likelihood-informed and certified-dimension-reduction subspaces of Cui et al. (2014); Spantini et al. (2015); Zahm et al. (2022), here read score-free from ρ-samples rather than from the likelihood score—inside a posterior-whitened (Mahalanobis) kernel whose dimension-aware bandwidth σx = √d
+
+holds the node Gram conditioned at every dimension. In the linear–Gaussian case the score-free summary recovers 11 Amortized mean-shift interacting particles A P REPRINT 
+
+exactly the directions the score-based subspace would; for a general reference it recovers the central-mean subspace, which is what the observation-conditioning needs. The full construction—the whitened kernel, the bandwidth, and the score-free subspace estimator with its linear–Gaussian equivalence—is deferred to Section B; here it suffices that one whitened kernel keeps the designed quadrature below the floor at every measured dimension (Section 7.1), with the rank-truncated subspace used where the posterior is genuinely low-rank (Section 7.6). 
+
+Remark 4 (The kernel wall in high ambient dimension, and its metric remedy) . Under an isotropic squared-exponential kernel the node Gram loses its geometric contrast as the ambient dimension grows. The squared pairwise distances concentrate—their relative fluctuation is O(1 /√d)—so distinct nodes become near-equidistant and the off-diagonal Gram entries become near-equal, the Gram approaching an equicorrelation matrix in which no node is geometrically distinguished. The constrained weight solve then returns near-equal weights, the quadrature degenerates to a bag of ρ-samples, and the node-position gain of Section 4.4 disappears. The posterior-whitened kernel (13) with the constant-Gram-geometry bandwidth σx = √d (14) pins the typical off-diagonal coupling at e−1 for every d and removes the wall. The informed subspace ϕ is the rank-truncated special case of that whitening: the gain lives in the r-dimensional summary the kernel acts through, the off-subspace directions are integrated by the closed-form prior moment, and the discarded tail is controlled by certified dimension reduction (Zahm et al., 2022) rather than quadratured. With the wall removed, the amortized map emits a floor-beating quadrature in any dimension; whether that holds across posterior types in practice is the question the experiments take up (Section 7). 
+
+## 5 Finetuning the quadrature with more samples or a score 
+
+The map emits the quadrature in one forward pass, with no per-observation solve and no score. A practitioner with budget to spare may reintroduce one of these per query: the emission can be finetuned. Two resources serve. More samples of ρ refine the nodes score-free, continuing the mean shift the emission approximates; an available score refines them through the score-based mean shift, from the foot of the budget frontier (Section 5.1). The finetuning is an optional add-on , not the core. It closes the amortization gap where the reference is well-conditioned, and it is fragile where the reference is sharp (Section 5.2). A third use of an available score corrects the integrand rather than the nodes (Section 5.3). Throughout, the emission is the initialization—obtained for zero fixed-point iterations and zero forward solves—and every finetuning resumes from it. 
+
+5.1 Warm-started per-query refinement 
+
+The emission approximates a mean shift, and a mean shift can be resumed. From the emitted nodes, two resources continue it. Where only samples of ρ are at hand, the score-free mean shift (Belhadji et al., 2026a) spends additional samples to keep descending the discrepancy from the one-pass emission. Where a score is available, the score-based 
+
+mean shift (Belhadji et al., 2026b) reads the unnormalized log-density and its score and moves the nodes and their weights, keeping the quadrature throughout. Either resource treats the emission as a warm start, and the warm start is what the refiner saves. Started cold, from independent samples or the prior, the refiner reaches its fixed point only after many iterations—and so after many samples or many score evaluations. Started from the emission, it begins inside the basin and reaches that basin’s fixed point in far fewer. The emitted quadrature need only be basin-accurate : it must land inside the basin of attraction, not reproduce ρ. This requirement is strictly weaker than fitting the reference, and the accuracy of the refined quadrature belongs to the node set, not to where the refiner started. Where the reference is well-conditioned, the refinement does more than accelerate. It carries the quadrature below 
+
+the zero-solve emission, toward the floor. On an exact-score linear–Gaussian target the warm-started arm sits below the cold one at every score-evaluation budget, both heading to a shared floor. On limited-angle tomography the reading repeats: the warm arm descends below the emission to the floor and stays at or below the cold arm at every budget (Section 7.7). That descent is the score’s gain, and its mechanism is a contraction—the smoothed mean-shift map z 7 → z + σ2
+
+> x
+
+∇ log v0(z) pulls toward the reference mean at every bandwidth, so the one forward pass and the per-query refinement are two endpoints of a single evaluation-budget knob, not alternatives. One caveat travels with the gain: the below-emission descent is conditional on the score being exact and the reference well-conditioned (Remark 5). The acceleration reads only the node positions, and carries no such caveat. The acceleration rests on a local argument, not a rate theorem, and its reach is part of the claim. The damped iteration 
+
+z ← (1 − λ)z + λ Ψ( z) is a fixed-point map. Where it is differentiable at a fixed point z⋆ and the damped Jacobian 
+
+G = (1 − λ)I + λ ∂ Ψ( z⋆) has spectral radius below one, iterates started within the basin converge linearly, so a warm start nearer z⋆ crosses any fixed excess-discrepancy threshold in fewer iterations—each costing the per-node sample or score budget. The claim is local and conditional. It is silent outside the basin, weakened by a non-normal 12 Amortized mean-shift interacting particles A P REPRINT 
+
+Algorithm 2 Per-query finetuning of the emission (score-free with more samples, or score-based) 
+
+Require: warm-start nodes z(0) = z1: M from Algorithm 1; either additional samples of ρ(· | y⋆) (score-free) or its score ∇ log ρ (analytic, or a learned diffusion/flow score trained on the (x, y) dataset); bandwidth σx; damping λ;steps T ; kernel ridge ε; box bounds [ℓ, u ]
+
+Ensure: refined quadrature {(z(T ) 
+
+> j
+
+, w j )}Mj=1  
+
+> 1:
+
+for t = 1 , . . . , T do  
+
+> 2:
+
+form the σx-smoothed embedding (v0, V1) at z(t−1) : ▷ kernel sums over fresh ρ-samples (score-free); or, with a score, 
+
+σ2
+
+> x
+
+∇ log v0(z) = σ2
+
+> x
+
+P 
+
+> q
+
+pq (z) ∇ log ρ(z + σxξq ), ξq ∼ N (0, I) ▷ the multi-point Stein estimate (8), not 
+
+the raw density  
+
+> 3:
+
+Kjl ← kσx (z(t−1)  
+
+> j
+
+, z(t−1)  
+
+> l
+
+); K ← K + εI 
+
+> 4:
+
+Ψ( z)i ← (K−1V1)i/(K−1v0)i ▷ log-stable mean-shift map  
+
+> 5:
+
+z(t) ← (1 − λ) z(t−1) + λ Ψ( z(t−1) ); clamp z(t) to [ℓ, u ] 
+
+> 6:
+
+end for  
+
+> 7:
+
+w ← (K + εI)−1(v0 + κ 1) at z(T ), with κ fixed by 1⊤w = 1 ▷ re-solve constrained weights at the final nodes  
+
+> 8:
+
+return {(z(T ) 
+
+> j
+
+, w j )}Mj=1 
+
+G, and, as a theoretical boundary, vacuous where the node Gram degenerates toward the identity: there warm and cold contract at the same damping-set rate, and the value of the emission is the zero-solve integration rather than a refinement saving (Remark 5). Algorithm 2 states the refinement. It resumes the damped mean-shift iteration from the emitted nodes, reading the reference through additional samples or through the score in place of the dataset. One subtlety governs whether it descends at all: the embedding. The refinement descends the discrepancy only when v0 is the σx-smoothed kernel mean of the reference, not the raw density. For a Gaussian reference this smoothed embedding is closed form. For a general reference it is the multi-point Stein estimate (8) , the score either analytic or a learned diffusion or flow score trained on the same dataset (Song and Ermon, 2019; Ho et al., 2020; Song et al., 2021; Chung et al., 2023). Each step shifts the nodes and re-solves the weights, so the iteration keeps both the nodes and their constrained weights—a quadrature throughout, never a bag of samples. 
+
+5.2 The below-emission descent is fragile on a sharp reference 
+
+The below-emission descent does not survive a sharp reference. Where ρ concentrates relative to the kernel bandwidth, the iterated mean shift over-contracts: the node Gram degenerates toward rank one and the signed-weight quadrature stops improving even as the nodes move, so the descent stalls (Remark 5). The acceleration, which reads only the node positions, is untouched by this collapse, and the one-pass emission—which the trained map reaches without iterating—never enters it. The empirical line confirms both sides (Sections 7.6 and 7.7). 
+
+Remark 5 (Where the finetuning is silent or harmful) . The finetuning has two boundaries, one on its acceleration and one on its below-emission descent. The acceleration is silent in three regimes that bound the local convergence reading above: a warm start outside the basin of attraction inherits no guarantee; a non-normal damped Jacobian G admits transient growth before the asymptotic contraction sets in, so the budget saving can be smaller than the spectral radius alone suggests; and where the node Gram degenerates toward the identity the interaction term collapses, ∂Ψ( z⋆) → 0
+
+and G → (1 − λ)I, so warm and cold starts contract at the same rate and a better starting point buys nothing—there the value of the emission is the amortized, zero-solve integration, not a refinement saving. The below-emission descent is harmful in the mirror regime, where the reference is sharp. The descent rests on the signed-weight quadrature continuing to improve as the iterated mean shift moves the nodes; where ρ is sharp relative to the kernel bandwidth, the smoothed kernel mean concentrates toward a near-point-mass across the nodes, the node Gram degenerates toward rank one, and the weight solve acquires large alternating-sign entries whose effective sample size collapses. The refinement then improves the node positions but not the signed-weight quadrature, and the descent stalls. The trained one-pass map does not iterate to this configuration (Section 4.3). 
+
+5.3 The score correction 
+
+An available score has a second use, one that leaves the nodes untouched and corrects the integrand instead—the per-integrand complement of the all-integrand quadrature. Following the conditional neural control variate (Siahkoohi and Oh, 2026) and the control-functional construction (Oates et al., 2017), an observation-conditioned Stein control variate built from the reference score is subtracted from a chosen integrand. It integrates to zero under ρ by Stein’s 13 Amortized mean-shift interacting particles A P REPRINT 
+
+identity (Stein, 1972), so it cancels that integrand’s quadrature error rather than independent-sample variance. This is the per-integrand object the quadrature generalizes to all integrands at once (Section 2), reintroduced here as its complement: the quadrature integrates every h with one (z, w), while the correction sharpens a single h further with its own score. Its reach is narrow. The correction helps only where the quadrature already carries appreciable on-support error; it is silent where the quadrature is tight, and harmful where the control variate, fitted on the dataset’s marginal but read at the concentrated emitted nodes, falls off its training support. Where independent samples of ρ are cheap, an independent-sample control variate is therefore preferable to the score the correction costs. All three uses of the budget—more samples, the score-based mean shift, the Stein correction—refine one object: the quadrature the map emits in a single pass. That emission, finetuned or not, is what the experiments now put to the references a practitioner supplies (Section 7). 
+
+## 6 Theoretical guarantees 
+
+Sections 4 and 5 forward-referenced three guarantees; we state them here with their idea and a proof sketch, deferring the full statements, with all regularity conditions, to Section A. They answer three questions the construction raised: why a single map may serve observations of different and unknown evidence, why the reweight lever is never worse than the samples it reweights, and why training against the discrepancy is, in the end, the same as imitating the mean-shift iteration it replaces. The first guarantee is what makes the amortization well-posed. The mean-shift map reads the reference only through a ratio of its embeddings, and a ratio cannot see an overall scale. 
+
+Proposition 1 (Normalization-invariance of the mean-shift map) . For any c > 0, replacing the reference ρ by c ρ scales both v0 and V1 of (6) by c and leaves the map Ψ unchanged, so the nodes and their unit-sum weights are invariant to the total mass of the reference. In the conditional setting that mass is the per-observation evidence p(y⋆), which therefore never enters the quadrature. Full statement and proof in Section A.1. Intuition. The map is the ratio K−1V1/K−1v0; a common positive factor on v0 and V1 cancels, so only the shape of the reference, not its mass, reaches the nodes. Because the evidence is exactly that mass, one map can serve every observation without ever computing it—the precondition for amortizing across a stream. The second guarantee bounds the cheaper of the two levers. Reweighting a fixed node set is a convex problem, and the equal weights the Monte-Carlo estimator uses are one of its feasible points. 
+
+Proposition 2 (Reweighting is no worse than equal weights) . Let z1, . . . , zM be fixed nodes with Gram matrix K in a characteristic kernel and μ the kernel mean of ρ at the nodes, and let w⋆ = arg min 1⊤w=1 MMD 2(P 
+
+> j
+
+wj δzj , ρ ) be the unit-sum-constrained optimal weights. Then 
+
+MMD 2 P 
+
+> j
+
+w⋆j δzj , ρ 
+
+
+
+≤ MMD 2 1
+
+> M
+
+P 
+
+> j
+
+δzj , ρ 
+
+
+
+, (11) 
+
+and when the nodes are M independent samples of ρ the right-hand side is the independent-sample floor at node budget 
+
+M . The bound is exact for a closed-form μ and holds up to the finite-sample estimand of Proposition 3 for a sampled ρ.Full statement and proof in Section A.2. Intuition. The squared discrepancy is a convex quadratic in the weights, and the equal weights are one feasible unit-sum point of it; the constrained minimizer ranges over every feasible point, so it can only match or improve on the one it already contains. The bound is pathwise—at the given nodes—and its expectation over random nodes is the canonical 
+
+1/M floor. The reweight floor holds at any nodes, but the residual it leaves is set by where the random seed landed (Section 4.4); the larger gain comes from moving the nodes, and the network learns those positions by descending the discrepancy directly. The third guarantee certifies that this direct descent and the mean-shift iteration it replaces reach the same configurations. 
+
+Proposition 3 (Shared fixed points of the distillation and discrepancy objectives) . Under a squared-exponential kernel at a common bandwidth and a single damped inner step, the plain-distillation loss—which regresses the emitted nodes onto their own image under the mean-shift map—and the maximum-mean-discrepancy regression objective (10) onto 
+
+ρ share a fixed-point set: the node configurations at which the distillation loss vanishes are exactly those at which 
+
+MMD( Q, ρ ) is stationary under the mean-shift weight rule. For a closed-form ρ the equivalence holds verbatim; for a sampled ρ it is the stationarity of the finite-sample estimand, with an O(L−1/2) gap in the number of reference samples 
+
+L. Full statement and proof in Section A.3. Intuition. Freezing distillation’s target at the map’s image of the nodes makes its loss zero exactly when that image coincides with the nodes—a fixed point—which is exactly a stationary configuration of the discrepancy the regression 14 Amortized mean-shift interacting particles A P REPRINT 
+
+descends. The two objectives agree on where the answer is and differ only in how they reach it. This is a shared 
+
+stationary set, not a shared global minimum: the moved nodes the network learns are these stationary quadratures, near-optimal rather than certified optima. Together the three settle what the construction promises. The evidence never enters (Proposition 1), the reweight lever cannot lose (Proposition 2), and the learned positions target the same stationary quadrature the iteration would reach (Proposition 3). What none of them certifies—the size of the move gain, its persistence at a node budget unseen in training, and the behavior on a sharp reference—is exactly what the empirical evidence now takes up. 
+
+## 7 Empirical evidence 
+
+Section 6 left three things uncertified: the size of the move gain, its persistence at a node budget unseen in training, and the behavior on a sharp reference. This section takes up the first across posterior types and dimension, and the latter two are the stress tests of Section 8. The stages climb one ladder—the reference grows harder to supply. It is closed-form on the toys and the peer of a tuned sampler (Sections 7.1 and 7.2); then conditioned on the observation for a linear-Gaussian tomography posterior whose covariance does not move (Section 7.3); then a trained conditional flow whose shape moves with the observation (Section 7.4); then the Nadaraya–Watson conditional the physics posterior commits to (Sections 7.5 and 7.6); and finally the warm-versus-cold finetuning frontier, including where it fails (Section 7.7). Each stage hands the next its open question. 
+
+7.1 Closed-form and sampled toys: the warm start beats the floor across targets and dimensions 
+
+Start with the core claim, stripped of conditioning. A single set-equivariant network, trained once and run in one forward pass on held-out samples, emits a weighted quadrature whose discrepancy to the reference sits below that of the same number of independent samples. This subsection settles the claim where the estimand is in hand: the Gaussian dimension sweep, the two-component Gaussian-mixture sweep, and the curved banana of the conditional control variate (Siahkoohi and Oh, 2026). It also reads off two facts the high-dimensional stages will need—the kernel wall and the posterior-whitened metric that removes it (Section B.1). One reference is fixed per target, so these are unconditional warm starts; conditioning on the observation is the next stage (Section 7.3). 
+
+One trained net, one forward pass, three arms. The protocol is the same on every target. A single network is trained with the node count drawn uniformly over a range of resolutions, then run on held-out independent samples across that range. At each resolution three quantities are scored by the squared maximum mean discrepancy to the reference. The independent-sample floor is the same number of samples under equal weights, the baseline of Section 3. The 
+
+one-pass warm start is the network’s emitted nodes under the closed-form unit-sum-constrained weights (Proposition 2). The warm start, finetuned is the per-set descent the trained net amortizes—the non-amortized per-query best the move-and-reweight lever reaches when run to convergence on each held-out set. The kernel bandwidth is the per-target median heuristic, shared between the displacement and the weight solve. Setting it per target keeps the Gaussian-mixture kernel coupling within mode as the dimension grows, where a fixed small bandwidth would wall. The Gaussian and Gaussian-mixture references admit the estimand (μ, c ρ) of equation (4) in closed form under the squared-exponential kernel; the banana admits none. Its kernel mean and self-affinity are therefore estimated from a fixed sample dataset— the same empirical estimand a trained flow or a physics posterior supplies downstream, differentiable in the node positions while empirical in the reference. The banana thus does double duty: a harder target, and the bridge to the sampled references the rest of the section relies on. 
+
+The warm start sits below the floor at every budget and every target. Across all three targets the one-pass warm start sits below the independent-sample floor at every node budget (Figure 7), and the result separates the two levers of Remark 2. Reweighting alone is provably no worse than the floor, since equal weights are a feasible unit-sum point of the constrained solve (Proposition 2); that leg carries the guarantee at every budget without moving a node. Moving the nodes is the empirically larger gain. The warm start descends strictly below the reweight floor wherever the reference has structure the random samples miss, tracking the warm start, finetuned from above and trailing it as the resolution grows—the headroom the amortization leaves, never a crossing back above the floor. The reweight leg is what the construction can prove; the move leg is the larger improvement these toys make real. 
+
+The banana’s curvature makes the kernel bite hardest, and the pipeline runs unchanged when ρ is only sam-pleable. The banana answers it. Neither Gaussian nor a mixture, with no closed-form estimand, it carries the deepest margin at modest node budgets. Its curvature is the structure the random samples most miss: the designed nodes concentrate where the kernel mean lives, so the move lever bites hardest there. The banana is also the sampled-reference bridge. Its kernel mean and self-affinity are Monte-Carlo estimates from a fixed dataset, yet the architecture, the weight 15 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64                  
+
+> node budget M
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> MMD 2(Q, ρ)
+> Gaussian, d= 2
+> i.i.d. floor
+> warm start, finetuned
+> warm start (ours)
+> 4816 32 64
+> node budget M
+> 10 −2
+> 10 −1
+> GMM, d= 10
+> 4816 32 64
+> node budget M
+> 10 −2
+> 10 −1
+> banana, d= 2
+> warm-start band = IQR over 5 training seeds
+
+Figure 7: One trained network beats the independent-sample floor at every node budget and on every target, in a single forward pass. The squared maximum mean discrepancy to the reference against the node budget, for a representative closed-form Gaussian, a two-component Gaussian mixture, and the curved banana whose estimand is estimated from samples. The dashed independent-sample floor (Section 3) is the baseline. The one-pass warm start 
+
+lies below it at every budget. The warm start, finetuned —the move-and-reweight descent run to convergence per set, the non-amortized per-query best—is the target the one-pass warm start nearly matches and tracks from above. Reweighting alone is provably no worse than the floor (Proposition 2); moving the nodes descends below it, deepest on the banana at modest budgets where its curvature is the structure random samples most miss. The curve is unchanged in form where the reference is only sampleable. solve, the held-out evaluation, and the floor-beating margin are all unchanged from the closed-form targets. Whether the reference is a closed-form density or only sampleable, the pipeline runs the same way—the interface a trained conditional flow (Section 7.4) and a physics posterior (Section 7.6) plug into without modification. 
+
+The whitened kernel holds the margin as the ambient dimension grows, where the isotropic kernel walls. One threat remains: dimension. A sweep over ambient dimension on the Gaussian and Gaussian-mixture targets both names the threat and removes it. Under the isotropic squared-exponential kernel the warm start stays below the floor at every dimension, yet the margin closes monotonically toward it. The mechanism is the kernel wall: the squared pairwise distances concentrate, the off-diagonal Gram entries become near-equal, and the designed set collapses toward a bag of independent samples, where the two levers nearly coincide (Remark 4). The wall is a property of the kernel’s metric, not of high-dimensional quadrature. The posterior-whitened (Mahalanobis) kernel with the constant-Gram-geometry bandwidth removes it (Section B.1). Under that metric the warm start stays well below the floor at every measured dimension and the margin stays open: on the Gaussian sweep, whose precision is the exact metric, and on the mixture sweep, whose pooled global metric leaves a still sub-floor margin. The warm start, finetuned recovers its room to beat the floor in step, so whitening restores both the ceiling and the network’s reach for it. The informed subspace of Section B.2 is the rank-truncated reading of this same metric—the form the physics posterior of Section 7.6 uses where the posterior is genuinely low-rank. 
+
+7.2 Comparison to interacting-particle samplers: a different object, decaying past their fixed point on the integration axis 
+
+The move lever invites an obvious objection: an interacting-particle sampler already moves particles, so why design nodes at all? A Stein variational sampler (Liu and Wang, 2016) is the right object to answer with—and it is a different object on a different axis. It returns an equally weighted particle cloud, read off the posterior score and re-run for every query. Our quadrature returns a signed-weight, score-free, amortized object emitted in one forward pass and reused across observations and integrands. The two meet on exactly one axis: the integration error of the same posterior. On that axis the head-to-head is favorable (Figure 8). The point is a trade-off, not a defeat of the sampler. 
+
+A fair, tuned head-to-head on the integration axis. The comparison is set up to favor the sampler, so any margin is conservative. On the closed-form linear-Gaussian and Gaussian-mixture toys, every arm is scored by the same exact kernel discrepancy to the exact posterior at a single fixed bandwidth—the common ruler the move lever already descends. The sampler reads the exact score and is tuned over a grid of its internal bandwidth, step, and iteration count, with the configuration chosen on a disjoint tuning seed to minimize the eval discrepancy and then frozen. Our quadrature 16 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64             
+
+> node budget M
+> 10 −8
+> 10 −7
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> MMD 2(Q, π) (lower is better)
+> 2-D linear-Gaussian posterior
+> i.i.d. floor
+> i.i.d. nodes + reweight
+> SVGD (uniform, per query)
+> SVGD nodes + reweight
+> quadrature (warm start, finetuned)
+> 4816 32 64
+> node budget M
+> 10 −9
+> 10 −8
+> 10 −7
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 2-D 5-mode anisotropic GMM
+> 4816 32 64
+> node budget M
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 8-D Gaussian (whitened high-druler)
+
+Figure 8: On the integration axis the quadrature decays past the fixed point a tuned interacting-particle sampler plateaus at—in low dimension, on a multimodal target, and, under the posterior-whitened ruler, in high dimension too. The squared maximum mean discrepancy to the exact posterior against the node budget, every arm scored by the same exact kernel, on a two-dimensional Gaussian, a two-dimensional five-mode anisotropic Gaussian mixture, and an eight-dimensional Gaussian read under the posterior-whitened (Mahalanobis) kernel (Section B.1). Against the independent-sample floor and reweighting alone , tuned Stein variational gradient descent —run per query off the exact score and grid-tuned—is the interacting-particle peer, with its cloud under our reweighting isolating the weighting gain. The quadrature is the warm start finetuned to convergence, the per-instance optimum the amortized map approximates; the free reweight-only lever passes the sampler at the larger budgets, which settles at its Stein fixed point—a different functional than the discrepancy plotted. The raw-ambient kernel wall is the subject of the high-dimension discussion (Section 4.5 and Remark 4). is the warm start finetuned to convergence—the per-instance move-and-reweight optimum—at a fixed, untuned step and iteration count. That asymmetry hands the advantage to the sampler. The sampler’s own cloud is also re-scored under the construction’s constrained weights, isolating how much of any gap is the weighting rather than the positions. 
+
+The quadrature decays past the sampler’s fixed point; the sampler stays the right tool with the score in hand. 
+
+The pattern holds across all three panels. On the smooth low-dimensional posterior the quadrature is below the tuned sampler at every node budget, the margin widening as the budget grows. The reason is structural: the sampler plateaus at its Stein fixed point—a different functional than the plotted discrepancy—while the quadrature keeps descending the discrepancy it is built for. Even the free reweight-only lever, a single linear solve with no node motion, passes the tuned sampler at the larger budgets (Figure 8). This updates the earlier reading on the linear-Gaussian target, where a cold-start solve did not clear a tuned sampler (Belhadji et al., 2026b): the move-and-reweight descent is the stronger object on this axis. On the multimodal target, scored at the median bandwidth that resolves the modes, the quadrature is below the tuned sampler at every budget by a wide margin. The equal-weight sampler sits only just under the independent-sample floor there, while the quadrature drops far beneath it—the signed weights integrating the mixture the uniform cloud cannot. The high-dimensional panel is the decisive one. Under the posterior-whitened ruler that lifts the kernel wall (Section B.1 and Remark 4), the eight-dimensional case is a clear win rather than a null: the quadrature is below the tuned sampler at every node budget, the margin widening with the budget, and well below the independent-sample floor, with the sampler itself a strong peer under the floor. The raw-ambient wall—where the geometric contrast is lost and the node-design gain collapses—is the subject of the high-dimension discussion (Section 4.5 and Remark 4), not this head-to-head. Two asymmetries stay in view. The plotted discrepancy is the construction’s own training objective, not the sampler’s. And the move lever here is the warm start finetuned to convergence—the per-instance optimum the amortized map approximates—rather than the deployable one-pass emission, with the free reweight lever the genuinely cheap leg reported alongside. The verdict is plain. Where the score is in hand and per-query compute is acceptable, the equally weighted sampler remains the natural choice for a stable sample cloud. What the construction offers instead is a score-free, amortized, reusable weighted quadrature for integration—and reusable is exactly the property the conditional stages now cash in. 
+
+7.3 The amortized conditional map: limited-angle tomography 
+
+The toys fix one reference per target; the construction was built for more. A single set-equivariant network should condition on the held-out observation y⋆ and emit, in one forward pass, an arbitrary-resolution weighted quadrature of that observation’s posterior. Limited-angle tomography is the first conditional test, and deliberately the easy one. The task is to recover an image from projections over a restricted angular wedge—a canonical ill-posed linear inverse problem (Kak and Slaney, 2001; Natterer, 2001) whose posterior is sharp along the wedge-informed directions and 17 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64  
+
+> node budget M
+> 10 −2
+> 10 −1
+> MMD 2(Q, ρ)
+> i.i.d. floor
+> warm start (1 fwd pass)
+> warm start, finetuned
+
+Figure 9: Conditioned on the held-out observation, one forward pass beats the independent-sample floor at every node budget on the tomography posterior. The squared maximum mean discrepancy to the informed-subspace Gaussian tomography posterior, against the node budget, across held-out observations. The independent-sample floor (Section 3) is the baseline. The one-pass warm start lies below it at every budget, the margin deepening with the budget; the warm start, finetuned is the per-set discrepancy-descent envelope the network amortizes (three arms as in the toys, Figure 7). The ambient image would collapse the kernel to a bag of samples (Remark 4). Because this reference is linear-Gaussian, its covariance—and hence the centered discrepancy—does not depend on the observation, so the margin is reported across observations but is observation-invariant. The observation-varying instance is the trained conditional flow (Section 7.4). prior-dominated off them (Cui et al., 2014; Spantini et al., 2015). Concretely, a 16 ×16 image is probed by parallel-beam projections at 16 angles spread over a restricted 75 ◦ wedge, each sampled by 16 detectors, and the 256 sinogram readings are corrupted by additive Gaussian noise of standard deviation 0.8 (informed-subspace participation rank 
+
+r = 7 ). Because the posterior is linear-Gaussian, the conditioning machinery runs against a reference whose every estimand is exact, with no learned proxy in the loop. 
+
+The reference, the latent, and the trained net. The reference ρ is the exact closed-form Gaussian tomography posterior N (μpost (y⋆), Σpost ) under a Laplacian field prior, not the achieved Nadaraya–Watson measure of the physics posteriors that follow—here the estimand is in hand. It is projected into the rank-deficient score-free informed subspace, the exact local informed subspace H = A⊤Σ−1obs A of the forward operator (Section 4.5), whose participation rank is the operating point read off its spectrum. The result is a low-dimensional Gaussian in the whitened informed coordinates whose squared-exponential kernel mean and self-affinity are exact. The ambient image would wall the kernel (Remark 4); the informed summary keeps it well conditioned—the rank-truncated reading of the same whitened metric the dimension sweep validated (Section 7.1). A single set-equivariant network is trained once to emit a weighted quadrature of the latent posterior in one forward pass, conditioning on the held-out observation with the node count drawn uniformly over the resolution range. Nothing in the metric, weight, or move machinery changes from the toys. The reconstruction back-maps the emitted nodes through the exact lift: the quadrature mean is the weighted back-mapped nodes, the per-pixel uncertainty their weighted spread. 
+
+The warm start beats the floor across observations; the recovery is subspace-limited by construction. Condition-ing costs nothing on the margin. Across held-out observations the one-pass warm start sits below the independent-sample floor at every node budget, the margin deepening as the budget grows (Figure 9). It tracks the warm start, finetuned—the per-set discrepancy descent the network amortizes, the non-amortized per-query best—from above, essentially at the optimum for the smallest budgets and trailing it as the budget grows, the headroom the amortization leaves. The kernel that would wall in the ambient image stays well conditioned on the informed summary, the two levers separate, and the conditioned network’s quadrature integrates the exact posterior strictly better than the same number of independent samples. One caveat is load-bearing. Because the reference is linear-Gaussian, its posterior covariance—and therefore the centered integration discrepancy—does not depend on the observation. The margin is reported across observations, 18 Amortized mean-shift interacting particles A P REPRINT 0.00 0.05 0.10  
+
+> exact in-subspace std
+> 0.000
+> 0.025
+> 0.050
+> 0.075
+> 0.100
+> 0.125
+> quadrature per-pixel std  (a) calibration
+> (b) exact full std
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> (c) exact in-subspace (d) quadrature std
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+
+Figure 10: The quadrature’s per-pixel uncertainty is calibrated to the closed-form posterior standard deviation inside the informed subspace; the off-subspace under-coverage is the known low-rank truncation residue. The tomography posterior is exactly Gaussian, so its per-pixel standard deviation is known in closed form. (a) The quadrature per-pixel standard deviation against the exact in-subspace value, on the identity line at correlation and ratio near one. 
+
+(b) The exact full posterior standard deviation, on its own larger scale, dominated by the limited-angle boundary variance. 
+
+(c,d) The exact in-subspace and the quadrature standard deviation on a shared scale—visually indistinguishable. The quadrature is faithful to the part of the posterior the rank-truncated informed subspace resolves; the larger full-std map (b) is the off-subspace mass the subspace cannot represent by construction, the same low-rank ceiling the reconstruction lives under, not a calibration failure. but the integration quality is observation-invariant. The genuinely observation-varying integrand, where the posterior 
+
+shape moves with the observation, is what the next stage supplies (Section 7.4). The point estimate is not the claim. The wedge informs only a low-rank subspace of the image, so a back-mapped quadrature mean recovers the visible-wedge structure while the off-wedge complement stays absent—the truncation floor of the limited-angle geometry, which a linear summary recovers just as well. The claim is that the quadrature integrates the exact posterior below the floor and supplies a per-pixel uncertainty map the point estimate alone does not, in a regime where the ambient image would have walled the kernel entirely. With an exact reference in hand, that uncertainty map can be audited against the truth. 
+
+The per-pixel uncertainty is calibrated to the exact posterior in the informed subspace. The audit confirms the uncertainty rather than merely displays it. Because the tomography posterior is exactly Gaussian, its per-pixel standard deviation is available in closed form (Figure 10). In the informed subspace the quadrature’s per-pixel standard deviation tracks the exact in-subspace value closely: a correlation near one, a ratio near unity, the scatter on the identity line, the two std maps visually indistinguishable on a shared scale. The full posterior standard deviation is several times larger and structurally different, concentrated at the off-wedge boundary the limited-angle geometry leaves uninformed. The rank-truncated quadrature carries only the small fraction of the total variance the subspace resolves and under-covers the complement by exactly that truncation residue. The honest reading is precise: the uncertainty is calibrated to the part of the posterior the informed subspace resolves, and under-covers the unresolved complement by the known low-rank ceiling, the same ceiling the reconstruction mean lives under. This is a validated uncertainty claim within its stated scope, not a global coverage guarantee. Calibrated uncertainty is one half of why integration is the contribution; a downstream integral is the other. 
+
+Integration is the value: a downstream expectation, answered better than independent samples. Integration is the contribution, not the point estimate, and the same trained network makes it concrete on a held-out posterior expectation whose truth is closed-form (Figure 11). On deep-tail exceedance probes—the high-variance integrands a quadrature is built to help with—the one-pass warm start’s absolute error sits below that of the same number of independent samples at every budget, the margin deepening with the budget, and reaches an accuracy an independent sampler matches only at several times the budget. The point-estimate plug-in is not enough: a point estimate cannot integrate a nonlinear functional, and its fixed bias exceeds the quadrature at all but the smallest budgets. Two caveats bound the win. The quadrature is a biased, lower-variance estimator, so its margin is largest where Monte-Carlo variance dominates—the deep tail—and shrinks toward parity as the probe moves into the posterior bulk or the integrand smooths relative to the bandwidth. The exponential risk is outside the kernel’s certified integrand class: it wins on the heavy tail and at small budgets, but its deterministic bias overtakes the independent-draw median at the largest budgets, a stress test rather than a certified case. As throughout, the answer is to the achieved posterior, not the truth the projection approximates. Tomography exercised every piece of the conditional machinery against an exact reference; the one thing it could not move was the posterior shape, which is where the trained flow comes in. 19 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64            
+
+> node budget M
+> 10 −3
+> |̂[h] −  [h]|  (median, IQR)
+> tail bump (exceedance probe)
+> point-estimate plug-in
+> i.i.d. Monte Carlo
+> warm start (1 fwd pass)
+> per-instance (unamortized)
+> 4816 32 64
+> node budget M
+> 10 −3
+> tail bump (second axis)
+> 4816 32 64
+> node budget M
+> 10 −1
+> exponential risk (stress, off-RKHS)
+> Code on github.com/alisiahkoohi/amortized-msip
+
+Figure 11: On a held-out posterior expectation with a closed-form truth, one forward pass integrates the high-variance functionals more accurately than the same number of independent samples and than the point-estimate plug-in. The absolute error of a posterior expectation against its closed-form value, against the node budget, for three high-variance integrands: two deep-tail exceedance probes and a convex exponential risk (outside the kernel’s certified class). The one-pass warm start beats independent Monte-Carlo decisively on the deep-tail probes, the margin deepening with the budget; the point-estimate plug-in , unable to integrate a nonlinear functional, is overtaken at all but the smallest budgets. The quadrature is a biased, lower-variance estimator: its win is largest where Monte-Carlo variance dominates and shrinks toward parity in the bulk, and on the off-class exponential risk its bias overtakes the independent-draw median at the largest budgets—the guarantee covers the kernel’s class. The error is to the achieved posterior, the standing scope of the construction. 
+
+7.4 A trained conditional flow: the observation-varying reference 
+
+Tomography left one thing fixed: its posterior covariance does not move with the observation, so integration quality there is observation-invariant. The genuinely conditional test demands a reference whose shape , not only its location, varies with the observation. A trained conditional normalizing flow supplies that. We train a conditional flow on the limited-angle tomography joint and take its achieved posterior as ρ. Its mass and curvature change with the held-out observation, and the amortized map must emit a quadrature whose nodes and weights track that changing shape in one forward pass—the stage the construction is built for. 
+
+The sampled flow, the informed latent, and the per-observation metric. The reference ρ is the sampled posterior of the trained flow. For each held-in or held-out observation we draw flow samples—the same Monte-Carlo estimand the curved banana already exercised (Section 7.1), a kernel mean and a self-affinity estimated from samples, with no density and no score. The flow occasionally blows a tail sample to a non-finite or astronomically large value, so a small fraction of raw samples are filtered on a finite-and-bounded test and the observation is topped up to budget; the dataset the quadrature sees is clean. The quadrature lives in a rank-truncated informed latent—here the leading principal directions of the achieved posterior’s own samples, richer than the linear-Gaussian participation rank because the flow posterior is richer, with the ambient image left where it would have walled the kernel (Remark 4). One change carries the conditioning: each observation’s latent dataset is whitened by its own sample covariance Σz (y⋆), so the Mahalanobis metric of Section B.1 tracks the observation-varying posterior shape rather than a single pooled geometry, paired with the constant-Gram-geometry bandwidth. A single set-equivariant network, conditioning on the held-out observation through an encoder of its filtered back-projection, is trained once to emit a weighted quadrature of the latent posterior at a node count drawn uniformly over the resolution range. As on the tomography posterior (Section 7.3), the informed summary keeps the kernel conditioned and the two levers separate, with nothing in the metric, weight, or move machinery changed from the toys. 
+
+The warm start beats the floor at every budget on the observation-varying posterior. Because the reference now moves with the observation, the result is the genuinely conditional one. Across held-out observations the one-pass warm start sits below the independent-sample floor at every node budget (Figure 12), and it does so on a discrepancy that genuinely moves with the observation. The flow posterior’s shape and the per-observation whitened metric that tracks it both vary with y⋆, so this is the conditional integration the linear-Gaussian tomography could not exhibit. The warm start tracks the warm start, finetuned from above, the same three-arm reading as the toys (Figure 7). The 20 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64  
+
+> node budget M
+> 10 −3
+> 10 −2
+> 10 −1
+> MMD 2(Q, ρ)
+> median over 3 seeds; band = seed min--max
+> i.i.d. floor
+> warm start (1 fwd pass)
+> warm start, finetuned
+
+Figure 12: On a trained conditional flow whose posterior shape varies with the observation, one forward pass beats the independent-sample floor at every node budget. The squared maximum mean discrepancy to the achieved flow posterior, against the node budget, across held-out observations. The independent-sample floor (Section 3) is the baseline. The one-pass warm start lies below it at every budget, the margin steady across the resolution range; the warm start, finetuned is the per-set discrepancy-descent envelope the network amortizes (three arms as in the toys, Figure 7). Unlike the linear-Gaussian tomography (Figure 9), whose covariance does not move with the observation, here the posterior shape and the per-observation whitened metric both vary with y⋆, so the discrepancy and the floor-beating margin are genuinely conditional. reconstruction (Figure 13) makes the honest reading plain. The quadrature mean coincides with the flow posterior mean to a relative error near zero: the one forward pass integrates the achieved posterior faithfully, its mean reproducing the flow posterior’s coarse structure at the truncated rank, while the off-wedge high-frequency detail of the true image stays absent by the limited-angle truncation, and the per-pixel uncertainty reads off the same geometry. Three caveats hold the scope. The construction integrates ρ, the flow posterior, not the truth the flow approximates. The recovery is subspace-limited at the truncated rank—richer than the linear cases, but still a low-rank reading. And a small fraction of the flow’s raw samples are non-finite tail blow-ups, filtered before the quadrature sees them. Within that scope, the amortized map emits a sub-floor quadrature of an observation-varying learned posterior in one forward pass—the genuinely conditional result the program is built to deliver. 
+
+7.5 The Nadaraya–Watson conditional measure as one instantiation 
+
+One reference the user may commit to without training a flow is the Nadaraya–Watson conditional measure—the score-free reading of the simulation dataset in which the posterior is a discrete mixture of held-in atoms weighted by their responsibility to the query observation. It is a valid reference posterior ρ in the sense the construction requires: its squared-exponential kernel mean and self-affinity are exact finite sums over the responsibility-weighted dataset atoms, so the estimand of equation (4) is in hand with no forward solve and no density evaluation, and the amortized map integrates it exactly as it integrates a closed-form or a sampled reference. It is also the instantiation the prior score-free evidence already targets, the memorized conditional whose support is the dataset itself—a bona-fide posterior under a matched Gaussian observation model (Section 4.2). The physics posterior that follows commits to it: the groundwater Darcy benchmark (Section 7.6) takes ρ to be the Nadaraya–Watson conditional in its informed latent, the discrete weighted mixture the warm start integrates below the independent-sample floor. 
+
+7.6 A physics posterior: groundwater permeability in the informed subspace 
+
+Every stage so far has lived in low ambient dimension, where the kernel still resolves the reference. The construction is built for the high-dimensional physics posterior, where the squared-exponential kernel walls in the ambient field yet stays well conditioned on the informed summary (Section 4.5); groundwater permeability is the test. The task is to recover a log-permeability field from sparse pressure observations of the steady-state elliptic (Darcy) flow it 21 Amortized mean-shift interacting particles A P REPRINT true CNF mean quadrature mean per-pixel UQ 
+
+> -1.0
+> -0.5
+> 0.0
+> 0.5
+> 1.0
+> field value
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> posterior std
+
+Figure 13: The quadrature integrates the flow posterior faithfully—its mean is the flow’s posterior mean—and carries a per-pixel uncertainty that reads off the limited-angle geometry. For held-out observations: (left) the 
+
+true image , (center-left) the flow posterior mean , (center-right) the quadrature mean (the weighted back-mapped nodes), and (right) the per-pixel uncertainty (their weighted spread, pooled over independent emissions at the trained budget for a low-noise map; Remark 3). The quadrature mean and the flow mean are indistinguishable on the shared scale—the one forward pass integrates the achieved posterior to a relative error near zero. The fine off-wedge detail of the true image is absent—the in-subspace truncation floor of the limited-angle geometry, not a method error—and the uncertainty concentrates at the off-wedge boundary the geometry leaves uninformed. The point estimate is faithful to ρ,what the construction integrates, not to the truth the flow approximates. drives—a canonical high-dimensional Bayesian inverse problem in the function-space sense (Kaipio and Somersalo, 2005; Tarantola, 2005; Stuart, 2010; Hosseini, 2017), whose field is expanded in a Karhunen–Loève basis and whose informed directions are the low-rank subspace the data constrain (Cui et al., 2014; Spantini et al., 2015; Zahm et al., 2022). Here the reference is no closed-form density and no learned flow; it is the achieved conditional itself. 
+
+The forward model. The forward map is steady-state Darcy flow—single-phase, pressure-driven flow through a porous medium (Darcy, 1856)—on the unit square. Given a log-permeability field u(s), the pressure p(s) solves the elliptic equation 
+
+−∇ ·  eu(s)∇p(s) = 0 in Ω = (0 , 1) 2, p(s) = a s 1 + b s 2 on ∂Ω, (12) with no interior source, so the flow is driven entirely through the affine Dirichlet boundary data (a, b ). A single drive leaves the recovery badly under-determined; the documented remedy is to probe the field with several drives—here eight fixed boundary potentials (a, b ) that each illuminate the permeability differently and contribute independent constraints. Under each drive the pressure is read at a sparse 9 × 9 grid of interior sensors, and the eight readings are stacked into one observation of dimension 648 corrupted by additive Gaussian noise of standard deviation 0.003 . The unknown u is a Gaussian random field expanded in a thousand-coefficient Karhunen–Loève basis—a Matérn-type spectrum with 22 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64  
+
+> node budget M
+> 10 −2
+> 10 −1
+> MMD 2(Q, ρ)
+> i.i.d. floor
+> warm start (1 fwd pass)
+
+Figure 14: On the high-dimensional groundwater posterior, projected to its informed subspace, one forward pass beats the independent-sample floor at every node budget. The squared maximum mean discrepancy to the informed-latent Nadaraya–Watson conditional, against the node budget, averaged over held-out query observations. The independent-sample floor (Section 3) is the baseline. The one-pass warm start lies below it at every budget, and the margin deepens with the budget. The thousand-coefficient ambient field would collapse the kernel to a bag of samples (Remark 4); on the informed Karhunen–Loève summary the two levers separate and the warm start integrates the achieved posterior strictly better than independent samples. correlation length ≈ 0.26 and pointwise standard deviation 0.75 —so the inferred parameter is the standard-normal coefficient vector and the ambient dimension is 1024 .
+
+The reference, the latent, and the trained net. As in the toys, the reference ρ is the achieved conditional, not ground truth: the Nadaraya–Watson conditional measure in the informed latent (Section 7.5), a discrete weighted mixture of held-in latent atoms whose squared-exponential kernel mean and self-affinity are exact finite sums. The informed latent is the standardized top coordinates of the Karhunen–Loève expansion—the basis that diagonalizes the prior, i.e., the field-principal directions the data inform—truncated to rank r = 32 . The ambient 1024 -coefficient field would wall the kernel (Remark 4). A single set-equivariant network is trained once to emit a weighted quadrature of the latent conditional in one forward pass, across held-in query observations, with the node count drawn uniformly over the resolution range. Nothing in the metric, weight, or move machinery changes from the toys. Because the move-below-emission refinement collapses on this sharp reference (Remark 5), the result reported here is the warm start with score-based finetuning left off, stated up front to keep the reading honest. 
+
+The warm start beats the floor; the recovery is subspace-limited by construction. Surviving the jump to high dimension, the margin holds. As on the tomography posterior (Section 7.3), the informed summary keeps the kernel conditioned where the ambient thousand-coefficient field would wall it: there the isotropic kernel loses its geometric contrast and moving the nodes buys nothing (Remark 4), so it is on the informed Karhunen–Loève summary that the two levers separate and the warm start clears the floor at every node budget, the margin deepening as the budget grows (Figure 14). The entire sub-floor margin is bought by the change of metric, not by new quadrature machinery—the reversal the informed subspace is built for. The field reconstruction (Figure 15) is honestly faint. The elliptic forward map informs only a low-rank subspace of the field, so the quadrature mean recovers the coarse informed structure while the prior-dominated complement stays absent—the truncation floor inherent to the under-determined elliptic inversion, not a defect of the quadrature. The integration below the floor and the per-pixel uncertainty, not the point estimate, are the contribution, as on tomography (Section 7.3). 
+
+7.7 The warm-versus-cold finetuning frontier 
+
+The physics posterior ran without score-based finetuning. This subsection turns the reason into a result. The finetuning of Section 5 is the optional add-on: where the reference is well-conditioned it accelerates the per-query refinement 23 Amortized mean-shift interacting particles A P REPRINT true field conditioner mean quadrature mean per-pixel UQ 
+
+> -2
+> -1
+> 0
+> 1
+> 2
+> field value
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> posterior std
+
+Figure 15: Back-mapping the emitted latent nodes gives a subspace-limited posterior-mean field and a coherent per-pixel uncertainty map; the integration and the uncertainty, not the point estimate, are the contribution. 
+
+For three held-out observations: (a) the true field , (b) the conditioner mean (the Nadaraya–Watson point estimate the quadrature integrates), (c) the quadrature mean (the weighted back-mapped nodes), and (d) the per-pixel uncertainty 
+
+(their weighted spread, pooled over independent emissions at the trained budget for a low-noise map; Remark 3). The recovery is a faint, low-rank blob: the elliptic forward map informs only a low-dimensional subspace of the thousand-coefficient field, so the prior-dominated complement is unrecoverable by construction—the in-subspace truncation floor, not a method error. The value is the quadrature’s integration of the achieved posterior (Figure 14) and its uncertainty quantification, which the point estimate alone does not carry. and carries the quadrature below the one-pass emission; where the reference is sharp it does neither. The frontier is traced on the two exact references whose posterior score is in hand—the closed-form linear–Gaussian target and the limited-angle tomography posterior—with the negative arm stated honestly. The reference ρ here is the exact 
+
+posterior—the closed-form Gaussian and the analytic tomography conditional—so the refiner reads the true score and the discrepancy is measured against the object the score defines, not a learned proxy. 
+
+The warm start accelerates and descends below the emission. On the well-conditioned references the add-on earns its place. The warm-started arm—the one-pass emission as the initialization, refined by the score-based mean shift—sits below the cold arm at every cumulative score-evaluation budget and descends below its own zero-solve emission toward the integration floor (Figure 16). The cold arm, started from the prior, spends a large fraction of the budget merely reaching the discrepancy the warm arm holds at the emission. The cost of initialization thus decouples from the per-query score budget: the one forward pass and the per-query refinement are two endpoints of a single budget knob, not alternatives. Both arms head toward the same independent-sample integration floor—the same node count of exact-posterior samples under equal weights (Section 3)—and on the tomography posterior the signed-weight quadrature settles below it, the integration gain the one-pass emission delivers without any score. Two effects separate cleanly. The descent below the emission is the score’s contribution, conditional on its being exact and the reference 24 Amortized mean-shift interacting particles A P REPRINT 10 2 10 3 10 4      
+
+> cumulative score evaluations per query
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> MMD to the exact reference  ρ = p(x ∣ y ∗ )
+> warm (amortized) init + score refine
+> cold (prior) init + score refine
+> ★zero-solve emission (one pass)
+> Linear--Gaussian posterior
+> 010 110 210 310 4
+> cumulative score evaluations per query
+> 10 −2
+> 10 −1
+> 10 0
+> i.i.d.-ρfloor
+> Limited-angle tomography posterior
+
+Figure 16: On the well-conditioned exact references, the one-pass emission seeds a per-query refinement that descends below it, toward the independent-sample integration floor. For the exact linear–Gaussian (left) and limited-angle tomography (right) posteriors, the squared maximum mean discrepancy to the exact reference ρ = p(x | y∗)
+
+against the cumulative per-query score evaluations, median over held-out observations with the interquartile spread. The 
+
+warm (amortized) initialization —refined by the score-based mean shift from the one-pass emission (the ⋆ zero-solve emission )—sits below the cold (prior) initialization at every budget, the refinement descending toward the dashed 
+
+independent-sample floor (Section 3) and settling at or below it. Both arms run the same map and differ only in initialization, so the horizontal gap is the score budget the cold solve spends to reach what the emission already holds; the per-query axis excludes the amortized one forward pass and context dataset. This below-emission descent does not survive a sharp reference (Remark 5). well-conditioned. The acceleration, which reads only the node positions, is not (Remark 5). That conditional is the whole story of the next paragraph. 
+
+The descent does not survive a sharp reference. The other side of the frontier is a failure, and naming it sharpens the scope. The below-emission descent is confined to well-conditioned references. On the sharp, low-rank informed groundwater (Darcy) reference (Section 7.6), the iterated mean shift over-contracts and the descent stalls (Remark 5). The collapse persists across a Matérn kernel, a corrected weight solve, and a larger node budget. The move-below-emission refinement does not materialize there—which is exactly why the result on that posterior is the warm start alone. The finetuning is therefore the optional add-on rather than the core: it is correctly silent or harmful precisely where the reference is sharp, while the one-pass emission—which gradient training keeps away from the collapsed configuration (Remark 5)—is not subject to it. This collapse is one of several ways the construction can break, and the next section stress-tests the rest (Section 8). 
+
+## 8 Stress-testing the construction 
+
+The experiments establish that the warm start beats the floor. They leave open whether the gain rests on a well-conditioned solve or hides a degenerate one. The guarantee covers only the weight solve, and a quadrature can sit below the floor on weights that are signed, near-singular, and one bandwidth from collapse. This section interrogates those soft spots, one sharp question at a time. Do the designed weights stay well-conditioned, or does the gain hide a degenerate solve (Section 8.1)? When pure reweighting would collapse, does moving the nodes repair the conditioning (Section 8.2)? Does the gain survive the kernel bandwidth both levers share, or is the median heuristic a lucky operating point (Section 8.3)? Does the resolution dial generalize to budgets the network never saw (Section 8.4)? Every diagnostic reuses the trained networks of Section 7.1 with no further training, scoring the deployed quadrature on fresh held-out samples disjoint from training and evaluation. The construction survives each question. 25 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64       
+
+> node budget M
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> effective sample size  ESS/ M
+> equal weights: ESS = M
+> reweight (i.i.d. nodes)
+> 4816 32 64
+> node budget M
+> move (designed nodes)
+> Gaussian d=2
+> Gaussian d=4
+> Gaussian d=8
+> Gaussian d=16
+> GMM-2comp d=10
+> GMM-2comp d=32
+> GMM-2comp d=64
+> GMM-5mode d=10
+> GMM-5mode d=32
+> GMM-5mode d=64
+> banana d=2
+
+Figure 17: The deployed quadrature keeps its effective sample size a healthy fraction of the node count: the designed weights are well-conditioned, not a signed quadrature resting on a near-singular Gram. For each reference, the effective sample size of the unit-sum weights as a fraction of the node count, on fresh held-out samples; equal weights would sit at one. The deployed move-and-reweight quadrature stays near the node count for every Gaussian away from the lowest dimensions and every Gaussian mixture; the reweight-only arm at the same nodes is shown for contrast. The three references that demand the largest move—the lowest-dimensional Gaussian, the banana, and the moderate-dimensional mixture—sit at a moderate but non-degenerate fraction: the price of a large discrepancy gain, not a degeneracy, and each still beats the floor decisively (Figure 7). The reweight leg’s guarantee (Proposition 2) holds at every conditioning. 
+
+8.1 Do the designed weights stay well-conditioned? 
+
+The closed-form weight solve is provably no worse than equal weights at the floor (Proposition 2). A guarantee on the discrepancy says nothing about the conditioning of the weights that attain it. A quadrature can sit below the floor on a near-singular Gram—a few nodes carrying the mass, the rest cancelling against them. The diagnostic that separates the two is the effective sample size of the unit-sum weights, i.e., the reciprocal of their squared norm. It equals the node count when the weights are uniform and collapses far below it when a single node dominates. A benign reweighting keeps the effective sample size a healthy fraction of the node count; a signed, degenerate quadrature does not. 
+
+The deployed quadrature stays well-conditioned while it beats the floor. Across the targets the deployed move-and-reweight quadrature keeps its effective sample size a healthy fraction of the node count (Figure 17), and the negative-weight fraction is essentially zero (Figure 18). The construction is a benign reweighting of repositioned samples, not a signed quadrature whose accuracy is bought with cancellation. The signed-weight degeneracy a mixture reference induced under fixed nodes does not recur: with the unit-sum-constrained solve and the trained net, every Gaussian away from the lowest ambient dimensions and every Gaussian mixture retains an effective sample size near the node count, and almost no node turns negative. The conditioning is most favorable at the smaller resolutions, where the fewer nodes spread loosely relative to the kernel and the Gram stays well separated. It tightens as the resolution grows and the nodes crowd—but it does not collapse. 
+
+The hardest references sit at a moderate, non-degenerate effective sample size, and the win survives there. The reading is honest about its tail. The three references that demand the largest move off the floor—the lowest-dimensional Gaussian, the curved banana, and the moderate-dimensional Gaussian mixture—sit at a moderate effective sample size, a fraction of the node count rather than near it, with a small but nonzero share of negative weights on the two two-dimensional toys (Figures 17 and 18). This is the price of a large discrepancy gain, not a degeneracy that erases it. In every one of these cases the warm start still descends decisively below the floor (Figure 7). A moderate effective sample size is what a large move buys, and the move carries the margin. The conditioning trades against the gain, never against the guarantee, which the reweight leg holds at every conditioning (Proposition 2). That trade has a sharper consequence—moving the nodes does not merely cost conditioning—it can buy it back. 
+
+8.2 Moving the nodes also repairs the conditioning 
+
+The effective-sample-size reading carries a second finding, sharper than the first: where pure reweighting collapses, moving the nodes lifts the conditioning back. Fixing the nodes at the independent samples and solving only the weights leaves the Gram at the mercy of where the samples landed. A small bandwidth makes neighboring samples overlap relative to the kernel scale, the node Gram turns near-singular, and the reweight-only effective sample size collapses far 26 Amortized mean-shift interacting particles A P REPRINT Gaussian d=2 
+
+> Gaussian d=4
+> Gaussian d=8
+> Gaussian d=16
+> GMM-2comp d=10
+> GMM-2comp d=32
+> GMM-2comp d=64
+> GMM-5mode d=10
+> GMM-5mode d=32
+> GMM-5mode d=64
+> banana d=2
+> -3
+> -2
+> -1
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> weight / (1/ M) (move,  M = 64)
+> equal weight
+> weight distribution vs equal weight
+> Gaussian d=2
+> Gaussian d=4
+> Gaussian d=8
+> Gaussian d=16
+> GMM-2comp d=10
+> GMM-2comp d=32
+> GMM-2comp d=64
+> GMM-5mode d=10
+> GMM-5mode d=32
+> GMM-5mode d=64
+> banana d=2
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> fraction of negative weights
+> signedness of the quadrature
+> M = 32
+> M = 64
+
+Figure 18: The quadrature is a benign reweighting concentrated around the equal weight, not a wild signed quadrature: almost no node turns negative. The distribution of the unit-sum weights and the share of negative weights for the deployed quadrature, on held-out samples. The bulk of every distribution sits tightly around the equal weight, and the negative-weight share vanishes for every Gaussian away from the lowest dimensions and every Gaussian mixture. Only the two two-dimensional toys carry any sign at all, on a handful of tail nodes. The signed-weight degeneracy seen under fixed nodes does not recur with the unit-sum-constrained solve and the trained net. Companion to Figure 17. below the node count—a few distinguishable nodes carry the mass, the rest cancel. The two-dimensional toys, whose samples crowd most relative to their kernel, are exactly where this happens. Moving the nodes is the repair. 
+
+The learned node placement lifts the conditioning the reweight arm destroys. Where the reweight-only effective sample size collapses, the learned node placement lifts the same reference back to a moderate, non-degenerate effective sample size (Figure 17). The network does not merely reweight a fixed configuration. It repositions the nodes so the Gram separates, making the designed set both lower in discrepancy and better-conditioned than the independent samples it replaces. The move lever buys two things at once—a lower discrepancy and a healthier weight solve—rather than trading one for the other. Figure 19 shows what the reweighting does on the density. The up-weighted nodes concentrate on the high-mass ridge while the few down-weighted nodes sit in the low-density tails, correcting the over-coverage independent samples leave relative to the informative ridge. On the well-separated mixture the weights stay positive and split between the modes, gently favoring the tighter component, consistent with its vanishing negative-weight share (Figure 18). The mechanism is the one that drives the discrepancy gain (Section 4.4): the designed positions decorrelate the residual the random nodes leave, which lowers the worst-case error and separates the Gram the weight solve inverts at the same stroke. One lever, two gains—but both ride on a single bandwidth, and a gain that lived only at the tuned value would be cherry-picked. 
+
+8.3 Is the gain robust to the bandwidth? 
+
+Both levers share one kernel bandwidth, set per target by the median heuristic. A gain that held only at that one hand-tuned value would be cherry-picked. The test re-scores the same emitted nodes across a range of bandwidths around the median, separating a robust gain from a lucky operating point. The network is bandwidth-free, so the move stays fixed and only the weight solve and the discrepancy re-score. 
+
+The warm start beats the floor across the swept range, and the median heuristic sits in the sweet spot. The warm start beats the floor across the entire swept bandwidth range (Figure 20). The gain is not an artifact of the bandwidth. The two readings trade off in opposite directions across the sweep. The discrepancy margin over the floor deepens monotonically as the bandwidth grows—the kernel bites harder, so the designed nodes pull farther below the independent samples. The effective sample size moves the other way: it holds a robust plateau at and below the median, then degrades as the bandwidth grows and the nodes crowd. The median heuristic sits in the sweet spot between the two—a strong margin at a high effective sample size—neither the smallest bandwidth, where the margin is shallow, nor the largest, where the conditioning erodes. Pushing the bandwidth up buys a deeper margin at the cost of conditioning, a knob the practitioner may turn rather than the operating point. The median heuristic is the principled choice, and the gain is robust to it. Robustness to a hyperparameter is one thing; generalization to a budget the network never saw is another, and the resolution dial of contribution (2) claims exactly that. 27 Amortized mean-shift interacting particles A P REPRINT -10.0 -7.5 -5.0 -2.5 0.0 2.5 5.0 7.5 10.0            
+
+> x0
+> -5.0
+> -2.5
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> x1
+> banana, d= 2
+> -2.5 0.0 2.5 5.0 7.5 10.0 12.5 15.0
+> x0
+> -4
+> -3
+> -2
+> -1
+> 0
+> 1
+> 2
+> 3
+> 4
+> x1
+> GMM 2-comp, d= 10 (axes 0,1)
+> -7.5
+> -5.0
+> -2.5
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> weight / (1/ M)
+> -2.0
+> -1.5
+> -1.0
+> -0.5
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> weight / (1/ M)
+
+Figure 19: The quadrature up-weights the high-mass ridge and down-weights the over-covered tails: moving the nodes both lowers the discrepancy and separates the Gram the weight solve inverts. The emitted nodes drawn on the reference density, colored by signed weight relative to the equal weight, for the curved banana and the two-component Gaussian mixture. On the banana, the up-weighted nodes concentrate on the high-mass ridge near the bend while the few down-weighted nodes sit in the low-density tails. On the well-separated mixture the weights stay positive and split between the modes, gently favoring the tighter component. The repositioning that lowers the discrepancy (Section 4.4) is the same that separates the node Gram and lifts the effective sample size (Figure 17). 0.5 1.0 1.5 2.0 2.5 3.0             
+
+> bandwidth σ/σmedian
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> warm / floor MMD 2 (M = 64)
+> train σ
+> gain vs bandwidth
+> i.i.d. floor
+> warm start (move)
+> 0.5 1.0 1.5 2.0 2.5 3.0
+> bandwidth σ/σmedian
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> effective sample size  ESS/ M
+> weight health vs bandwidth
+
+Figure 20: The warm start beats the floor across the swept bandwidth range, and the median heuristic sits in the sweet spot between a deep margin and a well-conditioned solve: the gain is robust, not cherry-picked. The same emitted nodes re-scored across kernel bandwidths around the per-target median heuristic; the network is bandwidth-free, so only the weight solve and the discrepancy re-score. The discrepancy margin over the floor deepens monotonically as the bandwidth grows—the kernel bites harder—while the effective sample size holds a plateau at and below the median, then erodes as the nodes crowd. The median heuristic sits between the two: a strong margin at a high effective sample size. Pushing the bandwidth up buys a deeper margin at the cost of conditioning—a knob, not the operating point. 
+
+8.4 Does the resolution dial generalize to budgets it never saw? 
+
+The resolution dial of contribution (2) is an empirical claim, not a theorem (Remark 2). The closed-form weight solve is resolution-agnostic, but the learned positions carry no guarantee at a node count outside the training range. This ablation tests the claim directly, on the two closed-form toys where the truth—and hence the floor and the finetuned optimum—is exact, so no Monte-Carlo bias contaminates the verdict. Three networks of identical architecture, steps, and seed train on the same target and differ only in the node counts they see: one over the full range, one over a strict subset that holds out two interior budgets, one at a single fixed budget. All three then evaluate on the full grid of held-out samples, the held-out budgets marked apart from the trained ones. If the dial is real, the subset network beats the floor at the budgets it never saw. 
+
+One net beats the floor at node counts it never saw, and the generalization comes from training over a range. 
+
+It does. The subset network—which never saw the two held-out interior budgets—emits a sub-floor quadrature at 28 Amortized mean-shift interacting particles A P REPRINT 4 8 16 32 64                
+
+> node budget M
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> MMD 2(Q, ρ) (held out)
+> Gaussian (unimodal)
+> 4816 32 64
+> node budget M
+> 10 −9
+> 10 −8
+> 10 −7
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> GMM (5-mode)
+> Resolution-dial ablation: one net serves unseen M
+> i.i.d. floor
+> warm start, finetuned
+> all-Mnet (trained 4--64)
+> subset net (train M∈ {4, 16, 64})
+> fixed-M= 16 net
+> trained M(filled)
+> held-out M(ring)
+
+Figure 21: One trained network beats the independent-sample floor at node counts it never saw in training, and the generalization comes from training over a range, not from the architecture alone. The squared maximum mean discrepancy to the closed-form reference against the node budget, for a smooth Gaussian and a harder multimodal mixture, with three networks of identical architecture differing only in the budgets they saw. The independent-sample floor (dashed) and the warm start, finetuned (dotted, the per-instance optimum) bracket the achievable range. The 
+
+full-range network and the subset network —trained on a strict subset with two interior counts held out—both lie below the floor at every budget, the subset network sub-floor at exactly the budgets it never saw and tracking the full-range network there. The single-budget control is competitive near its own count but degrades off it—sharply on the small-budget Gaussian, mildly on the multimodal target. Trained budgets are filled marks, held-out budgets open rings. exactly those budgets on both targets, tracking the full-range network closely (Figure 21): the FiLM conditioning on the requested node count interpolates the budget rather than memorizing it. The single-budget control isolates the cause. It is competitive near its own training budget but degrades as the requested count moves away, while the range-trained networks hold below the floor across the whole grid. The resolution generalization comes from training over a range of node counts, not from the set-equivariant architecture alone. One honest caveat tempers the contrast: the off-budget degradation of the single-budget control is sharp only in the smallest-budget Gaussian case, where it falls above the floor outright. On the multimodal target the optimal move is weakly budget-dependent, so even one budget transfers part-way and the control stays below the floor everywhere, merely worse than the range-trained nets. The load-bearing reading is the apples-to-apples one: the subset and full-range networks are both sub-floor at every budget, and the held-out budgets are no exception. The construction survives every question put to it—a well-conditioned, bandwidth-robust, resolution-general quadrature that beats the Monte-Carlo floor. What remains is to mark the scope of that claim. 
+
+## 9 Discussion 
+
+The experiments establish one point across closed-form, sampled, learned, and physics-based posteriors: a trained, set-equivariant map emits, in a single forward pass and at any node budget, a weighted quadrature that integrates the posterior below the Monte-Carlo floor—provably through reweighting and, empirically, further by moving the nodes. We close by placing the construction among its neighbors, marking how far it reaches, and stating what it does not claim. 
+
+Relation to the mean shift and to control variates. The construction amortizes the per-observation mean-shift quadrature (Belhadji et al., 2026a,b) into one conditional, score-free forward pass: where that construction re-solves a fixed point at every observation and, in its sharpest form, reads the posterior score, the trained map emits the quadrature from samples alone and reuses it across the stream. On the integrand axis it is the all-integrand counterpart of a control variate (Oates et al., 2017; Siahkoohi and Oh, 2026)—a single node set lowers the worst-case integration error over the kernel’s unit ball at once (Briol et al., 2019), where a control variate cancels one chosen integrand. The reweighting leg carries this provably (Proposition 2); the move leg carries the larger gain empirically. 
+
+A different object than an interacting-particle sampler. On the one axis it shares with a sampler—the integration error of the posterior—the quadrature is favorable against a tuned interacting-particle method (Section 7.2), but the two remain different objects: a sampler returns an equally weighted cloud read off the score and re-run per query, while 29 Amortized mean-shift interacting particles A P REPRINT 
+
+ours is a signed-weight, score-free quadrature emitted once and reused across observations and integrands. Where the score is in hand and a sample cloud is wanted per query, the sampler—or a dual-space particle scheme (Siahkoohi et al., 2026)—is the natural tool; the construction’s value is in the opposite, common corner. 
+
+Reach and future directions. Because the map reads its reference only through samples, any posterior the user can draw from is admissible, and the same machinery should extend wherever a stream of expensive posteriors must be integrated. Several directions follow. First, a uniform-in-resolution analysis would certify the empirical move and cross-resolution gains the reweighting alone cannot (Remark 2). Second, a refinement that stays stable on a sharp reference would extend the optional finetuning into the regime where it now steps back, leaving the one-pass emission to carry it (Remark 5). Third, a per-mode or jointly learned whitening metric would carry the margin into multimodal and learned high-dimensional posteriors beyond the pooled estimate used here (Remark 4 and Section B). Fourth, certifying robustness to an out-of-support observation and to integrands beyond the kernel’s class (Figure 11) would widen the guarantee. 
+
+What the construction does not claim. The map integrates the posterior ρ the user commits to, not the ground truth 
+
+π: it drives down MMD( Q, ρ ) and leaves the fidelity MMD( ρ, π ) to the user’s modeling effort (Remark 1), whose error for a generative prior is itself a subject of study (Hosseini and Huang, 2026). The point estimate is not the contribution—a linear summary recovers the same subspace-limited reconstruction—and the worst-case guarantee holds over the kernel’s reproducing-kernel Hilbert space, not for every functional. Within that scope the construction is a Pareto improvement on the Monte-Carlo estimator, not a replacement for drawing more. 
+
+## 10 Conclusion 
+
+The deliverable in simulation-based and inverse problems is an integral of a posterior the user has already committed to, and the default estimator— M independent samples of that posterior ρ averaged with equal weights—carries the Monte-Carlo floor on every expectation at once. Beating that floor with a designed quadrature classically demanded a fresh solve at every observation and, in its strongest form, the score at every step. We frame this as designing a quadrature of ρ and propose amortized mean-shift interacting particles : an amortized, arbitrary-resolution, set-equivariant map that emits, in one forward pass and across observations, a weighted-node set improving on that floor, the all-integrand counterpart of the conditional control variate. Its reweighting is provably no worse than the floor at every budget (Proposition 2); moving the nodes carries the empirically larger gain. The construction does not compete with drawing more from ρ; it is a Pareto improvement on the Monte-Carlo estimator itself. 
+
+## Acknowledgments 
+
+AS acknowledges support from the Institute for Artificial Intelligence at the University of Central Florida. 
+
+## A Proofs 
+
+Throughout, the squared-exponential kernel kσx is strictly positive definite, so for distinct nodes the node Gram matrix 
+
+K is positive definite and K−1 is well defined, and the damping satisfies λ ∈ (0 , 1] . The reference is the posterior ρ;each proof states whether it holds for a general ρ carried through the estimand (μ, c ρ) or is specific to the Nadaraya– Watson instantiation of ρ. Sections A.1 to A.3 prove the three propositions of Section 6 in turn, and Section A.4 derives the score-free subspace identity (15). 
+
+Operating window of the guarantees. The constructions below run with the ridge inflation K 7 → K + εI,
+
+ε > 0, which is symmetric positive definite for every ε and so makes the weight solve well posed without the strict-positive-definiteness premise. The ridge perturbs the guarantees only to O(ε): the minimizer of the ridged quadratic 
+
+w⊤(K + εI)w − 2w⊤μ + cρ differs from the unridged one by O(ε) in norm, since the objective is shifted by ε∥w∥2,so Propositions 2 and 3 hold for the unridged objective up to an O(ε) slack and exactly in the limit ε ↓ 0 when K is invertible. The guarantees are non-vacuous only away from the two degeneracy regimes the experiments also live in: where the Gram loses its geometric contrast in high ambient dimension—its off-diagonals near-equal—the constrained optimum is itself near the equal weights and the margin over the floor shrinks (Remark 4), and where a sharp reference drives the Gram toward rank one the unridged solve is ill-conditioned and the ridge is load-bearing (Remark 5). The statements are stated for a well-conditioned Gram, 1 ≪ κ(K) ≪ ε−1, and the ridge carries the rest. 30 Amortized mean-shift interacting particles A P REPRINT 
+
+Amendment for the latent kernel (Section 4.5). When the ambient kernel is replaced by a feature-space kernel 
+
+kϕ(x, x′) = exp( −∥ ϕ(x) − ϕ(x′)∥2/2σ2
+
+> x
+
+) acting through an informed feature map ϕ : Rdx → Rr (Section 4.5), the preceding sentence no longer applies as stated. The kernel kϕ is positive semi -definite on Rdx but not strictly positive definite there, since it is constant along the fibers of ϕ and so degenerate whenever two nodes share a feature value. Invertibility of the node Gram matrix is then secured not by strict positive-definiteness but by the diagonal inflation Kϕ + εI with ε > 0 (the same inflation used in the ambient construction above), which is symmetric positive definite for every ε > 0. With this single substitution the proofs of Propositions 1 to 3 below hold verbatim for the latent quadrature: they use only the linearity of the embeddings in the reference, the dependence of the Gram on node positions alone, and the convexity and non-negativity of the squared loss—none of which is specific to the ambient kernel. 
+
+A.1 Normalization-invariance of the mean-shift map 
+
+Proof of Proposition 1. The embeddings v0(x′) = R kσx (x, x′) d ρ(x) and V1(x′) = R x kσx (x, x′) d ρ(x) are both linear functionals of the reference ρ. Hence replacing ρ by c ρ with c > 0 sends v0 7 → c v 0 and V1 7 → c V1 pointwise. The Gram matrix Kij = kσx (zi, zj ) depends only on the node positions, not on ρ, so it is unchanged. Using that multiplication by K−1 is linear, 
+
+Ψ( z)i =
+
+ K−1(c V1)
+
+> i
+
+ K−1(c v0)
+
+> i
+
+= c (K−1V1)i
+
+c (K−1v0)i
+
+= (K−1V1)i
+
+(K−1v0)i
+
+,
+
+so the map is unchanged, and with it the damped iteration and its fixed point. The stationary weights w ∝ K−1v0 7 →
+
+c K−1v0 are scaled by c, hence identical after normalization to unit sum. The nodes and their normalized weights are therefore invariant to c. In the Nadaraya–Watson instantiation the unnormalized and normalized responsibilities of equation (9) differ exactly by the positive factor Z(y⋆) = P 
+
+> j
+
+kσy (yj , y⋆), the total mass of the conditional measure; taking c = Z(y⋆) shows the two choices return the same nodes and weights, and the evidence enters only through this overall factor and so does not reach the quadrature. 
+
+A.2 Reweighting is no worse than equal weights 
+
+We restate Proposition 2 in full and prove it. Let z1, . . . , zM be fixed distinct nodes, let K be their Gram matrix in a characteristic kernel k with reproducing-kernel Hilbert space H, and let μ = ( μ1, . . . , μ M ) with μj = R k(zj , x) d ρ(x)
+
+be the kernel mean of the reference ρ at the nodes, with self-affinity cρ = RR k(x, x′) d ρ dρ. For signed unit-mass weights the squared maximum mean discrepancy is the convex quadratic 
+
+MMD 2 P 
+
+> j
+
+wj δzj , ρ 
+
+
+
+= w⊤K w − 2 w⊤μ + cρ,
+
+and the unit-sum-constrained optimum w⋆ = arg min 1⊤w=1 MMD 2(P 
+
+> j
+
+wj δzj , ρ ) is w⋆ = ( K + εI)−1(μ + κ 1)
+
+with the multiplier κ fixed by 1⊤w⋆ = 1 for any ridge ε > 0 (or ε = 0 when K is invertible). The bound (11) of Proposition 2 then holds, with equality if and only if equal weights are themselves the constrained optimum; when the nodes are M independent samples of ρ the right-hand side is the equal-weight discrepancy on those same samples—the independent-sample Monte-Carlo floor at node count M , realized pathwise—so the reweighted quadrature is no worse than that floor at every M . The guarantee is exact for a closed-form reference (a Gaussian, a Gaussian mixture, or a Nadaraya–Watson finite sum, where μ is exact); for a sampled reference μ is the empirical kernel mean ˆμ, and the constrained optimum then minimizes MMD 2(·, ˆρL) against the empirical reference, so the floor guarantee against ρ
+
+holds up to the O(L−1/2) estimand error of Proposition 3. 
+
+Proof of Proposition 2. Expanding the squared norm of the kernel mean embeddings, MMD 2(P 
+
+> j
+
+wj δzj , ρ ) = 
+
+∥ P 
+
+> j
+
+wj k(·, zj ) − μρ∥2 
+
+> H
+
+= w⊤K w − 2 w⊤μ + cρ, since ⟨k(·, zj ), k (·, zl)⟩H = Kjl , ⟨k(·, zj ), μ ρ⟩H = μj ,and ⟨μρ, μ ρ⟩H = cρ. The Gram matrix K is positive semidefinite (positive definite for a strictly positive-definite kernel at distinct nodes, or after the ridge inflation K + εI of the latent amendment), so the objective 
+
+J(w) = w⊤K w − 2 w⊤μ + cρ is convex in w. The feasible set ∆ = {w ∈ RM : 1⊤w = 1 } is an affine hyperplane— closed and convex—and the equal weights weq = 1 
+
+> M
+
+1 satisfy 1⊤weq = 1 , so weq ∈ ∆ is feasible. Minimizing a convex objective over a convex set containing a feasible point, the constrained minimizer attains a value no larger than at any feasible point, in particular at weq :
+
+MMD 2 P 
+
+> j
+
+w⋆j δzj , ρ 
+
+
+
+= J(w⋆) = min w∈∆ J(w) ≤ J(weq ) = MMD 2 1
+
+> M
+
+P 
+
+> j
+
+δzj , ρ 
+
+
+
+,
+
+31 Amortized mean-shift interacting particles A P REPRINT 
+
+which is (11) . The constrained minimizer is the stationary point of the Lagrangian J(w) − 2κ(1⊤w − 1) : setting 
+
+∇w = 2 Kw − 2μ − 2κ1 = 0 gives w⋆ = K−1(μ + κ1) (with K 7 → K + εI under the ridge), and κ is fixed by 
+
+1⊤w⋆ = 1 , so the optimum is the stated closed form. Equality in (11) holds if and only if weq is itself a minimizer over ∆, i.e., when the equal weights already solve the constrained problem; by convexity and the affine constraint this minimizer is unique up to the kernel of K, so equality is exactly the case weq = w⋆ modulo that kernel. When the nodes are M independent samples of ρ, the equal-weight discrepancy on the right is the realized independent-sample discrepancy on those same samples—the Monte-Carlo floor at node count M evaluated pathwise, whose sample-average is the canonical-rate floor—and the bound holds at every such M since the argument fixes M throughout and uses no relation between node counts. The reweighting is the provable lever and carries no node motion, so the margin it attains over the floor is limited by the random node locations—which a designed node set improves on empirically (Section 4.4). 
+
+A.3 Shared fixed points of the distillation and MMD-regression objectives 
+
+Proof of Proposition 3. Fix a query y⋆, and let ¯Ψ( z) = (1 − λ)z + λΨ( z) denote one damped step of the mean-shift map under the embeddings of the reference ρ, with ¯Ψ(n) its n-fold composition. 
+
+Distillation. Plain distillation regresses the emitted nodes z = fθ (·) onto their own detached image under the mean-shift map, with per-query integrand ℓ(z) = 1 
+
+> M d x
+
+∥z − sg[ ¯Ψ(n)(z)] ∥2 ≥ 0, a nonnegative quadratic that vanishes if and only if z = ¯Ψ(n)(z); the detached target affects only the derivative in θ, not the value of ℓ at a given z. At n = 1 the condition ¯Ψ( z) = z reads λ(Ψ( z) − z) = 0, and since λ > 0 this is Ψ( z) = z, the genuine mean-shift fixed-point set; conversely any such fixed point has ¯Ψ(n)(z) = z for every n. For n > 1 the zero set {z : ¯Ψ(n)(z) = z} is the set of period-n points, which contains the mean-shift fixed points but need not coincide with them, so the equivalence is stated at the single inner step n = 1 the construction uses. 
+
+Maximum-mean-discrepancy regression, closed-form reference. The objective (10) is L(θ) =
+
+Ey⋆ MMD 2 
+
+> kσx
+
+(P 
+
+> j
+
+ˆwj δˆzj , ρ ). We import one equivalence and prove the rest. The imported step is the quadrature-stationarity result of Belhadji et al. (2026a): the node configurations stationary for MMD 2 
+
+> kσx
+
+(·, ρ ) under the coupled mean-shift weight rule w ∝ K−1v0 are exactly the fixed points of the mean-shift map ¯Ψ, an equivalence that holds for any reference the embeddings (v0, V1) are linear in. We do not reprove it; the novelty here is the closed-form/sampled extension and the weight-rule reconciliation below. Where ρ is closed-form—a Gaussian or Gaussian mixture under the squared-exponential kernel, so that (μ, c ρ) are exact—the embeddings are exact linear functionals of ρ and the imported equivalence holds verbatim with ρ in place of any finite weighted sum: the per-query distillation zero set ( ¯Ψ( z) = z) coincides with the per-query fixed-point set of ¯Ψ, which is the stationary set of MMD 2 
+
+> kσx
+
+(·, ρ ) under the mean-shift weight rule w ∝ K−1v0. This is a shared fixed-point (stationary-point) set, not a shared global minimizer: mean-shift fixed points are stationary and near-optimal (Belhadji et al., 2026b), not certified global minima. 
+
+Mean-shift weight rule versus the unit-sum-constrained solve. The equivalence above is stated for the mean-shift weight rule w ∝ K−1v0, a positive rescaling of K−1v0 to unit sum. The amortized emission and the boxed objective (10) instead run the unit-sum-constrained solve ˆw = ( K +εI)−1(μ+κ1) with the Lagrange multiplier κ fixed by 1⊤ ˆw = 1 .These two weight rules do not coincide: the additive offset κ1 is not a positive rescaling of K−1v0, so the two solves agree only in the degenerate case κ = 0 , and the constrained-MMD stationary set and the mean-shift fixed-point set need not be identical sets of node configurations. The proposition’s equivalence is therefore between distillation and the 
+
+mean-shift-weighted MMD regression; for the constrained solve it is the statement that the two objectives share the same node-configuration stationary set up to this weight-rule offset, which vanishes when the constrained optimum is already unit-sum without an active multiplier. We state this relationship rather than assert the two solves identical. 
+
+Sampled reference: stationarity of the finite-sample estimand. Where ρ is supplied by a sampler—a trained flow or a physics posterior—the embeddings entering the objective are not exact but the L-sample Monte-Carlo estimates ˆv0, ˆV1
+
+of (v0, V1), equivalently the empirical kernel mean ˆμ and self-affinity ˆcρ formed from L samples x1, . . . , xL ∼ ρ.Substituting these into the quadratic form gives the finite-sample objective \MMD 2
+
+(Q, ρ ) = w⊤Kw − 2w⊤ ˆμ + ˆ cρ,which is the exact squared discrepancy to the empirical measure ˆρL = 1
+
+> L
+
+P 
+
+> ℓ
+
+δxℓ . The empirical measure is a finite weighted sum, so the embeddings are linear in it and the closed-form argument applies verbatim to ˆρL: the proved object for a sampled reference is the stationarity of the finite-sample estimand, i.e., the fixed-point equivalence to the mean shift driven by ˆρL. The estimand differs from the exact objective by the kernel-mean estimation error ∥ ˆμ − μ∥
+
+and the self-affinity error |ˆcρ − cρ|, each a Monte-Carlo average of a bounded kernel statistic and so O(L−1/2) in expectation by the standard bound on a bounded-kernel empirical mean: for |k| ≤ 1, E∥ ˆμ − μ∥2 ≤ M/L and 
+
+E|ˆcρ − cρ| = O(L−1/2), so the finite-sample objective converges to the exact objective in expectation as L → ∞ . The 32 Amortized mean-shift interacting particles A P REPRINT 
+
+boxed objective’s legitimacy for a sampled reference is exactly this finite-sample estimand statement: stationarity of the empirical objective, whose value converges to the exact objective at the Monte-Carlo rate. We do not claim convergence of the stationary set itself, which would require an additional argmin-continuity argument we do not make. 
+
+Intuition. Freezing distillation’s target at the map’s image of the nodes makes its loss zero exactly when that image coincides with the nodes—a fixed point—which is exactly a stationary configuration of the discrepancy the mean shift descends. For a closed-form reference the discrepancy is the exact one; for a sampled reference it is the discrepancy to the L samples in hand, so the same equivalence holds for the empirical reference and converges to the exact statement as the sample count grows. 
+
+A.4 The score-free C recovers the score-based H span: derivation of (15) The informed subspace of Section 4.5 can be read either from the likelihood score, as the leading eigenspace of the gradient-information matrix H = Ep(x)[∇x log p(y | x) ∇x log p(y | x)⊤] in the prior metric (Cui et al., 2014; Spantini et al., 2015; Zahm et al., 2022), or score-free from the variation of the conditional mean, C = Cov y (E[x | y]) 
+
+in the prior metric, estimated from the joint pairs by sliced inverse regression (Li, 1991) or by reusing the conditional mean of equation (9) ; where ρ is a trained flow or physics posterior the conditional mean is estimated from ρ-samples, so the score-free estimator carries over. We derive the one constructive fact the body uses—the span identity (15) in the linear–Gaussian model—and cite the rest. With E[x | y] = Gy , G = Σpr A⊤S−1, S = AΣpr A⊤ + Σobs , the score-free matrix is C = GSG ⊤ = Σpr A⊤S−1AΣpr ; prior-whitening with the whitened forward map B = U ΣR⊤
+
+(right factor R) and the push-through identity gives ˜C = B⊤(BB ⊤ + I)−1B = RΣ2(Σ2 + I)−1R⊤, while the score-based ˜H = RΣ2R⊤, so the two share the eigenvectors R and their eigenvalues satisfy the strictly increasing bijection (15) , λk( ˜C) = λk( ˜H)/(1 + λk( ˜H)) . Because the bijection is strictly increasing it preserves the ordering of the eigenvalues, so the two matrices fix the same leading-r subspace at every r: in the linear–Gaussian model the score-free C recovers exactly the score-based informed subspace, a span identity, not a matrix equality. For a general likelihood the two part: C recovers the central-mean subspace (Cook and Li, 2002), consistent under sliced inverse regression with a leave-one-out or sample-split conditional mean (Li, 1991), contained in the gradient-informed subspace of H but able to omit directions along which the observation moves only the posterior’s spread, which a second-moment estimator recovers (Cook and Weisberg, 1991). We use the subspace only as conditioning infrastructure (Section 4.5); no reported number depends on a certified reduction bound, so we keep only this span identity and cite the certified dimension-reduction theory (Zahm et al., 2022) for the off-subspace tail. 
+
+## B The informed subspace and the posterior-whitened kernel 
+
+Section 4.5 summarizes the posterior in an informed subspace inside a posterior-whitened kernel and defers the construction here: the full-rank whitened kernel and its dimension-aware bandwidth (Section B.1), and the score-free estimator of the subspace it truncates to (Section B.2). 
+
+B.1 The posterior-whitened kernel: a constant-Gram-geometry metric 
+
+The fix is a change of metric. Replace the isotropic squared-exponential kernel by the Mahalanobis kernel in the posterior precision M = Σ−1post ,
+
+kM (x, z) = exp 
+
+
+
+− 12σ2
+
+> x
+
+(x − z)⊤Σ−1post (x − z)
+
+
+
+. (13) This is a coordinate change, not a new construction. With the Cholesky factor Σpost = LL ⊤ and the whitening map 
+
+R = L−1, the change of variables u = Rx makes (x − z)⊤Σ−1post (x − z) = ∥ux − uz ∥2. So kM is exactly the isotropic squared-exponential kernel in whitened coordinates, in which the reference has identity covariance—unit variance in every dimension—by construction. Nothing in the metric, the weights, the move, or the objective changes: the validated closed forms for (μ, c ρ) are read in the whitened coordinate. Whitening alone is not enough. Whitened samples are still isotropic, so their squared pairwise distances concentrate at 
+
+≈ 2d, and the median heuristic—whose divisor scales the typical exponent to a constant independent of d—still drives the bandwidth too small and walls the Gram. The bandwidth must be fixed by the same logic that fixed the metric: hold the typical off-diagonal Gram entry at a value independent of d. With whitened median squared distance ≈ 2d, the choice 
+
+σx = √d =⇒ typical off-diagonal = exp   − 2d/ (2 d) = e−1, (14) 33 Amortized mean-shift interacting particles A P REPRINT 
+
+pins the typical off-diagonal coupling at e−1 for every d—the constant-Gram-geometry bandwidth—and is equivalent to the single ambient anisotropic kernel k(x, z) = exp( − 12 (x − z)⊤Σ−1post (x − z)/d ). This rule is falsifiable, not tuned to the answer. A larger bandwidth would inflate the apparent margin in the trivial broad-kernel limit, so pinning the off-diagonal at e−1 is the conservative anchor, and even tighter multipliers c√d with c < 1 still leave real room to beat the floor. The whitening metric is exact where it is known and estimated where it is not. For a Gaussian posterior Σ−1post is in hand. For a Gaussian mixture a single global metric is the pooled covariance, a heuristic whose residue is the per-mode geometry it cannot resolve, so its margin is shallower than the matched-metric Gaussian. For a trained flow or a physics posterior the metric is the O(M d 2) sample covariance of the achieved posterior, formed from the same samples that seed the map—cheap, though a dependency on the reference to state. None of these is a wall. The warm start, finetuned recovers large room to beat the floor at every tested dimension, so the residual is the global-metric approximation, not the kernel-quadrature idea. The informed subspace falls out of this same remedy by truncation. Where the posterior precision concentrates on an 
+
+r-dimensional subspace, the whitening metric is effectively low-rank, and projecting the kernel onto that subspace is the rank-r Mahalanobis metric with the off-subspace directions carried by the closed-form prior moment. Full-rank whitening keeps every direction and rescales it by the posterior; the subspace keeps the leading r and integrates the rest analytically. We use the subspace where the posterior is genuinely low-rank—the physics posterior of Section 7.6—and the full whitening where it is not. 
+
+B.2 Reading the subspace with no score 
+
+The kernel is moved onto a low-dimensional informed subspace ϕ : Rdx → Rr , r ≪ dx. Distances, the kernel mean, and the node Gram are all measured through ϕ, where the kernel is well conditioned, while the displacement still moves the node in ambient space and the quadrature integrates an ordinary functional. This ϕ is the same summary the observation embedding s(y⋆) of Section 4.1 reads—infrastructure for the conditioning, not an inference procedure that competes with it. The summary should be a near-sufficient statistic. The textbook choice is the likelihood-informed subspace of certified dimension reduction (Cui et al., 2014; Spantini et al., 2015; Zahm et al., 2022), the leading eigenspace of the gradient-information matrix H read from the likelihood score—but that score is exactly what this construction avoids. The score-free route reads the same subspace from ρ-samples, as the leading generalized eigenvectors of the covariance of conditional means C = Cov y (E[x | y]) in the prior metric, estimated from the joint pairs alone (Li, 1991; Cook and Li, 2002) in the spirit of data-free likelihood-informed reduction (Cui and Zahm, 2021). It needs no extra forward solve: either sliced inverse regression or a reuse of the conditional mean of equation (9) supplies it. Where ρ is a trained flow or a physics posterior, E[x | y] is estimated from ρ-samples just as from the dataset, so the score-free recovery is reference-agnostic too. One question is left: whether this score-free C recovers the same directions the score-based H
+
+would. In the linear–Gaussian case the answer is yes, exactly. For a linear forward model with Gaussian prior and noise, the prior-whitened ˜H and ˜C share their eigenvectors—the informed directions—and their eigenvalues are tied by a strictly increasing bijection, 
+
+λk( ˜C) = λk( ˜H)1 + λk( ˜H) , (15) so the ordering of directions, and therefore the leading-r subspace, is identical at every r: in the linear–Gaussian case the score-free C equals H in the subspace it recovers . This is a span identity, not a matrix equality—the spectra differ by the bijection (15) while the leading-r subspace coincides. For a general likelihood the two part. The matrix C
+
+recovers the central-mean subspace (Cook and Li, 2002), contained in the gradient-informed subspace of H but able to miss directions along which the observation moves only the posterior’s spread. This is harmless here: the map’s observation-dependence enters only through E[x | y⋆], so the central-mean subspace is exactly the one the conditioning needs. The span identity (15) and the consistency of the score-free estimator are derived in Section A.4, and the certified off-subspace tail is the standard certified-dimension-reduction bound (Zahm et al., 2022), which we cite rather than re-derive. 34 Amortized mean-shift interacting particles A P REPRINT 
+
+## C Architecture, hyperparameters, reproduction 
+
+This appendix records the architecture, the training protocol, the kernel and bandwidth rules, and the per-experiment reference sampling and settings, in enough detail to reproduce the reported runs. The per-experiment table is Table 1; the running text states the choices common to all experiments. 
+
+C.1 The set-equivariant map 
+
+The map of Section 4.1 is a permutation-equivariant set network that takes a seed set of M independent samples {z0 
+
+> j
+
+}
+
+of the reference ρ(· | y⋆) and emits a per-node displacement ∆zj , returning the designed nodes zj = z0 
+
+> j
+
++ ∆ zj . The body embeds each seed particle through a shared linear layer to a hidden width and then applies a stack of identical set blocks. Each block is residual and pre-normalized: a multi-head self-attention sublayer couples the M particles—the only inter-particle interaction, with no positional encoding, so the layer is permutation-equivariant—followed by a per-particle feed-forward sublayer of two linear layers with a Gaussian-error-linear-unit nonlinearity (Hendrycks and Gimpel, 2016) and an inner expansion to twice the hidden width. The layer normalizations act over the channel axis only, so they are per-particle and preserve equivariance. The output head is a single linear layer to the parameter dimension, applied after a final layer normalization, and its emitted displacement is scaled by a fixed factor δscale = 0 .5. The head weight and bias are initialized to zero, so an untrained network emits ∆zj = 0 and reproduces the independent-sample floor exactly; training can only move the quadrature below it. The requested node count is supplied through feature-wise modulation rather than through any layer whose shape depends on M . A set-global conditioning vector, the pair [log M, log spread] of the log node count and the log mean per-coordinate standard deviation of the seed set, is embedded by a small two-layer network of width 32 and used to produce the affine scale-and-shift parameters of every block, broadcast across the M particles; the scale is added to one so the untrained modulation is the identity. Because the attention pools over the set and the modulation reads only set-invariant features, one trained network serves every node count in the resolution range, including counts unseen in training (Section 8.4). The unconditional network of Table 1 (the toy and the closed-form or empirical latent posteriors) uses hidden width 64 , three blocks, and four attention heads, with the exception of the Darcy run, which uses hidden width 96 ; these instances carry of order 1.1 × 10 5 to 2.5 × 10 5 parameters. The observation enters in two distinct ways across the experiments. Where the integration metric does not move with the observation—the linear–Gaussian latent posteriors of Section 7.3 and the elliptic posterior of Section 7.6, whose latent covariance is observation-independent—the observation conditions only the reference ρ(· | y⋆) the seed is drawn from, and the unconditional network above is used. Where the posterior shape itself moves with the observation—the trained conditional flow of Section 7.4—the network is the observation-conditioned twin: the validated set body is augmented in each block with a residual cross-attention sublayer in which the particles are queries and the keys and values are a set of conditioner tokens produced by a shallow strided-convolution encoder of the filtered-back-projection image of the observation. The cross-attention output projection is zero-initialized, so an untrained network ignores the observation and the floor default is preserved, and the cross-attention is shared across particles, so set-equivariance and the arbitrary-resolution property are retained. The conditioned network uses hidden width 128 , four blocks, eight heads, a conditioner-token width of 32 from a three-stage encoder, and carries of order 1.0 × 10 6 parameters. In every case the weights are not a network output; only the node positions are learned. 
+
+C.2 Training 
+
+The objective is the maximum-mean-discrepancy regression of equation (10) : the expected squared maximum mean discrepancy, in the squared-exponential kernel at the parameter bandwidth σx, between the emitted quadrature and the reference ρ(· | y⋆). The weights are not learned but the closed-form unit-sum-constrained solve ˆw = ( K + εI)−1(μ +
+
+κ 1) at the emitted nodes, the multiplier κ fixed by 1⊤ ˆw = 1 (Proposition 2), differentiated end to end through the 
+
+M × M kernel solve so that the gradient reaches the node positions through both the displacement and the weights. No fixed-point iteration is run during training and no score is differentiated. The node count is drawn uniformly over the resolution range M ∼ Uniform {4, 8, 16 , 32 , 64 } for every reported run, with a fresh seed set drawn each step (and, for the amortized-across-observations runs, a fresh observation each step), so the one network is trained across the resolution range and the observation range it will be queried at. Optimization is by Adam (Kingma and Ba, 2015) at learning rate 3 × 10 −4 throughout, in double precision (float64), on four CPU threads for the closed-form, empirical, and linear–Gaussian latent runs and on a single graphics processor for the conditional-flow run. The per-run step counts and the seeds are listed in Table 1; the closed-form Gaussian toys run 
+
+4000 steps, the Gaussian-mixture toys run 3500 , and the Darcy posterior runs 6000 . Each run is identified by its base 35 Amortized mean-shift interacting particles A P REPRINT 
+
+seed 20260612 and a per-run seed; the conditional-flow headline is reported across three training seeds 0, 1, and 2 to certify it is not a single-seed accident. Evaluation is on held-out fresh samples disjoint from training. For each resolution M the quadrature is scored against the reference on independent seed sets— 256 sets per M for the closed-form and linear–Gaussian latent toys, fewer for the larger physics runs as listed—and the reported quantity at each M is the median squared maximum mean discrepancy over those sets. The held-out seed ranges are disjoint from the training ranges; for the dataset-conditional references the held-out queries are disjoint from the held-in atoms the reference is built from. For each run a metric cross-check confirms that the closed-form and the brute-force squared maximum mean discrepancy agree to machine precision (relative deviation at or below 10 −15 ), with the cross-check vacuous for the banana, whose estimand has no independent closed form. 
+
+C.3 Kernel and bandwidth 
+
+The kernel is squared-exponential at a single parameter bandwidth σx shared between the displacement and the weight solve. For the ambient and the rank-truncated latent runs the bandwidth is the per-target median heuristic, the square root of the median squared pairwise distance computed on 4000 samples of the reference; setting it per target keeps the Gaussian-mixture kernel coupling within mode as the dimension grows, where a fixed small bandwidth would wall the kernel. The chosen median bandwidths are σx = 0 .1648 (Gaussian d = 2 ), 0.1840 (d = 4 ), 0.2735 (d = 8 ), 
+
+0.3962 (d = 16 ); 2.2148 (Gaussian mixture d = 10 ), 3.0738 (d = 32 ), 3.9294 (d = 64 ); 0.8413 (banana); 0.3460 (the linear–Gaussian tomography latent, rank r = 7 ); 1.9418 (the Darcy latent, rank r = 32 ). The conditional-flow run instead operates under the posterior-whitened (Mahalanobis) kernel of Section B.1, with the per-observation sample covariance of the achieved posterior as the metric (computed in the rank-32 latent, a diagonal jitter of 10 −6 added to that covariance before whitening), paired with the constant-Gram-geometry bandwidth 
+
+σx = √r = √32 ≈ 5.6569 rather than the median heuristic, whose coupling is too low to give usable contrast in whitened coordinates. The general full-rank statement of this rule is σx = √d (Equation (14)), which pins the typical off-diagonal coupling at e−1 independent of dimension. The weight solve in every run is regularized by the ridge inflation K 7 → K + εI with ε = 10 −10 , the diagonal inflation the latent amendment of Section A relies on to secure invertibility when the feature-space Gram is only positive semidefinite, and the same inflation used in the ambient construction. The ridge is added to the Gram for the linear solve only; the squared maximum mean discrepancy is scored with the exact, un-inflated Gram, so the reported metric carries no ridge bias. Because ε is far below the conditioning of the Gram in the well-conditioned regimes the guarantees are stated for, it perturbs the constrained optimum only to O(ε) (Section A); it becomes load-bearing only in the sharp-reference regime where the Gram approaches rank one. For the dataset-conditional reference a second, observation-side bandwidth σy sets the responsibility sharpness of the Nadaraya–Watson conditional measure (Equation (9)); it is fixed at half the median heuristic on the informed observation feature for the Darcy run, and is distinct from the parameter bandwidth σx throughout. 
+
+C.4 The reference and its sampling, by type 
+
+The construction reads the reference only through the estimand (μ, c ρ) of equation (4) , and the experiments differ only in how that pair is supplied (Section 4.2). 
+
+Closed-form references. The Gaussian toys take ρ to be the exact Gaussian posterior of a linear–Gaussian model—at 
+
+d = 2 the byte-identical posterior of the prior paper, and at d ∈ { 4, 8, 16 } the dimension-scaling construction with a random-orthogonal prior covariance, identity forward map, and observation noise σobs = 0 .3. The Gaussian-mixture toys take ρ to be the two-component anisotropic mixture with within-component variances 0.5 and 2.0, separation 8√2
+
+along one axis, and equal weights, at d ∈ { 10 , 32 , 64 }. For these references the squared-exponential kernel mean μ and self-affinity cρ are available in closed form, so the objective is the exact quadratic form; because the squared-exponential discrepancy is translation-invariant and the posterior covariance is observation-independent, the integration metric does not move with the observation and is reported across observations. The linear–Gaussian tomography run of Section 7.3 is a closed-form reference of this kind, the exact Gaussian posterior projected into the rank-7 informed subspace, scored on independent latent samples. 
+
+Sampled references. The banana toy of Section 7.1 is the first sampled reference: the curved twisted-Gaussian admits no closed form, so μ and cρ are Monte-Carlo estimated from a fixed sample dataset—a smaller dataset for the per-step kernel mean, kept autograd-differentiable in the node positions, and a larger fixed reference for the cached self-affinity and the metric cross-check—the same empirical interface a trained flow supplies. The conditional-flow tomography 36 Amortized mean-shift interacting particles A P REPRINT 
+
+Table 1: Per-experiment architecture and reproduction settings. Reference type is closed-form (an exact Gaussian or Gaussian-mixture estimand), sampled (a trained flow or a fixed sample dataset with Monte-Carlo estimand), or empirical (the Nadaraya–Watson conditional measure of the simulation dataset, an exact finite-sum estimand). The ambient dimension dx is the parameter dimension; r is the informed-subspace rank where the run operates in a latent, and “–” marks an ambient run with no rank truncation. The node-count range is the uniform training range, queried at the same grid. The bandwidth rule is the per-target median heuristic, with its realized value, except the conditional-flow run, which uses the constant-Gram-geometry bandwidth √r in the posterior-whitened kernel. The ridge ε inflates the node Gram in the weight solve only (Section C.3). All runs use Adam at the listed learning rate in double precision, with base seed 20260612 and the listed per-run seed.                                                                                                                          
+
+> Experiment Reference dxrM-range Steps lr Bandwidth Ridge εSeed Gaussian d=2 closed-form 2–4–64 4000 3e −4median ( 0.1648 )1e −10 0
+> Gaussian d=4 closed-form 4–4–64 4000 3e −4median ( 0.1840 )1e −10 0
+> Gaussian d=8 closed-form 8–4–64 4000 3e −4median ( 0.2735 )1e −10 0
+> Gaussian d=16 closed-form 16 –4–64 4000 3e −4median ( 0.3962 )1e −10 0
+> Mixture d=10 closed-form 10 –4–64 3500 3e −4median ( 2.2148 )1e −10 0
+> Mixture d=32 closed-form 32 –4–64 3500 3e −4median ( 3.0738 )1e −10 0
+> Mixture d=64 closed-form 64 –4–64 3500 3e −4median ( 3.9294 )1e −10 0
+> Banana d=2 sampled 2–4–64 3500 3e −4median ( 0.8413 )1e −10 0
+> Tomography closed-form 256 74–64 4000 3e −4median ( 0.3460 )1e −10 0
+> Tomography (flow) sampled 4096 32 4–64 4000 3e −4√r(5.6569 )1e −10 0,1,2
+> Darcy empirical 1024 32 4–64 6000 3e −4median ( 1.9418 )1e −10 0
+
+of Section 7.4 is the genuinely observation-varying sampled reference: ρ(· | y⋆) is the achieved posterior of a trained conditional flow, sampled per observation, with each sample passed through a finite-and-bounded filter (samples of magnitude above 10 4 rejected) and the rejected mass topped up to the requested budget, before the per-observation kernel mean and self-affinity are formed in the rank-32 latent. 
+
+Empirical dataset reference. The Darcy groundwater run of Section 7.6 takes ρ to be the Nadaraya–Watson conditional measure read off the simulation dataset (Equation (9)), a discrete mixture of held-in latent atoms weighted by their responsibility to the query observation; its kernel mean and self-affinity are exact finite sums over the responsibility-weighted atoms, formed in the informed latent (a top-mass truncation of the responsibility-weighted dataset). No forward solve and no density evaluation enter at training or evaluation; the run reuses a pre-simulated joint dataset rather than re-solving the partial differential equation. 
+
+C.5 Reproduction table 
+
+The complete per-experiment settings are listed in Table 1: the reference type, the ambient parameter dimension, the informed-subspace rank where the run operates in a latent (and not applicable where the run is ambient), the node-count range, the step count, the learning rate, the bandwidth rule with its realized value, the ridge ε, and the seed. Each run is identified by its configuration, with all values drawn from the configuration files and the run records. 
+
+## References 
+
+Kamal Aghazade, Ali Siahkoohi, and Ali Gholami. Scalable Bayesian full waveform inversion via dual augmented Lagrangian SVGD. In Society of Exploration Geophysicists Technical Program Expanded Abstracts , 2026. In print. Roland Assaraf and Michel Caffarel. Zero-variance principle for Monte Carlo algorithms. Physical Review Letters ,1999. Lorenzo Baldassari, Ali Siahkoohi, Josselin Garnier, Knut Sølna, and Maarten V. de Hoop. Conditional score-based diffusion models for Bayesian inference in infinite dimensions. In Advances in Neural Information Processing Systems , 2023. Ricardo Baptista, Bamdad Hosseini, Nikola B. Kovachki, and Youssef Marzouk. Conditional sampling with monotone GANs: from generative models to likelihood-free inference. SIAM/ASA Journal on Uncertainty Quantification , 12 (3):868–900, 2024. Paulo F. Bedaque and Hyunwoo Oh. Leveraging neural control variates for enhanced precision in lattice field theory. 
+
+Physical Review D , 109:094519, 2024. Ayoub Belhadji, Daniel Sharp, and Youssef Marzouk. Weighted quantization using MMD: From mean field to mean shift via gradient flows. In International Conference on Artificial Intelligence and Statistics (AISTATS) , 2026a. 37 Amortized mean-shift interacting particles A P REPRINT 
+
+Ayoub Belhadji, Daniel Sharp, and Youssef Marzouk. To discretize continually: Mean shift interacting particle systems for Bayesian inference. arXiv preprint arXiv:2605.14142 , 2026b. David M. Blei, Alp Kucukelbir, and Jon D. McAuliffe. Variational inference: a review for statisticians. Journal of the American Statistical Association , 112(518):859–877, 2017. François-Xavier Briol, Chris J. Oates, Mark Girolami, Michael A. Osborne, and Dino Sejdinovic. Probabilistic integration: A role in statistical computation? Statistical Science , 34(1):1–22, 2019. Wilson Ye Chen, Lester Mackey, Jackson Gorham, François-Xavier Briol, and Chris J. Oates. Stein points. In 
+
+International Conference on Machine Learning (ICML) , 2018. Yutian Chen, Max Welling, and Alex Smola. Super-samples from kernel herding. In Uncertainty in Artificial Intelligence (UAI) , 2010. Hyungjin Chung, Jeongsol Kim, Michael T. Mccann, Marc L. Klasky, and Jong Chul Ye. Diffusion posterior sampling for general noisy inverse problems. In International Conference on Learning Representations (ICLR) , 2023. Dorin Comaniciu and Peter Meer. Mean shift: A robust approach toward feature space analysis. IEEE Transactions on Pattern Analysis and Machine Intelligence , 24(5):603–619, 2002. Paul G. Constantine. Active Subspaces: Emerging Ideas for Dimension Reduction in Parameter Studies . SIAM, 2015. R. Dennis Cook and Bing Li. Dimension reduction for conditional mean in regression. The Annals of Statistics , 30(2): 455–474, 2002. R. Dennis Cook and Sanford Weisberg. Comment on “Sliced inverse regression for dimension reduction”. Journal of the American Statistical Association , 86(414):328–332, 1991. Kyle Cranmer, Johann Brehmer, and Gilles Louppe. The frontier of simulation-based inference. Proceedings of the National Academy of Sciences , 117(48):30055–30062, 2020. Tiangang Cui and Olivier Zahm. Data-free likelihood-informed dimension reduction of Bayesian inverse problems. 
+
+Inverse Problems , 37(4):045009, 2021. Tiangang Cui, James Martin, Youssef M. Marzouk, Antti Solonen, and Alessio Spantini. Likelihood-informed dimension reduction for nonlinear inverse problems. Inverse Problems , 30(11):114015, 2014. Henry Darcy. Les fontaines publiques de la ville de Dijon . Victor Dalmont, 1856. Conor Durkan, Iain Murray, and George Papamakarios. On contrastive learning for likelihood-free inference. In 
+
+International Conference on Machine Learning (ICML) , 2020. Raaz Dwivedi and Lester Mackey. Kernel thinning. In Conference on Learning Theory (COLT) , 2021. Yihao Feng, Dilin Wang, and Qiang Liu. Learning to draw samples with amortized Stein variational gradient descent. In Uncertainty in Artificial Intelligence (UAI) , 2017. E. C. Fieller and H. O. Hartley. Sampling with control variables. Biometrika , 41(3/4):494–501, 1954. Keinosuke Fukunaga and Larry D. Hostetler. The estimation of the gradient of a density function, with applications in pattern recognition. IEEE Transactions on Information Theory , 21(1):32–40, 1975. Marta Garnelo, Dan Rosenbaum, Christopher J. Maddison, Tiago Ramalho, David Saxton, Murray Shanahan, Yee Whye Teh, Danilo J. Rezende, and S. M. Ali Eslami. Conditional neural processes. In International Conference on Machine Learning (ICML) , 2018. David S. Greenberg, Marcel Nonnenmacher, and Jakob H. Macke. Automatic posterior transformation for likelihood-free inference. In International Conference on Machine Learning (ICML) , 2019. Evan Greensmith, Peter L. Bartlett, and Jonathan Baxter. Variance reduction techniques for gradient estimates in reinforcement learning. Journal of Machine Learning Research , 5:1471–1530, 2004. Arthur Gretton, Karsten M. Borgwardt, Malte J. Rasch, Bernhard Schölkopf, and Alexander Smola. A kernel two-sample test. Journal of Machine Learning Research , 13:723–773, 2012. Dan Hendrycks and Kevin Gimpel. Gaussian error linear units (GELUs). arXiv preprint arXiv:1606.08415 , 2016. Joeri Hermans, Volodimir Begy, and Gilles Louppe. Likelihood-free MCMC with amortized approximate ratio estimators. In International Conference on Machine Learning (ICML) , 2020. Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Advances in Neural Information Processing Systems , 2020. Bamdad Hosseini. Well-posed Bayesian inverse problems with infinitely divisible and heavy-tailed prior measures. 
+
+SIAM/ASA Journal on Uncertainty Quantification , 5(1):1024–1060, 2017. 38 Amortized mean-shift interacting particles A P REPRINT 
+
+Bamdad Hosseini and Z. Huang. Error analysis of Bayesian inverse problems with generative priors. Preprint arXiv:2601.17374, 2026. Bamdad Hosseini, Alexander W. Hsu, and Amirhossein Taghvaei. Conditional optimal transport on function spaces. 
+
+SIAM/ASA Journal on Uncertainty Quantification , 13(1):304–338, 2025. Jari Kaipio and Erkki Somersalo. Statistical and Computational Inverse Problems . Springer, 2005. Avinash C. Kak and Malcolm Slaney. Principles of Computerized Tomographic Imaging . SIAM, 2001. Hyunjik Kim, Andriy Mnih, Jonathan Schwarz, Marta Garnelo, Ali Eslami, Dan Rosenbaum, Oriol Vinyals, and Yee Whye Teh. Attentive neural processes. In International Conference on Learning Representations (ICLR) , 2019. Diederik P. Kingma and Jimmy Ba. Adam: a method for stochastic optimization. In International Conference on Learning Representations , 2015. Anna Korba, Adil Salim, Michael Arbel, Giulia Luise, and Arthur Gretton. A non-asymptotic analysis for Stein variational gradient descent. In Advances in Neural Information Processing Systems , 2020. Konik Kothari, AmirEhsan Khorashadizadeh, Maarten de Hoop, and Ivan Dokmani´ c. Trumpets: injective flows for inference and inverse problems. In Uncertainty in Artificial Intelligence (UAI) , 2021. Juho Lee, Yoonho Lee, Jungtaek Kim, Adam R. Kosiorek, Seungjin Choi, and Yee Whye Teh. Set Transformer: A framework for attention-based permutation-invariant neural networks. In International Conference on Machine Learning (ICML) , 2019. Ker-Chau Li. Sliced inverse regression for dimension reduction. Journal of the American Statistical Association , 86 (414):316–327, 1991. Qiang Liu and Dilin Wang. Stein variational gradient descent: A general purpose Bayesian inference algorithm. In 
+
+Advances in Neural Information Processing Systems (NeurIPS) , 2016. Jan-Matthis Lueckmann, Jan Boelts, David S. Greenberg, Pedro J. Gonçalves, and Jakob H. Macke. Benchmarking simulation-based inference. In International Conference on Artificial Intelligence and Statistics (AISTATS) , 2021. Antonietta Mira, Reza Solgi, and Daniele Imparato. Zero variance Markov chain Monte Carlo for Bayesian estimators. 
+
+Statistics and Computing , 2013. Krikamol Muandet, Kenji Fukumizu, Bharath Sriperumbudur, and Bernhard Schölkopf. Kernel mean embedding of distributions: A review and beyond. Foundations and Trends in Machine Learning , 10(1–2):1–141, 2017. Thomas Müller, Fabrice Rousselle, Alexander Keller, and Jan Novák. Neural control variates. ACM Transactions on Graphics , 39(6):243:1–243:19, 2020. Elizbar A. Nadaraya. On estimating regression. Theory of Probability and Its Applications , 9(1):141–142, 1964. Frank Natterer. The Mathematics of Computerized Tomography . SIAM, 2001. Radford M. Neal. MCMC using Hamiltonian dynamics. In Handbook of Markov Chain Monte Carlo , pages 113–162. 2011. Chris J. Oates, Mark Girolami, and Nicolas Chopin. Control functionals for Monte Carlo integration. Journal of the Royal Statistical Society: Series B , 79(3):695–718, 2017. Hyunwoo Oh. Training neural control variates using correlated configurations. Physical Review D , 112:074501, 2025. Anthony O’Hagan. Bayes–Hermite quadrature. Journal of Statistical Planning and Inference , 29(3):245–260, 1991. Rafael Orozco, Ali Siahkoohi, Mathias Louboutin, and Felix J. Herrmann. ASPIRE: iterative amortized posterior inference for Bayesian inverse problems. Inverse Problems , 41(4):045001, 2025. George Papamakarios and Iain Murray. Fast ϵ-free inference of simulation models with Bayesian conditional density estimation. In Advances in Neural Information Processing Systems (NeurIPS) , 2016. George Papamakarios, David C. Sterratt, and Iain Murray. Sequential neural likelihood: Fast likelihood-free inference with autoregressive flows. In International Conference on Artificial Intelligence and Statistics (AISTATS) , 2019. Ethan Perez, Florian Strub, Harm de Vries, Vincent Dumoulin, and Aaron Courville. FiLM: Visual reasoning with a general conditioning layer. In AAAI Conference on Artificial Intelligence , 2018. Jakiw Pidstrigach, Youssef Marzouk, Sebastian Reich, and Sven Wang. Infinite-dimensional diffusion models. Journal of Machine Learning Research , 25, 2024. Stefan T. Radev, Ulf K. Mertens, Andreas Voss, Lynton Ardizzone, and Ullrich Köthe. BayesFlow: learning complex stochastic models with invertible neural networks. IEEE Transactions on Neural Networks and Learning Systems , 33 (4):1452–1466, 2022. 39 Amortized mean-shift interacting particles A P REPRINT 
+
+Carl Edward Rasmussen and Zoubin Ghahramani. Bayesian Monte Carlo. In Advances in Neural Information Processing Systems (NeurIPS) , 2003. Danilo Jimenez Rezende and Shakir Mohamed. Variational inference with normalizing flows. In International Conference on Machine Learning (ICML) , 2015. Marina Riabiz, Wilson Ye Chen, Jon Cockayne, Pawel Swietach, Steven A. Niederer, Lester Mackey, and Chris J. Oates. Optimal thinning of MCMC output. Journal of the Royal Statistical Society: Series B , 84(4):1059–1081, 2022. Christian P. Robert and George Casella. Monte Carlo Statistical Methods . Springer, 2nd edition, 2004. Shijing Si, Chris J. Oates, Andrew B. Duncan, Lawrence Carin, and François-Xavier Briol. Scalable control variates for Monte Carlo methods via stochastic optimization. In Monte Carlo and Quasi-Monte Carlo Methods , 2022. Ali Siahkoohi and Hyunwoo Oh. Conditional neural control variates for variance reduction in Bayesian inverse problems. In Uncertainty in Artificial Intelligence (UAI) , 2026. In print. Ali Siahkoohi and Davide Sabeddu. On the role of memorization in learned priors for geophysical inverse problems. In 
+
+Society of Exploration Geophysicists Technical Program Expanded Abstracts , 2026. In print. Ali Siahkoohi, Gabrio Rizzuti, Rafael Orozco, and Felix J. Herrmann. Reliable amortized variational inference with physics-based latent distribution correction. Geophysics , 88(3):R297–R322, 2023. Ali Siahkoohi, Kamal Aghazade, and Ali Gholami. Dual-space posterior sampling for Bayesian inference in constrained inverse problems. Preprint arXiv:2603.00393, 2026. Yang Song and Stefano Ermon. Generative modeling by estimating gradients of the data distribution. In Advances in Neural Information Processing Systems , 2019. Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In International Conference on Learning Representations (ICLR) , 2021. Leah F. South, Toni Karvonen, Christopher Nemeth, Mark Girolami, and Chris J. Oates. Semi-exact control functionals from Sard’s method. Biometrika , 109(2):351–367, 2022. Leah F. South, Chris J. Oates, Antonietta Mira, and Christopher Drovandi. Regularized zero-variance control variates. 
+
+Bayesian Analysis , 18(3):865–888, 2023. Alessio Spantini, Antti Solonen, Tiangang Cui, James Martin, Luis Tenorio, and Youssef Marzouk. Optimal low-rank approximations of Bayesian linear inverse problems. SIAM Journal on Scientific Computing , 37(6):A2451–A2487, 2015. Charles Stein. A bound for the error in the normal approximation to the distribution of a sum of dependent random variables. In Proceedings of the Sixth Berkeley Symposium on Mathematical Statistics and Probability , volume 2, pages 583–602, 1972. Andrew M. Stuart. Inverse problems: A Bayesian perspective. Acta Numerica , 19:451–559, 2010. Zhuo Sun, Alessandro Barp, and François-Xavier Briol. Vector-valued control variates. In International Conference on Machine Learning , 2023a. Zhuo Sun, Chris J. Oates, and François-Xavier Briol. Meta-learning control variates: variance reduction with limited data. In Uncertainty in Artificial Intelligence (UAI) , 2023b. Sean Talts, Michael Betancourt, Daniel Simpson, Aki Vehtari, and Andrew Gelman. Validating Bayesian inference algorithms with simulation-based calibration. arXiv preprint arXiv:1804.06788 , 2018. Albert Tarantola. Inverse Problem Theory and Methods for Model Parameter Estimation . SIAM, 2005. Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Advances in Neural Information Processing Systems (NeurIPS) , 2017. Ruosi Wan, Mingjun Zhong, Haoyi Xiong, and Zhanxing Zhu. Neural control variates for Monte Carlo variance reduction. In Machine Learning and Knowledge Discovery in Databases (ECML PKDD) , 2020. Zheyu Oliver Wang, Ricardo Baptista, Youssef Marzouk, Lars Ruthotto, and Deepanshu Verma. Efficient neural network approaches for conditional optimal transport with applications in Bayesian inference. SIAM Journal on Scientific Computing , 47(4):C979–C1005, 2025. Geoffrey S. Watson. Smooth regression analysis. Sankhy¯ a: The Indian Journal of Statistics, Series A , 26(4):359–372, 1964. Max Welling and Yee Whye Teh. Bayesian learning via stochastic gradient Langevin dynamics. In International Conference on Machine Learning , 2011. 40 Amortized mean-shift interacting particles A P REPRINT 
+
+Manzil Zaheer, Satwik Kottur, Siamak Ravanbakhsh, Barnabas Poczos, Ruslan Salakhutdinov, and Alexander J. Smola. Deep sets. In Advances in Neural Information Processing Systems (NeurIPS) , 2017. Olivier Zahm, Tiangang Cui, Kody Law, Alessio Spantini, and Youssef Marzouk. Certified dimension reduction in nonlinear Bayesian inverse problems. Mathematics of Computation , 91(336):1789–1835, 2022. 41
