@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-16
-- 运行时间：2026-06-17 06:59:50 UTC+8
+- 最新运行日期：2026-06-17
+- 运行时间：2026-06-18 06:07:17 UTC+8
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
@@ -15,63 +15,63 @@
 
 ### 今日简报（AI）
 - 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Threshold Minimum Cut with Terminal Quotas: Logarithmic and Planar Approximation Algorithms》（8.5/10）, 《Three-Terminal Reachability-Preserving Minimum Node Cut: Planar Hardness and a General-Graph \(O(\sqrt n)\)-Approximation》（8.4/10）
-- 速读：《Intersection Arrays of Completely Regular Codes of Covering Radius One in Generalized Petersen Graphs》（8.1/10）, 《When Errors Become Narratives: A Longitudinal Taxonomy of Silent Failures in a Production LLM Agent Runtime》（8.0/10）, 《Learning High Coverage Discriminative Parsimonious Rulesets》（8.0/10）
+- 精读：《OTRO: Oblivious Tokenization Path with Square-Root ORAM》（8.5/10）, 《Perfect matchings, Fano planes, and orthogonal bases of type $E_8$》（8.5/10）
+- 速读：《Vertical Sub-THz Channel Characterization: Sounder Implementation and Initial Measurements》（8.1/10）, 《Floquet-Sambe Bottleneck and Frequency-Selective Localization in a Driven Synthetic Spin Chain》（8.0/10）, 《Uniform integrability of the distance to the nearest leaf in random trees》（8.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/16/README](/202606/16/README)
+- 详情：[/202606/17/README](/202606/17/README)
 
 ### 精读区论文标签
-1. [Threshold Minimum Cut with Terminal Quotas: Logarithmic and Planar Approximation Algorithms](/202606/16/2606.15324v1-threshold-minimum-cut-with-terminal-quotas-logarithmic-and-planar-approximation-algorithms)  
+1. [OTRO: Oblivious Tokenization Path with Square-Root ORAM](/202606/17/2606.17358v1-otro-oblivious-tokenization-path-with-square-root-oram)  
    标签：评分：8.5/10
    evidence：检索回退候选
-2. [Three-Terminal Reachability-Preserving Minimum Node Cut: Planar Hardness and a General-Graph \(O(\sqrt n)\)-Approximation](/202606/16/2606.14906v1-three-terminal-reachability-preserving-minimum-node-cut-planar-hardness-and-a-general-graph-osqrt-n-approximation)  
-   标签：评分：8.4/10
+2. [Perfect matchings, Fano planes, and orthogonal bases of type $E_8$](/202606/17/2606.17393v1-perfect-matchings-fano-planes-and-orthogonal-bases-of-type-e8)  
+   标签：评分：8.5/10
    evidence：检索回退候选
-3. [Multiplicative and Additive Finite Free Convolutions for q-Polynomials](/202606/16/2606.15003v1-multiplicative-and-additive-finite-free-convolutions-for-q-polynomials)  
+3. [Large deviation principle for friendship-biases in Galton--Watson trees](/202606/17/2606.17381v1-large-deviation-principle-for-friendship-biases-in-galton--watson-trees)  
    标签：评分：8.3/10
    evidence：检索回退候选
-4. [SDVDiag: Multimodal Causal Discovery for Online Diagnosis in Software-defined Vehicles](/202606/16/2606.15559v1-sdvdiag-multimodal-causal-discovery-for-online-diagnosis-in-software-defined-vehicles)  
+4. [Root-Selecting Fixed-Point Inversion for Rectified Flows via Trajectory Straightness](/202606/17/2606.17584v1-root-selecting-fixed-point-inversion-for-rectified-flows-via-trajectory-straightness)  
    标签：评分：8.2/10
    evidence：检索回退候选
-5. [Square-root cancellation for sums of coefficients of $\operatorname{GL}(m)$-automorphic forms over values of random polynomials](/202606/16/2606.15900v1-square-root-cancellation-for-sums-of-coefficients-of-operatornameglm-automorphic-forms-over-values-of-random-polynomials)  
+5. [Directed Reachability-Preserving Minimum Edge Cut: Approximation and Planar Hardness](/202606/17/2606.18225v1-directed-reachability-preserving-minimum-edge-cut-approximation-and-planar-hardness)  
    标签：评分：8.2/10
    evidence：检索回退候选
-6. [Plasma Instabilities in Arbitrary Distributions: Comparison between ALPS and BO](/202606/16/2606.14439v1-plasma-instabilities-in-arbitrary-distributions-comparison-between-alps-and-bo)  
+6. [Group Commit Self-Clocks: Why Tuning Is Unnecessary Above a Device-Set Load Threshold](/202606/17/2606.18187v1-group-commit-self-clocks-why-tuning-is-unnecessary-above-a-device-set-load-threshold)  
    标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Intersection Arrays of Completely Regular Codes of Covering Radius One in Generalized Petersen Graphs](/202606/16/2606.14190v1-intersection-arrays-of-completely-regular-codes-of-covering-radius-one-in-generalized-petersen-graphs)  
+1. [Vertical Sub-THz Channel Characterization: Sounder Implementation and Initial Measurements](/202606/17/2606.15114v1-vertical-sub-thz-channel-characterization-sounder-implementation-and-initial-measurements)  
    标签：评分：8.1/10
    evidence：检索回退候选
-2. [When Errors Become Narratives: A Longitudinal Taxonomy of Silent Failures in a Production LLM Agent Runtime](/202606/16/2606.14589v1-when-errors-become-narratives-a-longitudinal-taxonomy-of-silent-failures-in-a-production-llm-agent-runtime)  
+2. [Floquet-Sambe Bottleneck and Frequency-Selective Localization in a Driven Synthetic Spin Chain](/202606/17/2606.15293v1-floquet-sambe-bottleneck-and-frequency-selective-localization-in-a-driven-synthetic-spin-chain)  
    标签：评分：8.0/10
    evidence：检索回退候选
-3. [Learning High Coverage Discriminative Parsimonious Rulesets](/202606/16/2606.14156v1-learning-high-coverage-discriminative-parsimonious-rulesets)  
+3. [Uniform integrability of the distance to the nearest leaf in random trees](/202606/17/2606.15339v1-uniform-integrability-of-the-distance-to-the-nearest-leaf-in-random-trees)  
    标签：评分：8.0/10
    evidence：检索回退候选
-4. [An Analytic Model for Stellar Metallicity Gradient Residuals in Cold, Phase-Mixed Galactic Disks](/202606/16/2606.14850v1-an-analytic-model-for-stellar-metallicity-gradient-residuals-in-cold-phase-mixed-galactic-disks)  
+4. [Focus, Align, and Sustain: Counteracting Gradient Dilution in Incremental Object Detection](/202606/17/2606.15253v1-focus-align-and-sustain-counteracting-gradient-dilution-in-incremental-object-detection)  
    标签：评分：7.9/10
    evidence：检索回退候选
-5. [CaricHarmony: Contrastive Diffusion Paths for Identity-Preserving Caricature Synthesis](/202606/16/2606.13964v1-caricharmony-contrastive-diffusion-paths-for-identity-preserving-caricature-synthesis)  
+5. [A skew Murnaghan--Nakayama rule for Hopf dual pairs](/202606/17/2606.15138v1-a-skew-murnaghan--nakayama-rule-for-hopf-dual-pairs)  
    标签：评分：7.9/10
    evidence：检索回退候选
-6. [The Risk Shadow of Principal Component Analysis: When 99.9999% Variance Preservation Causes Catastrophic Decision Errors](/202606/16/2606.14533v1-the-risk-shadow-of-principal-component-analysis-when-999999-variance-preservation-causes-catastrophic-decision-errors)  
+6. [A continuous kernel method for affine Motzkin paths: boundary traces, height shifts, and secant-power hierarchies](/202606/17/2606.15407v1-a-continuous-kernel-method-for-affine-motzkin-paths-boundary-traces-height-shifts-and-secant-power-hierarchies)  
    标签：评分：7.8/10
    evidence：检索回退候选
-7. [Optimal Hidden-Target Learning for Online Inventory Optimization on General Convex Sets](/202606/16/2606.14679v1-optimal-hidden-target-learning-for-online-inventory-optimization-on-general-convex-sets)  
+7. [The Opdam-Cherednik kernel is the Laplace transform of a positive measure](/202606/17/2606.15185v1-the-opdam-cherednik-kernel-is-the-laplace-transform-of-a-positive-measure)  
    标签：评分：7.8/10
    evidence：检索回退候选
-8. [Multi-HMR 2: Multi-Person Camera-Centric Human Detection, Mesh Recovery and Tracking](/202606/16/2606.14841v1-multi-hmr-2-multi-person-camera-centric-human-detection-mesh-recovery-and-tracking)  
+8. [An Autonomous Subgram SMA-Based Swimmer](/202606/17/2606.15028v1-an-autonomous-subgram-sma-based-swimmer)  
    标签：评分：7.8/10
    evidence：检索回退候选
-9. [Finite-Dimensional Type I von Neumann Algebras in PyTorch: A GPU-Accelerated Framework for Random Block-Diagonal Operators](/202606/16/2606.15882v1-finite-dimensional-type-i-von-neumann-algebras-in-pytorch-a-gpu-accelerated-framework-for-random-block-diagonal-operators)  
+9. [Embedded Machine Learning for Microcontroller-Class Edge Devices: Data, Feature, Evaluation, and Deployment Pipelines](/202606/17/2606.18122v1-embedded-machine-learning-for-microcontroller-class-edge-devices-data-feature-evaluation-and-deployment-pipelines)  
    标签：评分：6.9/10
    evidence：检索回退候选
-10. [Amortized mean-shift interacting particles](/202606/16/2606.15871v1-amortized-mean-shift-interacting-particles)  
+10. [High-throughput Low-latency Hardware Implementation of BCH Decoders](/202606/17/2606.17837v1-high-throughput-low-latency-hardware-implementation-of-bch-decoders)  
    标签：评分：6.9/10
    evidence：检索回退候选
-11. [Bayesian Networks with Latent Time Embedding for Stage-Aware Causal Modeling of Alzheimer's Disease Progression](/202606/16/2606.15784v1-bayesian-networks-with-latent-time-embedding-for-stage-aware-causal-modeling-of-alzheimers-disease-progression)  
+11. [The Absorption Theorem for the Beltrami-Vekua Normal Form](/202606/17/2606.18211v1-the-absorption-theorem-for-the-beltrami-vekua-normal-form)  
    标签：评分：6.8/10
    evidence：检索回退候选
 
