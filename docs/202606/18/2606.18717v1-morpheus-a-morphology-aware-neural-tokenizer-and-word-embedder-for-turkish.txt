@@ -1,0 +1,360 @@
+Title: Morpheus: A Morphology-Aware Neural Tokenizer and Word Embedder for Turkish
+
+URL Source: https://arxiv.org/pdf/2606.18717v1
+
+Published Time: Thu, 18 Jun 2026 00:34:52 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# Morpheus: A Morphology-Aware Neural Tokenizer and Word Embedder for Turkish 
+
+## S¸ akar, Tolga 
+
+## Independent Researcher 
+
+## lonewolf rd@protonmail.com 
+
+## Abstract 
+
+Turkish is agglutinative: meaning is carried by morphemes, yet the subword tokenizers that drive modern language models split words by corpus statistics, fragmenting semantically loaded suffixes and—in the case of WordPiece and rule-based analyzers—failing to decode their output back to the original text. This paper presents Morpheus , a neural morpheme-boundary model for Turkish that is at once a lossless, morphology-aware tokenizer and a word-embedding producer. A differentiable Poisson–binomial dynamic program turns per-character boundary probabilities into soft morpheme memberships during training and exact segments at inference, with no string normalization, so decode(encode( w)) = w
+
+holds by construction. Because the model is neural, the same forward pass that tokenizes also emits a structured word embedding. Among reversible tokenizers—the only ones valid for generation—Morpheus attains the lowest bits-per-character ( 1.425 ), roughly dou-bles the gold morphological alignment of the subword family (MorphScore macro-F1 0.61 
+
+vs. ∼0.32 ), and uses ∼19% less GPU memory than 64K-vocabulary subword tokenizers. As an embedder, frozen Morpheus vectors lead on lexical retrieval (root-family MAP 0.85 ) and same-root verification (ROC-AUC 1.00 ), sur-passing the multilingual retriever BGE-M3 and BERTurk; on context- and inflection-dependent tasks (NER, case/number probing) the heav-ier contextual encoders remain ahead—a trade-off we attribute to Morpheus’s root-centric geometry. Code: https://github. com/lonewolf-rd/TurkishMorpheus ;model: https://huggingface.co/ lonewolflab/Morpheus-TR-50K ; interactive demo: https://huggingface.co/spaces/ lonewolflab/morpheus-tr-demo .
+
+## 1 Introduction 
+
+Turkish is an agglutinative language that encodes most of its semantic content in productive chains of derivational and inflectional suffixes attached to a root; a single root can unfold into hundreds of distinct surface forms through the ordering of its morphemes (e.g. ev “house” → evlerimizdekiler 
+
+“the ones in our houses”). The unit that carries meaning in Turkish is therefore the morpheme, not the word and not a frequency-driven fragment of it. This property places two distinct demands on the machinery of modern Turkish NLP—one on 
+
+tokenization and one on word representation —and, as argued below, current tools meet each of them only partially. 
+
+The tokenization problem. Subword tokenizers such as BPE, WordPiece, and Unigram (Sennrich et al., 2016; Kudo and Richardson, 2018) segment words by corpus statistics rather than morphology, and on Turkish this produces two concrete fail-ures. First, several widely used tokenizers are not reversible : decoding the ids back to text does not re-cover the original string. WordPiece strips Turkish diacritics ( c¸, ˘ g, ı, ¨ o, s ¸, ¨ u) and the rule-based Turk-ishTokenizer applies canonical re-harmonization, so a non-trivial fraction of inflected words cannot be reconstructed. In a generative LLM, where every generated token id must decode to faithful text, this loss directly corrupts model output and silently de-grades any task that reads the decoded string. Sec-ond, because semantically loaded suffixes are cut at arbitrary positions, words are over-fragmented: more tokens are emitted per word (higher fertility), which inflates sequence length, compute, and mem-ory at both training and inference time. Unsuper-vised morphological segmenters such as Morfessor (Creutz and Lagus, 2007) and rule-based analyzers such as Zemberek (Akın and Akın, 2007) address the morphological-alignment side, but the former is not optimized for language modeling and the latter is lossy and dictionary-bound. In short, existing tokenizers each answer part of the problem—either reversibility, or morphological alignment, or low 
+
+> arXiv:2606.18717v1 [cs.CL] 17 Jun 2026
+
+fertility—but none answers all three at once. 
+
+The representation problem. The same morpho-logical richness also strains Turkish word repre-sentation. Contextual encoders such as BERTurk (Schweter, 2020) provide strong embeddings, but they are heavyweight ( ∼110M+ parameters), tied to their own lossy subword vocabularies, and treat morphology only implicitly. A representation in which morphologically related forms ( kitap , kita-plar , kitabımız ) sit together by construction—rather than only after large-scale pretraining— remains absent. More fundamentally, tokenization and rep-resentation are currently solved by two separate systems : a tokenizer produces discrete ids that carry no meaning, and a distinct, much larger model must be trained to turn those ids into vectors. For an agglutinative language, where the boundary infor-mation needed to tokenize well and the structure needed to represent well are one and the same mor-phological signal, this separation is wasteful. 
+
+This paper. Taken together, these gaps motivate a single Turkish model that is simultaneously a 
+
+lossless, morphology-aware tokenizer and a struc-tured word-embedding producer . This paper aims to provide exactly that, and introduces Morpheus ,a neural morpheme-boundary model for Turkish. Morpheus combines boundary supervision from an unsupervised analyzer (Morfessor) with self-supervised objectives (skip-gram negative sam-pling, root-family contrastive learning, and masked language modeling), and segments words through a differentiable Poisson-binomial dynamic program: gradients flow over soft morpheme memberships during training, while inference recovers exact hard boundaries with no architectural switch and no string normalization. Because no normaliza-tion is applied, the emitted pieces are the surface form, so decode(encode( w)) = w holds by con-struction. And because the model is neural, the same forward pass that tokenizes also yields, as a by-product, a structured R320 embedding per word—making Morpheus a tokenizer and a word-embedding model at once. The contributions of this paper are: • Morpheus , a neural morphology-aware to-kenizer for Turkish that is lossless without inference-time normalization, via a differen-tiable Poisson-binomial soft segmentation that unifies training and inference. • A demonstration that the same model is a word-embedding producer, evaluated against contextual encoders (BERTurk) and a strong multilingual retriever (BGE-M3) on root-family retrieval, lexical dedup, morphological probing, and Turkish NER—characterizing where a morphology-derived embedding helps and where it does not. • A comprehensive evaluation suite— reversibility, MorphScore, SIGMORPHON, surface fidelity, and language-modeling BPC—that cleanly establishes the lossless-vs-lossy distinction against the subword family and existing Turkish tokenizers. 
+
+## 2 Related Work 
+
+Subword tokenization and its limits for Turkish. 
+
+BPE (Sennrich et al., 2016), WordPiece (Devlin et al., 2019), and Unigram (Kudo, 2018), imple-mented at scale through SentencePiece (Kudo and Richardson, 2018), are the de facto interface be-tween text and modern language models. A grow-ing body of work shows that this frequency-driven design is not neutral for morphologically rich lan-guages such as Turkish. Toraman et al. (2023) com-pare five tokenizers at different granularities and find that a morphological-level tokenizer is compet-itive with the de facto ones while responding more strongly to vocabulary size, and that the ratio of vocabulary to model parameters is itself a design variable. Kaya and Tantu ˘g (2024) study vocabu-lary size for Turkish BERT models across NER, sentiment, and QA, and Altinok (2026) present a systematic evaluation of the data–vocabulary– morphology interplay under matched parameter budgets, together with morphology-aware diagnos-tics (boundary F1, lemma atomicity, over-/under-segmentation). These studies quantify the cost of frequency-driven segmentation; Morpheus in-stead attacks it at the source, by learning morpheme boundaries with a neural model. 
+
+Morphology-aware and linguistically informed tokenizers. The unsupervised Morfessor family (Creutz and Lagus, 2002, 2007) induces morpheme-like units via a minimum-description-length ob-jective and remains a standard segmentation base-line for agglutinative languages; we use it as the boundary teacher for Morpheus. Rule-based ana-lyzers such as Zemberek (Akın and Akın, 2007) encode Turkish morphology explicitly but are dictionary-bound. More recent Turkish-specific tokenizers improve linguistic alignment in differ-ent ways: Bayram et al. (2025a) propose a hy-brid tokenizer (TurkishTokenizer) that combines dictionary-driven root/affix segmentation, phono-logical normalization mapping allomorphic vari-ants to shared identifiers, and a subword fallback, reporting strong Turkish-token and purity rates and competitive STS and TurBLiMP results; Gulgonul (2025) exploit the closed syllable inventory of Turk-ish for a resource-light, retrieval-oriented tokenizer. These methods raise morphological alignment, but they do so through runtime normalization (which discards surface information, e.g. mapping allo-morphs to a canonical id) or through fixed dictio-naries and syllable inventories. Morpheus differs on two axes: it learns boundaries neurally rather than from a lexicon, and it applies no normalization, so segmentation is surface-preserving and exactly invertible—while, uniquely, the same model also yields word embeddings. 
+
+Evaluation standards for Turkish tokenization. 
+
+Bayram et al. (2025b) and its conference coun-terpart (Bayram et al., 2025c) introduce the TR-MMLU benchmark and the Turkish-token (%TR) and pure-token (%Pure) metrics, arguing that lin-guistic alignment of tokens correlates with down-stream performance more strongly than raw to-ken purity. We adopt the %TR/%Pure proto-col for vocabulary-level comparison and com-plement it with metrics that prior comparisons largely omit: exact reversibility, gold morpheme F1 (MorphScore), SIGMORPHON inflection align-ment, surface-string fidelity, and bits-per-character under a parameter-equalized language-model bud-get. Together these make explicit the lossless-versus-lossy axis that, as we show, separates to-kenizers that are valid for generation from those that are not. 
+
+Turkish word representations and the tokenizer– embedding gap. On the representation side, BERTurk (Schweter, 2020) provides strong contex-tual Turkish embeddings, and recent work adapts multilingual encoders to Turkish—e.g. Bayram et al. (2026) perform cross-lingual tokenizer surgery and offline distillation to build a Turkish sentence-embedding model, while general multi-lingual retrievers such as BGE-M3 (Chen et al., 2024) are competitive on Turkish out of the box. All of these treat representation as a system sepa-rate from—and much larger than—the tokenizer. Morpheus instead couples the two: a single neu-ral model both tokenizes losslessly and emits a morphology-derived embedding, and we evaluate that embedding directly against BERTurk and BGE-M3. 
+
+## 3 Methodology 
+
+3.1 Data and preprocessing 
+
+Morpheus is trained on a large-scale monolin-gual Turkish corpus that combines a multi-register author corpus with the full cleaned Turkish Wikipedia ( ∼10 GB of raw text), assembled to expose the model to diverse morphological con-structions across four registers: Ek s¸ is ¨ozl ¨uk (in-formal/colloquial, rich in spoken-language suffixa-tion), Dergipark (academic, derivational morphol-ogy and terminology), Turkish news sites (standard journalistic), and Turkish Wikipedia (encyclope-dic, broad vocabulary). The web-sourced registers were collected and cleaned with a companion scrap-ing toolkit that documents per-source extraction, HTML/URL stripping, Unicode normalization, and deduplication; the Wikipedia portion is addition-ally filtered for Turkish-alphabet coverage, stop-word/length thresholds, and markup, then dedupli-cated. All text is processed with Turkish-aware case folding ( ˙I → i, I → ı), with the original casing retained as a per-character side channel rather than discarded. 
+
+3.2 Caching, supervision, and splits 
+
+The corpus is split 95 /5 into train and test partitions with a fixed seed. To remove per-epoch segmenta-tion overhead, each sentence is pre-tokenized once into a cached tensor bundle containing, per word: character ids (padded to max word len = 32 ), per-character case flags, a (max word len − 1) binary boundary-label vector from the Morfessor teacher, a word id against a 120 K word vocabulary, and a root id against a 30 K root vocabulary (the root being the first Morfessor segment), together with a sentence attention mask. The boundary labels are produced by Morfessor (Creutz and Lagus, 2007) and then root-corrected : for in-dictionary words, intra-root Morfessor boundaries are removed when an independent root lexicon agrees on the root span, reducing root over-segmentation. This correction is applied only to the training labels and is purely positional—it never rewrites strings—so Morpheus remains surface-preserving at inference. For Mor-pheus training the sentence cache is capped at 900 K(train) / 100 K (validation) sentences, while the word and root vocabularies are built from the full corpus; the separate 1M-line cap referred to later applies only to the downstream language-model evaluation (Section 4.6), not to Morpheus itself. 
+
+3.3 Model architecture 
+
+Morpheus maps a word, given as a character se-quence, to a set of morpheme boundaries and a sin-gle word embedding in one forward pass, through three stages connected by a differentiable segmen-tation operator. All hidden states share a working dimension of d = 320 .
+
+Character encoder and positional morphology. 
+
+Each character embedding is concatenated with a learned case-flag embedding, passed through a multi-scale convolution (kernel widths 2–6) that captures local character n-grams, and then through 
+
+3 self-attention layers, producing context-aware character vectors H = ( h1, . . . , h L) ∈ RL×d. A defining property of Turkish is that morpheme iden-tity is governed by position relative to the root :suffixes attach in a fixed slot order (number, then possessive, then case), so the same surface syllable plays a different role depending on how many mor-phemes precede it. In ev — ler — imiz — de (“in our houses”), -ler is plural in the first post-root slot, 
+
+-imiz first-person-plural possessive in the second, and -de locative in the third. The model must there-fore reason about offsets between characters —how far a candidate boundary is from the previous one— rather than their absolute indices. For this reason both the character encoder and the boundary de-tector apply Rotary Position Embedding (RoPE) (Su et al., 2021) on each attention head’s subspace, injecting relative offsets directly into the attention dot-product so that a single learned pattern (e.g. “two characters past the previous boundary”) gener-alizes across roots of different lengths. 
+
+Boundary detector. A stack of 4 RoPE self-attention layers over H, followed by an adjacent-pair scoring head, emits for each inter-character position a boundary probability 
+
+pi = σ score( hi, h i+1 ) ∈ [0 , 1] (1) for each inter-character position i = 1 , . . . , L − 1.The vector p = ( p1, . . . , p L−1) is the only inter-face to the rest of the model: everything down-stream is a differentiable function of p.
+
+Differentiable Poisson–binomial segmentation. 
+
+The central difficulty is turning soft per-position boundary probabilities into discrete mor-pheme segments without a non-differentiable 
+
+arg max /threshold that would block gradients from the semantic objectives back to the boundary de-tector. We resolve it with a Poisson–binomial dy-namic program that computes, in closed form, the soft assignment of each character to each segment. Let bi ∈ { 0, 1} be the latent boundary indicator at position i with Pr[ bi = 1] = pi, taken inde-pendent. Character j belongs to segment k (0-indexed) exactly when k boundaries occur before it, i.e. P 
+
+> i<j
+
+bi = k. Since the pi differ, P 
+
+> i<j
+
+bi fol-lows a Poisson–binomial distribution, whose mass is accumulated by 
+
+fj [k] = fj−1[k] (1 − pj−1) + fj−1[k − 1] pj−1,
+
+(2) with base case f1[0] = 1 and fj [k] =Pr[ P 
+
+> i<j
+
+bi = k]. The resulting matrix M [j, k ] = 
+
+fj [k] ∈ RL×S (with S the maximum number of segments and P 
+
+> k
+
+M [j, k ] = 1 ) is a soft segment-membership matrix: row j is a distribution over which morpheme character j belongs to. Equa-tion (2) is differentiable in p, costs O(LS ), and has three properties exploited by design. (i) Differ-entiability: gradients from the word-level objec-tives flow through M into the boundary detector, so boundaries are shaped both by the teacher and by what produces good embeddings. (ii) Soft/hard duality: as pi → { 0, 1} each row of M converges to one-hot, recovering exact hard segmentation; the same module yields soft memberships in train-ing and discrete morphemes at inference, switched only by the training flag. (iii) Surface preserva-tion: M only groups characters—it never inserts, drops, or rewrites them—so concatenating the seg-ments reproduces the input word, which is why 
+
+decode(encode( w)) = w holds by construction. 
+
+Segment pooling and the word embedding. 
+
+Each segment k is summarized by attention-pooling the character vectors weighted by their membership, sk = P 
+
+> j
+
+αjk hj with αjk ∝
+
+M [j, k ] exp( a(hj )) for a learned scorer a(·), so that within-segment characters compete while cross-segment leakage is suppressed by M . The word embedding is the mean of the valid seg-ment vectors followed by a two-layer feed-forward network with residual LayerNorm, ew =LayerNorm(FFN( 1
+
+> S′
+
+P 
+
+> k
+
+sk)) ∈ R320 . Because 
+
+ew comes from the same forward pass that yields the boundaries, the morpheme structure that defines the tokenization is exactly the structure pooled into the embedding—the architectural basis for treating Morpheus as a tokenizer and an embedder at once. 
+
+3.4 Training 
+
+The total loss is a weighted sum of four terms, 
+
+L = waux Laux +wsgns Lsgns +wctr Lctr +wmlm Lmlm .
+
+(3) 
+
+Laux is a deep-supervised boundary BCE plus a count regularizer against the (root-corrected) Mor-fessor labels; its weight follows a curriculum, de-caying geometrically from 0.50 to 0.08 over 10 
+
+epochs so the teacher anchors early training and then yields to the distributional signals. Lsgns is skip-gram negative sampling ( 16 negatives, ±6
+
+window, 120 K context vocabulary); Lctr is an In-foNCE contrastive loss on root identity (the Mor-fessor first segment, temperature 0.10 ); and Lmlm 
+
+is a vocabulary-free character-level reconstruction in which 20% of words in a sentence are masked and regenerated character-by-character by a small encoder–decoder. We optimize with AdamW, a co-sine learning-rate schedule, and gradient clipping, using an effective batch of 512 (batch 256 × gradi-ent accumulation 2) for 10 epochs. TF32 matmuls are enabled while loss components are computed in FP32 for numerical stability; AMP/BF16 is left off for reproducibility. Training runs in roughly 
+
+30 minutes per epoch ( ∼5 hours total) on a single NVIDIA A100 80 GB. Training dynamics—loss convergence, the per-objective curves, the aux-weight curriculum, and optimization stability—are reported in Section 4.1. 
+
+## 4 Results 
+
+4.1 Training dynamics 
+
+Figure 1 shows that the total train and validation loss decrease smoothly and track each other with-out divergence, while the boundary detector’s preci-sion, recall, and F1 rise quickly and then plateau— confirming that the Morfessor-supervised objec-tive is learned early. The four objectives con-verge jointly (Figure 2): the auxiliary boundary loss drops fastest as the teacher anchors the early epochs, while the skip-gram, contrastive, and MLM losses continue to shape the embedding geometry afterwards. Figure 3 documents the optimization regime behind these curves: the cosine learning-rate schedule, the geometric decay of the auxiliary weight from 0.50 to 0.08 that realizes the teacher-to-distributional curriculum, and a gradient norm              
+
+> Tokenizer Roundtrip Gen.?
+> Morpheus 100.0% ✓
+> BPE / Byte / Unigram 100.0% ✓
+> TurkishTokenizer 95.4% ✗
+> WordPiece 58.2% ✗
+> Table 1: Reversibility over 30 ,204 inflected words. WordPiece strips diacritics; TurkishTokenizer applies lossy canonicalization.
+
+that stays bounded throughout—evidence that run-ning in full precision (AMP off) yields a stable, reproducible trajectory. 
+
+4.2 Experimental setup 
+
+All tokenizers are trained on the same corpus to ensure a fair comparison. The baselines are BPE, byte-level BPE, and Unigram (SentencePiece, 
+
+64 K), WordPiece ( 64 K, HuggingFace), Morfes-sor, and the rule-based TurkishTokenizer (Bayram et al., 2025a); Morpheus uses a 50 K vocabulary distilled from its own hard segmentations. For lan-guage modeling we train a parameter-equalized 
+
+∼58M GPT with each tokenizer for an identi-cal 10 ,000 optimizer steps on the same data and schedule, so that bits-per-character (BPC) reflects the tokenizer rather than model capacity or com-pute. Intrinsic metrics use a stratified test set (seen / OOV / curated-OOV / nonce) and gold sets: UD Turkish-Kenet for MorphScore and re-versibility ( 30 K inflected words) and the SIGMOR-PHON 2022 Turkish inflection set. Embedding evaluations use frozen word vectors and a com-mon probe across encoders, comparing Morpheus to BERTurk (Schweter, 2020) and BGE-M3 (Chen et al., 2024). 
+
+4.3 Reversibility: the generation gate 
+
+Table 1 reports decode(encode( w)) = w over 
+
+30 ,204 inflected wordforms. Morpheus and the subword family are reversible; the two tokenizers that elsewhere appear strongest are not. WordPiece recovers only 58 .2% of words because it strips Turkish diacritics, and TurkishTokenizer 95 .4% be-cause its canonical re-harmonization rewrites sur-face forms—for example, it maps saatlerde (“at the hours”) to saat | lar | da , which decodes to the non-word saatlarda . Since a generative model must decode every produced id back to faithful text, only the reversible subset is valid for generation—this is the gate through which the remaining comparisons are read. Figure 1: Training dynamics. Left: total train/validation loss. Right: boundary-detection precision, recall, F1, and accuracy over training. 
+
+> Figure 2: Per-objective train/validation curves: auxiliary boundary loss, skip-gram (SGNS), root-identity contrastive, and character-level MLM.
+
+4.4 Surface fidelity 
+
+A tokenizer can place boundaries well yet still cor-rupt the surface string. We probe this with a curated set of 50 OOV-leaning Turkish words, scoring each segmentation along four increasingly strict criteria (Table 2): root% , whether the first segment is the correct root; count% , whether the number of seg-ments matches the gold; len% , whether the segment 
+
+lengths match (i.e. the boundaries are placed cor-rectly); and exact% , whether the segment strings 
+
+exactly match the surface morphemes. The decisive comparison is the drop from len% to exact%, which isolates decode corruption from boundary placement. Morpheus identifies the root best of all tokenizers ( 66% ) and, critically, shows 
+
+no drop from len to exact ( 38% → 38% ): ev-ery boundary it places is also a faithful surface string, the signature of lossless decoding. Turkish-Tokenizer presents the opposite pattern: it places boundaries best ( count = 92% , len = 78% ) but its strings match the surface only 10% of the time— a 68 -point collapse. The mechanism is concrete and systematic: on the loanword-exception forms 
+
+saatlerde , rollerde , harflerle , TurkishTokenizer returns saat | lar | da , rol | lar | da , harf | lar | la —boundaries correct, but the surface suffixes -ler /-de 
+
+are rewritten to their canonical vowel-harmonic forms -lar /-da , so the decoded strings ( saatlarda ,. . . ) are no longer the input words. Morpheus re-turns saatler | de , rol | lerde —surface-exact, hence reversible. The subword tokenizers are low and roughly flat across len and exact (they neither nor-malize nor align), confirming that the len → exact gap is a clean diagnostic for the lossy canonicaliza-tion unique to the rule-based system. Table 3 traces this through concrete decode outcomes: notably, even when Morpheus places a boundary incorrectly (c¸i | c¸e | ˘gin ), its decode still reconstructs the input, because the segmentation only groups characters— whereas TurkishTokenizer and WordPiece, with cleaner-looking or whole-word outputs, decode to non-words. Figure 3: Optimization regime. Left: cosine learning-rate schedule. Middle: geometric decay of the auxiliary-loss weight ( 0.50 → 0.08 ), realizing the teacher-to-distributional curriculum. Right: gradient norm, stable throughout under full-precision training. 
+
+Figure 4: Roundtrip accuracy per tokenizer. The re-versible cluster (Morpheus, BPE/ByteBPE/Unigram) versus the lossy WordPiece and TurkishTokenizer. 
+
+4.5 Morphological alignment 
+
+On gold morphological segmentation, Morpheus and the rule-based TurkishTokenizer far outrank the subword family, with Morpheus the strongest 
+
+reversible option (Table 4). On MorphScore (UD Turkish-Kenet), Morpheus reaches a macro-F1 of 0.61 , roughly double the subword family (∼0.32) and close to TurkishTokenizer ( 0.65 )—but with zero length-mismatch, whereas TurkishTok-enizer’s score carries the canonical-normalization caveat shown above. On SIGMORPHON inflec-tion, Morpheus has the best lemma-prefix rate after Morfessor ( 0.76 ), and the Kalbur root-correction of its teacher lifts root-in-segments from 0.35 (Mor-fessor) to 0.48 .
+
+4.6 Language modeling and efficiency 
+
+To compare tokenizers under equal compute, each 
+
+∼58M GPT is trained for an identical 10 ,000                                 
+
+> Tokenizer root% count% len% exact%
+> Morpheus 66 46 38 38
+> Morfessor 46 46 26 26 BPE 36 22 16 16 Unigram 32 20 14 14 ByteBPE 32 24 12 12 TurkishTok. †64 92 78 10 WordPiece †18 22 20 14
+
+Table 2: Qualitative surface fidelity on 50 curated OOV-leaning words. root% : first segment is the correct root; 
+
+count% : segment count matches gold; len% : boundaries placed correctly; exact% : segment strings match the surface morphemes. The len% →exact% drop isolates decode corruption: zero for Morpheus, 68 points for TurkishTokenizer (e.g. saatlerde →saat | lar | da ). †Not reversible. 
+
+optimizer steps on a 1M-line cap of the corpus with the same schedule; Figure 6 shows the re-sulting training-loss and validation-BPC curves. The curves are well-behaved and stratify clearly: among reversible tokenizers, Morpheus reaches the lowest validation BPC ( 1.425 vs. 1.436 for BPE, 
+
+1.449 for ByteBPE, 1.437 for Unigram, 1.446 for Morfessor). WordPiece’s nominally lower 1.384 
+
+is an artifact of modeling diacritic-stripped, lower-entropy text, and TurkishTokenizer’s 1.442 comes with lossy decoding—both excluded from the valid comparison (Table 5). On TR-MMLU, Mor-pheus attains the highest frequency-weighted pu-rity ( 83 .5% %Pure) and Turkish-token rate ( 91 .8% 
+
+%TR) of all tokenizers, indicating that the tokens it actually emits in running text align with Turkish morphemes. Its fertility ( 1.73 tokens/word) sits Word (gold) Tokenizer Segmentation decode(encode( w)) = w?                                                    
+
+> k¨ ope˘ gim
+> Morpheus k¨ ope˘ g|im k¨ ope˘ gim ✓
+> TurkishTokenizer k¨ opek |¨um k¨ opek¨ um ✗
+> WordPiece kopegim kopegim ✗
+> BPE k¨ ope˘ gim k¨ ope˘ gim ✓
+> saatlerde
+> Morpheus saatler |de saatlerde ✓
+> TurkishTokenizer saat |lar |da saatlarda ✗
+> WordPiece saatlerde saatlerde ✓
+> BPE saatlerde saatlerde ✓
+> c¸ic ¸e˘ gin
+> Morpheus c¸i |c¸e |˘gin c¸ic ¸e˘ gin ✓
+> TurkishTokenizer c¸ic ¸ek |¨un c¸ic ¸ek¨ un ✗
+> WordPiece cicegin cicegin ✗
+> BPE c¸ic ¸e˘ gin c¸ic ¸e˘ gin ✓
+
+Table 3: Representative decode outcomes. Morpheus is surface-preserving: even where its boundaries are imperfect (c¸ i | c¸ e | ˘gin ), the concatenation still reproduces the input. TurkishTokenizer rewrites surface allomorphs to canonical forms ( - ¨um , -lar /-da , - ¨un ) and WordPiece strips diacritics ( c¸ , ˘g,ı ), so both decode to non-words. BPE is reversible but morphology-blind (no split). 
+
+Figure 5: Morphological alignment. Left: MorphScore (UD Turkish-Kenet) macro-F1. Right: SIGMORPHON inflection rates (lemma-prefix and root-in-segments).                        
+
+> MorphScore SIGM. SIGM. Model macro-F1 lemma root
+> Morpheus 0.61 0.76 0.48 TurkishTok. †0.65 0.71 0.63 Morfessor 0.59 0.78 0.35 BPE 0.32 0.65 0.47 Unigram 0.32 0.61 0.43 WordPiece †0.27 0.33 0.26
+
+Table 4: Morphological alignment: MorphScore macro-F1 (UD Turkish-Kenet) and SIGMORPHON lemma-prefix and root-in-segments rates. Morpheus is the strongest reversible option. †Not reversible. 
+
+between the subword family ( ∼1.5) and the rule-based tokenizers ( ∼1.9–2.0): the deliberate cost of morpheme-level tokenization. At generation, Mor-pheus uses ∼19% less peak GPU memory than the 
+
+64 K-vocab subword tokenizers ( 3,020 vs. 3,723 
+
+MB at batch 32 ), while its higher fertility lowers raw character throughput (Figure 7). 
+
+Tokenizer throughput vs. generation through-put. It is important to separate the tokenizer’s 
+
+own speed from end-to-end generation, as the two tell different stories (Figure 10). Morpheus’s pure-PyTorch encoder runs at ∼4.0M chars/s— faster than BPE/ByteBPE ( ∼1.0M) and WordPiece (2.2M), behind Unigram ( 4.8M)—and its decoder reaches ∼0.69M words/s, nearly 2× the subword family ( ∼0.35–0.38M). TurkishTokenizer is fastest on both ( 6.1M chars/s, 0.92 M words/s), but this partly reflects its Rust backend rather than a lower algorithmic cost; Morpheus is a research-grade PyTorch implementation and is still competitive. The takeaway is that the ∼1.6 × end-to-end genera-tion gap (Figure 7) is driven by Morpheus’s higher 
+
+fertility —more autoregressive forward passes per character—not by slow tokenization: the tokenizer itself is fast, and its decode is among the quickest measured. 
+
+4.7 Morpheus as a word embedder 
+
+Because Morpheus is neural, the same forward pass that tokenizes also emits a 320 -dim word embed-ding. We evaluate it frozen against BERTurk and Figure 6: Downstream language-model training. Left: training loss versus optimizer step for the param-equalized 
+
+58 M GPT under each tokenizer. Right: validation BPC. Among reversible tokenizers Morpheus reaches the lowest BPC.                                  
+
+> Tokenizer BPC Fert. %Pure fw GPU tok/w MB
+> Morpheus 1.425 1.73 83.5 3020 BPE 1.436 1.51 48.8 3723 ByteBPE 1.449 1.53 49.1 3723 Unigram 1.437 1.52 50.0 3723 Morfessor 1.446 1.91 77.8 1977 WordPiece †1.384 1.39 40.1 3723 TurkishTok. †1.442 1.98 78.2 2152
+
+Table 5: Language modeling and efficiency. BPC at equal 10 K steps; frequency-weighted %Pure on TR-MMLU; peak GPU memory at batch 32 . †Not reversible—excluded from the valid BPC comparison. 
+
+BGE-M3 (Table 6, Figure 12). The picture splits sharply by task character, and the split is a direct consequence of how the embedding is trained. 
+
+Where Morpheus wins: lexical / root-level tasks. 
+
+On retrieving other forms of the same root and on verifying whether two words share a root, Mor-pheus leads decisively—root-family retrieval MAP 
+
+0.85 (vs. 0.80 for BGE-M3, 0.49 for BERTurk) and same-root verification ROC-AUC 1.00 (vs. 
+
+0.98 , 0.70 )—despite the smallest embedding ( 320 
+
+vs. 768 /1024 dims). This is by design: the root-identity contrastive objective explicitly pulls all inflections of a root toward a common point, so the geometry is organized around roots. The t-SNE pro-jections (Figure 11) make this visible—Morpheus produces the tightest, most clearly separated root-family clusters of the three encoders. 
+
+Where Morpheus loses: context- and inflection-dependent tasks. On morphological probing of number ( 0.59 vs. 0.95 for BERTurk) and case ( 0.22 
+
+Figure 7: BPC versus generation throughput. Among reversible tokenizers Morpheus is on the quality frontier, trading throughput (higher fertility) for the lowest BPC and morphological structure. 
+
+vs. 0.89 ) and on WikiANN NER (macro-F1 0.48 
+
+vs. 0.79 ), the heavier contextual encoders win. This too follows from the architecture, on two counts. First, the very objective that sharpens root geom-etry collapses the inflectional contrasts a probe must read: by pulling kitap , kitaplar , kitabımız to-gether, it deliberately discards the number/case sig-nal that distinguishes them. Second, the embedding is a static , per-word vector with no sentence con-text, whereas NER is inherently contextual—and BERTurk/BGE-M3 are contextual encoders with 
+
+2–3× the dimensionality. Morpheus is therefore not a drop-in replacement for a contextual encoder; it is a complementary, cheap, morphology-aware 
+
+lexical encoder. In a multi-vector retrieval (RAG) system this is precisely the right division of labor: Morpheus serves the lexical/keyword index (root matching, dedup, stemming), a contextual model Figure 8: Language-modeling efficiency. Left: BPC at equal 10 K steps. Middle: peak GPU memory during generation. Right: end-to-end generation throughput. 
+
+> Figure 9: TR-MMLU tokenization quality: Turkish-token (%TR) and pure-token (%Pure) rates. Morpheus leads on the frequency-weighted measures.
+
+serves the dense semantic index. 
+
+## 5 Discussion 
+
+One signal, two roles. The results support the paper’s central claim: a single neural morpheme-boundary model can serve as both a lossless tok-enizer and a word embedder. The coupling is not incidental—the differentiable Poisson–binomial segmentation lets the same morphological signal that places boundaries also shape the pooled em-bedding, so quality on one role reinforces the other rather than competing for capacity. 
+
+Lossless-versus-lossy is the decisive axis. The two tokenizers that appear to dominate on iso-lated metrics—WordPiece on raw BPC, Turkish-Tokenizer on gold morphology—are both disqual-ified for generation by reversibility. Reading ev-                        
+
+> Morpheus BERTurk BGE-M3 (320) (768) (1024) Retrieval MAP ↑0.85 0.49 0.80 Dedup ROC-AUC ↑1.00 0.70 0.98 Number probe ↑0.59 0.95 0.91 Case probe ↑0.22 0.89 0.81 NER macro-F1 ↑0.48 0.79 0.76
+> Table 6: Frozen word-embedding evaluation. Morpheus leads on lexical / root-level tasks; contextual encoders lead on inflection- and context-dependent tasks.
+
+ery metric through the generation gate reverses the apparent ranking: among tokenizers whose ids decode to faithful Turkish, Morpheus offers the lowest BPC, the highest frequency-weighted token purity, the strongest morphological alignment, and lower memory, simultaneously. We argue this axis, largely absent from prior Turkish tokenization com-parisons, should be reported whenever a tokenizer is proposed for generative use. 
+
+A root-centric embedding, by design. The em-bedding results are a genuine finding, not a shortfall to hide. Morpheus wins lexical retrieval and dedup but underperforms on number/case probing and NER, and the cause is mechanistic: the contrastive objective on root identity deliberately pulls all in-flections of a root together, which sharpens root-level geometry while collapsing the inflectional contrasts a linear probe would read, and the pooled static vector lacks the sentence context NER needs. This makes Morpheus complementary to, not a replacement for, contextual encoders. In a multi-vector retrieval system its embeddings are a natural Figure 10: Tokenizer throughput, separate from end-to-end generation. Left: encoding speed (chars/s). Right: decoding speed (words/s). Morpheus’s decode is ∼2× the subword family; TurkishTokenizer leads on both, partly via its Rust backend. 
+
+fit for the lexical index—cheap, morphology-aware, and strong at root matching— while a contextual model such as BGE-M3 or BERTurk serves the dense semantic index. 
+
+What you trade. Morpheus brings modeling quality, morphological structure, embeddings, loss-less reversibility, and lower memory together, a combination no other Turkish tokenizer offers. The cost is higher fertility ( ∼1.73 vs. ∼1.5 to-kens/word) and, because unseen words are seg-mented by the neural model rather than a lookup table, a heavier tokenizer artifact and lower raw character throughput. For latency-bound genera-tion a subword tokenizer remains preferable; for Turkish systems that value faithful decoding, mor-phology, or embeddings, Morpheus is the better-informed default. 
+
+## 6 Limitations and Trade-offs 
+
+We frame the constraints of Morpheus as trade-offs rather than flat deficiencies: each cost is the flip side of a concrete gain, and points to the workloads where Morpheus is—or is not—the right choice. 
+
+Fertility for quality and faithfulness. Morpheus emits more tokens per word ( ∼1.73 vs. ∼1.5 for subwords), which lengthens sequences and low-ers raw generation throughput ( ∼1.6 × slower than BPE)—a token-count effect rather than slow tok-enization, since its own encode/decode are com-petitive (Section 4.6). In return it delivers the lowest BPC among reversible tokenizers ( 1.425 ), morpheme-aligned tokens, lossless decoding, and 
+
+∼19% lower GPU memory. The exchange favors quality- and morphology-sensitive systems; for latency-bound raw generation a subword tokenizer remains preferable. 
+
+A neural artifact for OOV generalization. Be-cause unseen words are segmented by the model rather than a lookup table, the deployable tok-enizer carries a PyTorch checkpoint instead of a few-megabyte vocabulary. That same prop-erty is what lets Morpheus segment any Turk-ish word—including nonce and rare agglutinative forms—without a vocabulary cap, which a fixed BPE/WordPiece table cannot do. 
+
+A root-centric embedding: strength and limit are the same design. The embedding leads on lexical retrieval (MAP 0.85 ) and same-root verifi-cation (ROC-AUC 1.00 ) precisely because the con-trastive objective concentrates a root’s inflections; that same concentration is why it trails contextual encoders on number/case probing and NER. The embedding is also static and lower-dimensional (320 vs. 768 /1024 ). Morpheus is therefore com-plementary to, not a replacement for, contextual encoders: it is the right representation for the lexi-cal component of a system (retrieval, dedup, stem-ming, keyword matching) and the wrong one for tasks that hinge on sentence context or fine inflec-tional features. 
+
+Scope. The model and its supervision are Turkish-specific by design, and the gold sets em-phasize inflectional morphology (SIGMORPHON, UD Turkish-Kenet), so derivational families and long, rare agglutinative chains—where the bound-ary detector occasionally merges adjacent suffixes— are comparatively under-probed. 
+
+## 7 Conclusion 
+
+Turkish agglutination breaks the assumptions of the tokenizers that drive modern language mod-els. Frequency-driven subword methods frag-ment meaning-bearing suffixes and inflate to-Figure 11: t-SNE of word embeddings colored by root family, for Morpheus (left), BERTurk (middle), and BGE-M3 (right). Morpheus organizes the space by root identity, producing the tightest root-family clusters. 
+
+ken counts, while the tokenizers that align best with morphology—WordPiece and the rule-based TurkishTokenizer—do so by rewriting the surface string and cannot decode their output back to faith-ful text (only 58 .2% and 95 .4% roundtrip). Word representation, meanwhile, is handled by separate, heavyweight models decoupled from tokenization. This is the gap the paper addresses. 
+
+Novelty and mechanism. We introduced Mor-pheus , a neural morpheme-boundary model that is at once a lossless, morphology-aware tokenizer and a word embedder. The novelty is a sin-gle mechanism—a differentiable Poisson–binomial segmentation—that (i) lets word-level objectives train the boundary detector end-to-end, (ii) recovers exact hard segmentation at inference with no archi-tectural switch, and (iii) only groups characters, so decode(encode( w)) = w holds by construc-tion and the same forward pass yields a structured embedding. 
+
+Measured success. Restricted to tokenizers whose ids decode to faithful Turkish—the set valid for generation—Morpheus simultaneously attains the lowest BPC ( 1.425 ), the highest frequency-weighted token purity on TR-MMLU ( 83 .5% ), the strongest morphological alignment (MorphScore macro-F1 0.61 , ∼2× the subword family), 100% 
+
+reversibility, and ∼19% lower GPU memory. As an embedder it leads on lexical retrieval (root-family MAP 0.85 ) and same-root verification (ROC-AUC 
+
+1.00 ), ahead of BGE-M3 ( 0.80 /0.98 ) and BERTurk (0.49 /0.70 ). These survive the reversibility gate that disqualifies the apparent leaders, so they are real gains rather than metric artifacts. 
+
+Trade-offs and where to use it. The costs are concrete: higher fertility ( 1.73 vs. ∼1.5 to-kens/word, ∼1.6 × slower generation), a neural ar-tifact instead of a lookup table, and a root-centric embedding that trails contextual encoders on NER and number/case probing. This yields a clear usage recipe. Morpheus is the better-informed default for Turkish NLU and sequence-labeling (classification, morphological segmentation/analysis), for the lexi-cal / keyword index of a multi-vector RAG system (root matching, dedup, stemming), for pretraining small-to-medium Turkish LMs where faithful de-coding and morphology matter, and for memory-constrained inference. It should be paired with— not substituted for—a contextual encoder such Figure 12: Embedding evaluation across encoders. Morpheus leads on lexical retrieval (MAP) and same-root verification (ROC-AUC); the heavier contextual encoders lead on morphological probing and NER. 
+
+as BERTurk or BGE-M3 on context-dependent tasks, and a subword tokenizer remains preferable for latency-bound raw generation. In expanding the Turkish tokenization design space with a loss-less, morphology-aware, embedding-producing op-tion, Morpheus gives the many Turkish systems that have so far had to choose among lossy or morphology-blind alternatives a single model that is none of those things. 
+
+## References 
+
+Ahmet Af s¸ ın Akın and Mehmet D ¨undar Akın. 2007. Zemberek, an open source NLP framework for Turkic languages. Structure .Duygu Altinok. 2026. Optimal Turkish subword strategies at scale: Systematic evaluation of data– vocabulary–morphology interplay. arXiv preprint arXiv:2602.06942 .M. Ali Bayram, Ali Arda Fincan, Ahmet Semih G ¨um ¨u s¸ ,Sercan Karaka s¸ , Banu Diri, Sava s¸ Yıldırım, and Demircan C¸ elik. 2025a. Tokens with meaning: A hybrid tokenization approach for Turkish. arXiv preprint arXiv:2508.14292 .M. Ali Bayram, Ali Arda Fincan, Ahmet Semih G ¨um ¨u s¸ ,Sercan Karaka s¸ , Banu Diri, and Sava s¸ Yıldırım. 2025b. Tokenization standards for linguistic in-tegrity: Turkish as a benchmark. arXiv preprint arXiv:2502.07057 .M. Ali Bayram, Ali Arda Fincan, Ahmet Semih G ¨um ¨u s¸ ,Sercan Karaka s¸ , Banu Diri, and Sava s¸ Yıldırım. 2025c. Tokenization standards and evaluation in nat-ural language processing: A comparative analysis of large language models on Turkish. In 2025 33rd Signal Processing and Communications Applications Conference (SIU) . IEEE. M. Ali Bayram, Banu Diri, and Sava s¸ Yıldırım. 2026. Adapting multilingual embedding models to Turk-ish via cross-lingual tokenizer surgery and offline distillation. arXiv preprint arXiv:2605.29992 .Jianlv Chen, Shitao Xiao, Peitian Zhang, Kun Luo, Defu Lian, and Zheng Liu. 2024. BGE M3-embedding: Multi-lingual, multi-functionality, multi-granularity text embeddings through self-knowledge distillation. 
+
+arXiv preprint arXiv:2402.03216 .Mathias Creutz and Krista Lagus. 2002. Unsupervised discovery of morphemes. In Proceedings of the ACL-02 Workshop on Morphological and Phonological Learning (SIGPHON) , pages 21–30. Mathias Creutz and Krista Lagus. 2007. Unsupervised models for morpheme segmentation and morphology learning. ACM Transactions on Speech and Lan-guage Processing , 4(1):1–34. Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. BERT: Pre-training of deep bidirectional transformers for language under-standing. In Proceedings of NAACL , pages 4171– 4186. Senol Gulgonul. 2025. HeceTokenizer: A syllable-based tokenization approach for Turkish retrieval. Preprint. Yi ˘git Bekir Kaya and A. C ¨uneyd Tantu ˘g. 2024. Ef-fect of tokenization granularity for Turkish large lan-guage models. Intelligent Systems with Applications ,21:200335. Taku Kudo. 2018. Subword regularization: Improv-ing neural network translation models with multiple subword candidates. In Proceedings of ACL , pages 66–75. Taku Kudo and John Richardson. 2018. SentencePiece: A simple and language independent subword tok-enizer and detokenizer for neural text processing. In Proceedings of EMNLP: System Demonstrations ,pages 66–71. Stefan Schweter. 2020. BERTurk – BERT models for Turkish. Zenodo. Rico Sennrich, Barry Haddow, and Alexandra Birch. 2016. Neural machine translation of rare words with subword units. In Proceedings of ACL , pages 1715– 1725. Jianlin Su, Yu Lu, Shengfeng Pan, Ahmed Murtadha, Bo Wen, and Yunfeng Liu. 2021. RoFormer: En-hanced transformer with rotary position embedding. 
+
+arXiv preprint arXiv:2104.09864 .Cagri Toraman, Eyup Halit Yilmaz, Furkan S¸ ahınu c¸ ,and Oguzhan Ozcelik. 2023. Impact of tokenization on language models: An analysis for Turkish. ACM Transactions on Asian and Low-Resource Language Information Processing , 22(4):1–21.

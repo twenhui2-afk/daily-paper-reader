@@ -6,73 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-17
-- 运行时间：2026-06-18 06:07:17 UTC+8
+- 最新运行日期：2026-06-18
+- 运行时间：2026-06-19 05:03:44 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《OTRO: Oblivious Tokenization Path with Square-Root ORAM》（8.5/10）, 《Perfect matchings, Fano planes, and orthogonal bases of type $E_8$》（8.5/10）
-- 速读：《Vertical Sub-THz Channel Characterization: Sounder Implementation and Initial Measurements》（8.1/10）, 《Floquet-Sambe Bottleneck and Frequency-Selective Localization in a Driven Synthetic Spin Chain》（8.0/10）, 《Uniform integrability of the distance to the nearest leaf in random trees》（8.0/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《Learning the Geometry of Data: A Mathematical Review of Shape Space Analysis》（8.6/10）, 《Revisiting Trade-sign Long-memory and Square-root Law price impact》（8.3/10）
+- 速读：《Closed-Form and Constant-Time New-Source Selection for Fault-Tolerant Broadcasting in Dense Gaussian Networks》（7.9/10）, 《Coincidence Correspondences and Nonlinear Root Geometry》（7.8/10）, 《Re-Rooting-Based Fault-Tolerant One-to-All Broadcasting in Dense Eisenstein--Jacobi Networks》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/17/README](/202606/17/README)
+- 详情：[/202606/18/README](/202606/18/README)
 
 ### 精读区论文标签
-1. [OTRO: Oblivious Tokenization Path with Square-Root ORAM](/202606/17/2606.17358v1-otro-oblivious-tokenization-path-with-square-root-oram)  
-   标签：评分：8.5/10
+1. [Learning the Geometry of Data: A Mathematical Review of Shape Space Analysis](/202606/18/2606.17022v1-learning-the-geometry-of-data-a-mathematical-review-of-shape-space-analysis)  
+   标签：评分：8.6/10
    evidence：检索回退候选
-2. [Perfect matchings, Fano planes, and orthogonal bases of type $E_8$](/202606/17/2606.17393v1-perfect-matchings-fano-planes-and-orthogonal-bases-of-type-e8)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-3. [Large deviation principle for friendship-biases in Galton--Watson trees](/202606/17/2606.17381v1-large-deviation-principle-for-friendship-biases-in-galton--watson-trees)  
+2. [Revisiting Trade-sign Long-memory and Square-root Law price impact](/202606/18/2606.16269v1-revisiting-trade-sign-long-memory-and-square-root-law-price-impact)  
    标签：评分：8.3/10
-   evidence：检索回退候选
-4. [Root-Selecting Fixed-Point Inversion for Rectified Flows via Trajectory Straightness](/202606/17/2606.17584v1-root-selecting-fixed-point-inversion-for-rectified-flows-via-trajectory-straightness)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-5. [Directed Reachability-Preserving Minimum Edge Cut: Approximation and Planar Hardness](/202606/17/2606.18225v1-directed-reachability-preserving-minimum-edge-cut-approximation-and-planar-hardness)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-6. [Group Commit Self-Clocks: Why Tuning Is Unnecessary Above a Device-Set Load Threshold](/202606/17/2606.18187v1-group-commit-self-clocks-why-tuning-is-unnecessary-above-a-device-set-load-threshold)  
-   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Vertical Sub-THz Channel Characterization: Sounder Implementation and Initial Measurements](/202606/17/2606.15114v1-vertical-sub-thz-channel-characterization-sounder-implementation-and-initial-measurements)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
-2. [Floquet-Sambe Bottleneck and Frequency-Selective Localization in a Driven Synthetic Spin Chain](/202606/17/2606.15293v1-floquet-sambe-bottleneck-and-frequency-selective-localization-in-a-driven-synthetic-spin-chain)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
-3. [Uniform integrability of the distance to the nearest leaf in random trees](/202606/17/2606.15339v1-uniform-integrability-of-the-distance-to-the-nearest-leaf-in-random-trees)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
-4. [Focus, Align, and Sustain: Counteracting Gradient Dilution in Incremental Object Detection](/202606/17/2606.15253v1-focus-align-and-sustain-counteracting-gradient-dilution-in-incremental-object-detection)  
+1. [Closed-Form and Constant-Time New-Source Selection for Fault-Tolerant Broadcasting in Dense Gaussian Networks](/202606/18/2606.18715v1-closed-form-and-constant-time-new-source-selection-for-fault-tolerant-broadcasting-in-dense-gaussian-networks)  
    标签：评分：7.9/10
    evidence：检索回退候选
-5. [A skew Murnaghan--Nakayama rule for Hopf dual pairs](/202606/17/2606.15138v1-a-skew-murnaghan--nakayama-rule-for-hopf-dual-pairs)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-6. [A continuous kernel method for affine Motzkin paths: boundary traces, height shifts, and secant-power hierarchies](/202606/17/2606.15407v1-a-continuous-kernel-method-for-affine-motzkin-paths-boundary-traces-height-shifts-and-secant-power-hierarchies)  
+2. [Coincidence Correspondences and Nonlinear Root Geometry](/202606/18/2606.18498v1-coincidence-correspondences-and-nonlinear-root-geometry)  
    标签：评分：7.8/10
    evidence：检索回退候选
-7. [The Opdam-Cherednik kernel is the Laplace transform of a positive measure](/202606/17/2606.15185v1-the-opdam-cherednik-kernel-is-the-laplace-transform-of-a-positive-measure)  
+3. [Re-Rooting-Based Fault-Tolerant One-to-All Broadcasting in Dense Eisenstein--Jacobi Networks](/202606/18/2606.18712v1-re-rooting-based-fault-tolerant-one-to-all-broadcasting-in-dense-eisenstein--jacobi-networks)  
    标签：评分：7.8/10
    evidence：检索回退候选
-8. [An Autonomous Subgram SMA-Based Swimmer](/202606/17/2606.15028v1-an-autonomous-subgram-sma-based-swimmer)  
+4. [Morpheus: A Morphology-Aware Neural Tokenizer and Word Embedder for Turkish](/202606/18/2606.18717v1-morpheus-a-morphology-aware-neural-tokenizer-and-word-embedder-for-turkish)  
    标签：评分：7.8/10
    evidence：检索回退候选
-9. [Embedded Machine Learning for Microcontroller-Class Edge Devices: Data, Feature, Evaluation, and Deployment Pipelines](/202606/17/2606.18122v1-embedded-machine-learning-for-microcontroller-class-edge-devices-data-feature-evaluation-and-deployment-pipelines)  
+5. [Di5Guise: 5G Privacy with vSIM](/202606/18/2606.16943v1-di5guise-5g-privacy-with-vsim)  
+   标签：评分：7.1/10
+   evidence：检索回退候选
+6. [Monoidal categorification of generalized cluster algebras and conjectures of Fraser and Gleitz](/202606/18/2606.16361v1-monoidal-categorification-of-generalized-cluster-algebras-and-conjectures-of-fraser-and-gleitz)  
+   标签：评分：7.1/10
+   evidence：检索回退候选
+7. [Time and Frequency domain analysis of Love waves generated by Gaussian, Ricker and double couple seismic sources in a memory dependent fractured poroviscoelastic layer on a heterogeneous viscoelastic half-space](/202606/18/2606.18359v1-time-and-frequency-domain-analysis-of-love-waves-generated-by-gaussian-ricker-and-double-couple-seismic-sources-in-a-memory-dependent-fractured-poroviscoelastic-layer-on-a-heterogeneous-viscoelastic-half-space)  
    标签：评分：6.9/10
    evidence：检索回退候选
-10. [High-throughput Low-latency Hardware Implementation of BCH Decoders](/202606/17/2606.17837v1-high-throughput-low-latency-hardware-implementation-of-bch-decoders)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-11. [The Absorption Theorem for the Beltrami-Vekua Normal Form](/202606/17/2606.18211v1-the-absorption-theorem-for-the-beltrami-vekua-normal-form)  
+8. [Finite free perpetuities](/202606/18/2606.19115v1-finite-free-perpetuities)  
    标签：评分：6.8/10
+   evidence：检索回退候选
+9. [Closed-Form and Constant-Time New-Source Selection for Fault-Tolerant Broadcasting in Dense Eisenstein--Jacobi Networks](/202606/18/2606.18714v1-closed-form-and-constant-time-new-source-selection-for-fault-tolerant-broadcasting-in-dense-eisenstein--jacobi-networks)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+10. [Scalable anomaly detection via a univariate Christoffel function](/202606/18/2606.12483v1-scalable-anomaly-detection-via-a-univariate-christoffel-function)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+11. [Arbor: Tree Search as a Cognition Layer for Autonomous Agents](/202606/18/2606.12563v1-arbor-tree-search-as-a-cognition-layer-for-autonomous-agents)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
