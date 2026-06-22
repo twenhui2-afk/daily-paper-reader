@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-21
-- 运行时间：2026-06-22 05:11:32 UTC+8
+- 最新运行日期：2026-06-22
+- 运行时间：2026-06-23 06:16:54 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Process-Verified Reinforcement Learning for Theorem Proving via Lean》（7.3/10）, 《Semi-Automatic Correction of 3D Tubular Structure Skeletons via Component-Wise MST and Filtered Delaunay Triangulation》（7.2/10）, 《HypOProto: Hyperbolic Ordinal Prototypes for Left Ventricular Filling Pressure Classification》（7.1/10）
+- 速读：《Beyond Visual Cues: CoT-Enhanced Reasoning for Semi-supervised Medical Image Segmentation》（6.8/10）, 《Structure-aware Knowledge-guided Heterogeneous Mamba for Zygomaticomaxillary Suture Assessment》（6.5/10）, 《Confidence is Not Reliability: Rethinking MC Dropout in Brain Tumour Segmentation》（6.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/21/README](/202606/21/README)
+- 详情：[/202606/22/README](/202606/22/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Process-Verified Reinforcement Learning for Theorem Proving via Lean](/202606/21/2606.20068v1-process-verified-reinforcement-learning-for-theorem-proving-via-lean)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-2. [Semi-Automatic Correction of 3D Tubular Structure Skeletons via Component-Wise MST and Filtered Delaunay Triangulation](/202606/21/2606.19949v1-semi-automatic-correction-of-3d-tubular-structure-skeletons-via-component-wise-mst-and-filtered-delaunay-triangulation)  
-   标签：评分：7.2/10
-   evidence：检索回退候选
-3. [HypOProto: Hyperbolic Ordinal Prototypes for Left Ventricular Filling Pressure Classification](/202606/21/2606.19804v1-hypoproto-hyperbolic-ordinal-prototypes-for-left-ventricular-filling-pressure-classification)  
-   标签：评分：7.1/10
-   evidence：检索回退候选
-4. [Tree-cut decompositions for displaying undominated edge-ends](/202606/21/2606.20452v1-tree-cut-decompositions-for-displaying-undominated-edge-ends)  
-   标签：评分：7.1/10
-   evidence：检索回退候选
-5. [Finishing Oltean's Completeness Proof in Lean 4 for Hybrid Logic $L(\forall)$](/202606/21/2606.19761v1-finishing-olteans-completeness-proof-in-lean-4-for-hybrid-logic-lforall)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-6. [Multi-Orientation Edge-Minimum Repair for Non-Redundant Fault-Tolerant Broadcasting in Dense Eisenstein--Jacobi Networks](/202606/21/2606.19834v1-multi-orientation-edge-minimum-repair-for-non-redundant-fault-tolerant-broadcasting-in-dense-eisenstein--jacobi-networks)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-7. [Two examples of combinatorial relations among relations of $C_{n}\sp{(1)}$-standard modules for higher levels](/202606/21/2606.19994v1-two-examples-of-combinatorial-relations-among-relations-of-cnsp1-standard-modules-for-higher-levels)  
+1. [Beyond Visual Cues: CoT-Enhanced Reasoning for Semi-supervised Medical Image Segmentation](/202606/22/2606.17958v1-beyond-visual-cues-cot-enhanced-reasoning-for-semi-supervised-medical-image-segmentation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-8. [Vision-Language Models as Zero-Annotation Oracles in Histopathology](/202606/21/2606.16658v1-vision-language-models-as-zero-annotation-oracles-in-histopathology)  
+2. [Structure-aware Knowledge-guided Heterogeneous Mamba for Zygomaticomaxillary Suture Assessment](/202606/22/2606.16749v1-structure-aware-knowledge-guided-heterogeneous-mamba-for-zygomaticomaxillary-suture-assessment)  
+   标签：评分：6.5/10
+   evidence：检索回退候选
+3. [Confidence is Not Reliability: Rethinking MC Dropout in Brain Tumour Segmentation](/202606/22/2606.19300v1-confidence-is-not-reliability-rethinking-mc-dropout-in-brain-tumour-segmentation)  
+   标签：评分：6.5/10
+   evidence：检索回退候选
+4. [PU-UNet: Stable Multiplicative Interactions for Medical Image Segmentation](/202606/22/2606.20035v1-pu-unet-stable-multiplicative-interactions-for-medical-image-segmentation)  
    标签：评分：6.4/10
    evidence：检索回退候选
-9. [A Comprehensive Survey of Medical Image Segmentation: Challenges, Benchmarks, and Beyond](/202606/21/2606.16153v1-a-comprehensive-survey-of-medical-image-segmentation-challenges-benchmarks-and-beyond)  
+5. [SegTME-UNI2: A Foundation Model-Based Framework for Generalisable Multiclass Cell Segmentation and LLM-Driven Tumour Microenvironment Characterisation in Histopathology](/202606/22/2606.17702v1-segtme-uni2-a-foundation-model-based-framework-for-generalisable-multiclass-cell-segmentation-and-llm-driven-tumour-microenvironment-characterisation-in-histopathology)  
    标签：评分：6.4/10
    evidence：检索回退候选
-10. [Contour-Constrained Deformable Registration with Parameter Characterization for Head and Neck Surgical Guidance](/202606/21/2606.19767v1-contour-constrained-deformable-registration-with-parameter-characterization-for-head-and-neck-surgical-guidance)  
+6. [Scalable Training of Spatially Grounded 2D Vision-Language Models for Radiology](/202606/22/2606.20477v1-scalable-training-of-spatially-grounded-2d-vision-language-models-for-radiology)  
    标签：评分：6.3/10
    evidence：检索回退候选
-11. [DINO-Med3D: Bridging Dimension and Domain Gaps in Volumetric Segmentation via Progressive Adaptation](/202606/21/2606.18886v1-dino-med3d-bridging-dimension-and-domain-gaps-in-volumetric-segmentation-via-progressive-adaptation)  
+7. [SegDINO: Introducing Multi-Scale Structure into DINO for Efficient Medical Image Segmentation](/202606/22/2606.17972v1-segdino-introducing-multi-scale-structure-into-dino-for-efficient-medical-image-segmentation)  
    标签：评分：6.3/10
+   evidence：检索回退候选
+8. [Bridging Single Distortion Artifacts and Mmultifactorial Clinical Quality: Few-shot Biparametric MRI Quality Assessment via Distortion-trained Prototypical Networks](/202606/22/2606.18872v1-bridging-single-distortion-artifacts-and-mmultifactorial-clinical-quality-few-shot-biparametric-mri-quality-assessment-via-distortion-trained-prototypical-networks)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+9. [Clinically Aligned Geometry Constraints for Robust IVUS Vessel Boundary Segmentation](/202606/22/2606.18723v1-clinically-aligned-geometry-constraints-for-robust-ivus-vessel-boundary-segmentation)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+10. [Stitching and dimensionality effects on large artificially generated volume datasets](/202606/22/2606.20095v1-stitching-and-dimensionality-effects-on-large-artificially-generated-volume-datasets)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+11. [Conditioning Deep Anatomical Prior Knowledge for Reconstruction of Multispectral Optoacoustic Tomography Images](/202606/22/2606.16835v1-conditioning-deep-anatomical-prior-knowledge-for-reconstruction-of-multispectral-optoacoustic-tomography-images)  
+   标签：评分：6.1/10
    evidence：检索回退候选
 
 
