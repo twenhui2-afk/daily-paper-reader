@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-26
-- 运行时间：2026-06-27 05:52:21 UTC+8
+- 最新运行日期：2026-06-27
+- 运行时间：2026-06-28 04:57:21 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Monotonic, Minimum-Settling-Time PI Tuning for First-Order-Plus-Dead-Time Plants: A Tangency Characterization》（7.8/10）, 《A Comparative Evaluation of Sample Selection Algorithms for Multivariate Calibration in Near-Infrared Spectroscopic Analysis of Pharmaceutical Formulations》（7.8/10）, 《Alternate loss functions and regression models that achieve robustness to outliers by modulating the learning rate》（7.7/10）
+- 速读：《Geometry-Aware Online Scheduling for LLM Serving: From Theoretical Bound to System Practice》（7.3/10）, 《MLFFM-SegDiff: A Multi-Level Feature Fusion Diffusion Model for Skin Lesion Segmentation》（6.5/10）, 《EnTrust: Modeling Inter-Modal Conflict for Trustworthy Multimodal Medical Image Analysis》（6.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/26/README](/202606/26/README)
+- 详情：[/202606/27/README](/202606/27/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Monotonic, Minimum-Settling-Time PI Tuning for First-Order-Plus-Dead-Time Plants: A Tangency Characterization](/202606/26/2606.22217v1-monotonic-minimum-settling-time-pi-tuning-for-first-order-plus-dead-time-plants-a-tangency-characterization)  
-   标签：评分：7.8/10
+1. [Geometry-Aware Online Scheduling for LLM Serving: From Theoretical Bound to System Practice](/202606/27/2606.22327v2-geometry-aware-online-scheduling-for-llm-serving-from-theoretical-bound-to-system-practice)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-2. [A Comparative Evaluation of Sample Selection Algorithms for Multivariate Calibration in Near-Infrared Spectroscopic Analysis of Pharmaceutical Formulations](/202606/26/2606.21914v1-a-comparative-evaluation-of-sample-selection-algorithms-for-multivariate-calibration-in-near-infrared-spectroscopic-analysis-of-pharmaceutical-formulations)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-3. [Alternate loss functions and regression models that achieve robustness to outliers by modulating the learning rate](/202606/26/2606.22068v2-alternate-loss-functions-and-regression-models-that-achieve-robustness-to-outliers-by-modulating-the-learning-rate)  
-   标签：评分：7.7/10
-   evidence：检索回退候选
-4. [New Smooth Loss functions for Robust Regression that Closely Approximate Absolute Error and Provide Improved Performance on Datasets With Significant Outliers](/202606/26/2606.22068v1-new-smooth-loss-functions-for-robust-regression-that-closely-approximate-absolute-error-and-provide-improved-performance-on-datasets-with-significant-outliers)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-5. [Resolving Multi-Target Association in OFDM-based ISAC via Vision-aided Multi-Modal Learning](/202606/26/2606.22195v1-resolving-multi-target-association-in-ofdm-based-isac-via-vision-aided-multi-modal-learning)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-6. [Systematic Exploration of 4-Expert Heterogeneous Mixture-of-Experts via Automated Pipeline Search](/202606/26/2606.23739v1-systematic-exploration-of-4-expert-heterogeneous-mixture-of-experts-via-automated-pipeline-search)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-7. [C2RM-Seg: Causal Counterfactual Reasoning with Structural-Semantic Priors for Weakly Supervised Histopathological Tissue Segmentation](/202606/26/2606.25508v1-c2rm-seg-causal-counterfactual-reasoning-with-structural-semantic-priors-for-weakly-supervised-histopathological-tissue-segmentation)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-8. [MorVess: Morphology-Aware Pulmonary Vessel Segmentation Network](/202606/26/2606.24214v1-morvess-morphology-aware-pulmonary-vessel-segmentation-network)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-9. [RobOralScan: Learning Active Intraoral Scanning for Robotic Dental Reconstruction](/202606/26/2606.26955v1-roboralscan-learning-active-intraoral-scanning-for-robotic-dental-reconstruction)  
+2. [MLFFM-SegDiff: A Multi-Level Feature Fusion Diffusion Model for Skin Lesion Segmentation](/202606/27/2606.26712v1-mlffm-segdiff-a-multi-level-feature-fusion-diffusion-model-for-skin-lesion-segmentation)  
    标签：评分：6.5/10
    evidence：检索回退候选
-10. [Hierarchical Spatial and Channel Aggregation for Cross-domain Few-shot Segmentation](/202606/26/2606.24296v1-hierarchical-spatial-and-channel-aggregation-for-cross-domain-few-shot-segmentation)  
+3. [EnTrust: Modeling Inter-Modal Conflict for Trustworthy Multimodal Medical Image Analysis](/202606/27/2606.21384v1-entrust-modeling-inter-modal-conflict-for-trustworthy-multimodal-medical-image-analysis)  
    标签：评分：6.5/10
    evidence：检索回退候选
-11. [Specificity- and Calibration-Aware Breast Ultrasound Segmentation via Entropy-Guided Boundary Supervision](/202606/26/2606.22308v1-specificity--and-calibration-aware-breast-ultrasound-segmentation-via-entropy-guided-boundary-supervision)  
+4. [C^2GR: Coupled Comprehensive Generative Replay for a Continually Learnable Universal Segmentation Model](/202606/27/2606.23473v1-c2gr-coupled-comprehensive-generative-replay-for-a-continually-learnable-universal-segmentation-model)  
    标签：评分：6.4/10
+   evidence：检索回退候选
+5. [Promise and challenges of heart chamber segmentation from non-contrast CT scans using contrastive unpaired image translation: a feasibility study](/202606/27/2606.23879v1-promise-and-challenges-of-heart-chamber-segmentation-from-non-contrast-ct-scans-using-contrastive-unpaired-image-translation-a-feasibility-study)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+6. [Concept Alignment Contrast and Long-Short Prompt Memory for Test-Time Adaptation of SAM3 in Medical Image Segmentation](/202606/27/2606.22963v1-concept-alignment-contrast-and-long-short-prompt-memory-for-test-time-adaptation-of-sam3-in-medical-image-segmentation)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+7. [Native space based pipelines outperform template space based pipeline in subcortical segmentation](/202606/27/2606.21463v1-native-space-based-pipelines-outperform-template-space-based-pipeline-in-subcortical-segmentation)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+8. [2D Versus 3D Diffusion for In Silico Training of Interventional X-ray AI Models](/202606/27/2606.21414v1-2d-versus-3d-diffusion-for-in-silico-training-of-interventional-x-ray-ai-models)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+9. [Surgical Anatomy Recognition with Context Learning using Foundation Representations](/202606/27/2606.22124v1-surgical-anatomy-recognition-with-context-learning-using-foundation-representations)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+10. [Intracranial Aneurysm Classification and Segmentation via Tri-Axial ROI and Multi-Task Learning](/202606/27/2606.26706v1-intracranial-aneurysm-classification-and-segmentation-via-tri-axial-roi-and-multi-task-learning)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+11. [CheXpercept: A Benchmark for Evaluating Expert-Level Lesion Perception in Chest X-rays](/202606/27/2606.21020v1-chexpercept-a-benchmark-for-evaluating-expert-level-lesion-perception-in-chest-x-rays)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
