@@ -1,0 +1,597 @@
+Title: MedPCFM: Improving Medical Point Cloud Completion by Integrating Point Transformers and Flow Matching
+
+URL Source: https://arxiv.org/pdf/2606.24433v1
+
+Published Time: Wed, 24 Jun 2026 01:00:26 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# MedPCFM: Improving Medical Point Cloud Completion by Integrating Point Transformers and Flow Matching 
+
+Kamil Kwarciak 1 and Marek Wodzinski 1,2 
+
+> 1
+
+Department of Measurement and Electronics, AGH University of Krakow, Krakow, Poland  
+
+> 2
+
+Sano Centre for Computational Medicine, Krakow, Poland 
+
+{kwarciak,wodzinski}@agh.edu.pl 
+
+Abstract. Medical point cloud completion is important for anatom-ical reconstruction and downstream clinical workflows, yet generative modeling in this setting remains insufficiently studied. We investigate completion through continuous-time generative modeling and introduce PCFM, a PTv3-backed flow matching approach for medical point cloud completion. We evaluate on SkullFix and SkullBreak, and additionally on the more recent Mandibular Defect dataset. We build strong baselines by adapting PTv3 to a deterministic encoder-decoder completion model and by instantiating diffusion completion (PCDiff) with both PVCNN and PTv3 denoisers. PCFM with PTv3 is competitive with the determin-istic PTv3 baseline and achieves state-of-the-art generative performance across datasets, while requiring substantially fewer sampling steps than diffusion. At the best operating points, PTv3 also yields clear throughput gains, providing up to a 7 × speed-up for PCFM compared to a PVCNN backbone. Finally, we study empirical scaling trends by varying model size and point cardinality, showing consistent gains with higher point resolution and informative trade-offs across model scales. 
+
+Keywords: Medical point cloud completion · Flow matching · 3D shape completion 
+
+## 1 Introduction 
+
+Medical 3D reconstruction often requires completing partially observed anatomy, for example due to trauma, tumor resection, congenital defects, or limited scan coverage. While volumetric approaches have dominated many pipelines, point cloud representations are attractive for high-resolution geometry, efficient com-putation, and direct compatibility with surface reconstruction and downstream implant design. However, medical point cloud completion remains challenging: missing regions can be large, thin structures are common, and multiple anatom-ically consistent completions may exist for the same partial observation.   
+
+> arXiv:2606.24433v1 [cs.CV] 23 Jun 2026 2K.Kwarciak and M. Wodzinski
+> Fig. 1: Comparison of all methods evaluated in this study across all datasets using Chamfer Distance (CD) [mm], plotted on an inversely scaled radial axis so that lower CD indicates better performance while higher radial values improve visual interpretabil-ity.
+
+Recent progress in point cloud modeling has been driven by transformer backbones, with PointTransformerV3 (PTv3) [32] emerging as a state-of-the-art architecture through space-filling-curve serialization and efficient attention over serialized neighborhoods. In parallel, generative modeling has become a powerful tool for completion, with diffusion models demonstrating strong results for point sets in both natural [4] and medical [5] domains. Yet diffusion-based sampling can be computationally expensive, and the scaling behavior of point cloud generative models in medical settings remains largely unexplored. In this work, we study medical point cloud completion from a generative mod-eling perspective with an emphasis on flow matching. We develop an iterative pipeline that progressively strengthens both the backbone and the generative formulation: (i) we adapt PTv3 to a deterministic encoder-decoder completion setting and analyze reconstruction objectives; (ii) we study diffusion-based com-pletion, reproducing state-of-the-art PVCNN-backed baseline [5] and replacing the denoiser with PTv3; and (iii) we introduce a PTv3-based flow matching model and ablate key design choices, including affine paths and an optional con-trastive regularizer. We evaluate on the widely used SkullFix and SkullBreak benchmarks [8], and extend experiments to the recently introduced Mandibular MedPCFM: Medical Point Cloud Completion 3
+
+Defect dataset [30] to test generalizability. Beyond architecture and objectives, we further analyze practical trade-offs by ablating the number of steps in dif-fusion and flow matching, and we study an iterative completion strategy that aggregates predictions across multiple resampled inputs to boost point density for downstream surface reconstruction. Finally, we perform a systematic scaling study across model sizes and point cardinalities, providing empirical evidence of predictable performance trends with increased capacity and geometric reso-lution. 
+
+Contributions. (i) We introduce a PTv3-based flow matching approach for medical point cloud completion and evaluate it on three medical defect datasets. (ii) We adapt PTv3 to a deterministic encoder-decoder completion setting, estab-lishing strong baselines and analyzing reconstruction objectives. (iii) We provide a matched comparison between diffusion and flow matching for medical comple-tion, including both PVCNN and PTv3 backbones, and analyze the impact of sampling-step budgets. (iv) We report empirical scaling trends for medical point cloud generative modeling across model sizes and point cardinalities on SkullFix, SkullBreak, and Mandibular Defect. 
+
+## 2 Related Works 
+
+2.1 Point Cloud Modeling 
+
+Point cloud modeling studies learning on unordered sets of 3D points, aiming to extract geometric representations that are invariant to point permutations. Early deep learning models operated directly on points via shared MLPs and symmetric pooling (PointNet) [22], later extending to hierarchical local fea-ture learning with neighborhood aggregation (PointNet++) [23] and attention-based point transformers, including Point Transformer and Point Transformer V2 [33, 37]. More recent approaches adopt transformer backbones for stronger long-range reasoning on point sets, such as Point Transformer V3 (PTv3) [32], which leverages space-filling-curve serialization and efficient attention to handle high-resolution point clouds. These models are widely used in 3D vision tasks such as classification [3, 31], semantic/instance segmentation [26, 27], and object detection [1, 28] 
+
+2.2 Medical Point Cloud Completion 
+
+In medical imaging, point clouds naturally arise as surface samples extracted from segmented anatomy and provide a compact alternative to voxel grids while preserving fine geometric detail. Completion is relevant for reconstructive set-tings where anatomy is missing (e.g., trauma or resection) and surface models are used for surgical planning and patient-specific 3D-printed implant fabrica-tion. Many learning-based pipelines have traditionally operated in voxel space using volumetric CNNs such as 3D U-Net and V-Net [2, 19]. More recently, medical defect completion has been studied with explicit surface/point repre-sentations, including adversarial point cloud reconstruction for cranial implant 4 K.Kwarciak and M. Wodzinski 
+
+design (CranGAN) [25], supported by benchmarks such as AutoImplant chal-lenge [11] and SkullFix/SkullBreak datasets [8]. Recently, also novel generative approaches such as PCDiff [5] have been adapted to this field. Iterative point-cloud completion has also been explored to produce denser reconstructions that can benefit downstream meshing [29]. 
+
+2.3 Generative Models for Point Clouds 
+
+Generative modeling provides a principled way to represent uncertainty and multi-modality in completion. Diffusion models (DDPMs) [6] have been adapted to point sets for unconditional generation and conditional completion [16], in-cluding point-voxel diffusion formulations such as PVD [38]. In the medical im-plant setting, PCDiff applies diffusion to generate cranial implants from partial skull geometry and evaluates on SkullFix/SkullBreak [5]. In parallel, continuous-time alternatives such as Flow Matching [12] and related rectified-flow formula-tions [14] train ODE-based generators by regressing velocity fields along proba-bility paths, often enabling sampling with fewer solver steps than diffusion. While diffusion has seen broader adoption for point clouds [16, 18, 38], flow-matching-style methods have only recently been explored in 3D point-cloud generation (e.g., GaussianAnything [36]) and remain comparatively under-explored for point set completion, motivating our investigation in the medical domain. 
+
+## 3 Methods 
+
+We propose PCFM , a PTv3-based flow matching approach for medical point cloud completion. PCFM models the missing anatomy as a continuous-time transport from a simple noise distribution to the completion distribution condi-tioned on the observed defective input. We use Point Transformer V3 (PTv3) [32] as the backbone to parameterize the flow field over point sets. For completeness and fair comparison, we also introduce a deterministic PTv3 encoder-decoder baseline for medical completion and consider diffusion baselines following PCD-iff [5] with both PVCNN and PTv3 denoisers. Additionally, we instantiate PCFM with a PVCNN backbone to isolate the impact of the backbone under the same flow-matching formulation. Figure 2 summarizes the our proposed methodology. 
+
+3.1 Problem Setup: Medical Point Cloud Completion 
+
+Let S ⊂ R3 denote an anatomical surface and let P = {pi}Ni=1 ⊂ R3 be a point cloud sampled from S. In completion, we observe an incomplete point cloud 
+
+X = {xi}NX 
+
+> i=1
+
+obtained by removing a subset of points (e.g., due to anatomical defects or partial acquisition), and aim to recover the missing geometry. We denote the missing part as Y = {yj }NY 
+
+> j=1
+
+such that the complete shape is P =
+
+X ∪ Y and X ∩ Y = ∅. In practice, point clouds are treated as unordered sets, and this equality holds up to sampling density. Given only the observed points MedPCFM: Medical Point Cloud Completion 5               
+
+> Fig. 2: Overview of our pipeline. In the deterministic regime, the model maps the defective input Xto a completion ˆY. In the generative regime, we model the missing part through a time-dependent state Ytconditioned on X: diffusion predicts ϵθ(Yt, t, X ),while flow matching predicts a velocity field vθ(Yt, t, X )and generates ˆYby ODE integration. Dashed arrows indicate components used only in the generative regime.
+
+X, a model fθ predicts the completion ˆY = fθ (X), yielding the reconstruction 
+
+ˆP = X ∪ ˆY .We can frame this problem in a deterministic regime, where we learn a direct mapping fθ : X 7 → ˆY by minimizing a reconstruction loss Lrec (Y, ˆY ). In the generative regime, we instead learn a conditional distribution over completions 
+
+pθ (Y | X) and sample ˆY ∼ pθ (· | X), which is relevant when the missing region is ambiguous and multiple anatomically consistent completions may exist. Unless stated otherwise, we fix the output cardinality to NY points. For the deterministic PTv3 encoder–decoder, we adopt an almost symmetric design and set NY = NX to ensure comparable input and output representations and to simplify the optimization process. In the generative regime, we often choose 
+
+NY < N X to reflect medical defects, where the missing anatomy typically occu-pies a smaller spatial extent, and to maintain a more balanced spatial density between X and ˆY .
+
+3.2 Backbone: Point Transformer V3 (PTv3) 
+
+We use PTv3 [32] as the shared point-cloud backbone across our point-based models. PTv3 addresses the unordered nature of point sets by serializing points with a space-filling curves, which induce a structured 1D ordering together with efficient neighborhood mapping. Self-attention is then performed as Serialized Attention, i.e., windowed/patch-wise attention over the serialized sequence, pro-viding scalable local-to-global context aggregation without expensive neighbor recomputation. To inject geometric locality that complements attention, PTv3 employs xCPE (enhanced conditional positional encoding), implemented as a lightweight sparse-convolution module applied before attention. Finally, PTv3 uses Serialized Pooling and Serialized Unpooling, which down/up-sample points while preserving the serialization-based correspondence, enabling efficient multi-scale feature fusion with skip connections for high-resolution reasoning. 6 K.Kwarciak and M. Wodzinski 
+
+3.3 Proposed Method: PTv3 Flow Matching for Completion (PCFM) 
+
+We now describe our main method, PCFM, which learns a conditional continuous-time flow for the missing part given the observed input X.
+
+Flow Matching Formulation for Point Clouds We model the missing part as a point set Y ∈ RNY ×3 and learn a conditional continuous-time flow that transforms a simple base distribution into the completion distribution given X.Let Y0 ∼ π0 denote a base sample (we use an isotropic Gaussian in RNY ×3) and let Y1 ∼ π1(· | X) denote a ground-truth completion. Following a common FM parameterization, we define a time-dependent probability path via 
+
+Yt = ψt(Y0 | Y1) = αt Y1 + σt Y0, (1) where αt, σ t ∈ R satisfy α0 = 0 , σ 0 = 1 and α1 = 1 , σ 1 = 0 , so that Yt=0 = Y0
+
+and Yt=1 = Y1. This induces a target velocity along the path 
+
+ut = dY t
+
+dt = ˙αt Y1 + ˙σt Y0. (2) Flow matching learns a conditional vector field vθ (·, t, X ) such that the ODE 
+
+dY t
+
+dt = vθ (Yt, t, X ) (3) transports π0 to π1(· | X). Training regresses the model velocity to the target velocity along the path [12]: 
+
+LF M = Et∼U [0 ,1] , Y 0∼π0, Y 1∼π1(·| X)
+
+h
+
+∥vθ (Yt, t, X ) − ut∥22
+
+i
+
+, (4) 
+
+Yt = αtY1 + σtY0. (5) At inference, we draw Y0 ∼ π0 and numerically integrate the learned ODE from 
+
+t = 0 to t = 1 to obtain ˆY , yielding ˆP = X ∪ ˆY . We parameterize vθ with PTv3 to model the velocity field over point sets. 
+
+Affine Paths for Point Cloud Flow Matching We introduced the affine path Yt = αtY1 +σtY0 and target velocity ut = ˙ αtY1 + ˙ σtY0. The remaining design choice is the scheduler (αt, σ t), which controls how signal and noise are mixed over time. While the linear path (Conditional-OT) with αt = t and σt = 1 − t
+
+provides a baseline, we also consider alternative affine schedulers [13]. VP linear with the scheduler in the form of 
+
+αt = t, σt = p1 − t2, (6) and Cosine with the scheduler formed as 
+
+αt = sin 
+
+ π 
+
+> 2
+
+t
+
+
+
+, σt = cos 
+
+ π 
+
+> 2
+
+t
+
+
+
+. (7) We report a detailed ablation of these path choices in the supplementary mate-rial, and use the two best-performing schedulers in the main experiments. MedPCFM: Medical Point Cloud Completion 7
+
+Point Cloud Contrastive Flow Matching We optionally incorporate a con-trastive regularizer inspired by ∆FM [24]. For each example we form Yt =
+
+αtY1 + σtY0 and predict vθ (Yt, t, X ). We then permute the batch to obtain a negative pair (X−, Y − 
+
+> t
+
+) and compute vθ (Y − 
+
+> t
+
+, t, X −). The objective is 
+
+L∆F M = E
+
+h
+
+∥vθ (Yt, t, X ) − ut∥22
+
+i
+
+− λ E
+
+h
+
+∥vθ (Yt, t, X ) − vθ (Y − 
+
+> t
+
+, t, X −)∥22
+
+i
+
+.
+
+(8) This term can encourage separation between mismatched conditional flows. We provide the corresponding ablation in the supplementary material, and keep the inference procedure unchanged (negatives are formed by within-batch permuta-tion during training only). 
+
+3.4 Baselines and Alternative Regimes 
+
+We now summarize the deterministic and diffusion baselines used for comparison. 
+
+Deterministic PTv3 Encoder-Decoder Baseline Given X = {xi}NX
+
+> i=1
+
+, we embed points and process them with a hierarchical PTv3 encoder that serializes points and computes attention over serialized neighborhoods while progressively downsampling to multi-scale features. We attach a symmetric decoder with skip connections to upsample and fuse features, and a final prediction head regresses 3D coordinates to produce ˆY = {ˆyj }NY
+
+> j=1
+
+, yielding ˆP = X ∪ ˆY .We employ a two-term reconstruction loss. The first term is Chamfer Dis-tance: 
+
+LCD (Y, ˆY ) = 1
+
+|Y |
+
+X
+
+> y∈Y
+
+min  
+
+> ˆy∈ˆY
+
+∥y − ˆy∥22 + 1
+
+| ˆY |
+
+X 
+
+> ˆy∈ˆY
+
+min  
+
+> y∈Y
+
+∥ˆy − y∥22. (9) To discourage point collapse and improve spatial coverage of the predicted com-pletion, we add a repulsion (uniformity) regularizer following PU-Net [35]: 
+
+Lrep ( ˆY ) = 1
+
+|A| 
+
+X
+
+> ˆyi∈A
+
+X  
+
+> ˆyj∈N k(ˆ yi)
+
+
+
+− rij 
+
+
+
+exp 
+
+
+
+− r2
+
+> ij
+
+h2
+
+
+
+, rij = ∥ˆyi − ˆyj ∥2, (10) where A ⊆ ˆY is a set of S anchors, Nk denotes k nearest neighbors in ˆY , and h
+
+controls the repulsion radius. The final objective is 
+
+Lrec = LCD (Y, ˆY ) + λ Lrep ( ˆY ), (11) where λ controls the repulsion strength. 8 K.Kwarciak and M. Wodzinski 
+
+Diffusion Completion (PCDiff ) and Backbone Variants We consider diffusion-based completion following PCDiff [5], where the diffusion process acts on the missing part conditioned on X. Let Y1 = Y denote the clean missing point set and Y0 ∼ N (0 , I) a base noise sample in RNY ×3. The forward process is 
+
+q(Y1: T | Y1) = 
+
+> T
+
+Y
+
+> t=1
+
+q(Yt | Yt−1), (12) 
+
+q(Yt | Yt−1) = N (√at Yt−1, (1 − at)I) , (13) with at = 1 − βt and ¯at = Qts=1 as. The marginal admits 
+
+Yt = √¯at Y1 + √1 − ¯at ϵ, ϵ ∼ N (0 , I). (14) To align with the FM affine notation, define 
+
+αt = √¯at, σt = √1 − ¯at, (15) so that 
+
+Yt = αt Y1 + σt Y0, Y0 ∼ N (0 , I). (16) The reverse process is 
+
+pθ (Y0: T | X) = p(YT )
+
+> 1
+
+Y
+
+> t=T
+
+pθ (Yt−1 | Yt, X ), p(YT ) = N (0 , I), (17) with transitions parameterized by ϵθ (Yt, t, X ). Using DDPM [6], 
+
+Yt−1 = 1
+
+√at
+
+
+
+Yt − 1 − at
+
+√1 − ¯at
+
+ϵθ (Yt, t, X )
+
+
+
++ pβt z, z ∼ N (0 , I), (18) and training minimizes 
+
+Ldif f = Et,ϵ 
+
+h
+
+∥ϵ − ϵθ (Yt, t, X )∥22
+
+i
+
+. (19) We instantiate ϵθ with (i) the PVCNN denoiser used in PCDiff (PointNet++ with point-voxel convolutions) [15, 23], and (ii) a PTv3 denoiser while keeping the diffusion parameterization, schedule, and sampling unchanged. 
+
+## 4 Experiments 
+
+We conduct experiments to (i) compare deterministic and generative completion regimes, (ii) quantify the impact of backbone and loss design, and (iii) study scaling with model capacity and point cardinality. Details are organized in the following subsections. MedPCFM: Medical Point Cloud Completion 9
+
+4.1 Datasets 
+
+Medical datasets for defect-driven shape completion are still emerging. We focus on two widely used cranial defect benchmarks, SkullFix and SkullBreak [8], and additionally evaluate on the recently introduced Mandibular Defect dataset [30], which contains 147 clinically derived mandibular defect cases. For SkullFix and SkullBreak, we use the official train/test splits and further split the training set into train/validation, resulting in 90/10/110 (train/val/test) for SkullFix and 510/60/100 for SkullBreak. Given the dataset size disparity, we follow a joint training regime [10] across SkullFix and SkullBreak to encourage better cross-dataset generalization. This differs from PCDiff [5], where SkullFix and SkullBreak were trained separately. For Mandibular Defect dataset, no official split is provided, hence we adopt a 70/10/20 split, yielding 103/14/30 cases. We convert surface representations to dense point clouds via Poisson-based surface sampling and obtain the target training cardinalities using farthest point sampling. We evaluate three point cardinalities. For the deterministic PTv3 encoder-decoder, we use (NX /N Y ) ∈ { 2048 /2048 , 16384 /16384 , 32768 /32768 }.For generative models, we predict fewer points for the missing region to reflect the typically smaller spatial extent of defects and maintain comparable point density, using (NX /N Y ) ∈ { 1844 /204 , 14746 /1638 , 29492 /3276 }.Following PCDiff [5], we normalize all shapes by applying a global scaling to map coordinates into the range [−3, 3] along each axis. During training, we apply a lightweight rigid augmentation consisting of fixed rotations around the coordinate axes to improve invariance to global pose. 
+
+4.2 Experimental Setup 
+
+We begin with the deterministic PTv3 encoder-decoder baseline and study three model scales (small/base/large) with 19.7M, 46.7M, and 468.6M parameters, respectively. Full architectural specifications are provided in the supplementary material for reproducibility. For reconstruction, we train with Chamfer Distance and additionally ablate a repulsion regularizer (Eq. 11) using two strengths, set-ting λ ∈ { 30 , 300 }. Initial experiments for the encoder-decoder are performed at the 2048/2048 and 16384/16384 cardinalities. We train for 10,000 epochs with ADAM optimizer [7] and adjust batch size to the cardinality (32 for 2048/2048 and 8 for 16384/16384), monitoring training/validation loss to ensure conver-gence. For generative completion, we start from the PCDiff baseline with a PVCNN denoiser [5] (27.6M parameters) and follow the training protocol of the original work. We then isolate backbone effects by replacing PVCNN with PTv3-base (46.7M) while keeping the diffusion formulation and schedule fixed. Next, we move to flow matching and, for fair comparison, train a conditional-OT FM base-line with a PVCNN backbone. All flow matching ablations (affine path choices and contrastive regularization) are conducted with PTv3. To study scaling, we evaluate all three point cardinalities and all three model sizes. Diffusion and flow matching models are trained for 15,000 epochs (as in PCDiff [5]), with ADAM 10 K.Kwarciak and M. Wodzinski 
+
+optimizer [7] and with minor backbone-dependent adjustments to batch size and learning rate reported in the supplementary material. All experiments are run on a single NVIDIA GH200 GPU with 96GB VRAM. 
+
+4.3 Evaluation Protocol, Metrics, and Baselines 
+
+We evaluate our approach in three stages. First, we validate the deterministic PTv3 encoder-decoder baseline by analyzing the effect of reconstruction objec-tives across model sizes and point cardinalities. Second, we study the gener-ative regime, focusing on flow matching: we ablate affine paths and the con-trastive component, and quantify scaling trends with respect to model size and point cardinality using Chamfer Distance (CD). Third, we compare the best-performing flow matching model against diffusion baselines on all datasets. For SkullFix/SkullBreak we train jointly and evaluate on each benchmark separately, while for Mandibular Defect we train and evaluate only within that dataset. 
+
+Table 1: PTv3 encoder-decoder abla-tion across model size, point cardinality (NX /N Y ), and repulsion strength λ. Lower CD [mm] is better.                                          
+
+> SkullFix SkullBreak Model NX/N YλCD ↓CD ↓
+> Small 2048/2048 00.125 0.132
+> 30 0.123 0.134
+> 300 0.135 0.147
+> 16384/16384 00.110 0.108
+> 30 0.114 0.111
+> 300 0.130 0.109
+> Base 2048/2048 00.105 0.116
+> 30 0.111 0.117
+> 300 0.115 0.131
+> 16384/16384 00.076 0.079
+> 30 0.077 0.083
+> 300 0.078 0.078
+> Large 2048/2048 00.118 0.123
+> 30 0.116 0.116
+> 300 0.139 0.137
+> 16384/16384 00.089 0.087
+> 30 0.095 0.086
+> 300 0.103 0.093
+
+We report metrics across point-cloud and volumetric 3D repre-sentations. For point clouds, we use Chamfer Distance (CD) as the primary metric. For com-parison to volumetric baselines, we convert our point-based re-constructions to voxel grids by first reconstructing a watertight surface/occupancy using Shape-As-Points (SAP), an optimization-based differentiable Poisson solver [21] and then voxelizing the resulting representation at the evaluation resolution. We then report DSC, boundary DSC (BDSC), and HD95, alongside 3D U-Net [2] and V-Net [19] baselines. 
+
+4.4 Results 
+
+We begin with the deterministic PTv3 encoder-decoder, which to our knowledge is the first adaptation of PTv3 to medical point cloud com-pletion, and ablate reconstruction losses across model scales and point cardinal-ities (Table 1). Increasing the point count yields the largest gains, while scal-ing beyond PTv3-Base does not consistently improve performance. Additionally, overly strong repulsion can degrade accuracy (see supplementary for qualitative examples). MedPCFM: Medical Point Cloud Completion 11 
+
+Fig. 3: Scaling trends for PCFM on SkullBreak. Left: Chamfer Distance [mm] versus input point cardinality NX . Right: Chamfer Distance [mm] versus model size (param-eter count). Lower is better. 
+
+Table 2: Main comparison across datasets and representations. Lower is better for CD [mm] and HD95 [mm]; higher is better for DSC and BDSC. V-Net and 3D U-Net are volumetric baselines operating on voxel grids.                                                                                                               
+
+> SkullFix SkullBreak Mandibular Defect Model CD ↓DSC ↑BDSC ↑HD95 ↓CD ↓DSC ↑BDSC ↑HD95 ↓CD ↓DSC ↑BDSC ↑HD95 ↓
+> PCDiff w/ PVCNN 0.141 0.821 0.801 2.83 0.140 0.818 0.805 2.46 0.267 0.571 0.578 5.81 PCDiff w/ PTv3 0.186 0.744 0.721 4.58 0.169 0.759 0.720 3.34 0.341 0.461 0.441 8.31 PCFM w/ PVCNN 0.138 0.823 0.759 3.04 0.143 0.821 0.778 2.88 0.258 0.596 0.590 5.85 PCFM w/ PTv3 (Linear) 0.113 0.842 0.816 2.40 0.120 0.833 0.819 2.38 0.208 0.713 0.721 3.28 PCFM w/ PTv3 (Cosine) 0.118 0.835 0.807 2.53 0.122 0.826 0.802 2.43 0.197 0.639 0.659 3.05
+> PTv3 Encoder-Decoder 0.076 0.854 0.841 2.33 0.079 0.814 0.813 2.51 0.349 0.434 0.444 9.21 V-Net 0.104 0.856 0.851 2.15 0.168 0.822 0.837 2.48 0.264 0.546 0.550 7.11 3D U-Net 0.140 0.851 0.852 2.32 0.195 0.829 0.821 2.49 0.227 0.642 0.640 4.98
+
+We then move to the generative regime and report a comprehensive compar-ison in Table 2, including the PTv3 encoder-decoder, diffusion baselines (PCD-iff with PVCNN and PTv3 backbones), flow matching baselines (PCFM with PVCNN), our two best PCFM with PTv3 variants, and volumetric references (V-Net and 3D U-Net). The selection of the top-performing PCFM with PTv3 configurations is based on ablations over affine paths and the contrastive compo-nent (reported in the supplementary), while Figure 3 summarizes scaling trends in the generative regime with respect to model size and point cardinality. Over-all, performance improves consistently with increasing the amount of points, whereas scaling model size exhibits diminishing returns beyond the base con-figuration, suggesting that resolution is the dominant driver in this setting. Ta-ble 2 compares point- and voxel-space metrics across datasets. On SkullFix and SkullBreak, the deterministic PTv3 encoder-decoder achieves the lowest CD, which is expected since Chamfer is its direct training objective, while PCFM with PTv3 provides the strongest generative performance and remains compet-12 K.Kwarciak and M. Wodzinski 
+
+itive on DSC/BDSC/HD95. On Mandibular Defect, PCFM with PTv3 yields the best overall results among the compared methods, while volumetric base-lines underperform; we attribute this partly to the dataset’s higher geometric complexity and the practical difficulty of training volumetric models at high res-olution. Since optimizing volumetric architectures is not the primary focus of this work, our voxel baselines follow standard settings and limited tuning, and we expect that more extensive volumetric optimization could further improve their performance. 
+
+Table 3: Sampling-step trade-offs for dif-fusion (PCDiff uses the DDPM ancestral sampler) and flow matching (PCFM uses a Heun ODE solver) on the combined Skull-Fix/SkullBreak setting. Time is reported per generated sample, lower CD [mm] is better.                                   
+
+> Method Backbone Steps Time [s] CD ↓
+> PCDiff PVCNN
+> 10.550 2.440 50 27 .410 1.970 100 55 .040 1.770 1000 553 .860 0.141
+> PTv3
+> 10.276 2.430 50 6.700 2.270 100 9.270 2.150 1000 99 .800 0.178
+> PCFM PVCNN
+> 11.090 0.486 54.400 0.180 20 20 .770 0.142 40 42 .800 0.140
+> PTv3
+> 10.157 0.478 50.643 0.166 20 2.770 0.120 40 6.100 0.116
+
+Sampling efficiency is a central practical difference between diffu-sion and flow matching. Flow match-ing learns a continuous-time ODE whose solution can often be approx-imated with far fewer integration steps than the number of denoising steps typically required for diffusion sampling. For diffusion, we follow PCDiff and use the DDPM ancestral sampler. For flow matching, we inte-grate the ODE with Heun’s method, which has been reported as a robust choice in recent vision work [17]. We evaluate diffusion with 1, 50, 100, and 1000 sampling steps, and flow matching with 1, 5, 20, and 40 inte-gration steps. Since one-step gener-ation remains an active research di-rection for both diffusion and flow-based methods [9, 20, 34] and of-ten requires specialized training, we treat it as a diagnostic setting rather than the primary operating regime. Table 3 reports the resulting speed-quality trade-offs. At the best-performing settings for each method (PCDiff at 1000 steps and PCFM at 40 Heun steps), PCFM with PTv3 achieves the most favorable combination of speed and accu-racy. Relative to the corresponding PVCNN variants, PTv3 provides a ∼ 5.5×
+
+speed-up for PCDiff (1000 steps) and a ∼ 7× speed-up for PCFM (40 steps), while maintaining strong reconstruction quality. Overall, diffusion requires long sampling to reach competitive CD, whereas flow matching attains comparable or better accuracy with substantially fewer steps, making PCFM with PTv3 the most practical choice in our setting. 
+
+4.5 Qualitative Analysis 
+
+We complement quantitative results with qualitative comparisons of the gener-ated point clouds (Figure 4, additional examples are provided in the supplemen-MedPCFM: Medical Point Cloud Completion 13 
+
+tary). For the volumetric baselines (V-Net and 3D U-Net), we extract surfaces and sample point clouds using the same pipeline as for our point-based meth-ods (Poisson surface sampling followed by farthest point sampling). Overall, all methods produce visually plausible completions on SkullFix and SkullBreak, with differences largely reflecting point density and sampling. In particular, the PTv3 encoder-decoder outputs denser implants due to the NX = NY setting. We note that the visually uniform point distribution for volumetric baselines is partly induced by the post-processing (FPS on Poisson-sampled surfaces) rather than being directly predicted as points. On Mandibular Defect, qualitative differences are more pronounced: PCFM with PTv3 most closely matches the ground-truth geometry, while PCDiff with PVCNN can reach similar fidelity but at the cost of long sampling (e.g., 1000 steps). Other methods typically recover the correct region but exhibit increased geometric noise in the predicted implant. We additionally observe more fre-quent artifacts for volumetric models on Mandibular Defect, which contains high-resolution scans (up to ∼1000 3 voxels). Training on downsampled volumes and converting predictions back to high resolution can lead to small spatial shifts and boundary jitter, especially given the limited dataset size.  
+
+> Fig. 4: Qualitative comparison across datasets. Top: SkullBreak, middle: SkullFix, bottom: Mandibular Defect. For the volumetric baselines, point clouds are obtained by extracting surfaces and sampling points using Poisson surface sampling followed by farthest point sampling (FPS), consistent with the preprocessing used for point-based methods.
+
+## 5 Discussion 
+
+We introduced PCFM with a PTv3 backbone as a flow-matching approach to medical point cloud completion. We evaluated on two established cranial defect datasets (SkullFix and SkullBreak) and additionally on the Mandibular Defect dataset. Across these datasets, PCFM with PTv3 is the strongest generative ap-proach in our study and remains competitive with volumetric models and robust 14 K.Kwarciak and M. Wodzinski 
+
+deterministic PTv3 encoder-decoder baseline, which itself is a contribution as an adaptation of PTv3 to medical point cloud completion. A key motivation for generative modeling in this setting is that implant generation is often not uniquely determined by the observed defect. Generative methods can provide multiple anatomically consistent candidates that can be selected or refined according to clinical constraints. In this context, the practical sampling efficiency of PCFM with PTv3 is particularly attractive, enabling rapid generation (e.g., a single sample in ∼6.1 s in our setup) while maintaining strong geometric fidelity. Our results also support point-based modeling as an efficient alternative to volumetric pipelines. Training and inference with dense 3D convolutions are compute- and memory-intensive, and voxelization introduces resolution trade-offs that can be limiting for fine anatomical detail. Point clouds provide a com-pact representation that is sufficient for downstream clinical workflows: implants are typically manufactured from surface meshes, and point predictions can be converted to meshes directly without requiring a voxel intermediate. We also highlight limitations and future work. A practical bottleneck remains the conversion from point clouds to meshes (and subsequently to voxel grids for volumetric metrics). We use an optimization-based differentiable Poisson recon-struction, but mesh quality can be sensitive to reconstruction hyperparameters and point density. Future work could explore learning-based surface reconstruc-tion [5,21], more robust meshing pipelines, or iterative multi-resampling comple-tion (investigated as an ablation in the supplementary) to further stabilize mesh generation. In addition, Mandibular Defect yields lower point- and voxel-space scores compared to SkullFix/SkullBreak, likely reflecting its higher anatomical variability and geometric complexity. Notably, the deterministic PTv3 encoder-decoder degrades more strongly on Mandibular Defect, whereas PCFM with PTv3 provides a marked improvement; we hypothesize this is driven by the sub-stantially higher heterogeneity of mandibular defects and the limited ability of non-generative mappings to generalize across such variability. Improving sta-bility and generalization in such settings is an important direction for future works. Overall, PCFM with PTv3 provides a simple and effective generative frame-work for medical point cloud completion, combining strong accuracy with fast sampling. We expect this formulation to be a useful foundation for future work on richer conditioning, improved surface reconstruction, and alternative continuous-time generative objectives for medical 3D shape reconstruction. 
+
+## Acknowledgements 
+
+The project was funded by The National Centre for Research and Development, Poland under Lider Grant no: LIDER13/0038/2022 (DeepImplant). We grate-fully acknowledge Polish high-performance computing infrastructure PLGrid (HPC Center: ACK Cyfronet AGH) for providing computer facilities and sup-port within computational grant no. PLG/2026/019392. MedPCFM: Medical Point Cloud Completion 15 
+
+## References 
+
+1. Chen, A., Zhang, K., Zhang, R., Wang, Z., Lu, Y., Guo, Y., Zhang, S.: Pimae: Point cloud and image interactive masked autoencoders for 3d object detection. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 5291–5301 (2023) 2. Çiçek, Ö., Abdulkadir, A., Lienkamp, S.S., Brox, T., Ronneberger, O.: 3d u-net: learning dense volumetric segmentation from sparse annotation. In: International conference on medical image computing and computer-assisted intervention. pp. 424–432. Springer (2016) 3. De Vries, M., Naidoo, R., Fourkioti, O., Dent, L.G., Curry, N., Dunsby, C., Bakal, C.: Interpretable point cloud classification using multiple instance learning. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 22209–22220 (2025) 4. Du, Y., Zhao, Z., Su, S., Golluri, S., Zheng, H., Yao, R., Wang, C.: Superpc: a single diffusion model for point cloud completion, upsampling, denoising, and coloriza-tion. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 16953–16964 (2025) 5. Friedrich, P., Wolleb, J., Bieder, F., Thieringer, F.M., Cattin, P.C.: Point cloud diffusion models for automatic implant generation. In: International conference on medical image computing and computer-assisted intervention. pp. 112–122. Springer (2023) 6. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. Advances in neural information processing systems 33 , 6840–6851 (2020) 7. Kingma, D.P., Ba, J.: Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 (2014) 8. Kodym, O., Li, J., Pepe, A., Gsaxner, C., Chilamkurthy, S., Egger, J., Španěl, M.: Skullbreak/skullfix–dataset for automatic cranial implant design and a benchmark for volumetric shape learning tasks. Data in Brief 35 , 106902 (2021) 9. Kornilov, N., Mokrov, P., Gasnikov, A., Korotin, A.: Optimal flow matching: Learn-ing straight trajectories in just one step. Advances in Neural Information Process-ing Systems 37 , 104180–104204 (2024) 10. Kwarciak, K., Wodziński, M.: Deep generative networks for heterogeneous aug-mentation of cranial defects. In: Proceedings of the IEEE/CVF International Con-ference on Computer Vision. pp. 1066–1074 (2023) 11. Li, J., Ellis, D.G., Kodym, O., Rauschenbach, L., Rieß, C., Sure, U., Wrede, K.H., Alvarez, C.M., Wodzinski, M., Daniol, M., et al.: Towards clinical applicability and computational efficiency in automatic cranial implant design: An overview of the autoimplant 2021 cranial implant design challenge. Medical Image Analysis 88 ,102865 (2023) 12. Lipman, Y., Chen, R.T., Ben-Hamu, H., Nickel, M., Le, M.: Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 (2022) 13. Lipman, Y., Havasi, M., Holderrieth, P., Shaul, N., Le, M., Karrer, B., Chen, R.T., Lopez-Paz, D., Ben-Hamu, H., Gat, I.: Flow matching guide and code. arXiv preprint arXiv:2412.06264 (2024) 14. Liu, X., Gong, C., Liu, Q.: Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 (2022) 15. Liu, Z., Tang, H., Lin, Y., Han, S.: Point-voxel cnn for efficient 3d deep learning. Advances in neural information processing systems 32 (2019) 16 K.Kwarciak and M. Wodzinski 16. Luo, S., Hu, W.: Diffusion probabilistic models for 3d point cloud generation. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recog-nition. pp. 2837–2845 (2021) 17. Ma, N., Goldstein, M., Albergo, M.S., Boffi, N.M., Vanden-Eijnden, E., Xie, S.: Sit: Exploring flow and diffusion-based generative models with scalable interpolant transformers. In: European Conference on Computer Vision. pp. 23–40. Springer (2024) 18. Melas-Kyriazi, L., Rupprecht, C., Vedaldi, A.: Pc2: Projection-conditioned point cloud diffusion for single-image 3d reconstruction. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 12923– 12932 (2023) 19. Milletari, F., Navab, N., Ahmadi, S.A.: V-net: Fully convolutional neural networks for volumetric medical image segmentation. In: 2016 fourth international confer-ence on 3D vision (3DV). pp. 565–571. Ieee (2016) 20. Noroozi, M., Hadji, I., Martinez, B., Bulat, A., Tzimiropoulos, G.: You only need one step: Fast super-resolution with stable diffusion via scale distillation. In: Eu-ropean Conference on Computer Vision. pp. 145–161. Springer (2024) 21. Peng, S., Jiang, C., Liao, Y., Niemeyer, M., Pollefeys, M., Geiger, A.: Shape as points: A differentiable poisson solver. Advances in Neural Information Processing Systems 34 , 13032–13044 (2021) 22. Qi, C.R., Su, H., Mo, K., Guibas, L.J.: Pointnet: Deep learning on point sets for 3d classification and segmentation. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 652–660 (2017) 23. Qi, C.R., Yi, L., Su, H., Guibas, L.J.: Pointnet++: Deep hierarchical feature learn-ing on point sets in a metric space. Advances in neural information processing systems 30 (2017) 24. Stoica, G., Ramanujan, V., Fan, X., Farhadi, A., Krishna, R., Hoffman, J.: Con-trastive flow matching. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 1185–1194 (2025) 25. Sulakhe, H., Li, J., Egger, J., Goyal, P.: Crangan: Adversarial point cloud recon-struction for patient-specific cranial implant design. In: 2022 44th Annual Interna-tional Conference of the IEEE Engineering in Medicine & Biology Society (EMBC). pp. 603–608. IEEE (2022) 26. Vu, T., Kim, K., Luu, T.M., Nguyen, T., Yoo, C.D.: Softgroup for 3d instance segmentation on point clouds. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 2708–2717 (2022) 27. Wang, W., Yu, R., Huang, Q., Neumann, U.: Sgpn: Similarity group proposal network for 3d point cloud instance segmentation. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 2569–2578 (2018) 28. Wang, Y., Ye, T., Cao, L., Huang, W., Sun, F., He, F., Tao, D.: Bridged transformer for vision and point cloud 3d object detection. in 2022 ieee. In: CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 12104–12113 (2022) 29. Wodzinski, M., Daniol, M., Hemmerling, D., Socha, M.: High-resolution cranial defect reconstruction by iterative, low-resolution, point cloud completion trans-formers. In: International conference on medical image computing and computer-assisted intervention. pp. 333–343. Springer (2023) 30. Wu, J., Jiang, L., Shao, L., Wang, W., Xu, X., Zhou, Y., Wang, X., Wang, J., Wu, J., Chen, X., et al.: A mandibular defect dataset for autonomous reconstruction planning in oral and maxillofacial surgery. Scientific Data 12 (1), 1763 (2025) MedPCFM: Medical Point Cloud Completion 17 31. Wu, P., Chai, B., Li, H., Zheng, M., Peng, Y., Wang, Z., Nie, X., Zhang, Y., Sun, X.: Spiking point transformer for point cloud classification. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 39, pp. 21563–21571 (2025) 32. Wu, X., Jiang, L., Wang, P.S., Liu, Z., Liu, X., Qiao, Y., Ouyang, W., He, T., Zhao, H.: Point transformer v3: Simpler faster stronger. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 4840–4851 (2024) 33. Wu, X., Lao, Y., Jiang, L., Liu, X., Zhao, H.: Point transformer v2: Grouped vector attention and partition-based pooling. Advances in Neural Information Processing Systems 35 , 33330–33342 (2022) 34. You, W., Zhang, M., Zhang, L., Zhou, X., Shi, K., Gu, S.: Consistency trajec-tory matching for one-step generative super-resolution. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 12747–12756 (2025) 35. Yu, L., Li, X., Fu, C.W., Cohen-Or, D., Heng, P.A.: Pu-net: Point cloud upsampling network. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 2790–2799 (2018) 36. Yushi, L., Zhou, S., Lyu, Z., Hong, F., Yang, S., Dai, B., Pan, X., Loy, C.C.: Gaussiananything: Interactive point cloud flow matching for 3d generation. In: The Thirteenth International Conference on Learning Representations (2025) 37. Zhao, H., Jiang, L., Jia, J., Torr, P.H., Koltun, V.: Point transformer. In: Proceed-ings of the IEEE/CVF international conference on computer vision. pp. 16259– 16268 (2021) 38. Zhou, L., Du, Y., Wu, J.: 3d shape generation and completion through point-voxel diffusion. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 5826–5835 (2021) 18 K.Kwarciak and M. Wodzinski 
+
+## A Architectures and Training Details 
+
+Table 4 reports the PTv3 architectural configurations used in this work together with the associated training hyperparameters for both deterministic and gener-ative regimes. Per-stage lists are ordered from shallow to deep (i.e., from early high-resolution stages to later low-resolution stages), and we keep this ordering consistent across encoder and decoder specifications. Unless stated otherwise, these settings are used across all experiments to facilitate reproducibility. 
+
+## B Statistical Significance Analysis for Repulsion Term in PTv3 Encoder-Decoder 
+
+We evaluate whether the repulsion term significantly affects Chamfer Distance (CD) for the deterministic PTv3 encoder-decoder. For each dataset and each pair of repulsion strengths, we test the null hypothesis H0 that the median of the paired per-case differences in CD is zero (i.e., repulsion does not change CD). Because CDs are computed on the same test cases for all settings, we use paired two-sided Wilcoxon signed-rank tests and apply Holm correction across the three pairwise comparisons per dataset. We consider results statistically significant at 
+
+α = 0 .05 after Holm correction (i.e., pHolm < 0.05 ). To aid interpretation, we note that a significant result indicates a systematic shift in CD across cases rather than a change driven by a small number of outliers. Table 5 shows that on SkullBreak, repulsion does not yield statistically sig-nificant differences in CD under this setting. On SkullFix, λ = 30 differs signif-icantly from λ = 0 , and λ = 300 differs significantly from λ = 30 after Holm correction, while λ = 300 is not significantly different from λ = 0 . Overall, the effect of repulsion appears dataset-dependent, supporting its treatment as an ablation rather than a default component. MedPCFM: Medical Point Cloud Completion 19 
+
+Table 4: PTv3 architectural configurations and training hyperparameters for the Small, Base, and Large variants. 
+
+Setting Small Base Large Architecture 
+
+Space-filling curves Z, Z-trans Z, Z-trans, Hilbert, Hilbert-trans Z, Z-trans, Hilbert, Hilbert-trans Stride 2, 2, 2, 2 2, 2, 2, 2 2, 2, 2, 2 Encoder depths 2, 2, 2, 4, 2 2, 2, 2, 6, 2 6, 6, 6, 10, 6 Encoder channels 24, 48, 96, 192, 320 32, 64, 128, 256, 512 64, 128, 256, 512, 1024 Encoder heads 2, 2, 4, 8, 10 2, 4, 8, 16, 32 4, 8, 16, 32, 32 Encoder patch size 768, 768, 768, 768, 768 1024, 1024, 1024, 1024, 1024 2048, 2048, 2048, 2048, 2048 Decoder depths 2, 2, 2, 2 2, 2, 2, 2 6, 6, 6, 6 Decoder channels 48, 48, 96, 192 64, 64, 128, 256 128, 128, 256, 512 Decoder heads 2, 2, 4, 8 4, 4, 8, 16 8, 8, 16, 16 Decoder patch size 768, 768, 768, 768 1024, 1024, 1024, 1024 2048, 2048, 2048, 2048 Stochastic depth 0.1 0.1 0.1 Completion head hidden channels 384 512 1024 
+
+Deterministic training 
+
+Learning rate 3 × 10 −4 3 × 10 −4 1 × 10 −4
+
+Weight decay 1 × 10 −4 1 × 10 −4 1 × 10 −4
+
+Epochs 10 000 10 000 10 000 Batch size 32 16 8Repulsion warmup epochs 200 200 200 
+
+Generative training 
+
+Learning rate 1 × 10 −4 1 × 10 −4 1 × 10 −4
+
+Weight decay 1 × 10 −4 1 × 10 −4 1 × 10 −4
+
+Epochs 15 000 15 000 15 000 Batch size 32 16 8Warmup steps 2000 2000 2000 EMA decay 0.999 0.999 0.999 20 K.Kwarciak and M. Wodzinski 
+
+Table 5: Paired Wilcoxon tests for repulsion strength λ (Base 16384/16384). Holm-corrected p-values are reported per dataset. Dataset Comparison n p pHolm 
+
+SkullBreak 0 vs 30 100 0.0901 0.2702 SkullBreak 0 vs 300 100 0.5247 0.5247 SkullBreak 30 vs 300 100 0.2369 0.4738 SkullFix 0 vs 30 110 0.00813 0.0163 SkullFix 0 vs 300 110 0.3498 0.3498 SkullFix 30 vs 300 110 0.00127 0.00381 
+
+## C Qualitative Effect of Repulsion Loss 
+
+We further inspect the effect of repulsion qualitatively on SkullFix. Figure 5 visualizes predictions for the Small model at the 2048/2048 setting for three repulsion strengths. The outputs for λ = 0 and λ = 30 are visually similar, sug-gesting limited qualitative impact of mild repulsion in this example. In contrast, a strong repulsion term ( λ = 300 ) leads to an undesirable failure mode: the pre-dicted implant. contains large low-density regions together with concentrated point islands, indicating that overly strong uniformity pressure can destabilize the reconstruction. We therefore treat repulsion as an ablation and use λ = 0 as the default. 
+
+Fig. 5: Qualitative effect of repulsion in the deterministic PTv3 encoder-decoder Skull-Fix (Small, 2048/2048). Mild repulsion ( λ = 30 ) yields a visually similar completion to 
+
+λ = 0 , whereas strong repulsion ( λ = 300 ) can produce degenerate point distributions with large voids and concentrated point islands. MedPCFM: Medical Point Cloud Completion 21  
+
+> Fig. 6: Multi-sample variability for PCFM-PTv3 on a fixed input. We show several generated implant samples, their mean completion, and a variance map. The global implant geometry remains stable across samples, while higher variance appears near the defect boundary, indicating localized uncertainty in ambiguous regions.
+
+## D Multi-Sample Generative Variability 
+
+A practical advantage of generative completion is that the model can be sampled multiple times for the same defective input X by drawing different initial noise samples. This yields a set of plausible implant predictions 
+
+{ ˆY (k)}Kk=1 , ˆY (k) ∼ pθ (· | X), (20) rather than a single deterministic output. Such multi-sample generation is useful in medical reconstruction because defect completion can be ambiguous, espe-cially near defect boundaries, where multiple anatomically reasonable implant shapes may exist. To visualize this behavior, we generate multiple completions for the same input and compute their mean completion together with an empirical point-wise variance map. The mean implant summarizes the central tendency of the generated candidates, while the variance map highlights regions where the model expresses higher uncertainty. As shown in Figure 6, the global implant shape remains stable across samples, while variability is mainly localized near the defect boundary. This suggests that PCFM-PTv3 captures uncertainty in boundary placement rather than producing globally unstable reconstructions. 
+
+## E Multiiterative Point Cloud Completion 
+
+In addition to sampling multiple completions from different noise initializations, we also evaluate a multi-iterative inference strategy aimed at improving down-stream surface reconstruction. While the previous section analyzes stochastic variability for a fixed input, here we increase the density of the predicted im-plant point set without modifying the trained model. Starting from a dense surface point cloud, we generate multiple resampled inputs Xi via FPS with jit-ter and run the completion model independently for i = 1 , . . . , N . The resulting predictions ˆYi are then aggregated by concatenation to form a denser implant point cloud, which is used for meshing and optionally voxelization for volumetric evaluation. Figure 7 illustrates this pipeline. 22 K.Kwarciak and M. Wodzinski 
+
+Fig. 7: Inference pipeline for the multi-iterative setup. We sample a dense point cloud from the surface and run the model N times on independently resampled (FPS + jitter) inputs. The predicted implant point sets are then aggregated by concatenation to form a denser completion, which is converted to a mesh for downstream fabrication/3D printing and optionally voxelized for volumetric evaluation. 
+
+We report the effect of increasing the number of aggregated runs N ∈{1, 8, 32 , 128 } on SkullFix for PCFM–PTv3 (Linear) in Fig. 8. Increasing N con-sistently improves voxel-space overlap metrics (DSC/BDSC) and reduces HD95, indicating that higher point density can improve the stability of the mesh/voxel conversion step and yield more reliable volumetric evaluation. The gains satu-rate beyond N = 32 , suggesting that only a moderate number of resamplings is needed in practice. Since this procedure is applied only at inference, it provides a simple way to trade additional runtime for improved surface reconstruction quality without retraining. 
+
+Fig. 8: Effect of the multi-iterative aggregation on SkullFix for PCFM–PTv3 (Linear). We run inference on N ∈ { 1, 8, 32 , 128 } independently resampled inputs and concate-nate the resulting implant point clouds. Increasing N consistently improves voxel-space metrics (DSC/BDSC ↑) and reduces HD95 ↓; the dashed line indicates the single-pass (N = 1 ) baseline. MedPCFM: Medical Point Cloud Completion 23 
+
+## F Ablation Studies on Affine Paths and Contrastive Term for Flow Matching 
+
+We ablate two key design choices in PCFM: the affine probability path (Linear, VP linear, or Cosine) and the optional contrastive regularizer (CFM). We report Chamfer Distance across model sizes and point settings on SkullFix and Skull-Break in Table 6, using identical training and evaluation protocols to isolate the effect of each component. Across both datasets and almost all settings, remov-ing the contrastive term (CFM ” −”) improves CD, suggesting that ∆FM-style separation is not consistently beneficial for this medical completion task. Among affine schedulers, Cosine and Linear generally outperform VP linear, with the best results obtained at the highest point setting (29492/3276). We also observe that increasing the number of points yields the most reli-able improvements, whereas scaling model capacity is not strictly monotonic: the Base model is often competitive or best, and the Large model provides lim-ited additional benefit in many configurations. Overall, these ablations motivate our main experimental choice of a non-contrastive PCFM variant with a Lin-ear/Cosine path and sufficiently high point resolution. 
+
+## G Additional Visualizations of Results for the Studied Methods 
+
+We provide additional qualitative results for all compared methods and datasets in Figure 9. We show three representative test cases from SkullBreak, SkullFix, and Mandibular Defect (three rows per dataset), illustrating the defective input, the predicted implant, and the corresponding ground truth. 24 K.Kwarciak and M. Wodzinski 
+
+Table 6: Ablation of affine paths and the contrastive term (CFM) for PCFM across model sizes and point settings. Lower CD is better. 
+
+Model NX/NY Affine path CFM SkullFix CD ↓ SkullBreak CD ↓
+
+Small 1844/204 Linear + 0.2640 0.3170 
+
+- 0.2450 0.3070 
+
+VP linear + 0.2820 0.3790 
+
+- 0.2690 0.3440 
+
+Cosine + 0.2590 0.3830 
+
+- 0.2590 0.3660 
+
+14746/1638 Linear + 0.2260 0.1970 
+
+- 0.1290 0.1300 
+
+VP linear + 0.2110 0.2010 
+
+- 0.1570 0.1450 
+
+Cosine + 0.1810 0.1700 
+
+- 0.1390 0.1330 
+
+29492/3276 Linear + 0.2060 0.1910 
+
+- 0.1030 0.1040 
+
+VP linear + 0.1910 0.1750 
+
+- 0.1290 0.1180 
+
+Cosine + 0.1640 0.1540 
+
+- 0.1060 0.1060 
+
+Base 1844/204 Linear + 0.2630 0.3280 
+
+- 0.2440 0.3050 
+
+VP linear + 0.2720 0.3310 
+
+- 0.2650 0.3050 
+
+Cosine + 0.2520 0.3180 
+
+- 0.2590 0.3090 
+
+14746/1638 Linear + 0.2120 0.1870 
+
+- 0.1130 0.1200 
+
+VP linear + 0.1680 0.1680 
+
+- 0.1370 0.1370 
+
+Cosine + 0.1600 0.1490 
+
+- 0.1180 0.1220 
+
+29492/3276 Linear + 0.2160 0.1900 
+
+- 0.0939 0.0997 
+
+VP linear + 0.1520 0.1570 
+
+- 0.1050 0.1090 
+
+Cosine + 0.1580 0.1460 
+
+- 0.1020 0.0988 
+
+Large 1844/204 Linear + 0.2540 0.2750 
+
+- 0.2370 0.2900 
+
+VP linear + 0.2800 0.3070 
+
+- 0.2660 0.2810 
+
+Cosine + 0.2410 0.2800 
+
+- 0.2460 0.2900 
+
+14746/1638 Linear + 0.2170 0.1870 
+
+- 0.1110 0.1130 
+
+VP linear + 0.1730 0.1670 
+
+- 0.1270 0.1300 
+
+Cosine + 0.1540 0.1420 
+
+- 0.1070 0.1140 
+
+29492/3276 Linear + 0.2590 0.2210 
+
+- 0.0997 0.1100 
+
+VP linear + 0.1760 0.1620 
+
+- 0.1240 0.1300 
+
+Cosine + 0.1700 0.1550 
+
+- 0.0974 0.1010 MedPCFM: Medical Point Cloud Completion 25 
+
+Fig. 9: Additional qualitative comparisons across datasets and methods. Rows 1-3: SkullBreak, rows 4-6: SkullFix, rows 7-9: Mandibular Defect. For volumetric baselines, point clouds are obtained by extracting surfaces and sampling points using Poisson surface sampling followed by farthest point sampling (FPS), consistent with the pre-processing used for point-based methods.

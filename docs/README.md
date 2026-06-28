@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-27
-- 运行时间：2026-06-28 04:57:21 UTC+8
+- 最新运行日期：2026-06-28
+- 运行时间：2026-06-29 04:57:05 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Geometry-Aware Online Scheduling for LLM Serving: From Theoretical Bound to System Practice》（7.3/10）, 《MLFFM-SegDiff: A Multi-Level Feature Fusion Diffusion Model for Skin Lesion Segmentation》（6.5/10）, 《EnTrust: Modeling Inter-Modal Conflict for Trustworthy Multimodal Medical Image Analysis》（6.5/10）
+- 速读：《Polynomial Dice Loss for Medical Image Segmentation》（6.7/10）, 《Human and AI collaboration for pulmonary nodule segmentation》（6.6/10）, 《BAC-JEPA: Label-Efficient Breast Arterial Calcification Segmentation via Synthetic Mammography-Guided Supervision》（6.6/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/27/README](/202606/27/README)
+- 详情：[/202606/28/README](/202606/28/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Geometry-Aware Online Scheduling for LLM Serving: From Theoretical Bound to System Practice](/202606/27/2606.22327v2-geometry-aware-online-scheduling-for-llm-serving-from-theoretical-bound-to-system-practice)  
-   标签：评分：7.3/10
+1. [Polynomial Dice Loss for Medical Image Segmentation](/202606/28/2606.23373v1-polynomial-dice-loss-for-medical-image-segmentation)  
+   标签：评分：6.7/10
    evidence：检索回退候选
-2. [MLFFM-SegDiff: A Multi-Level Feature Fusion Diffusion Model for Skin Lesion Segmentation](/202606/27/2606.26712v1-mlffm-segdiff-a-multi-level-feature-fusion-diffusion-model-for-skin-lesion-segmentation)  
+2. [Human and AI collaboration for pulmonary nodule segmentation](/202606/28/2606.22486v1-human-and-ai-collaboration-for-pulmonary-nodule-segmentation)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+3. [BAC-JEPA: Label-Efficient Breast Arterial Calcification Segmentation via Synthetic Mammography-Guided Supervision](/202606/28/2606.22089v1-bac-jepa-label-efficient-breast-arterial-calcification-segmentation-via-synthetic-mammography-guided-supervision)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+4. [Tractography-Driven Synthetic Data Generation for Fiber Bundle Segmentation in Tracer Histology](/202606/28/2606.26898v1-tractography-driven-synthetic-data-generation-for-fiber-bundle-segmentation-in-tracer-histology)  
    标签：评分：6.5/10
    evidence：检索回退候选
-3. [EnTrust: Modeling Inter-Modal Conflict for Trustworthy Multimodal Medical Image Analysis](/202606/27/2606.21384v1-entrust-modeling-inter-modal-conflict-for-trustworthy-multimodal-medical-image-analysis)  
+5. [Mask to Concept: Auto-Promptable SAM3 via Efficient Test-Time Concept Embedding Search for Few-Shot Annotation](/202606/28/2606.26711v1-mask-to-concept-auto-promptable-sam3-via-efficient-test-time-concept-embedding-search-for-few-shot-annotation)  
    标签：评分：6.5/10
    evidence：检索回退候选
-4. [C^2GR: Coupled Comprehensive Generative Replay for a Continually Learnable Universal Segmentation Model](/202606/27/2606.23473v1-c2gr-coupled-comprehensive-generative-replay-for-a-continually-learnable-universal-segmentation-model)  
+6. [Anatomy-Guided Residual Motion Diffusion for Controllable 4D Cardiac MRI Synthesis](/202606/28/2606.26764v1-anatomy-guided-residual-motion-diffusion-for-controllable-4d-cardiac-mri-synthesis)  
    标签：评分：6.4/10
    evidence：检索回退候选
-5. [Promise and challenges of heart chamber segmentation from non-contrast CT scans using contrastive unpaired image translation: a feasibility study](/202606/27/2606.23879v1-promise-and-challenges-of-heart-chamber-segmentation-from-non-contrast-ct-scans-using-contrastive-unpaired-image-translation-a-feasibility-study)  
+7. [Spatio-Temporal Mixture-of-Modality-Experts Diffusion for Quantitative DCE-MRI Synthesis from Incomplete MR Sequences](/202606/28/2606.25535v1-spatio-temporal-mixture-of-modality-experts-diffusion-for-quantitative-dce-mri-synthesis-from-incomplete-mr-sequences)  
    标签：评分：6.4/10
    evidence：检索回退候选
-6. [Concept Alignment Contrast and Long-Short Prompt Memory for Test-Time Adaptation of SAM3 in Medical Image Segmentation](/202606/27/2606.22963v1-concept-alignment-contrast-and-long-short-prompt-memory-for-test-time-adaptation-of-sam3-in-medical-image-segmentation)  
+8. [Cross-Modality Structural Guidance in 3D Latent Diffusion for Robust FLAIR Super-Resolution](/202606/28/2606.25255v1-cross-modality-structural-guidance-in-3d-latent-diffusion-for-robust-flair-super-resolution)  
    标签：评分：6.3/10
    evidence：检索回退候选
-7. [Native space based pipelines outperform template space based pipeline in subcortical segmentation](/202606/27/2606.21463v1-native-space-based-pipelines-outperform-template-space-based-pipeline-in-subcortical-segmentation)  
+9. [Boosting Text-Driven Video Segmentation via Geometry-Aware Distillation](/202606/28/2606.24464v1-boosting-text-driven-video-segmentation-via-geometry-aware-distillation)  
    标签：评分：6.3/10
    evidence：检索回退候选
-8. [2D Versus 3D Diffusion for In Silico Training of Interventional X-ray AI Models](/202606/27/2606.21414v1-2d-versus-3d-diffusion-for-in-silico-training-of-interventional-x-ray-ai-models)  
+10. [A Dual Edge Spatial Jacobian Image Graph for Interpretable Diabetic Retinopathy Grading](/202606/28/2606.24168v1-a-dual-edge-spatial-jacobian-image-graph-for-interpretable-diabetic-retinopathy-grading)  
    标签：评分：6.2/10
    evidence：检索回退候选
-9. [Surgical Anatomy Recognition with Context Learning using Foundation Representations](/202606/27/2606.22124v1-surgical-anatomy-recognition-with-context-learning-using-foundation-representations)  
+11. [MedPCFM: Improving Medical Point Cloud Completion by Integrating Point Transformers and Flow Matching](/202606/28/2606.24433v1-medpcfm-improving-medical-point-cloud-completion-by-integrating-point-transformers-and-flow-matching)  
    标签：评分：6.2/10
-   evidence：检索回退候选
-10. [Intracranial Aneurysm Classification and Segmentation via Tri-Axial ROI and Multi-Task Learning](/202606/27/2606.26706v1-intracranial-aneurysm-classification-and-segmentation-via-tri-axial-roi-and-multi-task-learning)  
-   标签：评分：6.1/10
-   evidence：检索回退候选
-11. [CheXpercept: A Benchmark for Evaluating Expert-Level Lesion Perception in Chest X-rays](/202606/27/2606.21020v1-chexpercept-a-benchmark-for-evaluating-expert-level-lesion-perception-in-chest-x-rays)  
-   标签：评分：6.0/10
    evidence：检索回退候选
 
 
