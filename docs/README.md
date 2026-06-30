@@ -6,70 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-29
-- 运行时间：2026-06-30 04:52:34 UTC+8
+- 最新运行日期：2026-06-30
+- 运行时间：2026-07-01 06:06:43 UTC+8
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：5
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
-- 精读：《Non-primary square roots in massive gravity》（8.6/10）, 《The Erdos n^2/25 max-cut conjecture for small multiples of five, via a per-root-MaxCut envelope and blow-up integrality》（8.5/10）
-- 速读：《A Free Analog of Bobkov's Gaussian Isoperimetry Inequality》（7.9/10）, 《A Two-Step Ensemble Score Filter for Data Assimilation in Partially Observed Systems》（7.9/10）, 《On the Inseparability of Instructions and Data in Shared-Embedding Sequence Models》（7.8/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《Random homomorphisms and Lipschitz functions on trees》（8.6/10）, 《Concurrent Splay-Based Tree》（8.5/10）
+- 速读：《Nonequilibrium electron-phonon dynamics with high momentum resolution: Thermalization bottlenecks and the effects of phonon dispersion》（8.3/10）, 《A Discrete Prüfer Transformation Approach to Sturm--Liouville Difference Equations and Eigenvalue Estimation》（8.2/10）, 《Transition Matrices between Shifted $t$-Schur Bases and Cyclotomic Schur $Q$-Positivity》（8.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202606/29/README](/202606/29/README)
+- 详情：[/202606/30/README](/202606/30/README)
 
 ### 精读区论文标签
-1. [Non-primary square roots in massive gravity](/202606/29/2606.28208v1-non-primary-square-roots-in-massive-gravity)  
+1. [Random homomorphisms and Lipschitz functions on trees](/202606/30/2606.29426v1-random-homomorphisms-and-lipschitz-functions-on-trees)  
    标签：评分：8.6/10
    evidence：检索回退候选
-2. [The Erdos n^2/25 max-cut conjecture for small multiples of five, via a per-root-MaxCut envelope and blow-up integrality](/202606/29/2606.28041v1-the-erdos-n225-max-cut-conjecture-for-small-multiples-of-five-via-a-per-root-maxcut-envelope-and-blow-up-integrality)  
+2. [Concurrent Splay-Based Tree](/202606/30/2606.28889v1-concurrent-splay-based-tree)  
    标签：评分：8.5/10
    evidence：检索回退候选
-3. [All limit points of the largest roots of matching polynomials are determined](/202606/29/2606.28162v1-all-limit-points-of-the-largest-roots-of-matching-polynomials-are-determined)  
+3. [The heat-kernel master field on $\mathbb{Z}^d$ at strong coupling](/202606/30/2606.28945v1-the-heat-kernel-master-field-on-mathbbzd-at-strong-coupling)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+4. [A QUBO Formulation for Nowhere-Zero $k$-Flows](/202606/30/2606.28687v1-a-qubo-formulation-for-nowhere-zero-k-flows)  
    标签：评分：8.4/10
    evidence：检索回退候选
-4. [Parameter-Efficient Quantum-Inspired Fast Weight Programmers for Traffic-Matrix Forecasting](/202606/29/2606.27821v1-parameter-efficient-quantum-inspired-fast-weight-programmers-for-traffic-matrix-forecasting)  
-   标签：评分：8.0/10
+5. [Image nonconcordance of positive-genus $π_1$-injective surfaces](/202606/30/2606.29122v1-image-nonconcordance-of-positive-genus-1-injective-surfaces)  
+   标签：评分：8.4/10
    evidence：检索回退候选
-5. [Zonal Spherical Functions of Quantum Symmetric Pairs](/202606/29/2606.27901v1-zonal-spherical-functions-of-quantum-symmetric-pairs)  
-   标签：评分：8.0/10
+6. [Pooled Leaderboards Hide System-Specific Winners: A Reporting-Protocol Audit of Offline Root-Cause Analysis Benchmarks](/202606/30/2606.29159v1-pooled-leaderboards-hide-system-specific-winners-a-reporting-protocol-audit-of-offline-root-cause-analysis-benchmarks)  
+   标签：评分：8.3/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [A Free Analog of Bobkov's Gaussian Isoperimetry Inequality](/202606/29/2606.27837v1-a-free-analog-of-bobkovs-gaussian-isoperimetry-inequality)  
+1. [Nonequilibrium electron-phonon dynamics with high momentum resolution: Thermalization bottlenecks and the effects of phonon dispersion](/202606/30/2606.28855v1-nonequilibrium-electron-phonon-dynamics-with-high-momentum-resolution-thermalization-bottlenecks-and-the-effects-of-phonon-dispersion)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
+2. [A Discrete Prüfer Transformation Approach to Sturm--Liouville Difference Equations and Eigenvalue Estimation](/202606/30/2606.28852v1-a-discrete-prfer-transformation-approach-to-sturm--liouville-difference-equations-and-eigenvalue-estimation)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+3. [Transition Matrices between Shifted $t$-Schur Bases and Cyclotomic Schur $Q$-Positivity](/202606/30/2606.28723v1-transition-matrices-between-shifted-t-schur-bases-and-cyclotomic-schur-q-positivity)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+4. [Moment Estimates and Discrepancy for Sums of Square Roots Modulo One](/202606/30/2606.28986v1-moment-estimates-and-discrepancy-for-sums-of-square-roots-modulo-one)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+5. [Multi-scale Object-Aware Gaze Estimation via Geometric Reasoning](/202606/30/2606.29334v1-multi-scale-object-aware-gaze-estimation-via-geometric-reasoning)  
    标签：评分：7.9/10
    evidence：检索回退候选
-2. [A Two-Step Ensemble Score Filter for Data Assimilation in Partially Observed Systems](/202606/29/2606.28264v1-a-two-step-ensemble-score-filter-for-data-assimilation-in-partially-observed-systems)  
+6. [Deforking the World of Code: A Project-Provenance Map that Recovers Cross-Forge Fork Families that Platform Graphs Cannot See](/202606/30/2606.29550v1-deforking-the-world-of-code-a-project-provenance-map-that-recovers-cross-forge-fork-families-that-platform-graphs-cannot-see)  
    标签：评分：7.9/10
    evidence：检索回退候选
-3. [On the Inseparability of Instructions and Data in Shared-Embedding Sequence Models](/202606/29/2606.27567v1-on-the-inseparability-of-instructions-and-data-in-shared-embedding-sequence-models)  
+7. [Deformation theory of the Double Affine Hecke algebra of type $(C_n^\vee,C_n)$](/202606/30/2606.29327v1-deformation-theory-of-the-double-affine-hecke-algebra-of-type-cnveecn)  
    标签：评分：7.8/10
    evidence：检索回退候选
-4. [FoggyTrust: Robust Federated Learning with Hierarchical Trust Networks](/202606/29/2606.27622v1-foggytrust-robust-federated-learning-with-hierarchical-trust-networks)  
+8. [For which real quadratic fields is Kim's octonary form universal?](/202606/30/2606.29321v1-for-which-real-quadratic-fields-is-kims-octonary-form-universal)  
    标签：评分：7.8/10
    evidence：检索回退候选
-5. [Single-Crystalline Al/Ge Heterostructure with an Atomically Sharp Commensurate Interface](/202606/29/2606.27854v1-single-crystalline-alge-heterostructure-with-an-atomically-sharp-commensurate-interface)  
-   标签：评分：7.8/10
+9. [SHOVIR: A Benchmark for Evaluating Vision Shortcut Learning in Radiology Report Generation](/202606/30/2606.30201v1-shovir-a-benchmark-for-evaluating-vision-shortcut-learning-in-radiology-report-generation)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-6. [Bridging Ab Initio Symmetries and Global Nuclear Masses with Interpretable Neural Networks](/202606/29/2606.28287v1-bridging-ab-initio-symmetries-and-global-nuclear-masses-with-interpretable-neural-networks)  
-   标签：评分：7.7/10
+10. [RADIANT-PET: Reasoning-Augmented PET/CT Lesion Segmentation with Large Language Models and Reinforcement Learning](/202606/30/2606.28392v1-radiant-pet-reasoning-augmented-petct-lesion-segmentation-with-large-language-models-and-reinforcement-learning)  
+   标签：评分：6.9/10
    evidence：检索回退候选
-7. [Two-Stage Cross-Domain Cervical Abnormality Screening with Cytopathological Image Synthesis and Knowledge Distillation](/202606/29/2606.27678v1-two-stage-cross-domain-cervical-abnormality-screening-with-cytopathological-image-synthesis-and-knowledge-distillation)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-8. [Toward Robust In-Context Segmentation via Concept Guidance](/202606/29/2606.28149v1-toward-robust-in-context-segmentation-via-concept-guidance)  
-   标签：评分：6.3/10
-   evidence：检索回退候选
-9. [Controllable Histopathology Image Synthesis with Training-free Structural Initialization and Textural Modulation](/202606/29/2606.27935v1-controllable-histopathology-image-synthesis-with-training-free-structural-initialization-and-textural-modulation)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-10. [Jolia: Concept-Level Vision-Language Alignment for 3D CT Contrastive Learning](/202606/29/2606.24570v1-jolia-concept-level-vision-language-alignment-for-3d-ct-contrastive-learning)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-11. [Jolia: Concept-Level Vision-Language Alignment for 3D CT Contrastive Learning](/202606/29/2606.24570v2-jolia-concept-level-vision-language-alignment-for-3d-ct-contrastive-learning)  
-   标签：评分：6.1/10
+11. [MedDiffuseMix: Preserving Diagnostic Evidence with Saliency-Aware Diffusion Medical Image Data Augmentatio](/202606/30/2606.28419v1-meddiffusemix-preserving-diagnostic-evidence-with-saliency-aware-diffusion-medical-image-data-augmentatio)  
+   标签：评分：6.8/10
    evidence：检索回退候选
 
 
