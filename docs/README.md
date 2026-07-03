@@ -6,61 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-02
-- 运行时间：2026-07-03 05:36:17 UTC+8
+- 最新运行日期：2026-07-03
+- 运行时间：2026-07-04 05:13:31 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《IMU-HOI: A Symbiotic Framework for Coherent Human-Object Interaction and Motion Capture via Contact-Conscious Inertial Fusion》（8.1/10）, 《An Adaptive Fast Algorithm for Periodic Coulomb Lattice Sums in Arbitrary Unit Cells》（8.0/10）
-- 速读：《MedCAGD: Context-Aware Gated Decoder for Efficient Medical Image Segmentation》（7.5/10）, 《DCSNet: Multiscale Feature Aggregation for Small Medical Object Segmentation with Detection-guided Hierarchical Cropping》（7.2/10）, 《PGE-SAM: Prompt-Guided Feature Enhancement for Interactive Segmentation under Degradation》（7.2/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《Resilient Control Lyapunov Function-based Quadratic Program for Quadrotors Under Cyberattacks》（8.2/10）
+- 速读：《X-Splat: Gaussian Splatting for 3D CBCT Generation from Single Panoramic Radiograph》（7.5/10）, 《Embracing Intra-Class Heterogeneity for Semi-Supervised Medical Image Segmentation: From Diversity to Precision》（7.4/10）, 《Quaternion Nondecimated Wavelet Descriptors for Multiclass Breast Histology Classification》（6.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/02/README](/202607/02/README)
+- 详情：[/202607/03/README](/202607/03/README)
 
 ### 精读区论文标签
-1. [IMU-HOI: A Symbiotic Framework for Coherent Human-Object Interaction and Motion Capture via Contact-Conscious Inertial Fusion](/202607/02/2606.28604v1-imu-hoi-a-symbiotic-framework-for-coherent-human-object-interaction-and-motion-capture-via-contact-conscious-inertial-fusion)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
-2. [An Adaptive Fast Algorithm for Periodic Coulomb Lattice Sums in Arbitrary Unit Cells](/202607/02/2606.28608v1-an-adaptive-fast-algorithm-for-periodic-coulomb-lattice-sums-in-arbitrary-unit-cells)  
-   标签：评分：8.0/10
+1. [Resilient Control Lyapunov Function-based Quadratic Program for Quadrotors Under Cyberattacks](/202607/03/2606.28588v1-resilient-control-lyapunov-function-based-quadratic-program-for-quadrotors-under-cyberattacks)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [MedCAGD: Context-Aware Gated Decoder for Efficient Medical Image Segmentation](/202607/02/2607.00409v1-medcagd-context-aware-gated-decoder-for-efficient-medical-image-segmentation)  
+1. [X-Splat: Gaussian Splatting for 3D CBCT Generation from Single Panoramic Radiograph](/202607/03/2607.02099v1-x-splat-gaussian-splatting-for-3d-cbct-generation-from-single-panoramic-radiograph)  
    标签：评分：7.5/10
    evidence：检索回退候选
-2. [DCSNet: Multiscale Feature Aggregation for Small Medical Object Segmentation with Detection-guided Hierarchical Cropping](/202607/02/2606.28402v1-dcsnet-multiscale-feature-aggregation-for-small-medical-object-segmentation-with-detection-guided-hierarchical-cropping)  
-   标签：评分：7.2/10
+2. [Embracing Intra-Class Heterogeneity for Semi-Supervised Medical Image Segmentation: From Diversity to Precision](/202607/03/2607.02051v1-embracing-intra-class-heterogeneity-for-semi-supervised-medical-image-segmentation-from-diversity-to-precision)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-3. [PGE-SAM: Prompt-Guided Feature Enhancement for Interactive Segmentation under Degradation](/202607/02/2606.30477v1-pge-sam-prompt-guided-feature-enhancement-for-interactive-segmentation-under-degradation)  
-   标签：评分：7.2/10
-   evidence：检索回退候选
-4. [Does Your ViT Still Need U-Net for Segmentation?](/202607/02/2607.00223v1-does-your-vit-still-need-u-net-for-segmentation)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-5. [Dense Structural Priors for Sparse Functional Landmark Localization in Surgical Videos](/202607/02/2606.31007v1-dense-structural-priors-for-sparse-functional-landmark-localization-in-surgical-videos)  
-   标签：评分：7.0/10
-   evidence：检索回退候选
-6. [Joint Medical Image Enhancement and Segmentation with Diffusion-based Symbiotic Information Interaction](/202607/02/2607.00058v1-joint-medical-image-enhancement-and-segmentation-with-diffusion-based-symbiotic-information-interaction)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-7. [ConRTF: Edge-Constrained Boundary Distribution Refinement for Realtime TransFormer Table Structure Recognition](/202607/02/2607.00734v1-conrtf-edge-constrained-boundary-distribution-refinement-for-realtime-transformer-table-structure-recognition)  
+3. [Quaternion Nondecimated Wavelet Descriptors for Multiclass Breast Histology Classification](/202607/03/2607.02133v1-quaternion-nondecimated-wavelet-descriptors-for-multiclass-breast-histology-classification)  
    标签：评分：6.8/10
    evidence：检索回退候选
-8. [Foundation Models vs. Radiomics for Lung Computed Tomography: A Benchmark of Feature Extractors, Classification Heads, and Segmentation Choices](/202607/02/2607.01001v1-foundation-models-vs-radiomics-for-lung-computed-tomography-a-benchmark-of-feature-extractors-classification-heads-and-segmentation-choices)  
+4. [Rethinking Post-Hoc Calibration in Semantic Segmentation](/202607/03/2607.01902v1-rethinking-post-hoc-calibration-in-semantic-segmentation)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+5. [RadiomicNet: A Hybrid Radiomics-Guided Lightweight Architecture for Interpretable Medical Image Segmentation](/202607/03/2607.02185v1-radiomicnet-a-hybrid-radiomics-guided-lightweight-architecture-for-interpretable-medical-image-segmentation)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+6. [Spatio-Temporal and Clinical Conditioning for Fine-Grained Radiology Report Retrieval](/202607/03/2607.02024v1-spatio-temporal-and-clinical-conditioning-for-fine-grained-radiology-report-retrieval)  
    标签：评分：6.4/10
    evidence：检索回退候选
-9. [Anatomy-Grounded Synthetic Coronary Angiography for Geometry-Informed Multi-View Matching](/202607/02/2606.28474v1-anatomy-grounded-synthetic-coronary-angiography-for-geometry-informed-multi-view-matching)  
-   标签：评分：6.3/10
+7. [HistoSeg++: Delving deeper with attention and multiscale feature fusion for biomarker segmentation](/202607/03/2607.01675v1-histoseg-delving-deeper-with-attention-and-multiscale-feature-fusion-for-biomarker-segmentation)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-10. [APRIL-MedSeg: A Modular Medical Image Segmentation Toolbox Embracing Modern Paradigms](/202607/02/2606.30577v1-april-medseg-a-modular-medical-image-segmentation-toolbox-embracing-modern-paradigms)  
-   标签：评分：6.3/10
+8. [Temporally Consistent Label Interpolation for Robust Surgical Multi-Task Learning under Challenging Conditions](/202607/03/2606.26634v1-temporally-consistent-label-interpolation-for-robust-surgical-multi-task-learning-under-challenging-conditions)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-11. [APRIL-MedSeg: A Modular Medical Image Segmentation Toolbox Embracing Modern Paradigms](/202607/02/2606.30577v2-april-medseg-a-modular-medical-image-segmentation-toolbox-embracing-modern-paradigms)  
-   标签：评分：6.2/10
+9. [Mask to Concept: Auto-Promptable SAM3 via Efficient Test-Time Concept Embedding Search for Few-Shot Annotation](/202607/03/2606.26711v2-mask-to-concept-auto-promptable-sam3-via-efficient-test-time-concept-embedding-search-for-few-shot-annotation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Dual-Prior Guided Null-Space Learning with Mixture-of-Splines for Arbitrary Medical Slice Super-Resolution](/202607/03/2606.26716v1-dual-prior-guided-null-space-learning-with-mixture-of-splines-for-arbitrary-medical-slice-super-resolution)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Dual-Prior Guided Null-Space Learning with Mixture-of-Splines for Arbitrary Medical Slice Super-Resolution](/202607/03/2606.26716v2-dual-prior-guided-null-space-learning-with-mixture-of-splines-for-arbitrary-medical-slice-super-resolution)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
