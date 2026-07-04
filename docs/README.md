@@ -6,57 +6,54 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-03
-- 运行时间：2026-07-04 05:13:31 UTC+8
+- 最新运行日期：2026-07-04
+- 运行时间：2026-07-05 04:50:19 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《Resilient Control Lyapunov Function-based Quadratic Program for Quadrotors Under Cyberattacks》（8.2/10）
-- 速读：《X-Splat: Gaussian Splatting for 3D CBCT Generation from Single Panoramic Radiograph》（7.5/10）, 《Embracing Intra-Class Heterogeneity for Semi-Supervised Medical Image Segmentation: From Diversity to Precision》（7.4/10）, 《Quaternion Nondecimated Wavelet Descriptors for Multiclass Breast Histology Classification》（6.8/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Do Not Break the Vessels: Structure-Preserving Mean Flow for Vascular Image Translation》（6.1/10）, 《Trust the Prior (or Not): Uncertainty-Aware Abdominal Aortic Aneurysm Segmentation》（6.0/10）, 《Controllable Histopathology Image Synthesis with Training-free Structural Initialization and Textural Modulation》（6.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/03/README](/202607/03/README)
+- 详情：[/202607/04/README](/202607/04/README)
 
 ### 精读区论文标签
-1. [Resilient Control Lyapunov Function-based Quadratic Program for Quadrotors Under Cyberattacks](/202607/03/2606.28588v1-resilient-control-lyapunov-function-based-quadratic-program-for-quadrotors-under-cyberattacks)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [X-Splat: Gaussian Splatting for 3D CBCT Generation from Single Panoramic Radiograph](/202607/03/2607.02099v1-x-splat-gaussian-splatting-for-3d-cbct-generation-from-single-panoramic-radiograph)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-2. [Embracing Intra-Class Heterogeneity for Semi-Supervised Medical Image Segmentation: From Diversity to Precision](/202607/03/2607.02051v1-embracing-intra-class-heterogeneity-for-semi-supervised-medical-image-segmentation-from-diversity-to-precision)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-3. [Quaternion Nondecimated Wavelet Descriptors for Multiclass Breast Histology Classification](/202607/03/2607.02133v1-quaternion-nondecimated-wavelet-descriptors-for-multiclass-breast-histology-classification)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-4. [Rethinking Post-Hoc Calibration in Semantic Segmentation](/202607/03/2607.01902v1-rethinking-post-hoc-calibration-in-semantic-segmentation)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-5. [RadiomicNet: A Hybrid Radiomics-Guided Lightweight Architecture for Interpretable Medical Image Segmentation](/202607/03/2607.02185v1-radiomicnet-a-hybrid-radiomics-guided-lightweight-architecture-for-interpretable-medical-image-segmentation)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-6. [Spatio-Temporal and Clinical Conditioning for Fine-Grained Radiology Report Retrieval](/202607/03/2607.02024v1-spatio-temporal-and-clinical-conditioning-for-fine-grained-radiology-report-retrieval)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-7. [HistoSeg++: Delving deeper with attention and multiscale feature fusion for biomarker segmentation](/202607/03/2607.01675v1-histoseg-delving-deeper-with-attention-and-multiscale-feature-fusion-for-biomarker-segmentation)  
+1. [Do Not Break the Vessels: Structure-Preserving Mean Flow for Vascular Image Translation](/202607/04/2606.31095v1-do-not-break-the-vessels-structure-preserving-mean-flow-for-vascular-image-translation)  
    标签：评分：6.1/10
    evidence：检索回退候选
-8. [Temporally Consistent Label Interpolation for Robust Surgical Multi-Task Learning under Challenging Conditions](/202607/03/2606.26634v1-temporally-consistent-label-interpolation-for-robust-surgical-multi-task-learning-under-challenging-conditions)  
+2. [Trust the Prior (or Not): Uncertainty-Aware Abdominal Aortic Aneurysm Segmentation](/202607/04/2607.00201v1-trust-the-prior-or-not-uncertainty-aware-abdominal-aortic-aneurysm-segmentation)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [Mask to Concept: Auto-Promptable SAM3 via Efficient Test-Time Concept Embedding Search for Few-Shot Annotation](/202607/03/2606.26711v2-mask-to-concept-auto-promptable-sam3-via-efficient-test-time-concept-embedding-search-for-few-shot-annotation)  
+3. [Controllable Histopathology Image Synthesis with Training-free Structural Initialization and Textural Modulation](/202607/04/2606.27935v2-controllable-histopathology-image-synthesis-with-training-free-structural-initialization-and-textural-modulation)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [Dual-Prior Guided Null-Space Learning with Mixture-of-Splines for Arbitrary Medical Slice Super-Resolution](/202607/03/2606.26716v1-dual-prior-guided-null-space-learning-with-mixture-of-splines-for-arbitrary-medical-slice-super-resolution)  
+4. [EchoSonar-R: A Multi-View Reasoning-Enabled Model for Disease Classification and Report Generation in Echocardiography](/202607/04/2606.28164v1-echosonar-r-a-multi-view-reasoning-enabled-model-for-disease-classification-and-report-generation-in-echocardiography)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [Dual-Prior Guided Null-Space Learning with Mixture-of-Splines for Arbitrary Medical Slice Super-Resolution](/202607/03/2606.26716v2-dual-prior-guided-null-space-learning-with-mixture-of-splines-for-arbitrary-medical-slice-super-resolution)  
+5. [Envisage: Diffusion-Based Rhinoplasty Goal Visualization with Mask-Decomposed Evaluation](/202607/04/2606.28628v1-envisage-diffusion-based-rhinoplasty-goal-visualization-with-mask-decomposed-evaluation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+6. [Mitigating Batch Effects in Histopathology via Language-Mediated Robust Embedding Generation](/202607/04/2606.28697v1-mitigating-batch-effects-in-histopathology-via-language-mediated-robust-embedding-generation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+7. [EpiSAM: Character Segmentation in Challenging Stone Inscriptions](/202607/04/2606.28859v1-episam-character-segmentation-in-challenging-stone-inscriptions)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+8. [Learning from Acquisition: Metadata-driven Multimodal Pre-training for Cardiac MRI](/202607/04/2606.28991v1-learning-from-acquisition-metadata-driven-multimodal-pre-training-for-cardiac-mri)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+9. [BTI-Net: Bidirectional Decoder-Level Task Interaction via Uncertainty-Aware Gating for Multi-Task Medical Image Analysis](/202607/04/2606.29102v1-bti-net-bidirectional-decoder-level-task-interaction-via-uncertainty-aware-gating-for-multi-task-medical-image-analysis)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Accurate Recognition of Pneumonia and COVID-19 by Geometric Shape Normalization of Lung Region using Automatic Landmark Detection and Piecewise Affine Warping](/202607/04/2606.29715v1-accurate-recognition-of-pneumonia-and-covid-19-by-geometric-shape-normalization-of-lung-region-using-automatic-landmark-detection-and-piecewise-affine-warping)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [TopoAgent: An Agentic Framework for Automated Topology Learning in Medical Imaging](/202607/04/2606.29763v1-topoagent-an-agentic-framework-for-automated-topology-learning-in-medical-imaging)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
