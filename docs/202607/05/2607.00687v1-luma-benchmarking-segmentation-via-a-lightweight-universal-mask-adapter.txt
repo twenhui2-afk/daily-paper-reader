@@ -1,0 +1,988 @@
+Title: LUMA: Benchmarking Segmentation via a Lightweight Universal Mask Adapter
+
+URL Source: https://arxiv.org/pdf/2607.00687v1
+
+Published Time: Thu, 02 Jul 2026 00:48:13 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# LUMA: Benchmarking Segmentation via a Lightweight Universal Mask Adapter 
+
+## Tobias Christian Nauen 1,2, Anosh Billimoria 1, Federico Raue 2,Stanislav Frolov 2, Brian B. Moser 2, Andreas Dengel 1,21 RPTU University Kaiserslautern-Landau, Kaiserslautern, Germany  
+
+> 2
+
+## German Research Center for Artificial Intelligence (DFKI), Kaiserslautern, Germany   
+
+> first second.last@dfki.de /first.last@dfki.de
+
+## Abstract 
+
+Comparing transformer backbones for image segmentation is confounded: each is paired with a different decoder, recipe, and pretraining, so reported differences rarely reflect the backbone itself. We introduce the Lightweight Universal Mask Adapter (LUMA), a lightweight, backbone-agnostic mask-transformer head that treats any backbone as a black-box feature extractor, letting a set of queries read from its fea-tures through cheap cross-attention. LUMA matches the ac-curacy of EoMT, the state-of-the-art efficient ViT-segmenter, at lower cost, while attaching unchanged to isotropic, hier-archical, convolutional, and mixture-of-experts backbones alike. Holding this head fixed, we benchmark 20 back-bones, 11 pretraining schemes and a range of resolutions on ADE20K and Cityscapes under one modern recipe. We find that “efficient” token mixers fail to deliver efficiency even at the high resolutions that motivate them, with plain ViT holding the throughput Pareto–front at every resolution. Additionally, the pretraining objective, not the architecture, the lever the field has tuned hardest, governs segmentation quality. 
+
+## 1. Introduction 
+
+Modern image segmentation is built on the mask trans-former framework [ 11 , 12 ], where a set of learnable queries is matched against the features of a pretrained backbone and decoded into a mask and class per segment. Many efforts have since optimized the mask-based segmentation-decoder [ 26 , 31 , 34 , 65 ]. Recently, EoMT [ 29 ] showed that this task-specific decoder part of the pipeline is largely un-necessary for plain ViT [17 ]. With a strong pretraining, the ViT backbone’s own self-attention can process the queries directly. Thus, in modern pipelines, most of the compute sits in the ViT backbone, for which decade of work has now gone into optimizing: efficient and linear attention [ 40 , 55 , 59 ], hierarchical and windowed token mixers [ 30 , 37 ], convolu-tional hybrids [ 7, 32 , 57 , 68 ], and state-space models [ 36 ]; almost all of these justified by efficiency at high resolution. This invites the question: Is the common backbone archi-tecture of ViT itself necessary, or do pretraining and scale dominate dense transfer, and we can thus reap the efficiency gains of efficient backbones? Answering this requires comparing backbones on equal footing : One segmentation head, that attaches to any back-bone, adds only little compute, and reaches state-of-the-art accuracy. Trained with one training recipe, with only the backbone varying, so that measured differences reflect the architecture rather than the surrounding apparatus. Existing comparisons do not meet this bar, as each backbone is typ-ically paired with its own decoder, recipe, pretraining, and resolution [ 21 , 33 ] and the heavy task-specific decoders that dominate the leaderboard confound the backbone with the capacity of the head itself [ 10 , 12 ]. EoMT, sporting only a very lightweight mask-head, is the natural fair instrument, but its efficiency comes from concatenating the queries into 
+
+the token sequence and processing them with the backbone’s own attention, which presumes global attention, reach-in access to the block internals, and a constant token width. It is therefore a plain-ViT method by construction, and cannot be attached to the very backbones we wish to study. We close this gap with the Lightweight Universal Mask Adapter (LUMA), a lightweight, efficient segmentation head that treats the backbone as a black-box feature extractor. Rather than inserting queries into the token stream, LUMA keeps them in a separate side stream and lets them read from each tapped block’s patch features through a lightweight cross-attention block, reusing the backbone’s own feed-forward layers, so the queries inherit any width schedule. The backbone runs exactly as it would on its own, so the identical head attaches unchanged to isotropic, hierarchical, windowed, convolutional, and mixture-of-experts backbones alike. This decoupling also yields a result complementary to EoMT’s: Queries need not live inside the backbone’s attention at all, as a minimal external read recovers the accu-racy at lower cost, which is precisely what frees us from the global-attention and shared-width assumptions. 1
+
+> arXiv:2607.00687v1 [cs.CV] 1 Jul 2026
+
+With LUMA held fixed as a fair measuring stick, we con-duct a controlled study of 20 vision transformer backbones, 11 pretraining schemes and a range of input resolutions on ADE20K [ 70 ] and Cityscapes [ 13 ], all under a single modern segmentation recipe. This lets us disentangle, for the first time under one modern protocol, how segmentation quality is governed by the backbone architecture, by the pretraining objective, and by resolution. Our dominant finding concerns the very property these architectures are designed for. “Efficient” token mixers exist to escape the O(T 2) token scaling of attention, a cost that is negligible at the short sequences of 224 px classification but should dominate at the 512 –1024 px resolutions segmenta-tion tasks use. Nonetheless, even without FlashAttention, the plain ViT holds the throughput Pareto–front, with efficient variants competitive only in memory. The accuracy side tells the same story, as differences from architecture largely vanish once every backbone hosts the same head, with a few sequence-length-bound mixers (Linformer [ 55 ], Synthe-sizer [ 50 ], MLP-Mixer [ 51 ]) failing to generalize to high resolution; a failure classification benchmarks never expose. In line with this, ImageNet top-1 accuracy is an unreliable predictor of segmentation quality across backbones. Orthog-onally, the pretraining objective is decisive: dense objectives transfer robustly while supervised pretraining is a categorical outlier despite competitive classification accuracy. In summary: (1) we introduce LUMA, a lightweight, backbone-agnostic mask transformer head that matches EoMT’s accuracy at lower cost while attaching unchanged to 
+
+any token mixer, and show that queries need not be embed-ded in the backbone’s attention to do so; (2) using LUMA as a fixed instrument, we present the broadest fair bench-mark of transformer backbones for segmentation to date, spanning 20 architectures, 11 pretraining schemes, and mul-tiple resolutions under one recipe; (3) using it to disentangle architecture, pretraining, and resolution, we show that token-mixer design is a weak lever for dense prediction while the pretraining objective and plain scale are the strong ones, and that the plain ViT remains the backbone of choice. 
+
+## 2. Related Work 
+
+Segmentation with Transformers. Segmentation was ini-tially dominated by CNNs, whose feature maps naturally yield dense, pixel-level predictions [ 9 , 39 , 47 ]. After the introduction of ViT [ 17 ], custom variants were developed specifically for segmentation [ 58 ]. A key development was the MaskFormer family [ 11 , 12 ], which reframed segmen-tation as predicting a set of masks with associated class labels rather than classifying each pixel independently, and now underpins most state-of-the-art segmenters [ 26 , 31 , 65 ]. To utilize plain ViTs for segmentation, heavy pixel de-coders were appended after the backbone [ 11 , 31 , 34 , 49 ]and adapters reaching into its intermediate stages were introduced [ 10 , 12 , 26 ]. Recently, EoMT [ 29 ] showed that this machinery is largely unnecessary, repurposing the backbone’s own self-attention as the adapter to match MaskFormer-like region queries to image patches with only a lightweight mask module on top. Our LUMA continues this trend toward minimal segmenters, generalizing the EoMT setup beyond plain self-attention backbones to arbitrary to-ken mixers, while keeping the head lightweight via only a few cross-attention layers. 
+
+Vision Transformer Backbones. The O(T 2) scaling of self-attention in the number of tokens T makes the plain ViT [ 17 ] costly at the high resolutions segmentation de-mands, motivating a wide range of architectural modifi-cations. Following the taxonomy of efficient transformer variants by Nauen et al. [41] , we benchmark low-rank at-tention (Linformer [55], Nystr¨ omformer [59]), sparse atten-tion (Swin [ 37 ], Wave-ViT [ 63 ]), fixed attention (Synthe-sizer [ 50 ]), kernel attention (Poly-SA [ 3 ], Hydra [ 6]), and hybrid attention (EfficientViT [ 7 ], Next-ViT [ 32 ], CvT [ 57 ], ResT [ 68 ], CoaT [ 60 ]); non-attention token mixers that re-place attention entirely (MLP-Mixer [ 51 ], EfficientMod [ 40 ], FocalNet [ 61 ]); and models that modify the feed-forward block (Switch [ 19 ], HiViT [ 69 ]). For a broader overview of efficient transformers, we refer to [35, 41, 43]. 
+
+Pretraining Strategies. Backbones are typically initial-ized from weights pretrained on a large dataset, and this choice of pretraining objective strongly affects downstream segmentation quality [ 28 ]. Traditionally, computer vision pretraining relied on large-scale supervised image classi-fication [ 16 , 23 , 64 ], for which the dominant transformer recipes are DeiT [ 52 ] and DeiT III [ 54 ]. More recent ob-jectives move beyond labels: image–text contrastive learn-ing (CLIP [ 44 ], SigLIP [ 67 ], AIMv2 [ 20 ]), masked im-age modeling (MAE [ 24 ], BEiT-3 [ 56 ], EVA-02 [ 18 ]), the self-distillation family of DINO [8, 42, 48], self-supervised segmentation pretraining SAM [ 30 ] and recently the joint-embedding predictive I-JEPA [ 2]. We benchmark represen-tatives of all families. 
+
+Benchmarking Segmentation. Several prior works benchmark components of the segmentation pipeline in isola-tion. Jeeveswaran et al. [27] , Ranftl et al. [45] compare CNN and transformer backbones, but predate modern mask-based segmenters and large-scale pretraining. Li et al. [33] bench-mark segmentation decoders while holding the backbone fixed, and Kerssies et al. [28] benchmark pretraining objec-tives using a lightweight linear-probe adapter. BoB [ 21 ]benchmarks backbones for multiple tasks, including segmen-tation, but they conflate architecture and pretraining differ-ences, as “different pretraining algorithms were trained on different datasets and architectures” [ 21 ]. Bensaid et al. [5] target the few-shot setting, and Agnihotri et al. [1] evaluate segmentation robustness. In contrast, we benchmark 20 back-bone architectures, using the same pretraining setup, and 8 2Lightweight Universal Mask Adapter (LUMA)          
+
+> Transformer Backbone
+> Mask Module Class Logits Mask Logits
+> Queries
+> MLP
+> N+K tokens:
+> Self-attention
+> N tokens:
+> Cross-attention
+> N tokens: Figure 1. LUMA architecture. The backbone (gray) runs unmodi-fied on the Npatch tokens. A side-stream of Kqueries reads from each tapped block’s features via cross-attention, then passes queries through the backbone’s own MLP block.
+
+pretraining schemes under a single modern recipe, plug-ging each into LUMA, a lightweight, backbone-agnostic, MaskFormer-based segmentation head. This lets us dis-entangle the contributions of architecture, pretraining, and resolution under a fair, modern segmentation protocol. 
+
+## 3. Method 
+
+Our goal is to benchmark a broad range of transformer back-bones for image segmentation on equal footing . This re-quires a segmentation head that (i) attaches to any backbone without architecture-specific surgery, (ii) adds as little com-pute as possible so that measured differences reflect the 
+
+backbone rather than the head, and (iii) reaches the accuracy of state-of-the-art mask transformers. No existing design satisfies all three at once: heavy task-specific decoders in-flate and confound the head, while the recent EoMT [ 29 ] is lightweight but tightly coupled to the plain ViT and cannot be applied to most backbones we wish to study. We therefore introduce the Lightweight Universal Mask Adapter (LUMA), a minimal head that treats the backbone as a black-box fea-ture extractor and lets a small set of learnable queries read 
+
+from its features through a single lightweight cross-attention layer. LUMA matches EoMT in accuracy, and efficiency, but crucially applies to any backbone family. 
+
+3.1. Preliminaries 
+
+Modern segmentation models follow the mask transformer framework [ 11 , 12 ]: a set of K learnable queries Q0 =
+
+{qi ∈ RD }Ki=1 each learn to represent a single segment (a thing instance or a stuff class). The queries are refined against image features and then decoded into a class label and a binary mask per query. Class logits ci ∈ RC are obtained with a linear layer, and mask logits are obtained by passing each query through an MLP to a mask embedding 
+
+ˆqi and taking its dot product with high-resolution image features. By assigning each ground-truth segment to a unique query and supervising both predictions, the model learns segmentation in a task-agnostic way. State-of-the-art models such as Mask2Former [ 12 ] refine queries with a heavy stack of multi-scale deformable cross-attention and self-attention, which heavily increase the head’s cost. A transformer backbone maps an image I ∈ R3×H×W
+
+to a sequence of feature tokens through L blocks. Back-bones differ widely in how they do this: plain ViTs [ 17 ]keep a constant token count and embedding dimension and use global self-attention; hierarchical backbones such as Swin [ 37 ] downsample across stages, grow the embedding dimension, and use windowed or local attention; and recent state-space and convolutional hybrids replace attention en-tirely [ 32 , 36 , 61 ]. A backbone-agnostic head must cope with all of these without assuming any particular attention mechanism, token layout, or dimension schedule. 
+
+3.2. EoMT and the backbone-coupling problem 
+
+EoMT [ 29 ] removes the decoder altogether. It concate-nates the K queries into the token sequence after the first 
+
+L1 = L − L2 blocks, and lets the final L2 out of the L
+
+backbone blocks process queries and patch tokens jointly 
+
+through the ViT’s own multi-head self-attention. During training, intermediate masks are predicted before each of these blocks and used to mask the query-to-patch attention, mimicking the masked cross-attention of Mask2Former; a mask-annealing schedule then phases this masking out so that inference needs no masking at all. The result is elegant and efficient: the head is little more than a handful of extra tokens and a small mask module. This efficiency, however, is purchased with three implicit assumptions about the backbone: (1) Global attention. Be-cause the queries are appended to the token sequence and must attend to all patches, the backbone’s attention must be global; windowed or neighborhood attention would confine each query to a single window. (2) Accessible, uniform attention internals. To inject the attention mask, EoMT re-implements the block’s attention and reaches into its pro-jections, heads, and normalization. This ties the head to the plain ViT block and also prevents the backbone from running its own fused attention kernel in the final blocks. In short, EoMT is a plain-ViT-only method by construction. It is therefore unsuitable as a benchmarking instrument, since most of the backbones we want to compare cannot host it at all. 33.3. LUMA: a Lightweight Universal Mask Adapter 
+
+The key idea behind LUMA is to make the queries backbone-agnostic, by decoupling them from the backbone’s token-mixing mechanism. Instead of inserting queries into the token stream and relying on the backbone’s attention to mix them with image features, LUMA keeps the queries in a separate side stream and gives them a cheap, explicit way to read from the backbone’s patch features. The backbone is run exactly as it would be on its own, block by block, and is never modified, re-implemented, or even aware of the queries. An overview is shown in Figure 1. 
+
+Query side stream. Let Xi denote the patch features produced by backbone block i, and let Qi denote the query states, initialized from a learnable embedding QL1 . For each such block i, LUMA updates the queries in two steps. First, a single lightweight cross-attention layer lets the queries read from the current patch features, which supply the keys and values. Second, the queries are passed through that block’s 
+
+own feed-forward sub-layer, reusing the backbone’s MLP with its existing weights: 
+
+˜Qi = Qi + LS (XAttn (Qi, Xi)) ,
+
+Qi+1 = ˜Qi + MLP i
+
+ Norm i( ˜Qi), (1) where XAttn is cross-attention and LS is a per-channel Lay-erScale [ 53 ]. Together these form the only new parameters LUMA introduces at block i. The normalization Norm i and feed-forward layer MLP i are block i’s own, applied to the queries with exactly the weights used for the patch tokens. The patch stream is left untouched, Xi+1 = Block i(Xi),so the queries influence the backbone only by reading from it through Equation (1), never by entering its self-attention. Reusing the backbone’s feed-forward sub-layer also dic-tates how LUMA handles a changing token dimension. Be-cause the queries are processed by block i’s MLP and cross-attend to its patch features, Qi and Xi must share the same width. For plain ViTs this holds trivially, but hierarchical backbones change their internal dimension between stages through an explicit mechanism (e.g. the projection within patch merging [ 37 ]). Rather than add a projection of our own, which would be redundant and a source of architecture-specific tuning, LUMA routes the queries through the same 
+
+dimension-changing operation the backbone applies to its to-kens. The queries thus inherit the backbone’s width schedule for free and stay dimension-aligned with the patch features at every block, regardless of how that width changes. 
+
+Masked attention. A central mechanism in EoMT is 
+
+masked attention during training, which constrains each query to attend only within its own predicted segmentation mask, together with a mask-annealing schedule that gradu-ally phases this masking out so that inference can run without it. This machinery exists because queries and patches share a single self-attention operation, in which an unconstrained query would otherwise attend indiscriminately across the entire image; masking supplies the targeting that the shared operation does not provide on its own. LUMA has no such constraint to impose. Each query already owns a dedicated cross-attention read in Equation (1), so it learns what to attend to directly from supervision rather than from an ex-ternally imposed mask. We therefore use plain, unmasked cross-attention throughout, and find that it matches the accu-racy of the masked-and-annealed EoMT formulation. This removes, in one step, the intermediate mask predictions before each of the last L2 blocks, their supervision, the per-block masking probabilities, and the annealing schedule itself; a substantial simplification of both the model and the training pipeline. 
+
+Mask prediction module. For mask and class prediction we follow Mask2Former [ 12 ] and EoMT: a linear layer maps each final query to class logits, and a three-layer MLP maps it to a mask embedding. Mask logits are the dot product between mask embeddings and a single-scale image feature map upscaled with a small ScaleBlock stack [ 34 ]. To obtain this feature map from an arbitrary backbone, LUMA reconstructs a spatial grid from the backbone’s output: any prefix or register tokens are discarded, token sequences are reshaped to Fbb ∈ RD×H′×W ′
+
+.
+
+Backbone interaction. LUMA interacts with a back-bone only through a small, generic interface: it needs the per-block patch features, the embedding dimension (pos-sibly per stage), the head count, the spatial grid, and the number of prefix tokens. It never assumes global attention, never reads the block’s qkv , and doesn’t require a constant width. As a result the same head attaches unchanged to plain ViTs, hierarchical and windowed backbones, convolutional hybrids, and even to mixture-of-experts backbones. This makes LUMA a fair benchmarking instrument: the head is lightweight and held fixed while only the backbone varies. It would be tempting to read LUMA as “re-adding the de-coder that EoMT removed,” but it is neither that nor a trivial rearrangement. First, LUMA is not a multi-scale pixel de-coder plus transformer decoder; it is a single cross-attention layer per tapped block on single-scale features, with no de-formable attention and no feature fusion. Second, achieving generality while preserving EoMT’s accuracy is not obvious a priori: EoMT’s central claim was that the ViT’s own self-attention is sufficient to integrate queries, with no external module needed. LUMA shows the complementary result: Queries do not need to live inside the backbone’s attention at all; a minimal external read recovers the same accuracy, which is what makes it possible to drop the global-attention and shared-width assumptions. Third, the generality de-mands design choices that EoMT never had to make, since it only ever faced one architecture: placing the taps con-sistently across backbones with different depths and stage structures, matching each cross-attention layer to a changing 4per-stage width, and reconstructing a spatial feature map from heterogeneous token and feature layouts. 
+
+Compute cost. LUMA is cheaper than EoMT for two compounding reasons: A lower attention complexity per block, and fewer blocks that process queries. EoMT concate-nates the K queries into the token sequence, so each of its final blocks runs self-attention over N + K tokens, at cost 
+
+O (N + K)2. LUMA instead leaves the backbone’s self-attention to operate on the N patch tokens alone and adds only a cross-attention in which the K queries read from the 
+
+N patches, O(N K ), for a per-block cost of O(N 2 + N K ).The overhead of hosting the queries is thus reduced from 
+
+2N K + K2 (EoMT) to N K (LUMA) per block. On top of this, the dedicated read lets LUMA use fewer query-processing blocks: we use L2 = 1 , against L2 = 4 for EoMT, reducing how often even this small overhead is paid. Away from the attention, the queries pass through these L2
+
+blocks’ feed-forward layers, adding K ≪ N tokens to a pointwise operation. 
+
+## 4. Experiments 
+
+We first compare LUMA to current segmentation pipelines in Section 4.1. Then we benchmark different configurations for efficient segmentation using the Pareto-front, the bound-ary of the landscape of efficient models, as our framework for analysis. We benchmark 20 transformer backbones, all trained under the same state-of-the-art DeiT III [ 54 ] recipe on ImageNet-21k [ 46 ], in Section 4.2, different pretraining setups in Section 4.3 and Pareto–optimal compute scaling in Section 4.4. For the full hyperparameters and ablations of LUMA, see Sections B to D. 
+
+4.1. Segmentation with LUMA 
+
+To ensure fair and meaningful benchmark results, we first compare LUMA against representative, modern mask-transformer segmenters on Cityscapes [13 ] and ADE20K [ 70 ] in Table 1. To make this a test of the segmen-tation mechanism rather than of the backbone or pre-training, we fix both to the canonical ViT-L/DINOv2 [ 42 ] configura-tion shared by EoMT [ 29 ] and ViT-Adapter + Mask2Former. The three DINOv2 plain-ViT models cluster tightly on both benchmarks ( 84 .2–84 .5 / 58 .4–58 .9) and match or ex-ceed the IN21K systems despite far simpler heads. Among the DINOv2 group, LUMA is the lightest: On ADE20K it uses 1.3× fewer GFLOPs than ViT-Adapter + M2F and runs over 7× faster. This is consistent with our central finding that pre-training and plain scaling, not decoder or backbone engineering, account for the bulk of segmentation quality. LUMA reaches 84 .4 mIoU on Cityscapes and 58 .7 mIoU on ADE20K, against EoMT’s 84 .2 and 58 .4. This perfor-mance also comes at similar cost in terms of GFLOPs and throughput. The result is expected from the design. EoMT’s 76 78 80 82 84  
+
+> Pre-training Top-1 Accuracy (%)
+> 20
+> 25
+> 30
+> 35
+> 40
+> 45
+> Segmentation mIoU (%)
+> coat
+> cvt
+> efficientvit
+> efficientmod
+> focalnet
+> hivit
+> hydra
+> linformer
+> mixer
+> nextvit
+> nystrom
+> polysa
+> resnet50
+> rest
+> swin-s
+> swin-ti
+> switch
+> synthfr
+> vit-b
+> vit-s wave
+> Baseline
+> Hybrid Attention
+> Sparse Attention
+> Non-Attention Shuffling
+> Kernel Attention
+> Low-Rank Attention
+> More MLPs
+> Fixed Attention
+> Linear fit ( r= 0.782)
+
+Figure 2. ImageNet top-1 is an unreliable predictor of segmen-tation quality. ADE20K mIoU at 224 px vs ImageNet-1k top-1 (r ≈ 0.78 ). Most models cluster near the trend; convolutional hybrids often fall well below it. 
+
+in-sequence formulation is already optimized for ViT , and LUMA matches and even slightly surpasses it. The parity above matters precisely because of the flex-ibility LUMA offers over the baselines. EoMT obtains its low overhead by concatenating queries into the patch-token sequence and processing them with the backbone’s own self-attention — a formulation defined only for a plain, isotropic, fixed-width token mixer, and therefore inapplica-ble to the hierarchical, mixture-of-experts, linear-attention, and non-attention backbones we study in our benchmark. LUMA instead confines query–image interaction to external cross-attention blocks, decoupling the head from the mix-ing method. This decoupling is what lets the identical head attach to every backbone in our benchmark. 
+
+4.2. Which transformer to use? 
+
+Now that we have established LUMA as a fair comparison tool, we can utilize it to measure segmentation efficiency across backbones. As visualized in Figure 2, at the 224 px pre-training resolution, most mixers transfer to dense pre-diction without difficulty (plain ViT [ 17 ], WaveViT [ 63 ], Linformer [ 55 ], ResT [ 68 ], and Hydra [ 6 ] all reach mIoU values above the trend line) while a distinct set does not: ResNet-50 [ 23 ], CoaT [ 60 ], and NextViT [ 32 ], which all utilize convolutions, as well as Switch [ 19 ] are confined below the mean-transfer curve, contrasting BoB [ 21 ], who found supervised CNNs to be the best backbones. Note that ResT is the exception to this rule and that ResNet-50 and CoaT generalize better on Cityscapes (see Section E). ViT, FocalNet [ 61 ], and WaveViT generalize well from classifica-tion to segmentation on ADE20K and Cityscapes. Across 5Table 1. LUMA for semantic segmentation. Semantic segmentation with backbone and pretraining to DINOv2. LUMA matches strong mask-transformer baselines while being lightweight and backbone agnostic . ViT-Adapter + Mask2Former, EoMT, and LUMA use windowed inference, dividing each image into multiple crops, and the FLOPs and FPS results account for this. †On ADE20K, these models resize the shortest side of images to the indicated scale during inference, while preserving the aspect ratio. ‡Our re-implementation. 
+
+Method Backbone Pre-training Params Cityscapes val [13] ADE20K val [70] Input size GFLOPs FPS mIoU Input size GFLOPs FPS mIoU Mask2Former † [12] Swin-L [37] IN21K 216M 1024 × 2048 – 14 83.3 640 2 – 33 56.1 MaskDINO † [31] Swin-L [37] IN21K 223M – – – – 640 2 – – 56.6 OneFormer † [26] ConvNext-XL [38] IN21K 373M 1024 × 2048 775 7 83.6 640 2 607 21 57.4 OneFormer † [26] DiNAT-L [22] IN21K 223M 1024 × 2048 450 14 83.1 896 2 678 19 58.1 kMaX-DeepLab [65] ConvNext-L [38] IN21K 232M 1025 × 2049 1673 – 83.5 – – – –Mask2Former [12] ViT-L [17] DINOv2 + DA [62] – 896 × 1792 – – 84.8 896 2 – – 59.4 Mask2Former [12] ViT-Adapter-L [10] DINOv2 351M 1024 2 5200 7 84.5 512 2 910 21 58.9 EoMT ‡ [29] ViT-L [17] DINOv2 319M 1024 2 4350 36 84.2 512 2 721 150 58.4 
+
+LUMA (Ours) ViT-L [17] DINOv2 320M 1024 2 4360 38 84.4 512 2 719 154 58.7 10   
+
+> 20
+> 30
+> 40
+> 50
+> 60
+> Baseline
+> resnet50
+> vit+flash-b
+> vit+flash-s vit-b
+> vit-s
+> Hybrid Attention
+> coat
+> cvt
+> efficientvit nextvit
+> rest
+> Sparse Attention
+> swin-s
+> swin-ti
+> wave
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Non-Attention Shuffling
+> efficientmod
+> focalnet
+> mixer
+> Kernel Attention
+> hydra
+> polysa
+> Low-Rank Attention
+> linformer
+> nystrom
+> 10 310 4
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> More MLPs
+> hivit switch
+> 10 310 4
+> Fixed Attention
+> synthfr
+> 224px
+> 384px
+> 512px
+> Pareto front
+
+Segmentation Throughput (samples / s) (log) 
+
+> Segmentation mIoU (%)
+
+Figure 3. Throughput vs. ADE20K mIoU across backbone taxonomy. Panels group families from [ 41 ]; markers indicate image resolution. Plain ViT (with FlashAttention) holds the Pareto front; among efficient backbones mostly sparse attention (Swin-S, WaveViT) is close. Several mixers degrade as resolution rises. 
+
+backbones, ImageNet top-1 accuracy is a moderate predictor of segmentation mIoU with Pearson r ≈ 0.78 for ADE20K at 512 px and r ≈ 0.71 for Cityscapes at 1024 px, but with significant outliers to the top and bottom. Transferring at 224 px does not imply transferring at the resolutions segmentation actually demands. Kernel, Low-Rank, and Fixed attention all have problems generalizing to higher resolutions: In Figure 3 1, Linformer drops from 38 .4
+
+to 3.8 mIoU, Hydra from 33 .1 to 6.5, and Synthesizer [ 50 ]
+
+> 1
+
+Plots with throughput and memory against ADE20k and Cityscapes IoU are in Section E. 0      
+
+> 20
+> 40
+> 60
+> 80
+> Baseline
+> resnet50
+> vit+flash-b
+> vit+flash-s vit-b
+> vit-s
+> Hybrid Attention
+> coat cvt
+> efficientvit
+> nextvit rest
+> Sparse Attention
+> swin-s
+> swin-ti
+> wave
+> 0
+> 20
+> 40
+> 60
+> 80
+> Non-Attention Shuffling
+> efficientmod
+> focalnet
+> Kernel Attention
+> hydra
+> polysa
+> Low-Rank Attention
+> linformer
+> nystrom
+> 10 010 1
+> 0
+> 20
+> 40
+> 60
+> 80
+> More MLPs
+> switch
+> 10 010 1
+> Fixed Attention
+> synthfr 448px
+> 768px
+> 1024px
+> Pareto front
+
+Segmentation Inference Memory (GB) (log) 
+
+> Segmentation mIoU (%)
+
+Figure 4. Inference memory vs. Cityscapes mIoU across back-bone taxonomy. Plain ViT is Pareto–optimal at larger sizes. At small-to-intermediate memory the front is held by sparse attention and non-attention mixers. 
+
+from 35 .1 to 27 .0, inverting the +5 –6 mIoU gain that ViT and other healthy backbones obtain. Nystrom [ 59 ] increases performance only up to intermediate resolution. In the throughput–mIoU trade-off (Figure 3), even with-out FlashAttention [14 , 15 ], plain ViT still holds the Pareto frontier; the non-ViT models that reach it are sparse attention models (Swin-S [ 37 ] and WaveViT [ 63 ]), and FocalNet on Cityscapes. Enabling FlashAttention roughly doubles ViT’s throughput, displacing other models from the throughput– frontier. This exposes an implementation confound rather than a settled architectural verdict: Efficient mixers are mea-sured with unoptimized kernels, and a comparably engi-648    
+
+> 50
+> 52
+> 54
+> 56
+> 58
+> 60
+> ADE20k mIoU [%]
+> ViT-L
+> aim2
+> beit3
+> clip
+> deit3
+> dino2
+> dino3 eva2
+> mae
+> sam
+> siglip
+> ViT-H
+> aim2
+> clip
+> deit3
+> dino3
+> ijepa
+> mae
+> sam
+> 60 70 80
+> 76
+> 78
+> 80
+> 82
+> 84
+> Cityscapes mIoU [%]
+> aim2
+> beit3 clip
+> deit3
+> dino2
+> dino3
+> eva2
+> mae
+> sam
+> siglip
+> 70 80
+> aim2
+> clip
+> deit3
+> dino3
+> ijepa
+> mae
+> sam
+> ImageNet Linear-Probe Top-1 (%)
+> Pre-training family
+> clip
+> mim
+> sam
+> self-distill
+> supervised
+> Linear fit
+
+Figure 5. Pretraining objective, not ImageNet probe, drives segmentation quality. mIoU vs. ImageNet linear-probe (top: ADE20K@ 512 px, bottom: Cityscapes@ 1024 px). Dense objec-tives meet or exceed the trend, supervised DeiT III is the worst. 
+
+neered implementation (e.g. a fused WaveViT) is the natural route to an efficient backbone that can better rival a hardware-optimized ViT with FlashAttention, as indicated by results relative to ViT without FlashAttention. When it comes to memory efficiency (see Figure 4), the overall trend is similar: ViT is Pareto-optimal at the larger sizes with sparse attention (WaveViT and Swin-S) and non-attention shuffling (Focal-Net [ 61 ] and EfficientMod [ 40 ]) closeby. At small memory footprints, hyrid models at small image resolutions cluster close to the Pareto–front. 
+
+Which backbone should I use? 
+
+A ViT backbone with FlashAttention is a solid choice (generalization and speed), with sparse attention models, or FocalNet as efficient alternatives. Note however, that differences are generally small for the best ViT, hybrid, sparse, and non-attention models. 
+
+4.3. Which pretraining to use? 
+
+With the architecture fixed, the next question is which pre-training to initialize it with. The natural instinct is to pick the checkpoint based on the ImageNet linear-probe accuracy, since most papers publish it. Figure 5 plots mIoU against ImageNet accuracy across 11 pretraining schemes under our unified recipe. A positive trend exists only on ADE20K but is weak and carried almost entirely by the extremes, as removing plain MAE [ 24 ], SAM [ 30 ], and supervised DeiT III [ 54 ] collapses the rank correlation among the re-maining strong models to ρ = 0 .21 for ViT-L on ADE20K. On Cityscapes, the trend is even negative. The dominant signal is instead the pretraining objective . Dense objec-tives (masked image modeling, especially EVA-02 [ 18 ], and DINO’s [ 42 , 48 ] self-distillation) meet or exceed the trend regardless of where they fall on ImageNet linear-probe, with EVA-02 the strongest model overall for ViT-L on ADE20K (59.7 mIoU) despite only mid-pack classification accuracy. On Cityscapes, DINOv3 is the best pretraining, closely fol-lowed by DINOv2 (for ViT-L). Interestingly, SAM’s [ 30 ]segmentation pretraining does not generalize to our setup on ADE20K, but performs very well (only DINO is better) on Cityscapes. Since supervised and clip pretraining decou-ples global, linearly-separable semantics from the per-patch spatial structure, it does not generalize well to dense tasks: DeiT III’s linear-probe (81.8% on mean patch-embedding) exceeds both CLIP [ 44 ] and plain MAE, yet its mIoU sits 
+
+≈ 8 p.p. below the trend prediction, while every other model lies within ±3.5. CLIP itself also sits below the trend. We conclude that self-supervised approaches have improved a lot since BoB [ 21 ], when supervised pretraining was found best. Our practical recommendation is: 
+
+How to pretrain for segmentation? 
+
+Initialize from a dense-objective foundation model (DI-NOv3 or EVA-02 work best) and disregard ImageNet linear-probe accuracy as a proxy. Note, that Section 4.2 holds pretraining fixed to a shared supervised pretraining, a controlled test of transfer from identical conditions, since dense-objective pretrained states are not (yet) available for most architectures, besides ViT. 
+
+4.4. Compute-Optimal Scaling 
+
+A fixed compute budget can be spent on a larger backbone or on higher input resolution. Both raise mIoU, but which is more efficient? We characterize the optimal trade-off by comparing DINOv2 [ 42 ] across backbone sizes and input resolutions under our unified recipe (see Figure 6), we find that the Pareto–optimal models are identical whether cost is measured in FLOPs, inference memory, or latency, indi-cating a general allocation rule. Accuracy surfaces are well described by a saturating power law, mirroring the functional form used to model joint parameter–data scaling in language models [25] and compute scaling in vision [66]: 
+
+mIoU( N, R ) = U − A N −α − B R −β , (2) with parameter count N and resolution R, fitting to within 
+
+0.3 mIoU on Cityscapes and 0.7 on ADE20K. Since infer-ence cost follows C ∝ N pRq with p = 0 .96 , q = 2 .21 
+
+710 2 10 3 10 4 
+
+> Throughput (img / s)
+> 40
+> 45
+> 50
+> 55
+> 60
+> ADE20k mIoU [%]
+> dino2-s
+> dino2-b
+> dino2-l
+> dino2-g
+> Resolution
+> 192 px
+> 256 px
+> 384 px
+> 512 px
+> 10 210 3
+> Throughput (img / s)
+> 68
+> 70
+> 72
+> 74
+> 76
+> 78
+> 80
+> 82
+> 84
+> Cityscapes mIoU [%]
+> dino2-s
+> dino2-b
+> dino2-l
+> dino2-g
+> Resolution
+> 384 px
+> 512 px
+> 768 px
+> 1024 px
+
+Figure 6. Compute-optimal scaling using DINOv2. Throughput vs. mIoU on ADE20K (top) and Cityscapes (bottom) as model size and resolution vary. The compute-optimal frontier (Equation (2)) directs roughly 80% of added compute to model size. 
+
+(R2 = 0 .999 ), minimizing Equation (2) under a budget C
+
+yields closed-form compute-optimal trajectories N ⋆ ∝ CeN
+
+and R⋆ ∝ CeR (derivation in Section A). The allocation is strongly asymmetric: we obtain eN =0.83 on ADE20K and Cityscapes against eR = 0 .09 and 
+
+eR = 0 .10 , respectively. In practical terms, scaling the model alone at fixed resolution turns a 10 × budget into two ViT size steps (S →L); the optimal path instead diverts 20 –
+
+25 % of the additional compute to resolution while buying a 
+
+≈ 5–7× larger backbone. Two deviations from the fitted surfaces are themselves in-formative. First, on Cityscapes ViT-g is not compute-optimal: ViT-B at 1024 px outperforms it at 384 px by 4.2 mIoU us-ing fewer FLOPs, and ViT-L at 1024 px beats it at 768 px by 1.3 mIoU at 30% less compute; the frontier is traced by S→B→L with resolution scaled alongside. On the harder ADE20K dataset, by contrast, ViT-g tops the frontier. Sec-ond, the resolution lever is bounded by native image resolu-tion, which the largest sweep setting reaches on both datasets. All in all, the optimal scaling is: 
+
+How to scale up efficiently? 
+
+Roughly 80% of additional compute should be spent on model size: N ⋆ ∝ C0.83 , with optimal token count growing only as T ⋆ ∝ C0.2.
+
+## 5. Conclusion 
+
+We ask which backbone is most efficient for segmentation and whether it’s ViT. Answering it required an instrument the literature lacks: a single lightweight head that attaches unchanged to any token mixer, so that a measured difference reflects the backbone and not the apparatus around it. LUMA is that instrument, and it carries a result complementary to EoMT’s [ 29 ]: Queries need not live inside the backbone’s attention at all; a minimal external read matches it. Holding LUMA fixed across 20 backbones, 11 pretrain-ing schemes, and a range of resolutions separates, for the first time under one modern recipe, what governs segmentation quality. Along the architecture axis the differences largely collapse: Good backbones from each family transfer within a narrow band, and novel token-mixer designs deliver neither the accuracy nor the efficiency they promise on the dense task, even with high-resolution inputs. The plain ViT holds the throughput–front, with efficient variants competitive only in memory. A few sequence-length-bound mixers collapse outright as resolution grows. Along the pretraining axis the task is decisive: Dense objectives transfer robustly, while supervised and multimodal contrastive pretraining fall sys-tematically below the trend regardless of classification accu-racy. Progress in self-supervised pretraining since BoB [ 21 ]suggests opportunities for further gains here. Along the scale 
+
+axis the compute-optimal frontier is dominated by model size, which should absorb roughly 80% of any added budget. Architecture, the lever the field has tuned hardest, moves dense performance least; the pretraining objective and plain capacity move it most. The thread through all three is that the proxies ranking models at classification — top-1 accuracy, linear-probe sep-arability — can mislead for segmentation, because they re-ward globally separable semantics over the per-patch spatial structure dense prediction demands. The practical synthesis is therefore simple: Keep a simple architecture, initialize from a dense-objective foundation model, and spend added compute on model size before resolution. All in all, effort is best directed not at new token mixers, but at pretraining objectives and scalable architectures measured fairly on the dense task itself, which LUMA now makes possible. 
+
+Acknowledgements 
+
+This work was funded by the Carl-Zeiss Foundation under the Sustainable Embedded AI project (P2021-02-009). All compute was done thanks to the Pegasus cluster at DFKI Kaiserslautern. 
+
+## References 
+
+[1] Shashank Agnihotri, David Schader, Jonas Jakubassa, Nico Sharei, Simon Kral, Mehmet Ege Ka c¸ ar, Ruben Weber, and Margret Keuper. Semsegbench & detecbench: Benchmarking reliability and generalization beyond classification. 2025. 2 
+
+8[2] Mahmoud Assran, Quentin Duval, Ishan Misra, Piotr Bo-janowski, Pascal Vincent, Michael Rabbat, Yann LeCun, and Nicolas Ballas. Self-supervised learning from images with a joint-embedding predictive architecture. 2023. 2 [3] Francesca Babiloni, Ioannis Marras, Jiankang Deng, Filip-pos Kokkinos, Matteo Maggioni, Grigorios Chrysos, Philip Torr, and Stefanos Zafeiriou. Linear complexity self-attention with 3rd order polynomials. IEEE Transactions on Pattern Analysis and Machine Intelligence , pages 1–12, 2023. 2 [4] Hangbo Bao, Li Dong, Songhao Piao, and Furu Wei. BEit: BERT pre-training of image transformers. In International Conference on Learning Representations , 2022. 12 [5] Reda Bensaid, Vincent Gripon, Fran c¸ ois Leduc-Primeau, Lukas Mauch, Ghouthi BOUKLI HACENE, and Fabien Car-dinaux. A novel benchmark for few-shot semantic segmenta-tion in the era of foundation models. Transactions on Machine Learning Research , 2025. 2 [6] Daniel Bolya, Cheng-Yang Fu, Xiaoliang Dai, Peizhao Zhang, and Judy Hoffman. Hydra attention: Efficient attention with many heads. In Computer Vision – ECCV 2022 Work-shops , pages 35–49, Cham, 2022. Springer Nature Switzer-land. 2, 5 [7] Han Cai, Junyan Li, Muyan Hu, Chuang Gan, and Song Han. Efficientvit: Lightweight multi-scale attention for high-resolution dense prediction. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 17302–17313, 2023. 1, 2 [8] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J ´egou, Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-ing properties in self-supervised vision transformers. In Pro-ceedings of the International Conference on Computer Vision (ICCV) . arXiv, 2021. 2 [9] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian Schroff, and Hartwig Adam. Encoder-decoder with atrous separable convolution for semantic image segmentation. In 
+
+Proceedings of the European conference on computer vision (ECCV) , pages 801–818, 2018. 2 [10] Zhe Chen, Yuchen Duan, Wenhai Wang, Junjun He, Tong Lu, Jifeng Dai, and Yu Qiao. Vision transformer adapter for dense predictions. In The Eleventh International Conference on Learning Representations , 2023. 1, 2, 6 [11] Bowen Cheng, Alexander G. Schwing, and Alexander Kir-illov. Per-pixel classification is not all you need for semantic segmentation. In NeurIPS , 2021. 1, 2, 3 [12] Bowen Cheng, Ishan Misra, Alexander G. Schwing, Alexan-der Kirillov, and Rohit Girdhar. Masked-attention mask trans-former for universal image segmentation. In CVPR , 2022. 1, 2, 3, 4, 6, 13 [13] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe Franke, Stefan Roth, and Bernt Schiele. The cityscapes dataset for se-mantic urban scene understanding. In Proc. of the IEEE Con-ference on Computer Vision and Pattern Recognition (CVPR) ,2016. 2, 5, 6, 12 [14] Tri Dao. FlashAttention-2: Faster attention with better paral-lelism and work partitioning. In International Conference on Learning Representations (ICLR) , 2024. 6 [15] Tri Dao, Daniel Y Fu, Stefano Ermon, Atri Rudra, and Christopher Re. Flashattention: Fast and memory-efficient exact attention with IO-awareness. In Advances in Neural Information Processing Systems , 2022. 6 [16] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. ImageNet: A large-scale hierarchical image database. In 2009 IEEE Conference on Computer Vision and Pattern Recognition . IEEE, 2009. 2 [17] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is worth 16x16 words: Transformers for image recognition at scale. In 9th International Conference on Learning Represen-tations, ICLR 2021, Virtual Event, Austria, May 3-7, 2021 .OpenReview.net, 2021. 1, 2, 3, 5, 6 [18] Yuxin Fang, Quan Sun, Xinggang Wang, Tiejun Huang, Xin-long Wang, and Yue Cao. Eva-02: A visual representation for neon genesis. Image and Vision Computing , 149:105171, 2024. 2, 7 [19] William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion parameter models with simple and efficient sparsity. The Journal of Machine Learning Research , 23(1):5232–5270, 2022. 2, 5 [20] Enrico Fini, Mustafa Shukor, Xiujun Li, Philipp Dufter, Michal Klein, David Haldimann, Sai Aitharaju, Victor Guil-herme Turrisi da Costa, Louis B ´ethune, Zhe Gan, Alexander T Toshev, Marcin Eichner, Moin Nabi, Yinfei Yang, Joshua M. Susskind, and Alaaeldin El-Nouby. Multimodal autoregres-sive pre-training of large vision encoders. 2024. 2 [21] Micah Goldblum, Hossein Souri, Renkun Ni, Manli Shu, Viraj Prabhu, Gowthami Somepalli, Prithvijit Chattopad-hyay, Mark Ibrahim, Adrien Bardes, Judy Hoffman, Rama Chellappa, Andrew Gordon Wilson, Tom Goldstein, Micah Goldblum, Hossein Souri, Renkun Ni, Manli Shu, Viraj Prabhu, Gowthami Somepalli, Prithvijit Chattopadhyay, Mark Ibrahim, Adrien Bardes, Judy Hoffman, Rama Chellappa, Andrew Gordon Wilson, and Tom Goldstein. Battle of the backbones: A large-scale comparison of pretrained models across computer vision tasks. In Proceedings of the 37th International Conference on Neural Information Processing Systems , Red Hook, NY, USA, 2023. Curran Associates Inc. 1, 2, 5, 7, 8 [22] Ali Hassani and Humphrey Shi. Dilated neighborhood atten-tion transformer, 2023. 6 [23] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In Proceed-ings of the IEEE conference on computer vision and pattern recognition , pages 770–778, 2016. 2, 5 [24] Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr Dollar, and Ross Girshick. Masked autoencoders are scalable vision learners. In 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 15979–15988. IEEE, 2022. 2, 7 [25] Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya, Trevor Cai, Eliza Rutherford, Diego de Las Casas, Lisa Anne Hendricks, Johannes Welbl, Aidan Clark, 
+
+9Tom Hennigan, Eric Noland, Katie Millican, George van den Driessche, Bogdan Damoc, Aurelia Guy, Simon Osindero, Karen Simonyan, Erich Elsen, Jack W. Rae, Oriol Vinyals, and Laurent Sifre. Training compute-optimal large language models. 2022. 7 [26] Jitesh Jain, Jiachen Li, MangTik Chiu, Ali Hassani, Nikita Orlov, and Humphrey Shi. Oneformer: One transformer to rule universal image segmentation. In CVPR , 2023. 1, 2, 6 [27] Kishaan Jeeveswaran, Senthilkumar Kathiresan, Arnav Varma, Omar Magdy, Bahram Zonooz, and Elahe Arani. A comprehensive study of vision transformers on dense predic-tion tasks. 2022. 2 [28] Tommie Kerssies, Daan De Geus, and Gijs Dubbelman. How to benchmark vision foundation models for semantic seg-mentation? In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW) , pages 1162–1171. IEEE, 2024. 2 [29] Tommie Kerssies, Niccol `o Cavagnero, Alexander Hermans, Narges Norouzi, Giuseppe Averta, Bastian Leibe, Gijs Dubbelman, and Daan de Geus. Your vit is secretly an image segmentation model. In Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition (CVPR) ,2025. 1, 2, 3, 5, 6, 8, 13 [30] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao, Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-head, Alexander C. Berg, Wan-Yen Lo, Piotr Dollar, and Ross Girshick. Segment anything. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 4015–4026, 2023. 1, 2, 7 [31] Feng Li, Hao Zhang, Huaizhe Xu, Shilong Liu, Lei Zhang, Lionel M. Ni, and Heung-Yeung Shum. Mask dino: Towards a unified transformer-based framework for object detection and segmentation. In 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 3041–3050. IEEE, 2023. 1, 2, 6 [32] Jiashi Li, Xin Xia, Wei Li, Huixia Li, Xing Wang, Xuefeng Xiao, Rui Wang, Min Zheng, and Xin Pan. Next-vit: Next generation vision transformer for efficient deployment in real-istic industrial scenarios. 2022. 1, 2, 3, 5 [33] Xiangtai Li, Henghui Ding, Haobo Yuan, Wenwei Zhang, Jiangmiao Pang, Guangliang Cheng, Kai Chen, Ziwei Liu, and Chen Change Loy. Transformer-based visual segmenta-tion: A survey. IEEE Transactions on Pattern Analysis and Machine Intelligence , 46(12):10138–10163, 2024. 1, 2 [34] Yanghao Li, Hanzi Mao, Ross Girshick, and Kaiming He. Exploring plain vision transformer backbones for object de-tection. In European conference on computer vision , pages 280–296. Springer, Springer Nature Switzerland, 2022. 1, 2, 4[35] Yang Liu, Yao Zhang, Yixin Wang, Feng Hou, Jin Yuan, Jiang Tian, Yang Zhang, Zhongchao Shi, Jianping Fan, and Zhiqiang He. A survey of visual transformers. IEEE Transac-tions on Neural Networks and Learning Systems , pages 1–21, 2023. 2 [36] Yue Liu, Yunjie Tian, Yuzhong Zhao, Hongtian Yu, Lingxi Xie, Yaowei Wang, Qixiang Ye, Jianbin Jiao, and Yunfan Liu. Vmamba: visual state space model. In Proceedings of the 38th International Conference on Neural Information Processing Systems , Red Hook, NY, USA, 2024. Curran Associates Inc. 1, 3 [37] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng Zhang, Stephen Lin, and Baining Guo. Swin transformer: Hierarchical vision transformer using shifted windows. In 
+
+2021 IEEE/CVF International Conference on Computer Vi-sion (ICCV) , pages 9992–10002, Los Alamitos, CA, USA, 2021. IEEE Computer Society. 1, 2, 3, 4, 6 [38] Zhuang Liu, Hanzi Mao, Chao-Yuan Wu, Christoph Feicht-enhofer, Trevor Darrell, and Saining Xie. A ConvNet for the 2020s. In 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . IEEE, 2022. 6 [39] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully convolutional networks for semantic segmentation. In Pro-ceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2015. 2 [40] Xu Ma, Xiyang Dai, Jianwei Yang, Bin Xiao, Yinpeng Chen, Yun Fu, and Lu Yuan. Efficient modulation for vision net-works. In The Twelfth International Conference on Learning Representations , 2024. 1, 2, 7 [41] Tobias Christian Nauen, Sebastian Palacio, Federico Raue, and Andreas Dengel. Which transformer to favor: A compar-ative analysis of efficiency in vision transformers. In Proceed-ings of the Winter Conference on Applications of Computer Vision (WACV) , pages 6955–6966, 2025. 2, 6, 15 [42] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy V. Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel HAZIZA, Francisco Massa, Alaaeldin El-Nouby, Mido Assran, Nicolas Ballas, Wojciech Galuba, Russell Howes, Po-Yao Huang, Shang-Wen Li, Ishan Misra, Michael Rabbat, Vasu Sharma, Gabriel Synnaeve, Hu Xu, Herve Je-gou, Julien Mairal, Patrick Labatut, Armand Joulin, and Piotr Bojanowski. DINOv2: Learning robust visual features with-out supervision. Transactions on Machine Learning Research ,2024. Featured Certification. 2, 5, 7, 12 [43] Badri N. Patro and Vijay Srinivas Agneeswaran. Efficiency 360: Efficient vision transformers, 2023. 2 [44] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual models from natural language supervision. In Proceedings of the 38th International Conference on Machine Learning ,pages 8748–8763. PMLR, 2021. 2, 7 [45] Ren ´e Ranftl, Alexey Bochkovskiy, and Vladlen Koltun. Vi-sion transformers for dense prediction. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 12179–12188, 2021. 2 [46] Tal Ridnik, Emanuel Ben-Baruch, Asaf Noy, and Lihi Zelnik-Manor. Imagenet-21k pretraining for the masses. In Thirty-fifth Conference on Neural Information Processing Systems Datasets and Benchmarks Track (Round 1) , 2021. 5 [47] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-Net: Convolutional Networks for Biomedical Image Segmentation ,pages 234–241. Springer International Publishing, 2015. 2 [48] Oriane Sim ´eoni, Huy V. Vo, Maximilian Seitzer, Federico Baldassarre, Maxime Oquab, Cijo Jose, Vasil Khalidov, Marc 
+
+10 Szafraniec, Seungeun Yi, Micha ¨el Ramamonjisoa, Francisco Massa, Daniel Haziza, Luca Wehrstedt, Jianyuan Wang, Tim-oth ´ee Darcet, Th ´eo Moutakanni, Leonel Sentana, Claire Roberts, Andrea Vedaldi, Jamie Tolan, John Brandt, Camille Couprie, Julien Mairal, Herv ´e J ´egou, Patrick Labatut, and Piotr Bojanowski. Dinov3. 2025. 2, 7 [49] Robin Strudel, Ricardo Garcia, Ivan Laptev, and Cordelia Schmid. Segmenter: Transformer for semantic segmentation. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 7262–7272, 2021. 2 [50] Yi Tay, Dara Bahri, Donald Metzler, Da-Cheng Juan, Zhe Zhao, Che Zheng, Yi Tay, Dara Bahri, Donald Metzler, Da-Cheng Juan, Zhe Zhao, and Che Zheng. Synthesizer: Rethink-ing self-attention in transformer models. In International conference on machine learning , pages 10183–10192. PMLR, 2021. 2, 6 [51] Ilya Tolstikhin, Neil Houlsby, Alexander Kolesnikov, Lucas Beyer, Xiaohua Zhai, Thomas Unterthiner, Jessica Yung, An-dreas Peter Steiner, Daniel Keysers, Jakob Uszkoreit, Mario Lucic, and Alexey Dosovitskiy. MLP-mixer: An all-MLP architecture for vision. In Advances in Neural Information Processing Systems , pages 24261–24272, 2021. 2 [52] Hugo Touvron, Matthieu Cord, Matthijs Douze, Francisco Massa, Alexandre Sablayrolles, and Herve Jegou. Training data-efficient image transformers & distillation through atten-tion. In Proceedings of the 38th International Conference on Machine Learning , pages 10347–10357. PMLR, 2021. 2 [53] Hugo Touvron, Matthieu Cord, Alexandre Sablayrolles, Gabriel Synnaeve, and Herve Jegou. Going deeper with image transformers. In 2021 IEEE/CVF International Conference on Computer Vision (ICCV) . IEEE, 2021. 4 [54] Hugo Touvron, Matthieu Cord, and Herv ´e J ´egou. Deit iii: Revenge of the vit. In Computer Vision – ECCV 2022 , pages 516–533, Cham, 2022. Springer Nature Switzerland. 2, 5, 7 [55] Sinong Wang, Belinda Z. Li, Madian Khabsa, Han Fang, and Hao Ma. Linformer: Self-attention with linear complexity, 2020. 1, 2, 5 [56] Wen Wang, Hangbo Bao, Li Dong, Johan Bjorck, Zhiliang Peng, Qiangbo Liu, Kriti Aggarwal, Owais Khan Mohammed, Saksham Singhal, Subhojit Som, and Furu Wei. Image as a foreign language: Beit pretraining for vision and vision-language tasks. 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 19175–19186, 2023. 2 [57] Haiping Wu, Bin Xiao, Noel Codella, Mengchen Liu, Xiyang Dai, Lu Yuan, and Lei Zhang. Cvt: Introducing convolutions to vision transformers. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 22–31, 2021. 1, 2 [58] Enze Xie, Wenhai Wang, Zhiding Yu, Anima Anandkumar, Jose M. Alvarez, and Ping Luo. Segformer: simple and effi-cient design for semantic segmentation with transformers. In 
+
+Proceedings of the 35th International Conference on Neural Information Processing Systems , Red Hook, NY, USA, 2021. Curran Associates Inc. 2 [59] Yunyang Xiong, Zhanpeng Zeng, Rudrasis Chakraborty, Mingxing Tan, Glenn Fung, Yin Li, and Vikas Singh. Nystr ¨omformer: A nystr ¨om-based algorithm for approximat-ing self-attention. In Proceedings of the AAAI Conference on Artificial Intelligence , 2021. 1, 2, 6 [60] Weijian Xu, Yifan Xu, Tyler Chang, and Zhuowen Tu. Co-scale conv-attentional image transformers. In Proceedings of the IEEE/CVF International Conference on Computer Vision ,pages 9981–9990, 2021. 2, 5 [61] Jianwei Yang, Chunyuan Li, Xiyang Dai, Lu Yuan, and Jian-feng Gao. Focal modulation networks. In Advances in Neural Information Processing Systems , 2022. 2, 3, 5, 7 [62] Lihe Yang, Bingyi Kang, Zilong Huang, Xiaogang Xu, Jiashi Feng, and Hengshuang Zhao. Depth anything: Unleashing the power of large-scale unlabeled data. In CVPR . arXiv, 2024. 6 [63] Ting Yao, Yingwei Pan, Yehao Li, Chong-Wah Ngo, and Tao Mei. Wave-vit: Unifying wavelet and transformers for visual representation learning. In Computer Vision – ECCV 2022 ,pages 328–345, Cham, 2022. Springer Nature Switzerland. 2, 5, 6 [64] Jason Yosinski, Jeff Clune, Yoshua Bengio, and Hod Lipson. How transferable are features in deep neural networks? In 
+
+Proceedings of the 28th International Conference on Neural Information Processing Systems - Volume 2 , page 3320–3328, Cambridge, MA, USA, 2014. MIT Press. 2 [65] Qihang Yu, Huiyu Wang, Siyuan Qiao, Maxwell Collins, Yukun Zhu, Hartwig Adam, Alan Yuille, and Liang-Chieh Chen. k-means mask transformer. In ECCV , 2022. 1, 2, 6 [66] Xiaohua Zhai, Alexander Kolesnikov, Neil Houlsby, and Lu-cas Beyer. Scaling vision transformers. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 12104–12113, 2022. 7 [67] Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and Lucas Beyer. Sigmoid loss for language image pre-training. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 11975–11986, 2023. 2 [68] Qinglong Zhang and Yu-Bin Yang. Rest: An efficient trans-former for visual recognition. In Advances in Neural Infor-mation Processing Systems . arXiv, 2021. 1, 2, 5 [69] Xiaosong Zhang, Yunjie Tian, Lingxi Xie, Wei Huang, Qi Dai, Qixiang Ye, and Qi Tian. Hivit: A simpler and more efficient design of hierarchical vision transformer. In The Eleventh International Conference on Learning Representations , 2023. 2[70] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-dler, Adela Barriuso, and Antonio Torralba. Semantic under-standing of scenes through the ade20k dataset. International Journal of Computer Vision , 127(3):302–321, 2019. 2, 5, 6, 12 
+
+11 A. Compute-optimal allocation: derivation 
+
+We use the 4×4 size–resolution sweep of Section 4.4 to fit our scaling-laws: ViT-{S, B, L, g } with DINOv2 [ 42 ] pretraining, trained with LUMA at {384 , 512 , 768 , 1024 } px on Cityscapes [ 13 ] and {192 , 256 , 384 , 512 } px on ADE20K [ 70 ]. All runs share the head configuration, patch size, optimizer, and schedule and each configuration is trained at its target resolution. mIoU is always computed at full ground-truth resolution, so accuracies are comparable across input resolutions. We fit log C = log k + p log N + q log R on measured inference FLOPs across all configurations, obtaining p = 0 .96 ,
+
+q = 2 .21 with R2 = 0 .999 . We fit the mIoU scaling law (Equation (2)) per dataset by nonlinear least squares (multi-start, U
+
+bounded above by 100). The two error terms are additive and separable, which the data supports: residuals show no N × R
+
+interaction structure beyond the two deviations discussed below. Table 2 reports all fits. Because ViT-g falls below the accuracy of ViT-L on Cityscapes, we report the S/B/L fit as primary there; on ADE20K, excluding ViT-g drives the fitted ceiling U to its bound and is reported only as a sensitivity.                 
+
+> Table 2. Power-law fits and resulting compute-optimal exponents. Brackets give 68% bootstrap intervals over runs. †Ceiling at its bound (U=100 ): the U–αdegeneracy at a 13 ×parameter span makes αunreliable in isolation, while the exponents eN, e Rremain the stable quantities. Primary fits in bold.
+
+Dataset Sizes n α β RMSE eN eR
+
+Cityscapes S/B/L 11 0.13 † 1.11 0.30 0.83 [0.66, 0.88] 0.10 [0.08, 0.15] 
+
+Cityscapes S/B/L/g 14 0.35 0.84 0.41 0.50 [0.34, 0.66] 0.21 [0.15, 0.26] 
+
+ADE20K S/B/L/g 16 0.29 2.77 0.71 0.83 [0.74, 0.87] 0.09 [0.07, 0.13] 
+
+ADE20K S/B/L 12 0.09 † 3.00 0.46 0.97 [0.96, 0.97] 0.03 [0.03, 0.03] 
+
+Minimizing E(N, R ) = AN −α + BR −β subject to kN pRq = C, stationarity of the Lagrangian in log-coordinates gives 
+
+αAN −α
+
+p = βBR −β
+
+q , (3) i.e. the marginal error reduction per unit of log-compute is equalized across the two levers. Equation (3) implies N −α ∝ R−β
+
+along the optimal path; differentiating this relation together with the constraint p dlog N + q dlog R = dlog C yields 
+
+eN = βpβ + qα , eR = αpβ + qα , E⋆ ∝ C− αβ pβ +qα , (4) which satisfy p e N + q e R = 1 by construction. Numerically, the optimal error decays as E⋆ ∝ C−0.11 on Cityscapes and 
+
+C−0.25 on ADE20K. Confidence intervals in Table 2 are obtained by refitting on 300 bootstrap resamples of the runs and propagating through Equation (4). Two limitations bound these estimates: • Both sweeps reach native image resolution at their largest setting, so R⋆ extrapolations beyond it are meaningless; within the sweep. • Excluding ViT-g (on Cityscapes only, where it falls below ViT-L) restricts that fits parameter span to 13 × across three sizes, which widens the eN interval and creates the U –α degeneracy noted in Table 2; on ADE20K all sizes are retained. 
+
+## B. Hyperparameters & Setup 
+
+We describe our setup for training and evaluation using LUMA. 
+
+B.1. Training Setup. 
+
+Every backbone in the benchmark is trained with the identical recipe below; the only quantities that vary per backbone are the pretrained checkpoint, the patch size, and the per-depth LLRD assignment (which depends on block count). No per-backbone hyperparameter tuning is performed, so that any difference in mIoU is attributable to the architecture rather than to optimization. We optimize with AdamW at a base learning rate of 1×10 −4 and weight decay 0.05 , in bf16-mixed precision. LLRD [ 4]with factor 0.8 is applied across the backbone, the pretrained non-block parameters (patch and positional embeddings) take the 12 Setting ADE20K Cityscapes Train resolution 512 × 512 1024 × 1024 
+
+Classes 150 19 
+
+Batch size / GPU 8 4
+
+GPUs 2 4
+
+Effective batch size 16 16 
+
+Epochs 32 108           
+
+> Table 3. Dataset-specific training settings. All other hyperparameters are shared. Table 4. Run-to-run variance. (N= 3 seeds). The mean standard deviation is 0.37 mIoU on ADE20K and 0.11 mIoU on Cityscapes.
+
+Backbone Pretraining ADE20K Cityscapes mIoU (%) Std (%) mIoU (%) Std (%) ViT-L DINOv2 58.44 0.38 84.65 0.01 ViT-B DeiT III 50.42 0.27 78.64 0.04 FocalNet-S-Srf DeiT III 48.07 0.18 76.58 0.15 WaveViT-S DeiT III 47.13 0.63 76.46 0.24 maximum discount lr × 0.8 N −1, and the LUMA queries, heads, and upscale modules train at the full base rate. The backbone is fine-tuned, not frozen: a two-stage warmup holds it at zero learning rate for the first 500 steps while the new LUMA modules warm up linearly over the same window, after which the backbone ramps linearly over 1000 steps; both groups then follow cosine decay to zero. We use 100 learnable queries and inject interleaved cross-attention into the last L2 = 2 encoder blocks for every backbone. We adopt the Hungarian-matched Mask2Former loss [ 12 ]: cross-entropy on the class logits (weight 2.0, with ∅-class weight 0.1), and binary cross-entropy (weight 5.0) plus Dice loss (weight 5.0) on the mask logits. The mask loss is computed on 12544 points sampled with oversample ratio 3.0 and importance-sample ratio 0.75 .Augmentation is identical on both datasets: random horizontal flip, scale jitter in (0 .5, 2.0) , random crop to the training resolution, and color jitter (brightness ±32 /255 , contrast and saturation ±0.5, hue ±18 ◦). The two datasets differ only in the quantities listed in Table 3. At validation both use sliding-window inference: the image is resized so its short side matches the training resolution, tiled with overlap, and the window logits are averaged. 
+
+B.2. Efficiency Evaluation. 
+
+All efficiency numbers are measured on a single NVIDIA H100 in bf16 with torch.compile enabled (it is disabled during training). FLOPs are computed with fvcore 2. In Section 4.1 where LUMA is compared against external baselines, FLOPs and FPS account for the full sliding-window inference and FPS is reported at single-image (batch size 1) latency, matching the comparison protocol of EoMT [ 29 ]. The remaining sections report inference throughput at the optimal batch size and do not fold in the windowing factor, since that factor is constant across all LUMA variants and cancels in any cross-backbone comparison. 
+
+## C. Run-to-Run Variance 
+
+Since it is infeasible to run every one of our benchmark experiments multiple times, we verify run-to-run variance on a representative subset of configurations. We re-train these configurations two additional times ( N = 3 ) with only the random seed varying, to make sure that the single-run results of the main benchmark are significant. Table 4 reports the resulting spread on ADE20K and Cityscapes. The mean standard deviation on ADE20K is 0.37 mIoU, with even lower 0.11 mIoU on Cityscapes. Treating the floor as homoscedastic, two single runs are expected to differ by more than 1.1 mIoU in only ∼ 5% of cases on ADE20K. All comparisons on which our conclusions rest span several mIoU and therefore exceed this run-to-run noise by a wide enough margin, confirming that single-seed reporting is sufficient for the analysis. 
+
+> 2https://github.com/facebookresearch/fvcore
+
+13 50 100 150 200 
+
+Number of Object Queries    
+
+> 57.6
+> 57.7
+> 57.8
+> 57.9
+> 58.0
+> 58.1
+> Segmentation mIoU (%) 1246
+
+Number of tapped blocks ( L2)
+
+> 50
+> 51
+> 52
+> 53
+> 54
+> 55
+> 56
+> 57
+> 58
+> Segmentation mIoU (%)
+
+Figure 7. LUMA Ablations (ADE20K). Left: Number of queries. We keep EoMT’s default of 100 queries. Right: Number of tapped blocks. Interestingly, more tapped backbone blocks reduce performance and a single token read works best. 
+
+## D. Ablating LUMA 
+
+Figure 7 ablates the number of queries and cross-attention reads L2 on ADE20K. The left panel confirms EoMT’s default of 100 queries is also optimal for LUMA, though the effect is small: mIoU stays within 57 .6–58 .2 across 50 –200 queries. Additionally, making the queries not pass through the backbone’s MLP blocks slightly reduces performance from 58 .2 to 
+
+58 .1 mIoU. Surprisingly, the right panel shows a monotonic downward trend of mIoU as L2 grows, from 58 .4 at L2 = 1 to 
+
+50 .3 at L2 = 6 . Thus, a single cross-attention read of the patch tokens is enough to recover EoMT’s performance. 
+
+## E. More Benchmark Plots 
+
+E.1. Backbones 78 79 80 81 82 83 84 85 
+
+Pre-training Top-1 Accuracy (%)   
+
+> 40
+> 45
+> 50
+> 55
+> 60
+> 65
+> 70
+> Segmentation mIoU (%)
+> coat
+> cvt
+> efficientvit efficientmod
+> focalnet
+> hydra
+> linformer
+> nextvit
+> nystrom
+> polysa
+> resnet50
+> rest swin-s
+> swin-ti
+> switch
+> synthfr
+> vit-b
+> vit-s
+> wave
+> Baseline
+> Hybrid Attention
+> Sparse Attention
+> Non-Attention Shuffling
+> Kernel Attention
+> Low-Rank Attention
+> More MLPs
+> Fixed Attention
+> Linear fit ( r= 0.711)
+
+(a) Pretraining accuracy vs Cityscapes mIoU. 20 25 30 35 40 45 
+
+ADE20K mIoU (%)    
+
+> 30
+> 40
+> 50
+> 60
+> 70
+> Cityscapes mIoU (%)
+> coat
+> cvt
+> efficientmod efficientvit
+> focalnet
+> hydra
+> linformer
+> nextvit
+> nystrom
+> polysa
+> resnet50
+> rest
+> swin-s
+> swin-ti
+> switch
+> synthfr
+> vit-b
+> vit-s
+> wave
+> Baseline
+> Hybrid Attention
+> Sparse Attention
+> Non-Attention Shuffling
+> Kernel Attention
+> Low-Rank Attention
+> More MLPs
+> Fixed Attention
+> Linear fit ( r= 0.493)
+
+(b) ADE20K mIoU vs Cityscapes mIoU. 
+
+Figure 8. Comparison of backbone quality across different tasks. (a) ImageNet top-1 vs. Cityscapes mIoU. (b) ADE20K mIoU vs. Cityscapes mIoU. Hydra and linformer perform comparatively bad on Cityscapes, because their resolution-scaling issues. 
+
+Figure 8 extends cross-task correlation analysis to Cityscapes. ImageNet-1k top-1 tracks Cityscapes mIoU about as loosely as it tracks ADE20K mIoU ( r = 0 .71 ), so linear-probe accuracy is a weak segmentation proxy on both datasets. The 14 10     
+
+> 20
+> 30
+> 40
+> 50
+> 60
+> Baseline
+> resnet50
+> vit+flash-b
+> vit+flash-s vit-b
+> vit-s
+> Hybrid Attention
+> coat
+> cvt
+> efficientvit nextvit
+> rest
+> Sparse Attention
+> swin-s
+> swin-ti
+> wave
+> Non-Attention Shuffling
+> efficientmod
+> focalnet
+> mixer
+> 10 310 4
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Kernel Attention
+> hydra
+> polysa
+> 10 310 4
+> Low-Rank Attention
+> linformer
+> nystrom
+> 10 310 4
+> More MLPs
+> hivit switch
+> 10 310 4
+> Fixed Attention
+> synthfr
+> Resolution
+> 224px
+> 384px
+> 512px
+
+Segmentation Throughput (samples / s) (log) 
+
+> Segmentation mIoU (%)
+
+(a) Throughput vs ADE20K mIoU. 10  
+
+> 20
+> 30
+> 40
+> 50
+> 60
+> Baseline
+> resnet50
+> vit+flash-b
+> vit+flash-s
+> vit-b
+> vit-s
+> Hybrid Attention
+> coat
+> cvt
+> efficientvit
+> nextvit
+> rest
+> Sparse Attention
+> swin-s
+> swin-ti
+> wave
+> Non-Attention Shuffling
+> efficientmod
+> focalnet
+> mixer
+> 10 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Kernel Attention
+> hydra
+> polysa
+> 10 0
+> Low-Rank Attention
+> linformer
+> nystrom
+> 10 0
+> More MLPs
+> hivit switch
+> 10 0
+> Fixed Attention
+> synthfr
+> Resolution
+> 224px
+> 384px
+> 512px
+
+Segmentation Inference Memory (GB) (log) 
+
+> Segmentation mIoU (%)
+
+(b) Inference memory vs ADE20K mIoU. 
+
+Figure 9. Efficiency on ADE20K. Segmentation throughput (a) and inference memory (b) versus mIoU, with families grouped as in [ 41 ]and marker size encoding image resolution; the dotted line marks the Pareto front. ViT+FlashAttention holds both frontiers; among efficient backbones only sparse attention (Swin-S, Wave) and non-attention shuffling (FocalNet, EfficientMod) approach it. Kernel, low-rank, and fixed mixers leave the frontier as resolution rises. 
+
+cross-task panel is more telling: the two segmentation benchmarks agree with each other ( r = 0 .49 ) less than either agrees with classification, despite measuring the same task. The deviation is concentrated rather than diffuse—LUMAlinformer and LUMAhydra lie on the ADE20K trend at 512 px but collapse on Cityscapes, whose higher inference resolution drives the token count past the regime their sequence-length-bound mixing was calibrated for. These failures are resolution-dependent, not capacity-dependent, and confirm that no single benchmark exposes how an architecture scales across the resolutions segmentation actually spans. Figures 9 and 10 complete the efficiency grid, plotting both throughput and inference memory against mIoU on both datasets. 15 0
+
+> 20
+> 40
+> 60
+> 80
+
+Baseline 
+
+> resnet50
+> vit+flash-b
+> vit+flash-s
+> vit-b
+> vit-s
+
+Hybrid Attention  
+
+> coat
+> cvt
+> efficientvit
+> nextvit rest
+
+Sparse Attention 
+
+> swin-s
+> swin-ti
+> wave
+
+Non-Attention Shuffling  
+
+> efficientmod
+> focalnet
+> 10 210 3
+> 0
+> 20
+> 40
+> 60
+> 80
+
+Kernel Attention  
+
+> hydra
+> polysa
+> 10 210 3
+
+Low-Rank Attention  
+
+> linformer
+> nystrom
+> 10 210 3
+
+More MLPs  
+
+> switch
+> 10 210 3
+
+Fixed Attention 
+
+> synthfr
+> Resolution
+> 448px
+> 768px
+> 1024px
+
+Segmentation Throughput (samples / s) (log) 
+
+> Segmentation mIoU (%)
+
+(a) Throughput vs Cityscapes mIoU. 0
+
+> 20
+> 40
+> 60
+> 80
+
+Baseline 
+
+> resnet50
+> vit+flash-b
+> vit+flash-s
+> vit-b
+> vit-s
+
+Hybrid Attention  
+
+> coat
+> cvt
+> efficientvit
+> nextvit rest
+
+Sparse Attention 
+
+> swin-s
+> swin-ti
+> wave
+
+Non-Attention Shuffling  
+
+> efficientmod
+> focalnet
+> 10 010 1
+> 0
+> 20
+> 40
+> 60
+> 80
+
+Kernel Attention  
+
+> hydra
+> polysa
+> 10 010 1
+
+Low-Rank Attention  
+
+> linformer
+> nystrom
+> 10 010 1
+
+More MLPs  
+
+> switch
+> 10 010 1
+
+Fixed Attention 
+
+> synthfr
+> Resolution
+> 448px
+> 768px
+> 1024px
+
+Segmentation Inference Memory (GB) (log) 
+
+> Segmentation mIoU (%)
+
+(b) Inference memory vs Cityscapes mIoU. 
+
+Figure 10. Efficiency on Cityscapes. Segmentation throughput (a) and inference memory (b) versus mIoU; conventions as in Figure 9. The ADE20K ordering carries over, and the collapse of the sequence-length-bound mixers is more severe at Cityscapes’ higher inference resolutions of up to 1024 px. 
+
+The throughput–ADE20K panel (Figure 9a) and the memory–Cityscapes panel (Figure 10b) restate Figures 3 and 4 of the main paper; the remaining two panels are new and corroborate the verdict. The frontier is held by ViT+FlashAttention on every axis and dataset, with sparse attention (Swin-S, Wave) closest and FocalNet and EfficientMod close on the memory axis. The same kernel, low-rank, and fixed mixers leave both frontiers as resolution grows. Cityscapes makes this sharper: its inference resolutions ( 448 –1024 px) exceed ADE20K’s ( 224 –512 px), pushing the largest markers further into the sequence-length regime these mixers cannot cover. 16 10 2 10 3 10 4
+
+> Throughput (img / s)
+> 40
+> 45
+> 50
+> 55
+> 60
+> mIoU (%)
+> dino2-s
+> dino2-b
+> dino2-l
+> dino2-g
+
+(a) Throughput vs ADE20K mIoU. 10 2 10 3 
+
+> Throughput (img / s)
+> 68
+> 70
+> 72
+> 74
+> 76
+> 78
+> 80
+> 82
+> 84
+> mIoU (%)
+> dino2-s
+> dino2-b
+> dino2-l
+> dino2-g
+
+(b) Throughput vs Cityscapes mIoU. 10 0 10 1
+
+> Inference Memory (GB)
+> 40
+> 45
+> 50
+> 55
+> 60
+> mIoU (%)
+> dino2-s
+> dino2-b
+> dino2-l
+> dino2-g
+> Resolution
+> 192 px
+> 256 px
+> 384 px
+> 512 px
+
+(c) Inference memory vs ADE20K mIoU. 10 0 10 1 
+
+> Inference Memory (GB)
+> 68
+> 70
+> 72
+> 74
+> 76
+> 78
+> 80
+> 82
+> 84
+> mIoU (%)
+> dino2-s
+> dino2-b
+> dino2-l
+> dino2-g
+> Resolution
+> 384 px
+> 512 px
+> 768 px
+> 1024 px
+
+(d) Inference memory vs Cityscapes mIoU. 
+
+Figure 11. Compute-optimal scaling on both efficiency axes. The DINOv2 sweep (DINOv2-S/B/L/g across resolutions) plotted against throughput (a, b) and inference memory (c, d), on ADE20K (a, c) and Cityscapes (b, d); marker size encodes resolution and the dotted line marks the Pareto front. On every axis and dataset the front is climbed by model size, with resolution contributing the finer steps; the compute-optimal fit (Section A) directs roughly 80% of added compute to model size. 
+
+E.2. Compute Scaling 
+
+Figure 11 extends Figure 6 of the main paper to all four efficiency–accuracy combinations, adding the inference-memory axis to the throughput axis of the main paper. Panels (a) and (b) restate Figure 6 of the main paper; panels (c) and (d) plot the same DINOv2 sweep against inference memory and are new. On every panel the Pareto front is climbed by model size, with the DINOv2-S/B/L/g progression tracing the frontier and the resolution increments within each model contributing the smaller steps. The memory panels address a confound: the compute-optimal conclusion of Figure 6 from the main paper is a FLOPs argument, and a memory-bound reading could in principle favour the lower-resolution, smaller-activation regime, but the front is climbed by the same progression on the memory axis, so the verdict does not depend on which efficiency budget is charged. The cross-dataset asymmetry also carries over: on ADE20K resolution saturates near the native image size, leaving model size as the only remaining lever and placing DINOv2-g at the top of the frontier, whereas on Cityscapes the higher native resolution still rewards resolution scaling, and DINOv2-g is not compute-optimal at intermediate budgets and a smaller model at higher resolution dominates it (DINOv2-B at 1024 px beats DINOv2-g at 384 px at fewer FLOPs). 17

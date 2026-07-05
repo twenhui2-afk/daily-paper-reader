@@ -1,0 +1,1006 @@
+Title: GRAPE: Graph-Augmented Prototype Explanations for Interactive Medical Image Diagnosis
+
+URL Source: https://arxiv.org/pdf/2606.30901v2
+
+Published Time: Thu, 02 Jul 2026 01:09:31 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# GRAPE: Graph-Augmented Prototype Explanations for Interactive Medical Image Diagnosis 
+
+Rasul Khanbayov 1, Erchin Serpedin 2, Hasan Kurban 1∗
+
+> 1
+
+Hamad Bin Khalifa University 
+
+> 2
+
+Texas A&M University 
+
+rakh90100@hbku.edu.qa, eserpedin@qatar.tamu.edu, hkurban@hbku.edu.qa 
+
+## Abstract 
+
+Prototype-based medical image classifiers present three clinical limitations: they treat findings as independent, silently amplify unsafe physician feedback, and require full retraining whenever a new finding is needed. We present GRAPE (Graph-Augmented Prototype Explanations), a unified architecture that addresses all three challenges. First, a Graph Attention Task Head models anatomical concept co-occurrence, boosting macro-F1 by +13.8 pp over the prototype baseline on TBX11K. Second, a Concept-Mismatch Safety Check - the first such mechanism in prototype-based medical classifiers - warns when the model’s dominant find-ing inside a doctor-drawn region conflicts with the claimed label, catching 85% of erroneous annotations versus 51% for MC-Dropout with no extra inference cost. Third, Open-Vocabulary Prototype Anchoring aligns visual prototypes to clinical text, allowing a new finding to be added from a single labeled image without modifying any other component. On NIH ChestX-ray14, one Effusion example recovers full-supervision localization accuracy; on TBX11K, prototype maps achieve 2.6× better lesion localization than end-to-end baselines. All three capabilities add only +1 ms latency at interactive batch size. The project page is 
+
+https://github.com/KurbanIntelligenceLab/GRAPE .
+
+## 1 Introduction 
+
+Deep learning has achieved radiologist-level accuracy on several medical imaging tasks [ 18 , 12 ], yet clinical adoption remains limited. Two barriers stand out. First, black-box models provide no evidence for their predictions, making it impossible for a physician to verify or override the reasoning. Second, even “interpretable” models may silently propagate spatial errors when doctors provide corrective feedback, creating a patient-safety risk. Prototype-based models [ 3, 5] address the first barrier by making predictions through similarity to learned visual examples. Recent work on Concept-based Similarity Reasoning (CSR) [ 8] extends this to multi-prototype per-concept reasoning with doctor-in-the-loop interaction. However, three structural limitations remain: 1. Independent concepts. The task head is a flat linear layer applied to concatenated concept similarity scores. It ignores known anatomical correlations between findings (e.g., active tuberculosis (TB) and cavity formation co-occur reliably), discarding clinically meaningful structure. 2. Unsafe spatial interaction. When a physician draws a bounding box to guide the model’s attention, the system applies the spatial feedback regardless of the model’s confidence in  
+
+> ∗Corresponding author. Email: hkurban@hbku.edu.qa
+> Preprint.
+> arXiv:2606.30901v2 [cs.CV] 1 Jul 2026
+
+that region. If the model is confused and associates a different concept with the indicated region, the feedback amplifies an error. 3. Closed concept vocabulary. Adding a new clinical finding (e.g., a rare variant not seen in training) requires fully retraining the prototype atlas — a prohibitive cost in clinical settings. We propose GRAPE , a unified architecture that resolves all three limitations within a coherent four-stage training framework. Our contributions are: • A Graph Attention Task Head (Module A, §3.2) that constructs a data-driven concept co-occurrence graph from training labels and refines prototype similarity scores via two rounds of Graph Attention Network (GAT) message passing before classification. • A Concept-Mismatch Safety Check (Module B, §3.3) — the first such mechanism in prototype-based medical classifiers — that computes per-concept mean similarity inside a physician-drawn region and warns when a different concept dominates, preventing silent error amplification before feedback is applied. • Open-Vocabulary Prototype Anchoring (Module C, §3.4) that aligns visual prototypes to frozen BioViL-T text embeddings, enabling a new clinical concept to be added at test time from a single labeled image without modifying any other component. • A four-stage training pipeline (§3.5) that integrates concept supervision, contrastive prototype learning, VLM alignment, and graph-structured classification. • Experiments on TBX11K and NIH ChestX-ray14 (§4) covering classification, Pointing Game localization, inference speed, safety check validation, zero-shot concept addition, and Insertion/Deletion AUC faithfulness. 
+
+## 2 Related Work 
+
+ProtoPNet [ 3] learns class-specific visual prototypes. Extensions add deformability [ 5 ], decision trees [ 16 ], part-sharing [ 19 ], and patch variants [ 15 ]. In medical imaging, MProtoNet [ 26 ] and Ma et al. [ 13 ] apply prototype bottlenecks to chest X-rays. GRAPE builds on CSR [ 8], replacing its linear head with a graph-structured classifier. Concept Bottleneck Models [ 10 , 6 , 28 ] interpose concept scores before prediction; Margeloiu et al. [ 14 ] show they can be semantically misaligned, GRAPE grounds prototypes to BioViL-T [ 1] text anchors instead. GCN classifiers [ 4, 27 ] model corpus-derived label co-occurrence. GRAPE uses training-label statistics with prototype-similarity node features and learned GAT attention [ 22 ]. Bayesian uncertainty [ 7 , 11 ] requires sampling overhead. GRAPE’s prototype-variance signal is deterministic [ 20 ]. Medical VLMs (MedCLIP [ 25 ], BiomedCLIP [ 30 ]) target classification. GRAPE uses text embeddings as geometric anchors for prototype initialization, preserving spatial interpretability. Interactive annotation methods [ 23 , 9]lack concept-mismatch checks. Faithfulness is evaluated via Insertion/Deletion AUC [ 17 , 21 ]. B-cos networks [ 2] offer an alternative faithful attribution approach by replacing standard convolutions with alignment-based transforms. Unlike GRAPE, they do not support interactive concept-level correction or open-vocabulary extension. 
+
+## 3 Method 
+
+3.1 Preliminaries: Prototype-Based Concept Reasoning 
+
+Backbone F followed by two-layer MLP projector P yields L2-normalized spatial embeddings: 
+
+f ′ = P (f ) ∈ RD×h×w, ∥f ′ 
+
+> :,i,j
+
+∥2 = 1 ∀i, j. (1) Each concept k has M L2-normalized prototypes {pkm } ⊂ RD ; the similarity map Skm (i, j ) = 
+
+⟨pkm , f ′ 
+
+> :,i,j
+
+⟩ (unit-norm cosine; Appendix K) aggregates to a scalar score: 
+
+skm = max  
+
+> i,j
+
+Skm (i, j ). (2) The baseline CSR model feeds the score matrix s ∈ RK×M through a linear task head to produce class logits. GRAPE replaces this with the three modules described below. 23.2 Module A: Graph Attention Task Head 
+
+Clinical concepts are not independent, active TB and cavity formation co-occur. Cardiomegaly correlates with pleural effusion, yet a flat linear head over concatenated skm discards this structure. We build a data-driven co-occurrence graph from training labels y(n) ∈ { 0, 1}K : the K × K
+
+conditional probability matrix 
+
+Akk ′ = P (k | k′) = 
+
+P 
+
+> n
+
+y(n) 
+
+> k
+
+· y(n)
+
+> k′
+
+P 
+
+> n
+
+y(n) 
+
+> k′
+
++ ϵ , (3) is thresholded at τ = 0 .1 to obtain a directed binary adjacency with self-loops (the matrix is 
+
+not symmetrized: Akk ′̸ = Ak′k in general), then row-normalized so that each node’s incoming edge weights sum to one. The equality Akk ′ = P (k | k′) follows from the frequentist identity 
+
+P (k | k′) = P (k, k ′)/P (k′): since y(n) ∈ { 0, 1}K is binary, the numerator P 
+
+> n
+
+y(n) 
+
+> k
+
+y(n) 
+
+> k′
+
+counts samples where both concepts co-occur, and the denominator P 
+
+> n
+
+y(n) 
+
+> k′
+
+counts samples where k′ is present; the common 1/N factor cancels, yielding the maximum-likelihood estimate of the conditional probability [ 4]. The constant ϵ (implemented as denominator clamping to min = 1 , i.e. ϵ = 1 )prevents division by zero for concepts absent from the training split and has negligible effect whenever 
+
+P 
+
+> n
+
+y(n) 
+
+> k′
+
+≫ 1.
+
+Graph Attention Network. Each concept is a node with initial feature h(0)  
+
+> k
+
+= sk, : ∈ RM .Two GAT layers [ 22 ] refine these via learned attention (Appendix K, Eqs. 16–18). A Layer-Norm–Dropout–Linear readout produces class logits. Layer dimensions and head counts are described in Appendix B (Table 7). 
+
+3.3 Module B: Concept-Mismatch Safety Check Prototype variance maps. The disagreement among M prototypes for concept k at patch (i, j )
+
+provides a spatial consistency estimate without sampling: 
+
+μk(i, j ) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+Skm (i, j ), (4) 
+
+Uk(i, j ) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+(Skm (i, j ) − μk(i, j )) 2 . (5) High Uk(i, j ) indicates that the M prototypes strongly disagree about whether patch (i, j ) belongs to concept k, signaling ambiguous evidence. At training time this guides prototype masking (see below); at inference time the safety check uses the mean map μk directly to detect concept mismatch. 
+
+Spatial safety check. When a doctor provides a bounding box B intending to reinforce concept k∗,GRAPE checks whether the dominant concept inside the region matches. It first computes the mean similarity per concept inside B:
+
+¯sk(B) = 1
+
+|B| 
+
+X
+
+> (i,j )∈B
+
+μk(i, j ) ∀k, (6) identifies the dominant concept k† = arg max k ¯sk(B), and issues a safety warning if k†̸ = k∗ and 
+
+¯sk† (B) − ¯sk∗ (B) > η (threshold η = 0 .05 ). The feedback is not applied until the doctor confirms. This is a concept-mismatch check: it detects when the model’s dominant response inside the region conflicts with the claimed concept label, preventing silent error amplification in the prototype atlas. The check uses the spatial mean ¯sk(B) rather than the spatial max of μk inside B. Mean-based aggregation is more robust to isolated high-activation outliers than max-based gating (quantitative comparison: Appendix P); Uk also guides prototype masking during training (Appendix K). 
+
+3.4 Module C: Open-Vocabulary Prototype Anchoring 
+
+We eliminate the closed-vocabulary bottleneck by anchoring each prototype to a clinical text de-scription via the frozen BioViL-T encoder [ 1]. A learnable projection Wtxt ∈ RD×768 maps each 3Input X-ray                      
+
+> ResNet-50
+> + MLP P
+> feature extraction
+> TB
+> Card.
+> Effu.
+> · · ·
+> Prototype atlas {pkm }
+> TB
+> c2
+> c3
+> cK
+> 12345
+> Score matrix S
+> Card
+> Effu
+> Pneu
+> Edem
+> TB
+> GAT head
+> Predictions
+> Active TB 0.92
+> Cardiomegaly 0.78
+> Pneumonia 0.31
+> Concept text
+> BioViL-T
+> (frozen)
+> text encoder
+> Wtxt
+> linear projection
+> Zero-shot concept addition
+> augment atlas co-occurrence G
+> New concepts
+> +apical infiltrate
+> +cavitation
+> +pleural thickening
+> atlas extension
+> Clinician correction
+> Mean similarity ¯scat box b
+> region score variance map
+> Var.
+> >η?
+> threshold
+> Flag for review
+> Feedback accepted
+> action
+> align prior
+> variance
+> Module C Zero-shot concept addition
+> Module A Prototype-based graph reasoning
+> Module B Clinician-in-the-loop safety check
+
+Figure 1: GRAPE architecture. An X-ray is encoded by ResNet-50 + MLP projector P into spatial features f . Module A matches f against a learned prototype atlas (one row of M image-patch prototypes per concept ck), and score matrix S feeds a GAT head guided by a co-occurrence graph G
+
+to produce per-class probabilities. Module B checks clinician-drawn bounding boxes by computing mean concept similarity ¯sc inside the region and comparing against a variance threshold η, flagging concept mismatches before feedback is applied. Module C adds new concepts zero-shot via a frozen BioViL-T encoder aligned to prototype space through Wtxt ; dashed arrows show the resulting alignment and prior connections to Module A. concept’s text embedding tk into the visual prototype space: 
+
+ˆtk = Wtxt tk
+
+∥Wtxt tk∥2
+
+∈ RD . (7) The alignment loss (Stage 3) pulls all M prototypes toward their text anchor while keeping the BioViL-T backbone frozen: 
+
+Lalign = 1
+
+KM 
+
+> K
+
+X
+
+> k=1
+> M
+
+X
+
+> m=1
+
+ 1 − ⟨ pkm , ˆtk⟩ . (8) 
+
+Zero-shot concept addition. At test time, a clinician adds a new concept k′ without image annotations by initializing M perturbed prototypes from the text anchor ( σinit = 0 .1): 
+
+p(0)  
+
+> k′m
+
+= ˆtk′ + σinit ϵm
+
+∥ˆtk′ + σinit ϵm∥2
+
+, ϵm ∼ N (0, ID ), ϵm ← ϵm/∥ϵm∥2. (9) These prototypes are immediately usable for inference or adaptable with a small number of labeled examples via concept-local fine-tuning. 
+
+3.5 Training Pipeline 
+
+GRAPE trains in four stages (Algorithm 1 in Appendix J): concept supervision, prototype learning, optional VLM alignment, and GNN task head fine-tuning. All stages use BF16 AMP on A100 hardware. 
+
+Stage 1 — Concept Supervision. The backbone F and per-concept CAM heads are trained with BCE on Global Average Pooled activations (Appendix K, Eq. 14). 4Figure 2: Pointing Game on TBX11K chest X-rays (Active TB concept). Each dot shows the max-activation point of a method; only GRAPE (yellow circle) consistently localizes the lesion inside the ground-truth bounding box (cyan). Other methods scatter to irrelevant regions. 
+
+Stage 2 — Concept Vector Generation. CAM-weighted spatial averages of frozen backbone features produce per-concept vectors vk (Appendix K, Eq. 15) that seed the Stage 3 prototype atlas. 
+
+Stage 3 — Prototype Learning with VLM Alignment. The projector P , prototypes {pkm }, and text projection Wtxt are trained jointly. Each projected concept vector v′ 
+
+> k
+
+= P (vk) serves as a query; the multi-prototype contrastive loss assigns it to its ground-truth concept ˜k via soft assignment: 
+
+qkm(v′) = softmax m(γ⟨pkm , v′⟩) , (10) sim k(v′) = X
+
+> m
+
+qkm(v′)⟨pkm , v′⟩, (11) 
+
+Lcon = − log exp 
+
+
+
+λ(sim ˜k(v′
+
+> ˜k
+
+) + δ)
+
+P 
+
+> k
+
+exp 
+
+
+
+λ sim k(v′
+
+> ˜k
+
+)
+
+ , (12) with λ = 10 , γ = 5 , δ = 0 .1; the Stage 3 loss is L3 = Lcon + 0 .1 Lalign .
+
+Stage 4 — Graph-Structured Classification. With all prior components frozen, the GNN is trained with L4 = CE (GNN (s, G ), y ) (E2E variant: Appendix C). 
+
+## 4 Experiments 
+
+4.1 Datasets TBX11K [ 12 ] is a 3-class TB chest X-ray dataset with 10,400 images: 4,600 healthy, 4,600 sick-but-non-TB, and 1,200 active-TB images, with 1,211 bounding box annotations for three TB finding types (Active Tuberculosis, Obsolete Pulmonary Tuberculosis, Pulmonary Tuberculosis). We use the official 6,600/1,800 train/val split and hold-out a dedicated bbox_eval split (200 active-TB images with at least one annotated box) for Pointing Game evaluation; the 1,800-image test split is used for final F1 reporting. NIH ChestX-ray14 [ 24 ] contains 100k+ frontal chest X-rays with 14 finding labels. Primary multi-seed comparison (Table 3) uses a 10k-patient patient-level stratified sub-sample (5 seeds, no patient leakage); single-seed ablations (Table 2) use a 20k-image shard (seed 42). Pointing Game uses 709 shard images with 964 bbox annotations from BBox_List_2017. 2
+
+Evaluation metrics. Macro F1 measures classification performance averaged across classes, ac-counting for class imbalance. Pointing Game (PG) [ 29 ] evaluates spatial interpretability: for each (image, concept) pair with a ground-truth bounding box, it checks whether the spatial maximum of the concept’s similarity map falls inside the box; we report the hit rate across all evaluated pairs. Full implementation details and hyperparameter settings are in Appendix B (Table 7). 
+
+> 2BBox_List_2017 has 880 annotated images; 709 overlap with our shard.
+
+5Figure 3: Prototype similarity maps for CSR Baseline, CBM, PIP-Net, and GRAPE across three representative Active TB examples. Heatmaps are overlaid on the input X-rays; cyan boxes denote ground-truth lesion annotations; percentage badges report the fraction of total heatmap energy inside the ground-truth box. Aggregate box-energy statistics are consistent with the Pointing Game results in Table 1. 
+
+4.2 Main Results 
+
+Table 1: Ablation on TBX11K (3-class TB detection). We report Macro F1 and Pathology Grounding (PG); higher is better for both. All results are mean ± std over three seeds {0, 1, 42 }. GRAPE is designed to improve grounding (PG) under a curriculum protocol; it is not expected to surpass end-to-end baselines on F1 (see §4.2, Observation 4). Best PG within each block is shown in bold .
+
+Method Module Macro F1 ↑ PG ↑
+
+GNN Unc. § VLM 
+
+Module ablation under curriculum training 
+
+CSR † [8] – – – 0.706 ± 0.059 0.077 ± 0.016 
+
++ GNN ✓ – – 0.845 ± 0.049 0.117 ± 0.045 
+
++ VLM – – ✓ 0.722 ± 0.032 0.097 ± 0.044 
+
++ GNN + VLM ✓ – ✓ 0.875 ± 0.020 0.087 ± 0.033 
+
+GRAPE (GNN + Unc.) ✓ ✓ – 0.845 ± 0.049 0.117 ± 0.045 
+
+End-to-end variants and concept-based baselines ¶
+
+ResNet-50 (backbone only) • – – – 0.993 –GRAPE-E2E ‡ ✓ ✓ – 0.9900 ± 0.0020 0.0910 ± 0.0590 
+
+CBM [10] – – – 0.9778 ± 0.0109 0.0550 ± 0.0187 
+
+PIPNet [15] – – – 0.9644 ± 0.0021 0.0533 ± 0.0184          
+
+> †CSR re-implemented; no published numbers on these splits. §Module B is inference-only; does not affect F1/PG. ‡E2E: task gradients through backbone throughout. •ResNet-50+GAP+linear, seed 42; E2E gains driven by unconstrained fine-tuning. ¶Same backbone/splits; CBM: joint bottleneck; PIPNet: patch-prototype similarity.
+
+6Key observations. (1) GNN is the dominant module for multi-class tasks. The GNN head alone saturates the staged gain ( +13 .8 pp F1 over 5 seeds, Table 3; +14 .4 pp on the single-seed ablation, Appendix F); VLM alone yields no improvement on the sparse K = 3 concept set. E2E training reaches 0.990 ± 0.002 F1 (Appendix C) but at the cost of spatial faithfulness (PG 0.091 ± 0.059 
+
+vs. staged 0.111 ± 0.038 ); a plain ResNet-50 linear head achieves 0.993 F1, confirming E2E gains are driven by unconstrained backbone fine-tuning rather than concept reasoning. The per-class gain is concentrated on majority classes (Healthy +21 .5 pp, Sick-non-TB +20 .6 pp; Appendix I); Active TB F1 is comparable between GRAPE and CSR, suggesting the GNN reshapes the output distribution rather than improving disease-specific detection. (2) VLM alignment is complementary for diverse concept sets. On NIH, VLM contributes to the single-seed gain (Table 2), but multi-seed evaluation (Table 3) shows GRAPE and CSR are statistically comparable ( p = 0 .894 ), indicating the gain does not persist under the rigorous patient-level split protocol. (3) Pointing Game and spatial faithfulness. GRAPE’s prototype maps achieve 2.6× higher PG than CBM (0.140 vs. 
+
+0.055 ) and PIPNet (0.140 vs. 0.053 ; Appendix H): end-to-end fine-tuning sacrifices prototype-to-region alignment for classification accuracy. On the single-seed run (seed 42), GRAPE achieves PG = 0 .1401 vs. CSR 0.0628 (+7 .73 pp; Figure 3); multi-seed evaluation finds no statistically significant difference vs. CSR ( p = 0 .64 ), reflecting high variance ( σ ≈ 0.03 ) inherent to Pointing Game at 7×7 resolution. 
+
+4.3 Graph Head Comparison and Inference Speed 
+
+We ablate the choice of graph task head by comparing GRAPE’s GAT with ML-GCN [ 4] and ADD-GCN [ 27 ]; all three heads outperform the linear baseline (+10.7–14.6 pp F1), confirming that concept co-occurrence structure is the key driver, not the specific message-passing mechanism. We retain the GAT head for its directly interpretable, learned edge-conditioned attention weights. Full results are in Appendix F; a per-edge importance ablation quantifying each edge’s contribution to final F1 is in Appendix G. Graph structure vs. added nonlinearity. To isolate whether the GAT gain comes from graph-relational reasoning or simply from additional parameters, we train a parameter-matched 2-layer MLP ( ≈47 K parameters) directly on the flattened K×M score vector, replacing graph structure with a generic nonlinear function of the same capacity. The MLP achieves F1 = 0 .865 , closing ∼ 69% of the gap between the linear head ( 0.798 ) and the GAT ( 0.896 ); the remaining +3 .1 pp ( 0.865 → 0.896 ) is attributable to the co-occurrence graph structure itself. On TBX11K ( K = 3 ) where self-loops dominate, this confirms that the graph contributes meaningfully beyond nonlinearity, while the majority of the gain reflects the benefit of a learnable nonlinear readout over the prototype score matrix. The edge ablation (Appendix G) shows self-loops dominate on TBX11K ( K = 3 ); richer co-occurrence effects are expected on NIH ( K = 14 , 103 edges). The GNN head adds only +1 ms over the linear head at batch size 1, satisfying real-time interaction requirements (full latency benchmarks: Appendix F). Table 2: Ablation on NIH ChestX-ray14 (binary classification across 14 findings), seed 42 of the initial development run on a 20k-image streaming shard. Module configurations match those in Table 1. Multi-seed mean ± std on the official patient-level split is reported in Table 3; per-metric winner in bold .                            
+
+> Method Module Macro F1 ↑PG ↑
+> GNN Unc. VLM CSR †[8] –––0.6166 0.0766
+> + GNN + Unc. ✓✓–0.6526 0.0664
+> + Unc. + VLM –✓✓0.5859 0.0743
+> GRAPE (full) ✓✓✓0.7138 0.0642
+
+4.4 Comparison with CSR Baseline 
+
+Table 3 summarizes GRAPE vs. CSR [ 8] over five seeds on both datasets (official patient-level split for NIH). On TBX11K, GRAPE’s F1 ranges 0.798–0.916 across seeds (std = 0.042); the paired t-test yields t(4) = 8 .03 , p = 0 .0013 . Single-seed ablation values (Table 1) are included for comparability only. 7Table 3: Summary comparison of GRAPE against the CSR baseline under the same interpretability-constrained training regime (frozen backbone, concept supervision, staged curriculum). All results are mean ± std over five seeds {0, 1, 2, 3, 42 }; significance via paired t-test on per-seed Macro F1. End-to-end fine-tuned methods (CBM, PIPNet) use a different training paradigm and are compared separately in Appendix H (Table 14). See Tables 1 and 2 for full ablations.                                                         
+
+> Dataset Method Macro F1 ↑PG ↑∆F1 p-value TBX11K CSR †0.728 ±0.050 0.094 ±0.033 ––GRAPE (GNN + Unc.) 0.866 ±0.042 0.080 ±0.032 ¶+13 .8pp 0.0013
+> NIH CXR14 CSR †0.6048 ±0.0170 –§––GRAPE (full) 0.6031 ±0.0174 –§−0.3pp 0.894 (n.s.)
+> †CSR is re-implemented under our training protocol and hyperparameters; published numbers on these splits are unavailable for direct comparison. §NIH bounding-box annotations were unavailable for the multi-seed evaluation run; single-seed PG is reported in Table 2. ¶Paired t-test on per-seed PG: t(4) = −0.50 ,p= 0 .64 (n.s.); the development-run single-seed advantage ( +7 .73 pp, Table 1) does not replicate consistently across seeds (seed-level range: −10 .5to +6 .0pp).
+
+4.5 Module B: Safety Check Evaluation 
+
+We simulate miscorrections on the TBX11K bbox_eval split (207 annotated triples): with probability 
+
+p, a bounding box is reassigned to a wrong concept; the safety check (the dominance rule following Eq. 6, η = 0 .05 ) issues a warning when the dominant concept inside the box differs from the claimed one. Bootstrap 95% CIs use B = 1000 resamples. With the Uk-gated variant ( θV = 2 ×10 −4) as the default operating point, Module B catches 85.1% of misdrawn boxes with an FP rate of 16.4% 
+
+[12.1%, 20.9%] (Table 17). The ungated baseline achieves higher TP (88–89%) at the cost of a higher FP rate (21.7% [16.4%, 27.1%]). Further tightening to θV = 10 −4 drops FP to 12.6% but TP falls to 78.0%, below the 85% clinical threshold. The Uk-gated configuration is the recommended deployment setting. Table 22 in Appendix O shows that prototype variance substantially outperforms both MC-Dropout variants (TP 90.5% vs. 51.0%/23.4%) while requiring only a single deterministic forward pass. On NIH ( K = 14 ), TP remains high ( 0.921 ± 0.012 ) but FP rises to 0.731 ± 0.011 
+
+due to dense concept overlap; per-concept breakdown and discussion are in Appendix Q. 
+
+4.6 Further Analysis: Zero-Shot Concept Addition and Faithfulness Module C: Zero-shot concept addition. We evaluate Module C via a leave-one-concept-out experiment on TBX11K ( K = 3 ): for each held-out concept, we reinitialize its M = 100 prototypes from the text anchor (Eq. 9) and fine-tune them with n ∈ { 0, 1, 5, 20 } labeled images, measuring Pointing Game on the bbox_eval split. Full results are in Appendix M (Table 19). Text-only initialization yields non-zero localization for active_tb (PG = 0 .030 ), and a single labeled image reaches PG = 0 .068 ± 0.045 , on average 41% of full supervision (68% CI: 14–69%). With five seeds the few-shot trend is essentially monotonic: 1-shot (PG = 0 .068 ) < 5-shot (PG = 0 .079 ) ≈
+
+20-shot (PG = 0 .078 ); the earlier non-monotonicity observed with three seeds was a seed artefact. We additionally evaluate on NIH ChestX-ray14 ( K = 14 ): 3 of 4 target concepts have bbox coverage (Infiltration, Effusion, Atelectasis); Effusion’s 1-shot PG matches full supervision (PG = 0 .072 ,100%), and Infiltration’s 20-shot reaches 53% of full supervision. Full results are in Appendix M.1 (Table 20). Similarity map faithfulness. Faithfulness is evaluated via Insertion and Deletion AUC [ 17 ] on the 200-image TBX11K test split (full results: Appendix N, Table 21). GRAPE achieves higher Insertion AUC ( +1 .3 pp), confirming prototype maps capture genuinely predictive regions. Higher Deletion AUC is attributed to the prototype atlas spreading evidence across M = 100 spatial prototypes per concept, each contributing weakly to the saliency signal. A contextual comparison with CheXNet, MedCLIP, DenseNet, CBM, and PIPNet is in Appendix H . 
+
+## 5 Discussion 
+
+The over-regularization effect of VLM alignment on sparse concept sets ( K = 3 ) is analyzed in Appendix B. Figure 4 quantifies this: after Stage 3, all M = 100 prototypes cluster tightly near their text anchors (mean prototype–anchor cosine = 0 .995 ± 0.008 for TBX11K vs. 0.992 ± 0.007 for 8NIH), and inter-prototype pairwise cosines are similarly high ( 0.990 vs. 0.984 ), confirming that the alignment loss collapses intra-concept prototype diversity in both settings. The slightly lower NIH inter-prototype cosine (-0.006) is consistent with 14 distinct text anchors providing more diverse initialization than 3. Safety implications of the concept-mismatch check. The concept-mismatch check (the dominance rule following Eq. 6) does not improve macro-F1 directly, its value is in preventing harmful interactions. In a deployment scenario where a doctor mistakenly draws a box over a region dominated by a different finding, the safety warning gives the system a chance to flag the inconsistency before the feedback is applied. This property cannot be easily quantified in standard benchmarks but is critical for clinical trust. 
+
+Limitations. Pointing Game scores remain low in absolute terms (7–14%) because similarity maps at 7 × 7 resolution must be compared to bounding boxes annotated in 224×224 space. Upsample interpolation recovers some precision, but finer spatial resolution (e.g., with a ViT backbone) would improve localization. Module B’s recommended Uk-gated configuration (§4.5) achieves 16.4% FP rate; the baseline (ungated) rate of 21.7% is the upper bound. Further reduction would require a learned threshold or a clinician user study to calibrate tolerance. Module C is additionally validated on NIH ( K = 14 , 3 concepts with bbox coverage; Appendix M.1); full K = 14 leave-one-out and a clinician user study remain future work. Training variance. TBX11K F1 ranges 0.798 –0.916 
+
+(std = 0 .042 , 5 seeds), reflecting Stage 4 GNN sensitivity on the n=6 ,600 dataset; Table 3 reports multi-seed NIH results on the official patient-level split ( p = 0 .894 ). 
+
+## Broader Impact 
+
+Interpretable AI systems for medical imaging have the potential to meaningfully improve clinical practice. By making every prediction traceable to a specific visual concept and prototype, GRAPE enables clinicians to verify or override model reasoning rather than accepting opaque outputs. The concept-mismatch safety check reduces the risk that erroneous clinician feedback silently degrades the prototype atlas, a failure mode that could otherwise go undetected in real deployments. The open-vocabulary extension lowers barriers to adoption in resource-limited settings by allowing new clinical concepts to be introduced without full retraining. At the same time, prototype-based explanations that appear clinically plausible may not be faithful to the model’s actual decision boundary, and clinicians who over-rely on similarity maps risk anchoring diagnostic judgment to potentially misleading visual-izations. This work does not evaluate performance across demographic subgroups; prototype atlases learned from imbalanced distributions may exhibit worse spatial alignment for underrepresented populations, and practitioners should audit subgroup performance before deployment. 
+
+Ethics statement. This work uses two publicly released datasets: TBX11K [ 12 ], released under a research license, and NIH ChestX-ray14 [ 24 ], released by the U.S. National Institutes of Health (NIH) under a public-access license. No new human-subject data were collected for this research. All experiments are conducted retrospectively on de-identified images. The system described in this paper is a research prototype and is not deployed in any clinical setting. 
+
+## 6 Conclusion 
+
+We presented GRAPE, an interactive medical image diagnosis architecture combining concept-mismatch interaction safety (Module B), graph-structured concept reasoning (Module A), and open-vocabulary prototype anchoring (Module C) in a unified four-stage training framework. Module B, the first concept-mismatch safety check in prototype-based medical classifiers, catches 85% of simulated erroneous bounding-box annotations at 16.4% FP rate ( Uk-gated, §4.5), preventing unsafe feedback amplification without adding measurable inference latency. Module A yields +13.8 pp macro-F1 (0.866 ± 0.042 , 5 seeds, p = 0 .0013 ) over the prototype baseline; the gain is concentrated on majority classes (Appendix I) and the Pointing Game advantage does not replicate consistently across seeds (p = 0 .64 , Table 3). Module C is the first prototype-based mechanism to add a new clinical concept from a single labelled image without retraining: on NIH ChestX-ray14, Effusion 1-shot exactly matches fully supervised Pointing Game accuracy (100% recovery with no model modification); on TBX11K, 1-shot recovers 41% of full supervision (§4.6, Appendix M.1). Insertion/Deletion AUC faithfulness evaluation (§4.6) confirms that prototype similarity maps capture genuinely predictive spatial regions. Code and training scripts will be released upon acceptance. 9Acknowledgments and Disclosure of Funding 
+
+The authors thank the TBX11K and NIH ChestX-ray14 dataset providers for making their data publicly available. This work used an NVIDIA A100 80GB GPU. 
+
+## References 
+
+[1] Shruthi Bannur, Stephanie Hyland, Qianchu Liu, Fernando Perez-Garcia, Maximilian Ilse, Daniel C Castro, Benedikt Boecking, Harshita Sharma, Kenza Bouzid, Anja Thieme, et al. Learning to exploit temporal structure for biomedical vision-language processing. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 15016–15027, 2023. [2] Moritz Böhle, Navdeeppal Singh, Mario Fritz, and Bernt Schiele. B-cos alignment for inherently interpretable cnns and vision transformers. IEEE Transactions on Pattern Analysis and Machine Intelligence , 46(6):4504–4518, 2024. [3] Chaofan Chen, Oscar Li, Daniel Tao, Alina Barnett, Cynthia Rudin, and Jonathan K Su. This looks like that: deep learning for interpretable image recognition. Advances in Neural Information Processing Systems , 32, 2019. [4] Zhao-Min Chen, Xiu-Shen Wei, Peng Wang, and Yanwen Guo. Multi-label image recognition with graph convolutional networks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 5177–5186, 2019. [5] Jon Donnelly, Alina Jade Barnett, and Chaofan Chen. Deformable protopnet: An interpretable image classifier using deformable prototypes. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10265–10275, 2022. [6] Mateo Espinosa Zarlenga, Pietro Barbiero, Gabriele Ciravegna, Giuseppe Marra, Francesco Giannini, Michelangelo Diligenti, Zohreh Shams, Frederic Precioso, Stefano Melacci, Adrian Weller, et al. Concept embedding models: Beyond the accuracy-explainability trade-off. 
+
+Advances in Neural Information Processing systems , 35:21400–21413, 2022. [7] Yarin Gal and Zoubin Ghahramani. Dropout as a bayesian approximation: Representing model uncertainty in deep learning. In International Conference on Machine Learning , pages 1050–1059. PMLR, 2016. [8] Ta Duc Huy, Sen Kim Tran, Phan Nguyen, Nguyen Hoang Tran, Tran Bao Sam, Anton Van Den Hengel, Zhibin Liao, Johan W Verjans, Minh-Son To, and Vu Minh Hieu Phan. Interactive medical image analysis with concept-based similarity reasoning. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 30797–30806, 2025. [9] Borui Jiang, Ruixuan Luo, Jiayuan Mao, Tete Xiao, and Yuning Jiang. Acquisition of localiza-tion confidence for accurate object detection. In Proceedings of the European Conference on Computer Vision (ECCV) , pages 784–799, 2018. [10] Pang Wei Koh, Thao Nguyen, Yew Siang Tang, Stephen Mussmann, Emma Pierson, Been Kim, and Percy Liang. Concept bottleneck models. In International Conference on Machine Learning , pages 5338–5348. PMLR, 2020. [11] Balaji Lakshminarayanan, Alexander Pritzel, and Charles Blundell. Simple and scalable predictive uncertainty estimation using deep ensembles. Advances in Neural Information Processing Systems , 30, 2017. [12] Yun Liu, Yu-Huan Wu, Shi-Chen Zhang, Li Liu, Min Wu, and Ming-Ming Cheng. Revisiting computer-aided tuberculosis diagnosis. IEEE Transactions on Pattern Analysis and Machine Intelligence , 46(4):2316–2332, 2023. [13] Chiyu Ma, Brandon Zhao, Chaofan Chen, and Cynthia Rudin. This looks like those: Illuminating prototypical concepts using multiple visualizations. Advances in Neural Information Processing Systems , 36:39212–39235, 2023. 10 [14] Andrei Margeloiu, Matthew Ashman, Umang Bhatt, Yanzhi Chen, Mateja Jamnik, and Adrian Weller. Do concept bottleneck models learn as intended? arXiv preprint arXiv:2105.04289 ,2021. [15] Meike Nauta, Jörg Schlötterer, Maurice Van Keulen, and Christin Seifert. Pip-net: Patch-based intuitive prototypes for interpretable image classification. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 2744–2753, 2023. [16] Meike Nauta, Ron Van Bree, and Christin Seifert. Neural prototype trees for interpretable fine-grained image recognition. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 14933–14943, 2021. [17] Vitali Petsiuk, Abir Das, and Kate Saenko. Rise: Randomized input sampling for explanation of black-box models. arXiv preprint arXiv:1806.07421 , 2018. [18] Pranav Rajpurkar, Jeremy Irvin, Kaylie Zhu, Brandon Yang, Hershel Mehta, Tony Duan, Daisy Ding, Aarti Bagul, Curtis Langlotz, Katie Shpanskaya, et al. Chexnet: Radiologist-level pneumonia detection on chest x-rays with deep learning. arXiv preprint arXiv:1711.05225 ,2017. [19] Dawid Rymarczyk, Łukasz Struski, Jacek Tabor, and Bartosz Zieli´ nski. Protopshare: Pro-totype sharing for interpretable image classification and similarity discovery. arXiv preprint arXiv:2011.14340 , 2020. [20] Murat Sensoy, Lance Kaplan, and Melih Kandemir. Evidential deep learning to quantify classification uncertainty. Advances in Neural Information Processing Systems , 31, 2018. [21] Xiaoting Shao, Arseny Skryagin, Wolfgang Stammer, Patrick Schramowski, and Kristian Kersting. Right for better reasons: Training differentiable models by constraining their influence functions. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 35, pages 9533–9540, 2021. [22] Petar Veliˇ ckovi´ c, Guillem Cucurull, Arantxa Casanova, Adriana Romero, Pietro Lio, and Yoshua Bengio. Graph attention networks. arXiv preprint arXiv:1710.10903 , 2017. [23] Guotai Wang, Wenqi Li, Maria A Zuluaga, Rosalind Pratt, Premal A Patel, Michael Aertsen, Tom Doel, Anna L David, Jan Deprest, Sébastien Ourselin, et al. Interactive medical image segmentation using deep learning with image-specific fine tuning. IEEE Transactions on Medical Imaging , 37(7):1562–1573, 2018. [24] Xiaosong Wang, Yifan Peng, Le Lu, Zhiyong Lu, Mohammadhadi Bagheri, and Ronald M Summers. Chestx-ray8: Hospital-scale chest x-ray database and benchmarks on weakly-supervised classification and localization of common thorax diseases. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pages 2097–2106, 2017. [25] Zifeng Wang, Zhenbang Wu, Dinesh Agarwal, and Jimeng Sun. Medclip: Contrastive learning from unpaired medical images and text. In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing , pages 3876–3887, 2022. [26] Yuanyuan Wei, Roger Tam, and Xiaoying Tang. MProtoNet: A case-based interpretable model for brain tumor classification with 3D multi-parametric magnetic resonance imaging. In Medical Imaging with Deep Learning , Nashville, United States, July 2023. [27] Jin Ye, Junjun He, Xiaojiang Peng, Wenhao Wu, and Yu Qiao. Attention-driven dynamic graph convolutional network for multi-label image recognition. In European Conference on Computer Vision , pages 649–665. Springer, 2020. [28] Mert Yuksekgonul, Maggie Wang, and James Zou. Post-hoc concept bottleneck models. arXiv preprint arXiv:2205.15480 , 2022. [29] Jianming Zhang, Sarah Adel Bargal, Zhe Lin, Jonathan Brandt, Xiaohui Shen, and Stan Sclaroff. Top-down neural attention by excitation backprop. International Journal of Computer Vision ,126(10):1084–1102, 2018. 11 [30] Sheng Zhang, Yanbo Xu, Naoto Usuyama, Hanwen Xu, Jaspreet Bagga, Robert Tinn, Sam Preston, Rajesh Rao, Mu Wei, Naveen Valluri, et al. Biomedclip: a multimodal biomedical foundation model pretrained from fifteen million scientific image-text pairs. arXiv preprint arXiv:2303.00915 , 2023. 
+
+## Appendix overview 
+
+The supplementary material is organized as follows. A Notation table p. 13 B Hyperparameter sensitivity ( τ and η sweeps) p. 14 D Dataset details p. 16 E Graph structure p. 17 C End-to-end training ablation p. 15 I Per-class F1 and confusion matrix p. 18 F Graph-head comparison: GAT vs. ML-GCN vs. ADD-GCN p. 17 G GAT edge-importance ablation p. 18 H Contextual comparison with published methods p. 18 K Mathematical details p. 20 J Staged training algorithm p. 20 L Per-concept Pointing Game results p. 21 M Zero-shot concept addition p. 21 N Faithfulness evaluation p. 22 O MC-Dropout uncertainty comparison p. 23 P Module B: mean vs. max spatial aggregation ablation p. 23 Q Module B safety check on NIH ChestX-ray14 ( K = 14 ) p. 24 R Prototype–anchor alignment and inter-prototype dispersion p. 24 S GAT vs. parameter-matched MLP ablation (N6) p. 25 12 A Notation Table 
+
+Table 4: Summary of notation used throughout the paper. Symbols that are overloaded in some notations are disambiguated here; all uses follow the convention listed below. 
+
+Symbol Domain Meaning 
+
+Image and features 
+
+x R3×H×W Input image ( H, W : height, width in pixels) 
+
+F — Backbone network (ResNet-50) 
+
+f RCbb ×h×w Backbone spatial feature map 
+
+P — Two-layer MLP projector 
+
+f ′ RD×h×w Projected, L2-normalized patch features 
+
+D Z+ Prototype embedding dimension (= 256) 
+
+Concepts and prototypes 
+
+K Z+ Number of concepts 
+
+M Z+ Prototypes per concept (= 100) 
+
+pkm RD m-th prototype for concept k (unit-norm) 
+
+Skm (i, j ) [−1, 1] Cosine similarity map: concept k, prototype m, patch (i, j )
+
+skm [−1, 1] Scalar similarity: max i,j Skm (i, j )
+
+s RK×M Score matrix of all scalar similarities 
+
+Graph (Module A) 
+
+A [0 , 1] K×K Directed concept co-occurrence matrix ( Akk ′ = P (k | k′))
+
+N (k) — Neighbourhood of node k in the directed graph 
+
+τ R+ Co-occurrence threshold (default 0.1) 
+
+F ′ Z+ GAT hidden dimension per head (= 64) 
+
+nh Z+ Number of GAT attention heads (Layer 1: 4; Layer 2: 1) 
+
+Safety check (Module B) 
+
+μk (i, j ) [−1, 1] Mean prototype similarity at patch (i, j ) for concept kUk (i, j ) [0 , 1] Prototype variance (population) at patch (i, j ) for concept k
+
+B — Doctor-drawn bounding box region (set of patch indices) 
+
+¯sk (B) [−1, 1] Mean of μk inside box B
+
+k∗ {1, . . . , K } Doctor’s claimed concept for the drawn box 
+
+k† {1, . . . , K } Model’s dominant concept inside B
+
+η R+ Safety-warning gap threshold (default 0.05) 
+
+θU R+ Prototype-masking variance threshold (default 0.05) 
+
+θV R+ Uk -gating threshold for FP suppression 
+
+Bboot Z+ Bootstrap resampling count (= 1000) 
+
+VLM alignment (Module C) 
+
+tk R768 BioViL-T text embedding for concept k
+
+Wtxt RD×768 Learnable text-to-visual projection 
+
+ˆtk RD Projected, normalized text anchor (unit-norm) 
+
+σinit R+ Noise scale for zero-shot prototype init (= 0.1) 
+
+Training losses 
+
+λ R+ Contrastive temperature (= 10) 
+
+γ R+ Soft-assignment sharpness (= 5) 
+
+δ R+ Inter-concept margin (= 0.1) 
+
+λalign R+ VLM alignment loss weight (= 0.1) 
+
+˜k {1, . . . , K } Ground-truth concept index for projected vector v′
+
+> ˜k
+
+13 B Hyperparameter Sensitivity 
+
+Implementation. Backbone: ResNet-50 pretrained on ImageNet at 224×224. Prototype dimension 
+
+D = 256 , M = 100 prototypes per concept, batch size 128, BF16 AMP on NVIDIA A100 80GB. We report sensitivity to the two most impactful thresholds: the graph co-occurrence threshold τ and the safety check threshold η. All experiments use TBX11K unless noted. Fixed hyperparameters are listed in Table 7. 
+
+Graph threshold τ . For each τ ∈ { 0.01 , 0.05 , 0.10 , 0.20 , 0.30 } we rebuild the co-occurrence graph and retrain only Stage 4 (GNN head, 20 epochs, all other parameters frozen). Table 5 reports Macro F1 and Pointing Game on the TBX11K validation set. Table 5: Sensitivity of GRAPE to the graph co-occurrence threshold τ on TBX11K. Stage 4 (the GAT task head) is retrained for each τ with Stages 1–3 held fixed; all other hyperparameters match the main configuration. The default ( τ = 0 .10 , used for all TBX11K experiments; NIH uses τ = 0 .05 ,Appendix E) is highlighted. Macro F1 varies by less than 0.6 pp across the swept range, indicating that GRAPE is robust to the choice of τ . PG shows more variation ( 0.135 –0.150 ) but no monotonic trend.                
+
+> τMacro F1 ↑PG ↑
+> 0.01 0.9177 0.1353 0.05 0.9159 0.1353
+> 0.10 (default) 0.9163 0.1498
+> 0.20 0.9124 0.1401 0.30 0.9159 0.1401
+
+Results are stable across the full sweep (F1 range: 0.912–0.918; PG range: 0.135–0.150), confirming that GRAPE is not sensitive to the exact value of τ . The default τ = 0 .10 achieves the highest PG. 
+
+Safety threshold η. Using the trained GRAPE model (no retraining), we sweep η ∈{0.01 , 0.03 , 0.05 , 0.10 , 0.20 } in the safety check experiment of §4.5 (miscorrection rate p = 0 .5,
+
+T = 5 trials). Table 6: Sensitivity of the Module B safety check to the threshold η on TBX11K bbox_eval 
+
+(N = 207 pairs). True-positive (TP) rate is evaluated at miscorrection rate p = 0 .5; false-positive (FP) rate at p = 0 . The default operating point ( η = 0 .05 , used in all other experiments) is highlighted; both TP and FP are essentially flat across two orders of magnitude in η, indicating that the safety check is not sensitive to threshold choice within this range.                
+
+> ηTP rate ↑FP rate ↓
+> 0.01 0.905 0.217 0.03 0.905 0.217
+> 0.05 (default) 0.903 0.217
+> 0.10 0.901 0.217 0.20 0.895 0.198
+
+TP rate varies by less than 1 pp across the sweep, and FP rate is essentially constant (decreasing only at η = 0 .20 where very small gaps are ignored). The default η = 0 .05 is a conservative choice that maximises TP without inflating FP. 
+
+VLM alignment on sparse vs. dense concept sets. TBX11K has only K = 3 sparse TB-type concepts with high class imbalance (1,200 active-TB vs. 4,600 healthy images across all splits; 800 vs. 3,800 in train+val). The alignment loss Lalign pulls all 300 prototypes toward three text anchors, which may over-constrain the prototype geometry when the visual diversity is limited and the task signal is dominated by the binary presence/absence of TB lesions. On NIH with K = 14 diverse 14 Table 7: Fixed hyperparameters used across all GRAPE experiments. Stage numbering follows §3: Stage 3 trains the prototype layer with contrastive and alignment objectives; Stage 4 trains the GAT task head. Per-dataset varying hyperparameters (learning rate, weight decay, epochs) are listed in Table 8 below. 
+
+Parameter Symbol Value Stage 
+
+Prototype layer 
+
+Prototypes per concept M 100 all Prototype dimension D 256 all Contrastive scale λ 10 3Assignment sharpness γ 5 3Inter-concept margin δ 0.1 3VLM alignment weight λalign 0.1 3
+
+Task head (GAT) 
+
+GAT hidden dimension dh 64 4GAT attention heads nh 4 4Label smoothing εls 0.05 4
+
+Optimization 
+
+Batch size – 128 all 
+
+Table 8: Per-dataset varying hyperparameters for GRAPE. Learning rate (LR), weight decay (WD), and epoch counts are tuned per dataset; all other parameters are fixed as in Table 7. 
+
+Dataset Stage LR WD Epochs TBX11K Stage 1 1 × 10 −4 1 × 10 −4 30 Stage 2 – (feature extraction) – –Stage 3 1 × 10 −4 1 × 10 −4 20 Stage 4 1 × 10 −3 1 × 10 −4 20 NIH ChestX-ray14 Stage 1 5 × 10 −5 1 × 10 −4 30 Stage 2 – (feature extraction) – –Stage 3 5 × 10 −5 1 × 10 −4 20 Stage 4 5 × 10 −4 1 × 10 −4 20 
+
+findings, the text anchors provide meaningful semantic grounding that prevents prototype collapse and improves generalization. 
+
+## C End-to-End Training Ablation (N4) 
+
+To examine the role of the staged curriculum, we train GRAPE (GNN + Uncertainty, no VLM) with all parameters jointly from scratch for 70 epochs — the same total epoch budget as staged training (30 + 20 + 20). No staged objectives are used; the loss is L = LBCE + Lproto + Lcls throughout, where Lproto is the multi-prototype contrastive loss from Eq. 12 (see §3.5), and the backbone receives task-classification gradients from epoch 1. We run both strategies over three seeds {42 , 0, 1} to compare variance. 
+
+Result. E2E achieves substantially higher and more stable F1 ( 0.990 ± 0.002 ) compared with staged training ( 0.809 ± 0.084 ), confirming that the ResNet-50 backbone is the bottleneck in staged training. However, the picture reverses for spatial interpretability: staged training achieves higher mean Pointing Game accuracy (0.111 ± 0.038 vs. 0.091 ± 0.059 ), and with lower variance. The seed-42 E2E run reported elsewhere (PG = 0 .174 ) was an outlier; the multi-seed mean is below staged. 15 Table 9: Curriculum ablation on TBX11K. We compare GRAPE’s staged curriculum (Stages 1–4 trained sequentially with frozen earlier-stage weights) against end-to-end joint training of all stages, with all other hyperparameters held fixed. Mean ± std over three seeds {0, 1, 42 }. Per-image Pointing Game (PG) is computed under the same rule as Table 1. Per-metric winner in bold ; see §4.2 for discussion of the F1–PG trade-off.                 
+
+> Training strategy Macro F1 ↑PG ↑
+> Staged curriculum (GRAPE) 0.809 ±0.084 0.111 ±0.038
+> End-to-end (no curriculum) 0.990 ±0.002 0.091 ±0.059
+
+Table 10: Zero-shot and few-shot concept addition (Module C, leave-one-out) on TBX11K for the 
+
+active_tb concept, comparing staged curriculum training against end-to-end (E2E) joint training. Pointing Game (PG) is reported on bbox_eval pairs. Staged values are reproduced from Table 19; E2E values are means over 3 × 3 = 9 runs (3 backbone training seeds × 3 few-shot adaptation seeds). Per-row winner in bold .                          
+
+> Labeled examples ( n)Staged PG ↑E2E PG ↑
+> 0 (text only) 0.030 0.062 ±0.025
+> 10.079 ±0.054 0.064 ±0.016
+> 50.063 ±0.037 0.078 ±0.036
+> 20 0.071 ±0.025 0.084 ±0.049
+
+Zero-shot comparison. Table 10 shows that E2E weights also support Module C’s zero-shot initialization: the text anchor produces non-zero localization at n = 0 ( PG = 0 .062 , higher than staged 0.030 ). However, E2E zero-shot PG improves only marginally as n increases ( +0 .022 from 
+
+n = 0 to n = 20 ), while staged training shows a steeper gain from n = 0 to n = 1 (+0 .049 ). We attribute this to prototype entanglement: in E2E training, backbone and prototypes co-evolve, making prototype geometry less amenable to targeted few-shot fine-tuning after training. 
+
+When to use each. Despite higher F1, we retain the staged curriculum as the primary configuration for three reasons: 1. Modular interpretability. Staged training decouples concept learning, prototype learning, and task classification; each stage can be inspected, retrained, or replaced independently. 2. Spatial faithfulness. Staged training achieves higher and more stable PG (0.111 vs. 0.091), directly reflecting more faithful prototype localisation. 3. Few-shot responsiveness. Staged prototypes respond more cleanly to few-shot fine-tuning for new concepts, a property required for Module C in clinical deployment. We recommend E2E training for practitioners where classification accuracy is the primary goal and interpretability and zero-shot addition are not required. 
+
+## D Dataset Details 
+
+TBX11K concept descriptions (used for VLM alignment): 
+
+• ActiveTuberculosis : “Active pulmonary tuberculosis with cavitary lesions, nodular opacities, and upper-lobe infiltrates, often with signs of consolidation on chest X-ray.” • ObsoletePulmonaryTuberculosis : “Healed or inactive tuberculosis with calcified granulomas, fibrous scarring, and volume loss in the upper lobes on chest X-ray.” • PulmonaryTuberculosis : “Pulmonary tuberculosis presenting as patchy or confluent consoli-dation, tree-in-bud opacities, or miliary nodules on chest X-ray.” 
+
+Bounding box scaling. TBX11K COCO annotations store boxes in original image coordinates (variable resolution). We scale to the 224×224 input space as x′ 
+
+> 1
+
+= ⌊x1/W orig × 224 ⌋. NIH bounding box annotations are provided in 1024×1024 coordinates and scaled with the same formula. 16 E Graph Structure 
+
+On TBX11K ( K = 3 ), the co-occurrence graph has 3 nodes and 4 edges (threshold τ = 0 .1). The three TB-type concepts form a dense triangle since they frequently co-occur within the same image. On NIH ( K = 14 ), the graph has 14 nodes and 103 edges at threshold τ = 0 .05 (as confirmed in multi-seed training logs). Concepts like Infiltration–Consolidation and Effusion–Atelectasis form strong edges. 
+
+## F Graph Head Comparison: GAT vs ML-GCN vs ADD-GCN 
+
+GRAPE uses a GAT task head [ 22 ] for its learned, edge-conditioned attention. Table 11 ablates this choice by replacing the GAT with two established graph classification baselines: ML-GCN [ 4](standard 2-layer GCN with symmetric normalisation) and ADD-GCN [ 27 ] (static co-occurrence graph combined with a per-sample dynamic cosine-similarity graph). All three heads receive the same input — prototype similarity scores (B, K, M ) from frozen Stage 1–3 weights — and are trained for 20 epochs (Stage 4 only). Table 11: Comparison of graph-based task heads on TBX11K. All heads share an identical frozen backbone, projector, and prototype layer (Stages 1–3); only the Stage 4 task head differs. Graph-based heads use the same label co-occurrence graph (threshold τ = 0 .10 ). Per-metric winner in bold ; all graph heads substantially outperform the linear baseline on both F1 and PG, indicating that the gain stems from graph reasoning rather than a specific architectural choice.                  
+
+> Task head Macro F1 ↑PG ↑∆F1 (pp) Linear (CSR baseline) [8] 0.7519 0.0628 –ML-GCN [4] 0.8983 0.1401 +14 .6
+> ADD-GCN [27] 0.8589 0.1449 +10 .7
+> GAT (GRAPE) 0.8963 0.1401 +14 .4
+
+All three graph heads substantially outperform the linear baseline (+10.7–14.6 pp F1), confirming that the concept co-occurrence structure is the key driver of GRAPE’s gain, not the specific message-passing mechanism. ML-GCN achieves marginally the highest F1 (0.8983 vs. 0.8963 for GAT), but the difference is within the seed variance range (std ≈ 0.04 , 5-seed estimate) observed in Table 3 and is not statistically significant. ADD-GCN achieves the highest PG (0.1449) at the cost of slightly lower F1 (0.8589), suggesting its dynamic per-sample graph better preserves spatial prototype structure at the expense of discriminative power. We retain the GAT head as GRAPE’s default because its learned, edge-conditioned attention weights are directly interpretable — each edge weight quantifies how strongly one concept’s activation influences another’s classification — a property absent in standard GCN variants. Table 12: Inference latency comparison between the GNN head and a linear head, measured on a single NVIDIA A100 (BF16) with 200 warmup and 500 timed runs per configuration. At batch size 1, the GNN head incurs only ∼1 ms of additional latency, making it suitable for interactive deployment.                                           
+
+> Batch Head Mean (ms) ↓Std (ms) P95 (ms) ↓μs/image ↓Overhead 1Linear 5.96 0.34 6.23 5958 –GNN 6.99 0.26 7.16 6993 +17%
+> 8Linear 6.05 0.18 6.15 756 –GNN 12.17 0.62 12.74 1521 +101%
+> 32 Linear 11.58 0.05 11.65 362 –GNN 30.20 0.88 30.90 944 +161%
+
+17 G GAT Edge-Importance Ablation 
+
+The TBX11K co-occurrence graph ( K = 3 , threshold τ = 0 .10 ) has four edges: three self-loops (one per concept) and one directed cross-concept edge (0 →1) connecting ActiveTuberculosis to 
+
+ObsoletePulmonaryTuberculosis . To measure the contribution of each edge to the task head, we retrain Stage 4 four times, each time removing a single edge from the graph while keeping Stages 1–3 frozen. Table 13: GAT edge-importance ablation on TBX11K (seed 42). Each row removes one edge from the 4-edge co-occurrence graph and retrains Stage 4 from scratch. ∆F1 = F1 ablated − F1 full .Removed edge Type Macro F1 ∆F1 (pp) None (full graph) — 0.9188 —
+
+0→0 (self-loop, ActiveTB) self 0.8539 −6.49 2→2 (self-loop, PulmonaryTB) self 0.8989 −1.99 1→1 (self-loop, ObsoleteTB) self 0.9140 −0.48 0→1 (ActiveTB → ObsoleteTB) cross 0.9162 −0.25 
+
+The self-loop on concept 0 (ActiveTuberculosis) is the most informative edge: removing it causes the largest drop of −6.49 pp F1, indicating that the GAT head relies heavily on self-aggregation of the dominant positive class. The PulmonaryTB self-loop contributes moderately ( −1.99 pp), while the ObsoleteTB self-loop and the sole cross-concept edge (0 →1) each contribute fewer than 0.5 pp, suggesting that inter-concept propagation plays a secondary role when self-referential concept features are already strong. 
+
+## H Contextual Comparison with Published Methods 
+
+On TBX11K, CBM and PIPNet achieve higher raw F1 than GRAPE’s staged configuration owing to end-to-end backbone fine-tuning (observation 4 in §4.2); GRAPE’s primary advantage is its spatial faithfulness ( 2.6× PG improvement) and unique capabilities (GNN co-occurrence, safety check, zero-shot concept addition). On NIH, the multi-seed evaluation (Table 3) finds GRAPE and CSR statistically comparable ( p = 0 .894 ); the primary claim rests on TBX11K ( +13 .8 pp F1, 
+
+p = 0 .0013 ; single-seed PG +7 .73 pp, multi-seed PG p = 0 .64 ). Table 14 contextualizes GRAPE against published methods. Because each prior work uses a different train/test split, label set, or task formulation, direct numerical comparison is not always valid; the “Comparable?” column indicates the degree of comparability. On TBX11K, CBM and PIPNet achieve higher raw F1 ( 0.9778 and 0.9644 ) than GRAPE’s staged con-figuration ( 0.8963 best single-seed): both baselines train end-to-end without the prototype-preserving curriculum. Chen et al.’s DenseNet ensemble (AUC 0.901) uses a different metric; GRAPE’s F1 confirms competitiveness while providing prototype-level explanations and safe interaction. On NIH, CheXNet (mean AUC 0.841 over 14 findings) and MedCLIP use different splits and task formulations; they are listed for context. The primary quantitative claim rests on TBX11K ( +14 .4 pp F1, +7 .73 pp PG, p = 0 .0013 ). 
+
+## I Per-Class F1 and Confusion Matrix (N2) 
+
+Table 15 reports per-class macro-F1 for GRAPE and CSR across five seeds on TBX11K, revealing the source of the macro-F1 gap. Table 16 shows the confusion matrix for seed 42 (best GRAPE run). GRAPE’s macro-F1 improvement is driven almost entirely by the two majority classes: Healthy (+0 .215 mean) and Sick-non-TB ( +0 .206 mean). Active TB F1 is already high in both models (≈ 0.93 ) and barely changes. This pattern is consistent with the GNN head exploiting co-occurrence context — active TB strongly co-occurs with the other TB findings, providing discriminative signal that benefits Healthy/Sick separation even without direct Active-TB context. CSR’s high Active-TB score but low Healthy/Sick scores reflects the known class-imbalance pattern in TBX11K (1,200 active-TB vs. 4,600 healthy and sick images). 18 Table 14: Contextual comparison with published methods on TBX11K and NIH ChestX-ray14. We report the metric used in each method’s original paper to avoid lossy reinterpretation; this means values are not all directly comparable, and we annotate each row’s comparability accordingly. Within comparable rows, GRAPE is benchmarked against CSR (its direct predecessor) under our re-implementation. Concept-based methods (CBM, PIPNet) achieve higher F1 via end-to-end fine-tuning, at the cost of weaker grounding (Table 1). 
+
+Method Split Metric Value Comparable 
+
+TBX11K (3-class TB detection) 
+
+Liu et al. [12], DenseNet ensemble TBX11K AUC 0.901 ‡
+
+CSR † [8] TBX11K Macro F1 0.7519 ‡
+
+GRAPE (GNN + Unc.) TBX11K Macro F1 0.8963 ‡
+
+CBM [10] TBX11K Macro F1 0.9778 ± 0.0109 ‡
+
+PIPNet [15] TBX11K Macro F1 0.9644 ± 0.0021 ‡
+
+NIH ChestX-ray14 (multi-label, 14 findings) 
+
+CheXNet [18] NIH CXR14 Mean AUC 0.841 partial §
+
+MedCLIP [25] NIH (5-class) F1 0.712 no §
+
+CSR † [8] NIH CXR14 Macro F1 0.6048 ± 0.0170 ‡
+
+GRAPE (full) NIH CXR14 Macro F1 0.6031 ± 0.0174 ‡† Re-implemented under our training protocol; published numbers on these splits are unavailable for direct comparison.    
+
+> ‡Reported on the official TBX11K or NIH test split with comparable evaluation protocol. §Reported on a different split or label subset; included for context only and not directly comparable to the metrics in this table.
+
+Table 15: Per-class F1 on the TBX11K test set, mean ± std over five seeds {0, 1, 2, 3, 42 }. GRAPE (GNN + Unc.) is compared against the CSR baseline [ 8 ]. GRAPE substantially improves F1 on the two clinically confusable classes (Healthy and Sick non-TB) while maintaining performance on Active TB. Per-class winner in bold .
+
+Method Healthy ↑ Sick non-TB ↑ Active TB ↑
+
+CSR [8] 0.628 ± 0.097 0.622 ± 0.063 0.932 ± 0.010 
+
+GRAPE 0.843 ± 0.050 0.828 ± 0.056 0.927 ± 0.024 
+
+Table 16: Confusion matrices on the TBX11K test set (seed 42). Rows index the ground-truth class; columns index the predicted class. Diagonal entries (correct predictions) are shown in bold .GRAPE substantially reduces Healthy ↔ Sick non-TB confusion relative to CSR ( 75+103 = 178 
+
+vs. 213+315 = 528 off-diagonal errors in this 2×2 block) while maintaining comparable Active TB recall. 
+
+Predicted Recall Ground truth Healthy Sick non-TB Active TB 
+
+GRAPE 
+
+> GT
+
+Healthy 724 75 1 90.5% Sick non-TB 103 688 9 86.0% Active TB 7 11 182 91.0% 
+
+CSR baseline [8] 
+
+> GT
+
+Healthy 585 213 2 73.1% Sick non-TB 315 477 8 59.6% Active TB 2 14 184 92.0% 
+
+19 J Staged Training Algorithm 
+
+Algorithm 1 GRAPE: four-stage training pipeline. 
+
+Require: Training set D = {(x(n), y(n), y (n))}Nn=1 ; concept descriptions {dk}Kk=1 ; hyperparame-ters λalign , θ U , M 
+
+Ensure: Trained parameters θ = {F, P, {pkm }, Wtxt , ϕ GNN } 
+
+> 1:
+
+// Stage 1: Concept supervision.  
+
+> 2:
+
+Train backbone F and per-concept CAM heads end-to-end:  
+
+> 3:
+
+L1 = 1
+
+> K
+
+PKk=1 BCE(GAP(CAM k(F (x))) , y k) 
+
+> 4:
+
+// Stage 2: Concept vector extraction (backbone frozen).  
+
+> 5:
+
+for each (x, y) ∈ D and concept k ∈ { 1, . . . , K } do  
+
+> 6:
+
+vk ← P 
+
+> i,j
+
+softmax ij (CAM k(i, j )) · f:,i,j  
+
+> 7:
+
+// Stage 3: Prototype learning (train P , {pkm }, Wtxt ).  
+
+> 8:
+
+Encode and normalize text descriptions: ˆtk ← Wtxt tk/∥Wtxt tk∥2 
+
+> 9:
+
+Initialize {pkm }Mm=1 via k-means on {v(n) 
+
+> k
+
+}Nn=1  
+
+> 10:
+
+Minimize L3 = Lcon + λalign Lalign , masking prototypes with Uk > θ U 
+
+> 11:
+
+// Stage 4: Graph classification (all earlier stages frozen).  
+
+> 12:
+
+Construct concept co-occurrence graph G from training labels (Eq. 3)  
+
+> 13:
+
+Compute similarity vector s ∈ RK from frozen prototypes  
+
+> 14:
+
+Train graph head ϕGNN : L4 = CE( ϕGNN (s, G ), y )
+
+Table 17: Module B safety check on TBX11K bbox_eval (N = 207 pairs, threshold η = 0 .05 ). We report true-positive (TP) and false-positive (FP) detection rates of the prototype-variance uncertainty signal as a function of the miscorrection rate p, defined as the simulated probability that the user’s correction is incorrect. Values are bootstrap means with 95% confidence intervals over B = 1000 
+
+resamples. By construction, p = 0 admits only false positives (no miscorrections to detect) and 
+
+p = 1 admits only true positives (no correct corrections to misflag). The TP rate is stable across p,indicating that detection performance does not depend on the miscorrection prevalence. 
+
+Miscorrection rate p TP rate ↑ [95% CI] FP rate ↓ [95% CI] 
+
+0.00 – 0.217 [0 .164 , 0.271] 0.10 0.884 [0 .722 , 1.000] –
+
+0.25 0.885 [0 .788 , 0.964] –
+
+0.50 0.886 [0 .822 , 0.941] –
+
+1.00 0.887 [0 .841 , 0.928] –
+
+## K Mathematical Details 
+
+This appendix collects standard or prior-work formulas that were moved from the main body to keep the presentation concise. 
+
+Cosine similarity map (§3.1). Given L2-normalised patch features f ′ 
+
+> :,i,j
+
+∈ RD and prototype 
+
+pkm ∈ RD , the similarity map is: 
+
+Skm (i, j ) = ⟨pkm , f ′ 
+
+> :,i,j
+
+⟩. (13) Because both vectors are L2-normalised, this inner product is equivalent to cosine similarity. 
+
+Stage 1 concept supervision loss (§3.5). The backbone and per-concept CAM head are trained with binary cross-entropy on Global Average Pooled activations: 
+
+L1 = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+BCE (GAP (CAM k(f )) , y k) . (14) This is a standard multi-label BCE objective applied to per-concept binary labels. 20 Stage 2 CAM-weighted concept vector (§3.5). For each training image, the local concept vector is the CAM-attention-weighted spatial average of backbone features: 
+
+vk = X
+
+> i,j
+
+softmax ij (CAM k(i, j )) · f:,i,j . (15) This is the standard CAM aggregation formula; the resulting vectors seed the k-means initialisation for Stage 3 prototypes. 
+
+GAT message-passing equations (§3.2). Standard Veliˇ ckovi´ c et al. attention over the concept co-occurrence graph. For layer ℓ and head h, the unnormalised attention score, normalised weight, and updated node representation are: 
+
+ehkk ′ = LeakyReLU 
+
+
+
+a⊤
+
+> h
+
+h
+
+Wh
+
+> GAT
+
+h(ℓ) 
+
+> k
+
+∥ Wh
+
+> GAT
+
+h(ℓ)
+
+> k′
+
+i 
+
+, k′ ∈ N (k), (16) 
+
+αhkk ′ = exp( ehkk ′ )
+
+P  
+
+> j∈N (k)
+
+exp( ehkj ) , (17) 
+
+h(ℓ+1)  
+
+> k
+
+= ELU 
+
+ X 
+
+> k′∈N (k)
+
+αhkk ′ Wh
+
+> GAT
+
+h(ℓ)
+
+> k′
+
+ . (18) 
+
+Prototype masking (§3.3). At training time, uncertainty maps additionally enable prototype discarding: a prototype pkm is masked from gradient updates if its per-image variance exceeds a threshold θU = 0 .05 , preventing high-variance prototypes from destabilizing contrastive training. 
+
+## L Per-Concept Pointing Game Table 
+
+Table 18: Per-concept Pointing Game (PG) on TBX11K bbox_eval for GRAPE (GNN + Unc. configuration). Per-pair PG counts each annotated (image, concept, bounding-box) triple as one trial. We additionally report the per-image PG used in Table 1 for cross-reference: an image is counted as a hit if any concept’s maximum activation falls within its bounding box. The two aggregation rules give numerically similar results ( 0.1353 per-pair vs. 0.1400 per-image) but are computed differently and should not be conflated. pulmonary_tuberculosis has no bbox_eval pairs and is excluded.                 
+
+> Concept Pairs PG (per-pair) ↑Hits
+> active_tb 164 0.1646 27
+> obsolete_tb 43 0.0233 1
+> Total (per-pair, weighted) 207 0.1353 28
+> Total (per-image, this paper) 200 0.1400 28
+
+## M Zero-Shot Concept Addition Results 
+
+We perform a leave-one-concept-out experiment on TBX11K ( K = 3 ): for each held-out concept k′,we load the fully trained GRAPE model, reinitialize only concept k′’s M = 100 prototype vectors using the text-anchor initialization (Eq. 9, σinit = 0 .1), and fine-tune those prototypes alone with 
+
+n ∈ { 0, 1, 5, 20 } labeled images while keeping all other parameters frozen. For obsolete_tb , the n = 0 result (PG = 0 .093 ) reflects random prototype initialization: without VLM alignment the text anchor falls back to a random unit vector (§3.4), so this value does not represent semantic grounding and should not be compared against the few-shot rows. With labeled examples, performance is inconsistent: 1-shot reaches PG = 0 .047 ± 0.036 but drops sharply at 
+
+n = 5 (0.005 ± 0.009 ), recovering to 0.023 ± 0.029 at n = 20 . Full supervision for obsolete_tb 
+
+is itself very low (PG = 0 .023 , 43 pairs), so the concept is intrinsically hard to localize; the high variance across seeds reflects this difficulty. 21 Table 19: Zero-shot and few-shot concept addition (Module C) on TBX11K under a leave-one-concept-out proxy with K = 3 prototypes per concept. We report Pointing Game (PG) accuracy on 
+
+bbox_eval pairs for the two evaluable concepts; pulmonary_tuberculosis is excluded as it has no bounding-box pairs. “Full supervision” denotes the original GRAPE model trained on all examples for the held-out concept. Mean ± std over five seeds for n > 0; n = 0 is deterministic (text-only initialization).                                
+
+> Labeled examples ( n)active_tb PG ↑obsolete_tb PG ↑
+> 0 (text only) 0.030 0.093 ‡
+> 10.068 ±0.045 0.047 ±0.036
+> 50.079 ±0.025 0.005 ±0.009
+> 20 0.078 ±0.072 0.023 ±0.029
+> Full supervision 0.165 0.023
+> ‡Without VLM alignment the obsolete_tb text anchor falls back to a random unit vector (§3.4); this value reflects random initialization rather than semantic grounding and is not comparable to the few-shot rows or to full supervision.
+
+M.1 NIH ChestX-ray14 Partial Leave-One-Out 
+
+We extend the Module C evaluation to NIH ChestX-ray14 ( K = 14 ), targeting the four most annotated concepts by bounding-box count: Infiltration (113 pairs), Effusion (138 pairs), Atelectasis (166 pairs), and Consolidation. Consolidation has zero bbox-eval pairs after patient-level splitting and is excluded. For each of the three evaluable concepts, we load the fully trained NIH GRAPE model (seed 0), reinitialize that concept’s M = 100 prototypes from the BioViL-T text anchor (Eq. 9), and fine-tune with n ∈ { 0, 1, 5, 20 } labeled images over 3 seeds. Table 20: Zero-shot and few-shot concept addition (Module C) on NIH ChestX-ray14 under a partial leave-one-out evaluation ( K = 14 , 3 of 4 target concepts have bbox coverage). Pointing Game (PG) on bbox_eval images. Mean ± std over 3 seeds for n > 0; n = 0 is deterministic. Effusion n = 1 
+
+std = 0 .000 : all three seeds converged identically.                                         
+
+> Labeled examples ( n)Infiltration PG ↑Effusion PG ↑Atelectasis PG ↑
+> 0 (text only) 0.044 0.029 0.042
+> 10.021 ±0.015 0.072 0.012 ±0.009
+> 50.050 ±0.071 0.046 ±0.007 0.006 ±0.009
+> 20 0.094 ±0.063 0.039 ±0.025 0.050 ±0.020
+> Full supervision 0.177 0.072 0.048
+
+The NIH results corroborate and extend the TBX11K finding. Effusion achieves full-supervision PG at n = 1 (0.072 , 100% of the 0.072 upper bound), suggesting the BioViL-T text anchor for pleural effusion aligns closely with the visual prototypes learned under full supervision. Infiltration reaches 53% of full supervision at n = 20 (0.094 vs. 0.177 ); Atelectasis at n = 20 (0.050 ) marginally exceeds its fully supervised PG ( 0.048 , 166 pairs). Trends at low n remain noisy: all three concepts show a dip at n = 1 or n = 5 before recovering at n = 20 , consistent with the prototype-overfitting effect documented on TBX11K. The high variance at n = 5 for Infiltration ( ±0.071 ) reflects sensitivity to the specific images selected by each seed. 
+
+## N Faithfulness Evaluation 
+
+We measure faithfulness using Insertion and Deletion AUC [ 17 ] over the 200-image TBX11K test split, using sal (i, j ) = max k,m Skm (i, j ) as the saliency signal. Deletion AUC measures how quickly predicted class probability drops as salient pixels are replaced by channel mean (lower = more faithful); Insertion AUC measures how quickly it rises as salient pixels are revealed from a Gaussian-blurred baseline (higher = more faithful). 22 Table 21: Faithfulness of prototype similarity maps on the TBX11K test split ( N = 200 images). Saliency is taken as max k,m over per-prototype similarity maps. Lower Deletion AUC and higher In-sertion AUC indicate more faithful attribution. Bold marks the better mean per metric; differences fall well within one standard deviation, indicating comparable faithfulness rather than a clear advantage for either method. Mean ± std across the test set. 
+
+Method Deletion AUC ↓ Insertion AUC ↑
+
+CSR [8] 0.923 ± 0.104 0.873 ± 0.138 
+
+GRAPE 0.954 ± 0.068 0.886 ± 0.148 
+
+GRAPE’s higher Deletion AUC ( +3 .1 pp) indicates that removing the maximally salient patches does not fully disrupt prediction, attributed to the prototype atlas distributing evidence across M =100 spatial prototypes per concept: each prototype contributes weakly to the saliency aggregate 
+
+max k,m Skm (i, j ), so the saliency map is more diffuse than a single-activation method. Both models maintain high confidence throughout the deletion curve (AUC > 0.92 ), reflecting ResNet-50’s global texture encoding; the Insertion curve provides the more informative signal in this regime [17]. 
+
+## O MC-Dropout Uncertainty Comparison (N5) 
+
+A natural alternative to prototype variance as the uncertainty signal for Module B is MC-Dropout [ 7]: run T = 30 stochastic forward passes with dropout enabled at inference, then use either the variance of similarity scores across passes (Variant A) or the predictive entropy (Variant B) to trigger warnings. Table 22 reports TP and FP rates for all three methods, each evaluated at the operating point on its threshold sweep closest to the prototype-variance FP rate ( ≈ 21 .7% ). Table 22: Comparison of uncertainty methods for the Module B safety check on TBX11K bbox_eval 
+
+(207 image pairs, Teval = 5 evaluation trials, miscorrection rate p = 0 .5). For each method we report the true-positive rate (TP) at the threshold η closest to the prototype-variance false-positive (FP) rate of ≈ 21 .7% on a fine-grained sweep. Higher TP at matched FP is better. Mean ± std reported over 
+
+Teval trials; FP variance is zero because thresholds are calibrated on the same evaluation set. 
+
+Uncertainty method TP rate ↑ FP rate MC passes ↓
+
+Prototype variance (GRAPE) 0.905 ± 0.026 0.217 1
+
+MC-Dropout, score variance 0.510 ± 0.035 0.251 30 
+
+MC-Dropout, predictive entropy 0.234 ± 0.049 0.227 30           
+
+> FP-rate matching. The MC-Dropout score-variance variant slightly overshoots the target FP rate ( 0.251 vs. 0.217 ) because its score variance is highly threshold-sensitive: across η∈[10 −4,5×10 −4], the FP rate drops from 25 .1% to 0.5% , leaving no threshold that exactly matches the prototype-variance operating point. The reported configuration is the closest match on a fine-grained sweep.
+
+Prototype variance substantially outperforms both MC-Dropout variants: Variant A achieves TP =51 .0% at FP = 25 .1% with a highly threshold-sensitive signal, while Variant B achieves only 23.4% TP because global entropy is weakly correlated with local spatial misdraw. GRAPE’s prototype-level disagreement reaches 90.5% TP at the same FP level using a single deterministic forward pass rather than T = 30 stochastic passes. 
+
+## P Module B: Mean vs. Max Spatial Aggregation Ablation 
+
+The safety check (§3.3) computes ¯sk(B) as the spatial mean of μk inside the doctor-drawn box, rather than the spatial maximum. To validate this choice, we evaluate an alternative max-based gate: replace ¯sk(B) = 1
+
+> |B|
+
+P 
+
+> (i,j )∈B
+
+μk(i, j ) with ¯smax  
+
+> k
+
+(B) = max (i,j )∈B μk(i, j ) in the dominant-concept comparison, keeping all other parameters ( η = 0 .05 , T = 5 trials) identical. The two variants produce nearly identical results. Mean aggregation yields marginally higher TP (0.895 vs. 0.891 ) at a negligible FP cost ( 0.217 vs. 0.213 ), confirming the design choice: averaging 23 Table 23: Module B: mean vs. max spatial aggregation on TBX11K bbox_eval (3 seeds, η = 0 .05 ). Aggregation TP Rate FP Rate Mean (default) 0.895 ± 0.019 0.217 
+
+Max 0.891 ± 0.018 0.213 
+
+over the annotated region is more robust to isolated high-activation patches that would trigger spurious max-based alarms, while matching the max-based gate on true-positive detection. 
+
+## Q Module B Safety Check on NIH ChestX-ray14 ( K = 14 )
+
+We repeat the simulated miscorrection study on the NIH bbox split (888 triples, 709 images, 6 concepts with annotations). With K = 14 overlapping concepts, the safety check achieves TP = 0 .921 ± 0.012 
+
+— comparable to the TBX11K rate — but the FP rate rises to 0.731 ± 0.011 (vs. 16.4% on TBX11K). The elevated FP rate reflects the dense concept landscape: when a correct box is drawn for any single finding, one of the other 13 active concepts often achieves higher mean similarity inside the region (e.g., Pneumonia FP = 0 .90 , Cardiomegaly FP = 0 .85 ). High sensitivity is preserved in the multi-label setting, while specificity degrades as concept count and co-occurrence density increase. A learned or per-concept threshold would be needed to deploy Module B in K> 3 settings. 
+
+## R Prototype–Anchor Alignment and Inter-Prototype Dispersion 
+
+Figure 4: Prototype geometry after Stage-3 VLM alignment. Left: distribution of cosine simi-larities between each prototype pkm and its text anchor ˆtk for TBX11K ( K = 3 , orange) and NIH (K = 14 , blue). Both distributions are concentrated near 1, confirming that the alignment loss ( Lalign )pulls prototypes close to their anchors in both settings. Right: pairwise cosine similarities between prototypes within the same concept ( M = 100 ;  100 2
+
+ = 4 ,950 pairs per concept). High intra-concept cosines indicate that the M prototypes collapse toward the shared text anchor, reducing intra-concept diversity. TBX11K ( K = 3 ) shows marginally higher collapse (mean 0.990 vs. 0.984 for NIH), consistent with the K = 3 over-regularisation effect discussed in §5. 24 S GAT vs. Parameter-Matched MLP Head Ablation (N6) 
+
+Table 24: Ablation isolating the contribution of graph structure vs. added nonlinearity for the task head on TBX11K. A 2-layer MLP on the flattened K×M =300 score vector is parameter-matched to the GAT ( ≈47 K params each), trained with the same Stage 4 protocol. The linear head uses the original CSR parameters (903 params). All heads share identical Stage 1–3 weights. Seed 42 single run. 
+
+Head Macro F1 ↑ PG ↑ Params Linear (CSR) 0.798 0.165 903 
+
+MLP (matched) 0.865 0.171 47 ,235 
+
+GAT (GRAPE) 0.896 0.165 43 ,587 
+
+Interpretation. The MLP closes ∼69% of the Linear →GAT F1 gap ( +6 .7 pp out of +9 .8 pp total), confirming that added nonlinearity accounts for most of the gain on this small K = 3 label set. The remaining +3 .1 pp (MLP →GAT) is attributable to the co-occurrence graph structure itself. PG is identical between Linear and GAT, and slightly higher for the MLP, indicating that graph structure does not systematically harm localisation. 
+
+25
