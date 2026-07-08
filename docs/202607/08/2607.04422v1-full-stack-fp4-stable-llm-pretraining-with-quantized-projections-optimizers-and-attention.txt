@@ -1,0 +1,1181 @@
+Title: Full-Stack FP4: Stable LLM Pretraining with Quantized Projections, Optimizers, and Attention
+
+URL Source: https://arxiv.org/pdf/2607.04422v1
+
+Published Time: Tue, 07 Jul 2026 03:03:00 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Full-Stack FP4: Stable LLM Pretraining with Quantized Projections, Optimizers, and Attention 
+
+Siyu Ding 1 Mingchuan Ma 2 Jiabo Tong 1,3
+
+Xingrun Xing 1 Ziming Wang 4 Guoqi Li 1,5,6 ∗
+
+> 1
+
+Institute of Automation, Chinese Academy of Sciences 
+
+> 2
+
+Sichuan University 
+
+> 3
+
+Beijing Zhongguancun Academy 
+
+> 4
+
+Zhejiang University 
+
+> 5
+
+Beijing Key Laboratory of Brain-Inspired General Intelligence Large Model 
+
+> 6
+
+Key Laboratory of Brain Cognition and Brain-inspired Intelligence Technology 
+
+Abstract 
+
+Recent NVFP4 pretraining works have primarily focused on transformer linear layers, while optimizer states, optimizer computation, and attention operators re-main only partially explored in 4-bit pretraining. This gap makes stable full-stack 4-bit pretraining unattainable, because the three modules suffer from distinct nu-merical failure modes: linear projections face a fundamental quantization noise ceiling and dimension-scaled error amplification; AdamW second moments are non-negative, heavy-tailed, and denominator-sensitive to quantization; attention involves error-sensitive paths and requires strict forward-backward quantization consistency. We present Full-Stack FP4 , the first end-to-end NVFP4 pretraining recipe that addresses all three stability bottlenecks with module-specific preci-sion policies. For linear projections , we introduce LoRA-SVD, a light-weight structural decomposition that systematically dilutes quantization noise and escapes the error ceiling of direct quantization, reducing the linear-only loss gap from 
+
+1.40% to 0.61% . For optimizers, we design a transformation pipeline to reshape 
+
+AdamW ’s second moment for stable NVFP4 storage, and enable Newton–Schulz iterations of the arising Root (Muon) optimizer to run natively in NVFP4. For 
+
+attention , we use a mixed-precision design that quantizes Q/K/V and backward 
+
+dS while protecting sensitive paths in BF16, with consistent tensor reuse to pre-serve forward-backward alignment. We additionally provide lightweight analyses showing why quantization error grows rapidly with scale in direct low-bit matrix products and why the P V and dOV ⊤ attention paths are particularly sensitive. All components are modular with stability and additive efficiency gains. Experiments on 3B/64B-tokens pretraining show that our full-stack FP4 training maintains tight alignment with BF16 baselines, with only a 1.47% loss gap, demonstrating that 
+
+stable, full-stack NVFP4 LLM pretraining is achievable . 1
+
+1 Introduction 
+
+The computational cost of LLM pretraining has driven precision down from FP32 to BF16 and FP8, with major gains in memory efficiency and throughput. Blackwell GPUs further enable native NVFP4  
+
+> ∗Corresponding author: guoqi.li@ia.ac.cn
+> 1Code will be released post-review. Preprint.
+> arXiv:2607.04422v1 [cs.LG] 5 Jul 2026
+
+Tensor Core support, making 4-bit pretraining practical rather than merely theoretical. Recent work has demonstrated stable 4-bit pretraining for transformer linear layers [ 1– 7], and as Muon[ 8] has been adopted in top models including Kimi Moonlight [ 9] and Deepseek-V4 [ 10 ], researchers have begun to explore low-bit Muon updates [ 11 ]. Yet the full training stack including optimizer states, optimizer computation, and attention remains uncovered. The core question thus becomes: can we extend NVFP4 to the full pretraining stack while maintaining stability? The challenge is that naive uniform quantization fails, because the three core modules suffer from distinct numerical failure modes: (1) Quantization Error Accumulation: Linear projections with direct NVFP4 quantization hit a fundamental quantization noise ceiling that recent works have progressively approached but cannot further reduce, with error growing linearly with hidden dimension and overwhelming optimization signals; (2) Numerical Instability: Optimizer states such as AdamW’s second moment vt are non-negative, heavy-tailed, and denominator-sensitive, while Root’s Newton–Schulz iterations are numerically fragile in low precision; (3) Forward-Backward Path Sensitivity: Attention contains highly error-sensitive paths and requires strict forward-backward consistency to avoid divergence. To resolve these issues, we present the first stable full-stack NVFP4 pretraining recipe that unifies quantization across linear projections, optimizer states/computation, and attention. For linear layers, we introduce LoRA-SVD, a structural decomposition that dilutes quantization noise and escapes the inherent error floor of direct 4-bit quantization; a simple error analysis explains why direct quantized matrix products become increasingly fragile as scale grows (Appendix A). For optimizers, we design a pipeline to stabilize NVFP4 storage of AdamW’s second moment and enable NVFP4-native Newton–Schulz iterations for Root (Muon) without extra mixed-precision auxiliary operations. For attention, we propose a mixed-precision scheme that quantizes Q/K/V and dS while preserving sensitive paths in BF16, with Appendix D explaining why the P V and dOV ⊤ paths should remain in higher precision. Our contributions are threefold: (1) We identify and formalize the three stability bottlenecks that block end-to-end FP4 pretraining, and provide lightweight analyses for the scaling of direct quantization error and the sensitivity of key attention matmuls; (2) We present, to our knowledge, the first full-stack NVFP4 recipe with module-specific policies tailored to each failure mode; (3) We validate strong alignment with BF16 baselines on 3B/64B-token pretraining, achieving only a 1.47% loss gap, while LoRA-SVD reduces the linear-only gap from 1.40% to 0.61% .Table 1 summarizes scope. The closest full-stack pretraining works [ 1– 7] present end-to-end FP4 pretraining stacks but leave optimizer states in FP32 and attention in BF16, while recent low-bit Muon work [ 11 ] focuses on optimizer quantization rather than the full pretraining stack. Ours is, to our knowledge, the first recipe that jointly compresses linear projection, optimizer(states and computation) and attention to NVFP4 within a single pretraining stack. 
+
+2 Preliminaries 
+
+This section establishes the notation and background for the main computation primitives in our recipe. 
+
+NVFP4 format. NVFP4 format [ 1] uses E2M1 encoding (1 sign, 2 exponent, 1 mantissa) together with block-wise scaling: each block of 16x16 or 1x16 elements shares an FP8 E4M3 scale factor s,and an additional FP32 global scale sg : ˆx = xE2M1 × s × sg . This finer granularity yields lower quantization error [1] compared to MXFP4’s block-32 with E8M0 scale [16]. 
+
+Linear projection. A transformer linear layer computes Y = XW ⊤ where W is the weight and X
+
+is the input activation. Training involves three GEMMs: forward, activation-gradient ( ∇X = ∇Y W ), and weight-gradient ( ∇W = ∇⊤ 
+
+> Y
+
+X). 
+
+AdamW optimizer. AdamW maintains two state tensors per parameter: the first-order momentum 
+
+mt = β1mt−1 + gt and the second-order momentum vt = β2vt−1 + (1 −β2)g2 
+
+> t
+
+. The update rule requires storing both mt and vt at sufficient precision throughout training, occupying a substantial fraction of memory. 2Table 1: Scope and stability coverage of 4-bit LLM pretraining methods. We mark whether a method supports quantization for weights/activations (Wt/Act), optimizer states (Opt. State), optimizer computation (Opt. Comp.), and attention (Attn Quant). Only our Full-Stack FP4 covers all four modules and enables stable end-to-end NVFP4 pretraining. ✓ = addressed; — = not addressed; 
+
+◦ = partially.                                                                                  
+
+> Method Prec. Wt/Act Opt. Opt. Attn Pre-State Comp. Quant train
+> COAT [12] FP8 ✓✓——✓
+> NVFP4 [1] FP4 ✓———✓
+> FP4-all-the-way [2] FP4 ✓———✓
+> Quartet [3] FP4 ✓———✓
+> CHON [4] FP4 ✓———✓
+> 4/6 [5] FP4 ✓———✓
+> TetraJet-v2 [7] FP4 ✓———✓
+> Metis [13] FP4 ✓———✓
+> Low-bit Muon [11] FP4 —✓✓——Attn-QAT [14] FP4 ———✓◦
+> SageAttn3 [15] FP4 ———✓◦
+> Ours FP4 ✓✓✓✓✓
+
+Root optimizer. Root [ 17 ] improves Muon [ 8] with soft-thresholding for first-order momentum outlier removal and robust Newton–Schulz (NS) orthogonalization iteration: Xk+1 = aX k + bX k(X⊤ 
+
+> k
+
+Xk) + 
+
+cX k(X⊤ 
+
+> k
+
+Xk)2 with optimized coefficients a, b and c. However, Root(Muon) is not suitable for all parameters, embeddings, lm_head, norm weights, bias, and LoRA parameters still need AdamW for better performance. The dense matmuls per iteration (typically 5 cycles) dominate Root’s compute cost. 
+
+Attention operator. Standard multi-head attention computes S = QK ⊤/√d, P = softmax( S),
+
+O = P V for each head, where Q, K, V ∈ RN ×d. The most commonly used operator, FlashAtten-tion [ 18 , 19 ], implements attention in a tiled, IO-aware manner that avoids materializing the full 
+
+N × N matrix. The backward pass recomputes S = QK ⊤/√d and P , and computes dV = P ⊤dO ,
+
+dP = dO · V ⊤, dS = P ⊙ (dP − rowsum( dO ⊙ O)) , dQ = dS · K/ √d, dK = dS ⊤ · Q/ √d.Overall, there are 2 matmuls in the forward pass and 5 in the backward pass, and the activation tensors ( Q, K, V ) dominate the memory and I/O cost. 
+
+Others. We use two rounding strategies. Round-to-nearest (RTN) is deterministic and maps values to the closest representable number, but introduces systematic bias. Stochastic rounding (SR) is unbiased, at the cost of added randomness. Hadamard Transformation (HT) effectively redistribute outliers at small scales such as 16 × 16 with negligible overhead. RTN is typically used in the forward pass, while SR and HT are applied to backward gradients [ 1 , 20 , 5]. FP4-All-the-Way [ 2 ]further identified a gradient-norm threshold ∥g∥ < √3σq for quantized pretraining, below which the optimization signal falls beneath quantization noise and FP4 training becomes progressively less efficient. 
+
+3 Method 
+
+3.1 Recipe Overview Module Bottleneck Precision 
+
+Linear proj (§3.2) noise ceiling + dimension scaling FP4 + BF16 LoRA-SVD Optimizer (§3.3–3.4) vt distribution FP4 states + FP4 matmuls Attention (§3.5) path sensitivity; fwd.-bwd. consistency FP4 Q/K/V /dS + BF16 P /dO 
+
+As summarized above, each component is modular and targets a distinct numerical bottleneck that limits stable full-stack FP4 pretraining. All strategies build on standard quantization primitives 3Embedding                    
+
+> RMSNorm
+> qkv
+> ⊕N×
+> out
+> RMSNorm
+> upgate
+> down
+> swiglu
+> lm_head
+> ⊕
+> Q-Attn
+> : operators/tensors kept in BF16
+> :LoRA-SVD 4-bit linear projection
+> : operators/tensors in NVFP4
+> Wres
+> 2D block
+> NVFP4
+> saved for bwd.
+> NVFP4
+> activation
+> GEMM
+> (β·L 2L1).T GEMM
+> .T
+> ⊕
+> Fwd.
+> Subspace-constrained Bwd.
+> Periodic SVD Realignment
+> gradient
+> NVFP4
+> NVFP4
+> qW res
+> loaded
+> .T
+> Had Had NVFP4 GEMM
+> β·L 2L1
+> GEMM GEMM ⊕
+> QR
+> decomposation
+> dW res
+> dW lora
+> X
+> dY L+1
+> Y
+> dY L
+> : using Q-AdamW : using Q-Root
+> qX
+> Optimizer
+
+Figure 1: Full-Stack FP4 system overview. The left panel shows the transformer architecture with Full-Stack NVFP4 modules. The right panel details our linear projection design with LoRA-SVD 3.2. The framework supports two specialized low-precision optimizers for NVFP4 pre-training: 
+
+Q-AdamW with our NVFP4-compression pipeline (Sec 3.3), and Q-Root with native NVFP4 NS-iterations (Sec 3.4). Q-Attn denotes our mixed-precision NVFP4 attention operator (Sec 3.5). (RTN, SR, RHT, 4/6 scaling) while extending stable NVFP4 support to full-stack training. Figure 1 illustrates how the modules interact in a single training step. 
+
+3.2 LoRA-SVD Linear Projections Stability Challenge : Direct NVFP4 quantization hits a fundamental noise ceiling that recent state-of-the-art scaling and rounding schemes have progressively approached but cannot further reduce. Furthermore, quantization error grows linearly with hidden dimension(Appendix A), progressively overwhelming the optimization signal, especially in late training [ 2]. Purely numerical improvements can no longer push accuracy higher— a structural mechanism is needed to systematically dilute quantization noise. To address this, we introduce LoRA-SVD, a structural decomposition that preserves a low-rank principal subspace along with the activation in BF16 while computing the residual in NVFP4. This design systematically dilutes quantization noise and bypasses the inherent error ceiling of direct 4-bit quantization. Inspired by the core idea of SVDQuant [ 21 ], such an additional branch can incur negligible overhead with proper optimization. Detailed discussions are provided in Appendix C. 
+
+Subspace-Constrained Backward Pass. To maintain alignment with the principal subspace during training (initially guaranteed), we apply a subspace constraint using fast Cholesky-QR decomposition, the full forward and backward computations write: 
+
+Y = Q1x16 (X) Q16x16 (Wres )⊤
+
+| {z }
+
+> NVFP4 GEMM
+
++ β · (XL ⊤ 
+
+> 1
+
+)L⊤
+
+> 2
+
+| {z }
+
+> BF16
+
+dX = Q1x16 (d Y ) Q16x16 (Wres )
+
+| {z }
+
+> reused from fwd.
+
++β · (d Y L 2) L1 (1) 
+
+dW = Q1x16 (d Y ⊤Hr
+
+> 16
+
+) Q16x1 
+
+
+
+Hr
+
+> 16
+> ⊤
+
+Q1x16 (X)
+
+
+
+(2) 
+
+QL2 RL2 = L2, QL1 RL1 = L⊤ 
+
+> 1
+
+(3) 
+
+Λ ∈ Rr×r := Q⊤ 
+
+> L2
+
+dW Q L1
+
+dW LoRA = QL2 ΛQ⊤
+
+> L1
+
+dW res = dW − dW LoRA 
+
+dL1 = β · L⊤ 
+
+> 2
+
+dWLoRA , dL2 = β · dWLoRA L⊤ 
+
+> 1
+
+(4) 
+
+Hr 
+
+> 16
+
+denotes a 16 × 16 random Hadamard Transformation matrix drawn fresh for each backward pass. This decomposition acts as a structural filter: components aligned with the principal subspace 42 4 6 8 10 12 14 16 18                    
+
+> Training Data (Billion Tokens)
+> 0.010
+> 0.012
+> 0.014
+> 0.016
+> 0.018
+> 0.020 Output
+> naive
+> LoRA-SVD
+> 246810 12 14 16 18
+> Training Data (Billion Tokens)
+> 0.014
+> 0.016
+> 0.018
+> 0.020
+> 0.022
+> 0.024 Grad Input
+> naive
+> LoRA-SVD
+> 246810 12 14 16 18
+> Training Data (Billion Tokens)
+> 0.022
+> 0.023
+> 0.024
+> 0.025
+> 0.026
+> 0.027 Grad Weight
+> naive
+> LoRA-SVD
+> Rel. MSE
+
+Figure 2: Linear projection quantization errors analysis . LoRA-SVD consistently reduces quantization error by ∼10% for outputs, input gradients, and weight gradients compared to naive NVFP4. Overall, the trends remain stable throughout training. are routed to the BF16 LoRA branch, while quantization noise and residual components are assigned to the NVFP4 residual weight. To avoid redundant computation during gradient accumulation, Eqs. 3 to Eqs. 4 are deferred to the optimizer, while only Eqs. 1–2 remain inside the backward pass.Figure 2 shows that LoRA-SVD reduces relative MSE (Rel. MSE:= MSE (x − ˆx)/mean (x2)) by 10% compared to direct NVFP4 quantization. Direct LoRA gradients requires high-precision X and one more large-scale GEMM, the formulation above avoids this redundancy by using quantized activations Q1x16 (X) as an approximation to improve efficiency, with full details provided in Appendix B. 
+
+Periodic Realignment via Randomized SVD. While the subspace constraint maintains branch consistency locally during training, the total weight’s principal components inevitably evolve over time ( subspace drift ). To prevent this, we perform a periodic global realignment every 4k steps using fast randomized SVD [ 22 ] and reset Wres , L 2, L 1 with top-r singular components. Given that this operation is only performed every 4k steps, its computational overhead is negligible. 
+
+3.3 Quantized-State AdamW Stability Challenge : The second moment vt is non-negative, heavy-tailed, and acts as a denominator, thus direct NVFP4 quantization introduces large relative error and destabilizes updates, making dedicated transformations for vt essential, consistent with the findings in [12]. While the first momentum mt is quantized via fast Hadamard rotation, stochastic rounding (SR), and 4/6 adaptive scaling, we propose a 4-step transformed-state pipeline to reshape vt into a distribution compatible with stable NVFP4 storage: 1) Square root: ˜v(b) = √v(b) to smoothen the distribution; 2) Mean subtraction: μ(tile ) = mean (˜ v(tile )), ˜v(b) = ˜ v(b) −μ(tile ) to center each block. For stability and efficiency concerns, the mean is computed tile-wise; 3) Fast Hadamard Transform: ˜v(b) = ˜ v(b)H16 to spread outlier energy with negligible O(16 log 16) overhead; 4) NVFP4 quantization: obtain s(b), sg ,and ˆv(b). Reconstruction inverts the pipeline via: v(b) ≈  (sg s(b) ˆv(b))H16 + μ(b)2. This pipeline is critical to the viability of low-precision training, its absence would result in immediate training failure .Figure 3a shows that directly quantizing the second-order momentum leads to larger errors, while our method can significantly mitigate the compression error by around 60%. This optimization significantly improves training stability and final loss. 
+
+3.4 NVFP4 Root Optimizer Stability Challenge : Root’s Newton–Schulz (NS) iterations rely on repeated matmuls that are numerically sensitive to low-precision computation. This issue is particularly important in light of recent low-bit Muon results [ 11 ], which show that 4-bit Muon is feasible but require additional mixed-precision stabilization. 52 4 6 8 10 12 14 16 18 
+
+> Training Data (Billion Tokens)
+> 0.002
+> 0.004
+> 0.006
+> 0.008
+> 0.010
+> 0.012
+> 0.014
+> Rel. MSE
+> Adam 2nd-order momentum
+> v naive
+> v ours
+
+(a) Quantized AdamW 2 4 6 8 10 12 14 16 18   
+
+> Training Data (Billion Tokens)
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30 Root NS results
+> naive
+> optimized
+> Rel. MSE
+
+(b) Quantized NS iteration 
+
+Figure 3: Optimizer quantization errors analysis. (a) Our transformed-state pipeline reduces AdamW second-moment error by ∼60%. (b) Optimized coefficients further stabilize Newton–Schulz iterations in NVFP4. Overall, the trends remain stable throughout training. We enable NS iterations to run natively in NVFP4 with shape-optimized coefficients, preserving orthogonality and stability. The first order momentum or Root is the same quantization as AdamW’s. For narrow-shaped parameters, we fall back to quantized-state AdamW described in §3.3. All hyperparameters and settings follow [17].Quantized NS iteration can be described as follows: 
+
+qX k = Q1x16 (XH r
+
+> 16
+
+), A k = qX k qX k⊤
+
+qA k = Q1x16 (AkHr
+
+> 16
+
+), qA 16x1  
+
+> k
+
+= Q16x1 (Hr
+
+> 16
+> ⊤
+
+Ak), B k = b · Ak + c · qA k qA 16x1 
+
+> k
+
+qB k = Q1x16 (BkHr
+
+> 16
+
+), qX 16x1  
+
+> k
+
+= Q16x1 (Hr
+
+> 16
+> ⊤
+
+Xk), X k+1 = a · Xk + qB k qX 16x1 
+
+> k
+
+where all NVFP4 quantizations adopt RTN and 4/6 scaling. Figure 3b shows that the optimized coefficients (a, b, c ) for Root are critical to reducing the error of the quantized NS iteration, compared with quantization using the standard Muon coefficients [ 11 ]. Beyond their original optimization role, these shape-specialized coefficients also act as an implicit error-control mechanism under quantization: by better matching the parameter aspect ratio, they reduce the amplification of rounding noise across successive NS steps. This property is central to why our NVFP4 NS path remains fully 4-bit, without introducing extra mixed-precision auxiliary operations. 
+
+3.5 Mixed-Precision FP4 Attention 
+
+Matmul Pass Operand Precision 
+
+ˆQ ˆK⊤ Fwd 16x16 NVFP4 × 16x16 NVFP4 
+
+P ˆV Fwd BF16 
+
+ˆQ ˆK⊤ Bwd 16x16 NVFP4 × 16x16 NVFP4 
+
+P ⊤dO Bwd BF16 
+
+dO ˆV ⊤ Bwd BF16 
+
+ˆdS ˆK Bwd 1x16 NVFP4 × 16x16 NVFP4 
+
+ˆdS ⊤ ˆQ Bwd 1x16 NVFP4 × 16x16 NVFP4 
+
+Table 2: Precision breakdown of matrix multiplications in our quantized attention. ˆ· denotes quantized tensors. Quantized Q/K/V are reused in backward for consis-tency and IO efficiency. 
+
+Stability Challenge : for practical IO and memory efficiency, quantizing Q/K/V is nearly unavoidable, yet naively extending low precision to additional paths leads to severe error amplification and training in-stability. These critical paths are thus in-herently sensitive to quantization and must remain in high precision to maintain stabil-ity. In addition, naive low-precision atten-tion breaks forward-backward tensor con-sistency, as identified in Zhang et al. [14] ,leading to mismatch and divergence. We design a mixed-precision attention scheme that preserves sensitive paths in BF16 while quantizing IO - heavy and compute - heavy tensors, and enforces con-sistent quantized Q/K/V reuse between forward and backward passes, as summarized in Table 2. Under this policy, 4 out of 7 atten-tion matmuls already involve NVFP4 operands and IO cost is largely reduced since Q, K, V will be loaded multiple times in both forward and backward passes. Figure 4 compares this precision split with other variants and suggest that further pushing the P V or 
+
+dOV ⊤ paths into lower precision yields noticeably worse accuracy for only minor efficiency gains. 62 4 6 8 10 12 14 16 18           
+
+> Training Data (Billion Tokens)
+> 0.000
+> 0.003
+> 0.006
+> 0.009
+> 0.012
+> 0.015 Attention Output
+> QKT-dS
+> QKT-dS+PdO
+> QKT-dS+PV
+> QKT-dS+dOVT
+> 246810 12 14 16 18
+> Training Data (Billion Tokens)
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> 0.10 Grad QKV Cat
+> QKT-dS
+> QKT-dS+PdO
+> QKT-dS+PV
+> QKT-dS+dOVT
+> Rel. MSE
+
+Figure 4: Attention quantization errors analysis. Quantizing P V or dOV ⊤ causes large accuracy drops, confirming these paths are sensitive that should be kept in higher precision. This trend remains stable throughout training. 
+
+Figure 5: Training loss on 3B/64B-token pretraining. Our full-stack FP4 training achieves a convergence gap of only 1.47% relative to the BF16 Root+AdamW baseline, retaining nearly identical convergence behavior. This demonstrates that stable full-stack NVFP4 pretraining is achievable with negligible performance degradation. Appendix D theoretically derives the numerical origins of this sensitivity, justifying our necessity to preserve these paths in BF16. P ⊤dO is additionally kept in BF16 for forward-backward tensor consistency of P and stability. The fake quantization implementation follows a tiled kernel styled in FlashAttention (Appendix E Algorithm 1). 
+
+4 Full-Stack NVFP4 Pretraining 
+
+We evaluate a transformer architecture with SwiGLU and GQA at 3B scale trained on high-quality subset from Nemotron-CC v2 [ 23 ] for 64B tokens. Detailed hyperparameters are provided in Appendix H. All experiments run on 8 ×A800 80GB GPUs using fake-quantization simulation for NVFP4 training, and for quantized model, all blocks are quantized into NVFP4 with no BF16 blocks reserved like [1] does. 
+
+4.1 Main Results 
+
+Figure 5 reports the training-loss trajectories at 3B with 64B tokens, as illustrated, our full-stack NVFP4 approach maintains tight alignment of only 1.47% loss gap with the BF16 (Root+AdamW) baseline throughout the entire pretraining process. This result demonstrates that our quantization pipeline effectively preserves optimization stability in low precision. The minimal loss gap confirms that NVFP4 quantization can be applied to full-stack Transformer pretraining without compromising core performance. The grad norm during training is reported in Appendix F 74.2 Ablation Study 
+
+We next isolate each parts of the recipe and check for the performance in 1B model trained with 20B tokens using AdamW and Root optimizer respectively. We reimplement NVFP4+4/6 [ 5] using fake quantization as the state-of-the-art baseline for linear-only 4-bit pretraining. Consistent with the main experiments, all ablation studies use NVFP4 for every block with no BF16 blocks reserved.                        
+
+> Configuration Train Loss ↓∆BF16 ↓
+> BF16 2.6415 —4/6 2.6785 +1.40% 4/6 + LoRA 2.6711 +1.12% 4/6 + LoRA-SVD 2.6575 +0.61%
+> 4/6 + QAdamW 2.6674 +0.98% 4/6 + QAttn 2.6539 +0.47%
+> Full-stack w/o Root 2.6563 +0.56%
+> BF16+Root 2.4819 —
+> Full-stack 2.4973 +0.62%
+
+Table 3: Ablation results on 1B/20B-token pretrain-ing. Each component maintains stability and aligned loss relative to BF16. The ablation results in Table 3 show that LoRA-SVD yields a stronger linear-only performance, narrowing the performance gap to BF16 from +1 .40% of vanilla NVFP4 4/6 [ 5] to +0 .61% . A naive LoRA branch also brings marginal improvements, yet remains less effective than our method, as it lacks the mechanism to mitigate quan-tization errors. Our full-stack training recipe achieves strong alignment with the BF16 baseline, yielding a loss gap below 1% for both AdamW and Root optimiz-ers. Appendix G also shows the loss land-scape evolution of a toy model across train-ing steps, verifying our full-stack design’s ability to preserve a favorable topology and avoid collapse compared to the naive NVFP4 setup. 
+
+5 Related Work 
+
+FP8/FP4 pretraining. Wu et al. [24] provided an early demonstration of low-bit integer train-ing and inference through WAGE quantization. Micikevicius et al. [25] introduced FP8 training with E4M3/E5M2 per-tensor scaling, while Wortsman et al. [26] enabled stable 8-bit training for vision-language models. Extending FP8 to full pipeline, Fishman et al. [27] and COAT [ 12 ] included optimizer states and activations, with DeepSeek-V3 [ 28 ] demonstrating 671B-scale FP8 training.For FP4/4-bit pretraining: Rouhani et al. [16] proposed the MXFP4 format and first FP4 LLM pretraining paradigm; NVFP4’s foundational methodology was established by Abecassis et al. [1] , incorporating per-block quantization, stochastic rounding, and Hadamard rotation [ 29 ] for 12B-model training (10T tokens). Subsequent works improved NVFP4: Chmiel et al. [2] achieved fully quantized (weights+activations+gradients) 7B-model training (200B tokens); Quartet [ 3] derived FP4 scaling laws and optimized Blackwell kernels; 4/6 [ 5] added MSE-optimal adaptive block scaling; Tetra-Jet [ 6 ] and its successor TetraJet-v2 [ 7] addressed weight oscillation via EMA quantization, outlier clipping, and adaptive updates; CHON [ 4] analyzed outlier dynamics and proposed hot-channel compensation.Complementary efforts include Wang et al. [30] (FP4 QAT with differentiable gradient estimation), Tseng et al. [20] (MXFP4 gradient quantization with randomized Hadamard rotation), and Metis [ 13 ] (dynamic spectral decomposition for anisotropic distributions). Notably, all these works focus on linear-layer quantization—–none compress optimizer states to FP4 or quantize the attention operator for pretraining. 
+
+Low-bit optimizers. Dettmers et al. [31] introduce INT8 block-wise Adam states. COAT [ 12 ]extends to FP8 with dynamic range expansion. Li et al. [32] push Adam states to 4-bit using rank-1 normalization. Gupta et al. [33] study INT8 quantization of Muon momentum. Wu et al. [11] study 4-bit Muon with subspace-preserving and grid-quantized mixed-precision stabilization. 
+
+Low-bit attention. The SageAttention series [ 34 , 35 , 15 ] progressively pushes attention precision from INT8 to FP4 for inference, however, SageAttention3’s frontier training kernel is limited to INT8. Attn-QAT [ 14 ] targets FP4 attention for inference via quantization-aware training, identifying backward-pass recomputation mismatch as the key stability challenge. All these approaches build on the IO-aware tiling paradigm of FlashAttention [ 18 , 19 ]; Sun et al. [36] study hybrid FP8 (HFP8) formatattention in earlier work. Our work differs in targeting pretraining from scratch with a mixed-precision design that reduces memory and computation cost in pretraining stage. 86 Conclusion and Limitations 
+
+We present Full-Stack FP4 , the first stable end-to-end NVFP4 pretraining recipe that covers linear projections, optimizer states & computation, and attention operators. A key insight of this work is that full-stack 4-bit stability requires treating each module’s unique failure mode separately: LoRA-SVD systematically dilutes quantization noise and breaks through the error ceiling of direct 4-bit linear layers; a transformed-state pipeline stabilizes quantization of optimizer states and Root’s Newton–Schulz iterations are made NVFP4-native; mixed-precision attention protects sensitive paths and enforces forward-backward consistency. Two lightweight analyses further support these design choices by explaining the rapid growth of direct quantization error with scale and the sensitivity of the P V and dOV ⊤ attention paths. Our recipe is modular and additive: LoRA-SVD reduces the linear-only loss gap from 1.40% to 0.61% , and the full-stack system maintains nearly identical convergence with only a 1.47% loss gap to BF16 baselines at 3B/64B tokens with all blocks in NVFP4, proving that practical, stable full-stack FP4 LLM pretraining is feasible. 
+
+Outlook on the Ideal 4-Bit Full-Stack Pretraining Paradigm. We envision full-stack 4-bit pre-training’s core value as boosting efficiency and cutting resource overhead during LLM pretraining. However, the inherent quantization errors and noises makes full 4-bit pretraining naturally unsus-tainable for the entire lifecycle. LoRA-SVD provides a natural solution: it stabilizes low-precision training and supports flexible transition paths—–either merging back to full-precision weights or acting as adapters for cpt or fine-tuning. A practical workflow could use dynamic precision switching: full 4-bit early training, incremental high-precision restoration in later stages (first gradients, then forward propagation if needed), and final post-training quantization for deployment. This work-flow unifies low-cost training, stable convergence, and efficient deployment for large-scale LLM development, and thus might be the reasonable solution for industrial usage. 
+
+Limitations. Given hardware resource constraints, our evaluation focuses on 3B-scale pretraining with a 64B-token budget (below the Chinchilla scaling law). While the performance alignment with BF16 stabilizes early in training, the generalization of the proposed approach to longer training horizons and larger model scales remains an important direction for further exploration. Additionally, the SVD and QR operations leveraged in our framework could benefit from specialized CUDA kernel optimizations to unlock greater efficiency. Future work may also extend to optimized end-to-end CUDA implementations of the full-stack pipeline, alongside comprehensive speed benchmarks on advanced hardware platforms such as Blackwell GPUs. 
+
+References 
+
+[1] Felix Abecassis, Anjulie Agrusa, Dong Ahn, Jonah Alben, Stefania Alborghetti, Michael Andersch, Sivakumar Arayandi, Alexis Bjorlin et al. Pretraining large language models with nvfp4. arXiv preprint arXiv:2509.25149 , 2025. [2] Brian Chmiel, Maxim Fishman, Ron Banner, and Daniel Soudry. Fp4 all the way: Fully quantized training of llms. arXiv preprint arXiv:2505.19115 , 2025. [3] Roberto L Castro, Andrei Panferov, Soroush Tabesh, Oliver Sieberling, Jiale Chen, Mahdi Nikdan, Saleh Ashkboos, and Dan Alistarh. Quartet: Native fp4 training can be optimal for large language models. arXiv preprint arXiv:2505.14669 , 2025. [4] Peijie Dong, Ruibo Fan, Yuechen Tao, Di Mou, Wenhu Hu, Zhenheng Tang, Yinghao Yu, Jiamang Wang et al. Dissecting outlier dynamics in llm nvfp4 pretraining. arXiv preprint arXiv:2602.02047 , 2026. [5] Jack Cook, Junxian Guo, Guangxuan Xiao, Yujun Lin, and Song Han. Four over six: More accurate nvfp4 quantization with adaptive block scaling. arXiv preprint arXiv:2512.02010 ,2025. [6] Yuxiang Chen, Haocheng Xi, Jun Zhu, and Jianfei Chen. Oscillation-reduced mxfp4 training for vision transformers. arXiv preprint arXiv:2502.20853 , 2025. [7] Yuxiang Chen, Xiaoming Xu, Pengle Zhang, Michael Beyer, Martin Rapp, Jun Zhu, and Jianfei Chen. Tetrajet-v2: Accurate nvfp4 training for large language models with oscillation suppression and outlier control. arXiv preprint arXiv:2510.27527 , 2025. 9[8] Keller Jordan, Yuchen Jin, Vlado Boza, You Jiacheng, Franz Cesista, Laker Newhouse, and Jeremy Bernstein. Muon: An optimizer for hidden layers in neural networks, 2024. URL https://kellerjordan. github. io/posts/muon , 6(3):4, 2024. [9] Jingyuan Liu, Jianlin Su, Xingcheng Yao, Zhejun Jiang, Guokun Lai, Yulun Du, Yidao Qin, Weixin Xu et al. Muon is scalable for llm training, 2025. URL https://arxiv.org/abs/ 2502.16982 .[10] DeepSeek-AI. Deepseek-v4: Towards highly efficient million-token context intelligence, 2026. [11] Huaijin Wu, Bingrui Li, Yebin Yang, Yi Tu, Zhanpeng Zhou, Jianfei Chen, and Junchi Yan. Achieving low-bit muon through subspace preservation and grid quantization. In The Fourteenth International Conference on Learning Representations , 2026. URL https://openreview. net/forum?id=g2l9bg9DWx .[12] Haocheng Xi, Han Cai, Ligeng Zhu, Yao Lu, Kurt Keutzer, Jianfei Chen, and Song Han. Coat: Compressing optimizer states and activation for memory-efficient fp8 training. arXiv preprint arXiv:2410.19313 , 2024. [13] Hengjie Cao, Mengyi Chen, Yifeng Yang, Ruijun Huang, Fang Dong, Jixian Zhou, Anrui Chen, Mingzhi Dong et al. Metis: Training llms with fp4 quantization. arXiv preprint arXiv:2509.00404 , 2025. [14] Peiyuan Zhang, Matthew Noto, Wenxuan Tan, Chengquan Jiang, Will Lin, Wei Zhou, and Hao Zhang. Attn-qat: 4-bit attention with quantization-aware training. arXiv preprint arXiv:2603.00040 , 2026. [15] Jintao Zhang, Jia Wei, Pengle Zhang, Xiaoming Xu, Haofeng Huang, Haoxu Wang, Kai Jiang, Jianfei Chen et al. Sageattention3: Microscaling fp4 attention for inference and an exploration of 8-bit training. arXiv preprint arXiv:2505.11594 , 2025. [16] Bita Darvish Rouhani, Ritchie Zhao, Ankit More, Mathew Hall, Alireza Khodamoradi, Summer Deng, Dhruv Choudhary, Marius Cornea et al. Microscaling data formats for deep learning. 
+
+arXiv preprint arXiv:2310.10537 , 2023. [17] Wei He, Kai Han, Hang Zhou, Hanting Chen, Zhicheng Liu, Xinghao Chen, and Yunhe Wang. Root: Robust orthogonalized optimizer for neural network training. arXiv preprint arXiv:2511.20626 , 2025. [18] Tri Dao, Dan Fu, Stefano Ermon, Atri Rudra, and Christopher Ré. Flashattention: Fast and memory-efficient exact attention with io-awareness. Advances in neural information processing systems , 35:16344–16359, 2022. [19] Tri Dao. Flashattention-2: Faster attention with better parallelism and work partitioning. arXiv preprint arXiv:2307.08691 , 2023. [20] Albert Tseng, Tao Yu, and Youngsuk Park. Training llms with mxfp4. arXiv preprint arXiv:2502.20586 , 2025. [21] Muyang Li, Yujun Lin, Zhekai Zhang, Tianle Cai, Xiuyu Li, Junxian Guo, Enze Xie, Chenlin Meng et al. Svdquant: Absorbing outliers by low-rank components for 4-bit diffusion models. 
+
+arXiv preprint arXiv:2411.05007 , 2024. [22] Nathan Halko, Per-Gunnar Martinsson, and Joel A Tropp. Finding structure with randomness: Probabilistic algorithms for constructing approximate matrix decompositions. SIAM review , 53 (2):217–288, 2011. [23] NVIDIA, :, Aarti Basant, Abhijit Khairnar, Abhijit Paithankar, Abhinav Khattar, Adithya Renduchintala, Aditya Malte et al. Nvidia nemotron nano 2: An accurate and efficient hybrid mamba-transformer reasoning model, 2025. URL https://arxiv.org/abs/2508.14444 .[24] Shuang Wu, Guoqi Li, Feng Chen, and Luping Shi. Training and inference with integers in deep neural networks. In International Conference on Learning Representations , 2018. 10 [25] Paulius Micikevicius, Dusan Stosic, Neil Burgess, Marius Cornea, Pradeep Dubey, Richard Grisenthwaite, Sangwon Ha, Alexander Heinecke et al. Fp8 formats for deep learning. arXiv preprint arXiv:2209.05433 , 2022. URL https://arxiv.org/abs/2209.05433 .[26] Mitchell Wortsman, Tim Dettmers, Luke Zettlemoyer, Ari Morcos, Ali Farhadi, and Ludwig Schmidt. Stable and low-precision training for large-scale vision-language models. Advances in Neural Information Processing Systems , 36:10271–10298, 2023. [27] Maxim Fishman, Brian Chmiel, Ron Banner, and Daniel Soudry. Scaling fp8 training to trillion-token llms. arXiv preprint arXiv:2409.12517 , 2024. [28] Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng et al. Deepseek-v3 technical report. arXiv preprint arXiv:2412.19437 , 2024. [29] Saleh Ashkboos, Amirkeivan Mohtashami, Maximilian L Croci, Bo Li, Pashmina Cameron, Martin Jaggi, Dan Alistarh, Torsten Hoefler et al. Quarot: Outlier-free 4-bit inference in rotated llms. Advances in Neural Information Processing Systems , 37:100213–100240, 2024. [30] Ruizhe Wang, Yeyun Gong, Xiao Liu, Guoshuai Zhao, Ziyue Yang, Baining Guo, Zhengjun Zha, and Peng Cheng. Optimizing large language model training using fp4 quantization. arXiv preprint arXiv:2501.17116 , 2025. [31] Tim Dettmers, Mike Lewis, Sam Shleifer, and Luke Zettlemoyer. 8-bit optimizers via block-wise quantization. arXiv preprint arXiv:2110.02861 , 2021. [32] Bingrui Li, Jianfei Chen, and Jun Zhu. Memory efficient optimizers with 4-bit states. Advances in Neural Information Processing Systems , 36:15136–15171, 2023. [33] Aman Gupta, Rafael Celente, Abhishek Shivanna, DT Braithwaite, Gregory Dexter, Shao Tang, Hiroto Udagawa, Daniel Silva et al. Effective quantization of muon optimizer states. arXiv preprint arXiv:2509.23106 , 2025. [34] Jintao Zhang, Jia Wei, Haofeng Huang, Pengle Zhang, Jun Zhu, and Jianfei Chen. Sageat-tention: Accurate 8-bit attention for plug-and-play inference acceleration. arXiv preprint arXiv:2410.02367 , 2024. [35] Jintao Zhang, Haofeng Huang, Pengle Zhang, Jia Wei, Jun Zhu, and Jianfei Chen. Sageat-tention2: Efficient attention with thorough outlier smoothing and per-thread int4 quantization. 
+
+arXiv preprint arXiv:2411.10958 , 2024. [36] Xiao Sun, Jungwook Choi, Chia-Yu Chen, Naigang Wang, Swagath Venkataramani, Vijayalak-shmi Viji Srinivasan, Xiaodong Cui, Wei Zhang et al. Hybrid 8-bit floating point (hfp8) training and inference for deep neural networks. Advances in neural information processing systems , 32, 2019. 11 A Appendix: Quantization Noise in Matrix Products 
+
+We derive the variance of the output error for a quantized inner product, accounting for the non-uniform NVFP4 quantization grid. 
+
+Setup. Let Y = PNi=1 xiwi be a true inner product, and ˆY = PNi=1 ˆxi ˆwi its quantized version, where ˆxi = xi + δx,i , ˆwi = wi + δw,i . Assume (all conditional on fixed block scales): (A1) δx,i and 
+
+δw,j are mutually independent for all i, j ; (A2) δx,i is independent of wj for all j, and vice versa; (A3) E[δx,i ] = E[δw,i ] = 0 (stochastic rounding). 
+
+Note: Assumptions (A1) and (A3) hold exactly for SR with independent rounding draws. For shared block scales, errors within the same block are weakly coupled through the common scale; we treat Eq. (5) as an approximation in this regime. For RTN, (A3) fails (RTN has signal-dependent deterministic error), and (A1) fails across time steps; the variance formula below applies only to the SR case. 
+
+Error decomposition. 
+
+δY = ˆY − Y =
+
+> N
+
+X
+
+> i=1
+
+(xiδw,i + wiδx,i + δx,i δw,i )
+
+Under (A3), E[δY ] = 0 . For the variance, cross-terms between different indices i̸ = j vanish by (A1): 
+
+Var( δY ) = 
+
+> N
+
+X
+
+> i=1
+
+Var( xiδw,i + wiδx,i + δx,i δw,i )
+
+Expanding each term (using independence between δx and δw): 
+
+Var( δY ) = 
+
+> N
+
+X
+
+> i=1
+
+ x2 
+
+> i
+
+σ2 
+
+> w,i
+
++ w2 
+
+> i
+
+σ2 
+
+> x,i
+
++ σ2
+
+> x,i
+
+σ2
+
+> w,i
+
+, (5) where σ2 
+
+> x,i
+
+= Var( δx,i ) and σ2 
+
+> w,i
+
+= Var( δw,i ).
+
+Per-element quantization variance. For NVFP4 E2M1 with non-uniform steps ∆ ∈{0.5, 0.5, 0.5, 0.5, 1.0, 1.0, 2.0} across the intervals [0 , 2] , [2 , 4] , [4 , 6] :
+
+NVFP4 quantization bins. After dividing by the block scale, values are quantized to the E2M1 grid. The non-negative interior bins are: [0 , 0.25) , [0 .25 , 0.75) , [0 .75 , 1.25) , [1 .25 , 1.75) , [1 .75 , 2.5) ,
+
+[2 .5, 3.5) , [3 .5, 5.0) , [5 .0, ∞), with step sizes ∆k ∈ { 0.5, 0.5, 0.5, 0.5, 1.0, 1.0, 2.0}. Negative values are handled symmetrically. The ∆2/12 (RTN) and ∆2/6 (SR) formulas below apply only to interior bins; the saturation cell requires separate treatment (in practice, per-block scaling keeps most values within the representable range, so saturation affects a small fraction of elements). 
+
+Round-to-nearest (RTN): For a fixed input u in bin [ck, c k+1 ], RTN produces a deterministic error 
+
+δ = QRTN (u) − u with |δ| ≤ ∆k/2. The mean squared error averaged over inputs uniformly distributed within the bin is: 
+
+MSE RTN ,k = 1∆k
+
+Z ∆k
+
+> 0
+
+min( d, ∆k − d)2 dd = ∆2
+
+> k
+
+12 
+
+We emphasize that this is an input-averaged MSE, not a “variance” from rounding randomness (RTN has no randomness). For non-uniform input distributions (e.g., Gaussian), the MSE may differ. 
+
+Stochastic rounding (SR): For u ∈ [ck, c k+1 ] with d = u − ck, SR rounds to ck+1 with probability 
+
+d/ ∆k and to ck otherwise. The conditional variance (which is genuine rounding randomness) is: 
+
+σ2SR ,k (u) = d(∆ k − d) ≤ ∆2
+
+> k
+
+4
+
+Averaging over u uniformly distributed in the bin: 
+
+Eu[σ2SR ] = 1∆k
+
+Z ∆k
+
+> 0
+
+d(∆ k − d) dd = ∆2
+
+> k
+
+6
+
+12 0 100 200 300 400 500 600 700 800 
+
+> Training Steps
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> MSE
+
+Activation MSE Scaling with Dimension 
+
+> h=512
+> h=1024
+> h=1536
+> h=2048
+
+Figure 6: Quantization MSE of the final-block output activation under increasing hidden dimension. For non-uniform input distributions, the effective average E[d(∆ k − d)] depends on how mass is distributed within the bin; it may be above or below ∆2
+
+> k
+
+/6. SR satisfies (A1)–(A3) approximately (exactly for independent rounding draws with fixed block scales). 
+
+Scaling with hidden dimension. If inputs are drawn such that E[x2 
+
+> i
+
+] = ¯ x2 for all i, and quantization variance is approximately homogeneous σ2 
+
+> x,i
+
+≈ σ2
+
+> x
+
+, then: 
+
+Var( δY ) ≈ N  ¯x2σ2 
+
+> w
+
++ ¯ w2σ2 
+
+> x
+
++ σ2
+
+> x
+
+σ2
+
+> w
+
+ = Θ( N )
+
+confirming linear growth with hidden dimension. For a full matrix product ˆY = ˆX ˆW ⊤ where 
+
+X ∈ RB×N and W ∈ RM ×N , each output element ˆYij has variance Θ( N ), and the total Frobenius error ∥ ˆY − Y ∥2 
+
+> F
+
+scales as Θ( BM N ).In fact, due to layer-wise error accumulation, the MSE error introduced by quantization grows faster than linearly with increasing dimension size. Figure 6 plots the final-block output activation quantization MSE from a small-scale toy training setup with 6 network layers, where the hidden dimension expands from 512 to 2048 (corresponding to a parameter growth from 50M to 400M). As observed, quantization MSE rises markedly as the dimension increases. Moreover, such error is well suppressed in the early training stage and gradually increases as training proceeds. 
+
+B Appendix: Full Derivation of LoRA-SVD 
+
+The aligned forward and naive backward computations are: 
+
+Y = Q1x16 (X) Q16x16 (Wres )⊤
+
+| {z }
+
+> NVFP4 GEMM
+
++ β · (XL ⊤ 
+
+> 1
+
+)L⊤
+
+> 2
+
+| {z }
+
+> BF16
+
+dX = Q1x16 (d Y ) Q16x16 (Wres )
+
+| {z }
+
+> reused from fwd.
+
++β · (d Y L 2) L1
+
+dW = Q1x16 (d Y ⊤Hr
+
+> 16
+
+) Q16x1 
+
+
+
+Hr
+
+> 16
+> ⊤
+
+Q1x16 (X)
+
+
+
+dWres = d W
+
+dL1 = β · L⊤ 
+
+> 2
+
+(d Y ⊤ X)dL2 = β · (d Y ⊤ X)L⊤
+
+> 1
+
+The forward pass uses RTN and the backward pass adopts SR, while both use 4/6 scaling. Hr
+
+> 16
+
+denotes a 16 × 16 random Hadamard Transformation matrix drawn fresh for each backward pass. Notably, computing dL 1 and dL 2 separately entails the same dominant large-scale GEMM as dW res .To avoid duplicating this cost, we reuse the already-formed dW and rewrite: 
+
+dL1 = β · L⊤ 
+
+> 2
+
+dW, dL2 = β · dW L ⊤
+
+> 1
+
+13 This change is motivated by efficiency since these gradients require full-precision X to align with the forward pass mathematically, but eventually it works well. To ensure the LoRA branch consistently captures the principal components of the SVD during training (initially guaranteed), we thus introduce a subspace constraint based on fast Cholesky-QR decomposition: 
+
+QL2 RL2 = L2, QL1 RL1 = L⊤ 
+
+> 1
+
+,
+
+where Cholesky-QR computes R = chol( A⊤A)⊤ ∈ Rr×r and Q = AR −1 ∈ Rd×r , which is faster than Householder QR for tall-thin matrices ( r ≪ d, d o). Then: 
+
+Λ = Q⊤ 
+
+> L2
+
+dW Q L1 , Λ ∈ Rr×r
+
+dWLoRA = QL2 Λ Q⊤
+
+> L1
+
+dWres = d W − dWLoRA 
+
+dL1 = β · L⊤ 
+
+> 2
+
+dWLoRA , dL2 = β · dWLoRA L⊤ 
+
+> 1
+
+,
+
+C Appendix: Kernel Fusion Discussion of LoRA-SVD 
+
+We focus on the Y and dX computation of the LoRA-SVD branch, as both involve heavy I/O of high-precision large-scale X, dY , and their corresponding output tensors. In this section, we discuss and analyze the possibility of integrating its computation and memory access efficiently into existing quantization kernels. In low-precision training pipelines, the quantization kernel for activation X can be fused with preceding operations such as layer normalization or SwiGLU. Even when full end-to-end fusion is not enabled, the quantization of X still serves as a standalone dedicated kernel for the output projection after self-attention. Similarly, a separate quantization kernel is always required for dY .The tiling layout of these quantization kernels can adopt row-wise partitioning inherited from normalization modules, or block-wise partitioning as commonly used in SwiGLU and standalone quantization kernels. A key insight from SVDQuant [ 21 ]—originally designed for post-training quantization and infer-ence—is that naively deploying an independent low-rank branch incurs substantial latency overhead in low-bit inference, with up to 57% slowdown caused by redundant movement of 16-bit activations and repeated DRAM access. To mitigate this issue, SVDQuant develops the Nunchaku inference engine to fuse low-rank branch computations with quantization and 4-bit compute kernels. This design eliminates intermediate DRAM read/write traffic and reduces redundant kernel launches. Specifically, SVDQuant fuses down-projection ( L1) with quantization by reusing the same input tensor, and fuses up-projection ( L2) with 4-bit GEMM by sharing the same output tensor. Such kernel fusion halves memory traffic and constrains the overhead of the low-rank branch to merely 5–10% in latency. Since our LoRA-SVD branch also adopts a small-rank design and shares a highly similar computation scenario, the kernel fusion paradigm can be directly reused for both Y and 
+
+dX calculation. With appropriate hardware-aware tiling and kernel fusion, the additional overhead introduced by our LoRA-SVD branch can be made nearly negligible. 
+
+D Theoretical Analysis of Quantization Sensitivity in Attention 
+
+In this section, we theoretically formalize why the forward matmul P V and the backward matmul 
+
+dOV ⊤ are inherently sensitive to ultra-low precision, necessitating their computation in BF16 as empirically demonstrated in Section 3.5. Our analysis models the interaction between the non-linear truncation of NVFP4’s 1x16 fine-grained scaling and the highly skewed numerical characteristics of the Softmax distribution. 
+
+D.1 Sensitivity of P V : Block-wise Simplex Violation 
+
+In the forward pass, the exact attention matrix P ∈ RN ×N represents a convex combination satisfying the probability simplex constraint: P 
+
+> j
+
+Pi,j = 1 and Pi,j ≥ 0. The Softmax operation dictates that P
+
+14 is highly skewed, dominated by a few probability peaks alongside a dense, heavy tail of near-zero values. When P is quantized to ˆP using NVFP4 with a 1x16 block size, the scale factor for each block b is dictated by its local maximum: sb = max j∈block b |Pi,j |/6.0. Within a 16-element block containing a probability peak, sb is exceedingly large. Consequently, the sub-maximum probabilities fall below the representable FP4 dynamic range and are irreversibly truncated to zero. This block-wise truncation induces a critical Simplex Violation . The row sums of the quantized matrix strictly deviate from unity ( P 
+
+> j
+
+ˆPi,j ̸ = 1 ). Since the convex combination property is mathematically broken, the quantized output ˆO = ˆP V inherently suffers a structured, compounding norm shift proportional to |1 − P 
+
+> j
+
+ˆPi,j |∥ V ∥. This systematic bias propagates exponentially across deep transformer layers, inevitably degrading forward pass stability. 
+
+D.2 Sensitivity of dOV ⊤: Distribution Misalignment and Spurious Gradients 
+
+In memory-efficient, FlashAttention-style backward kernels, the exact gradient w.r.t. the pre-softmax scores is formulated as: 
+
+dS i,j = Pi,j (dP i,j − Di)
+
+where dP i,j = ⟨dO i, V j ⟩. The baseline Di = P 
+
+> k
+
+Pi,k dP i,k is computed natively in high precision via the identity Di ≡ ⟨ Oi, dO i⟩.When the dOV ⊤ matmul is quantized to NVFP4, it introduces a truncation noise ∆dP i,j . Since the baseline Di remains exact and decoupled from this GEMM, the perturbed gradient inherently isolates this noise, scaled by the attention probability: 
+
+cdS i,j = Pi,j (dP i,j + ∆ dP i,j − Di) = dS i,j + Pi,j ∆dP i,j (6) The sensitivity of this path arises from the Distribution Misalignment between the Softmax proba-bilities P and the gradient magnitudes dP . In the 1x16 per-group quantization of NVFP4, the scale factor is determined by the absolute maximum gradient within the block. While this maximum value is preserved with high fidelity ( ∆dP max ≈ 0), the sub-maximum gradients within the same block suffer from severe quantization noise ( ∆dP sub ≫ 0). Crucially, the magnitude of a token’s gradient dP i,j does not strictly correlate with its probability mass Pi,j . Consider a token at index c that represents a significant probability peak in the Softmax distribution ( Pi,c ≫ 0). If its corresponding gradient dP i,c happens to be a sub-maximum within its hardware quantization block, it incurs massive truncation noise ∆dP i,c .According to Equation 6, this noise is directly scaled by the substantial probability mass Pi,c . For a token at a probability peak, its exact mathematical gradient dS i,c is inherently near-zero (since 
+
+dP i,c ≈ Di). Consequently, the injected truncation noise fundamentally dominates the true signal: 
+
+cdS i,c ≈ dS i,c + Pi,c · ∆dP i,c 
+
+where the magnitude of the noise may completely overshadows the signal ( |Pi,c · ∆dP i,c | ≫ | dS i,c |). This dynamic causes a catastrophic degradation in the Signal-to-Noise Ratio (SNR). For tokens in the dense tail ( P → 0), the noise term P · ∆dP is safely attenuated. However, for primary or secondary probability peaks, the unmitigated truncation noise completely replaces the vanishing true gradient. This spurious gradient artificially corrupts the updates for the most critical queries and keys, destroying the attention formulation in subsequent iterations. Retaining dOV ⊤ in BF16 bypasses this misalignment-induced SNR degradation, ensuring stable optimization. 
+
+E Appendix: Mixed-Precision Attention Algorithm 
+
+Algorithm 1 presents the FlashAttention-style forward and backward pass with NVFP4 quantization of Q, K, V and dS .
+
+Distinction from Attn-QAT. Attn-QAT [ 14 ] targets inference efficiency and quantizes all attention tensors in the forward pass (including P ) using fake-quantization with QAT fine-tuning, but no matmuls in backward. Our design targets on pretraining efficiency and stability and quantizes Q, K,
+
+V in forward and dS in backward, keeping P and dO in BF16. 15 Algorithm 1 Mixed-Precision NVFP4 Attention (one head) 
+
+1: Require Q, K, V ∈ RN ×d (BF16), tile sizes Bq , B k
+
+2: Require NVFP4 quantizer ϕ(·)
+
+3: 4: // Forward pass 
+
+5: ˆQ ← ϕ(Q); ˆK ← ϕ(K); ˆV ← ϕ(V ) {16 ×16 block NVFP4} 6: Save ˆQ, ˆK, ˆV to HBM {≈4× less memory and IO than BF16} 7: for i = 1 to Tq do 
+
+8: mi ← −∞ ; li ← 0; Oi ← 0
+
+9: for j = 1 to Tk do 
+
+10: Sij ← ˆQi ˆK⊤ 
+
+> j
+
+/√d {NVFP4 GEMM , FP32 accum} 11: Apply causal mask; ˜Pij ← softmax online (Sij ) {BF16} 12: Oi ← diag( α) Oi + ˜Pij ˆVj {dequanted ˆV , BF16} 13: end for 
+
+14: Li ← mi + log( li) {save log-sum-exp, FP32} 15: end for 
+
+16: 17: // Backward pass (given dO in BF16) 18: D ← rowsum( dO ⊙ O) {FP32} 19: for j = 1 to Tk do 
+
+20: for i = 1 to Tq do 
+
+21: Recompute Sij ← ˆQi ˆK⊤ 
+
+> j
+
+/√d {NVFP4 GEMM , same ˆQ, ˆK}22: Recompute Pij from Sij and Li
+
+23: dV j += P ⊤ 
+
+> ij
+
+dO i {BF16} 24: dS ij ← Pij ⊙ (dO i ˆV ⊤ 
+
+> j
+
+− Di) {same ˆV dequanted, BF16} 25: cdS ij ← ϕSR (dS ij ) {quantize dS 1x16 and 16x1 separately} 26: dQ i += cdS ij ˆKj /√d {NVFP4 GEMM }27: dK j += cdS ⊤ 
+
+> ij
+
+ˆQi/√d {NVFP4 GEMM }28: end for 
+
+29: end for 
+
+30: Return O, dQ , dK , dV 
+
+F Appendix: Gradient Norm in 3B Pretraining 
+
+Our full-stack FP4 training yields gradient norms that are both comparable and stable when compared with full-precision training, as visualized in Figure 7. 
+
+Figure 7: Gradient norm curves during 3B model pretraining with 64B training tokens. 
+
+G Appendix: Loss Landscape of a Toy Model Pretraining 
+
+To further validate the stability of our full-stack framework, we visualize the loss landscape evolution during the small-scale pretraining of a toy model (150M parameters, 6 layers, hidden dimension = 16 1024). We present loss landscapes at four key training steps (32, 384, 512, and 672) in Figure 8, where the four subfigures are arranged vertically in chronological order of training steps. Each subfigure follows a consistent three-column layout for direct comparison: - Column 1 : Loss landscape of the high-precision baseline; - Column 2 : Loss landscape of our proposed full-stack framework; - Column 3 : Loss landscape of a naive NVFP4 baseline, which adopts direct NVFP4 precision for all linear layers, all attention matrix multiplications, and AdamW optimizer. Notably, the naive NVFP4 baseline in Column 3 suffers from training collapse after a certain step. For the final step (672 steps), the corresponding subplot in Column 3 is left blank and marked as 
+
+derived to indicate the invalid state. As observed from the vertical sequence of landscapes: - The high-precision baseline maintains a smooth optimization path throughout training, while our full-stack framework exhibits a relatively steeper yet equally smooth loss landscape—this reflects efficient gradient propagation and enables stable convergence; - In contrast, the naive NVFP4 baseline gradually develops a rugged loss landscape with an increasing number of local minima. This structural degradation exacerbates optimization difficulties and ultimately leads to training collapse at later steps. These visualizations quantitatively confirm that our full-stack design not only mitigates quantization errors but also preserves a favorable loss landscape topology, which is critical for stable low-precision pretraining. With the steeper landscape observation, we suggest a smaller learning rate might be suitable for NVFP4 pretraining. 
+
+H Appendix: Model Architecture and Training Configuration Details 
+
+Table 4 and Table 5 provide supplementary details on the model architecture and training hyperpa-rameters used in the experiments described in Section 4.        
+
+> Model Architecture Value
+> Number of Layers 24 Hidden Dimension 3072 FFN Intermediate Dimension 9216 Attention Heads 24 Attention KV Heads 12 Context Window 2048 tokens
+
+Table 4: Detailed model architecture parameters.                
+
+> Training Configuration Value
+> Optimizer Root+AdamW Peak Learning Rate 1.5×10 −4
+> Peak LR for LoRA branch 3.0×10 −4
+> Weight Decay 0.1 Beta1 / Beta2 0.9, 0.95 Gradient Clipping 1.0 Warmup Tokens 3B tokens (5%) Learning Rate Decay Cosine decay Batch Size 1M tokens Quantile Ratio of Root 0.99
+
+Table 5: Training hyperparameters. 17 1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 
+
+> Direction 1
+
+fp 
+
+1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 proposed quant 
+
+1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 naive quant 
+
+-2e-04 
+
+-1e-04 
+
+0e+00 
+
+1e-04 
+
+2e-04 
+
+4e-04 
+
+5e-04 
+
+6e-04 
+
+7e-04 (a) Training step 32 1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 
+
+> Direction 1
+
+fp 
+
+1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 proposed quant 
+
+1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 naive quant 
+
+0e+00 
+
+9e-04 
+
+2e-03 
+
+3e-03 
+
+4e-03 
+
+5e-03 
+
+5e-03 
+
+6e-03 
+
+(b) Training step 384 1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 
+
+> Direction 1
+
+fp 
+
+1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 proposed quant 
+
+1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 naive quant 
+
+-2e-03 
+
+0e+00 
+
+2e-03 
+
+3e-03 
+
+5e-03 
+
+6e-03 
+
+7e-03 
+
+9e-03 
+
+(c) Training step 512 1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 
+
+> Direction 1
+
+fp 
+
+1.5 1.0 0.5 0.0 0.5 1.0 1.5 
+
+Direction 2 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 proposed quant 
+
+Direction 2 
+
+diverged 
+
+naive quant 
+
+0e+00 
+
+2e-03 
+
+5e-03 
+
+7e-03 
+
+1e-02 
+
+1e-02 
+
+1e-02 
+
+(d) Training step 672 
+
+Figure 8: Loss landscape comparison across four training steps (arranged vertically from top to bottom: 32, 384, 512, 672). Each subfigure follows a three-column layout: Column 1 = High-precision baseline; Column 2 = Our full-stack framework; Column 3 = Naive NVFP4 baseline. For the 672-step subfigure (bottommost), Column 3 is marked as derived due to training collapse. 18
