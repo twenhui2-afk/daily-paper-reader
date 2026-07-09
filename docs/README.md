@@ -6,73 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-08
-- 运行时间：2026-07-09 05:10:46 UTC+8
+- 最新运行日期：2026-07-09
+- 运行时间：2026-07-10 05:20:51 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《The crumby coloring conjecture for subcubic outerplanar graphs》（8.6/10）, 《Characterizing and Bridging the Diagnostic Gap in eBPF Verifier Rejections》（8.2/10）
-- 速读：《Small sums of roots of unity》（7.9/10）, 《Computing singular solutions of polynomial systems: towards superlinear convergence without deflation》（7.9/10）, 《Hierarchical Acoustic-Semantic Modeling: Modality Separation and Semantic Coherence for Full-Duplex SLMs》（7.8/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Newton polygons for the non-bipartite dimer model》（8.1/10）, 《POO-LPSP: Parallel Osprey Optimized Least Penalty-Squared Prioritization Methods for Priority Derivation in the Analytic Hierarchy Process》（8.0/10）
+- 速读：《zk-ScalHard: Scalable and Hardware-Rooted Privacy-Preserving Authentication for Secure OTA Updates in Zonal SDVs》（7.9/10）, 《From Noisy Traces to Root Causes: Structural Trajectory Analysis and Causal Extraction for Agent Optimization》（7.9/10）, 《Signed graphs with fixed smallest eigenvalue at least $-3$ and their lattices》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/08/README](/202607/08/README)
+- 详情：[/202607/09/README](/202607/09/README)
 
 ### 精读区论文标签
-1. [The crumby coloring conjecture for subcubic outerplanar graphs](/202607/08/2607.06515v1-the-crumby-coloring-conjecture-for-subcubic-outerplanar-graphs)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [Characterizing and Bridging the Diagnostic Gap in eBPF Verifier Rejections](/202607/08/2607.02748v1-characterizing-and-bridging-the-diagnostic-gap-in-ebpf-verifier-rejections)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [Strictly Interlaced Spectral Data for the Weighted Matching Polynomial of a Graph](/202607/08/2607.02756v1-strictly-interlaced-spectral-data-for-the-weighted-matching-polynomial-of-a-graph)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [FORGE: Research-Trajectory Hijacking Attacks on Deep Research Agents](/202607/08/2607.04718v1-forge-research-trajectory-hijacking-attacks-on-deep-research-agents)  
+1. [Newton polygons for the non-bipartite dimer model](/202607/09/2607.07503v1-newton-polygons-for-the-non-bipartite-dimer-model)  
    标签：评分：8.1/10
    evidence：检索回退候选
-5. [Square-Root Price Impact Is Necessary for Endogenous Manipulation Cycles in Learning-Agent Markets](/202607/08/2607.05141v1-square-root-price-impact-is-necessary-for-endogenous-manipulation-cycles-in-learning-agent-markets)  
+2. [POO-LPSP: Parallel Osprey Optimized Least Penalty-Squared Prioritization Methods for Priority Derivation in the Analytic Hierarchy Process](/202607/09/2607.07313v1-poo-lpsp-parallel-osprey-optimized-least-penalty-squared-prioritization-methods-for-priority-derivation-in-the-analytic-hierarchy-process)  
    标签：评分：8.0/10
    evidence：检索回退候选
-6. [Determinant Characteristics and Argument-Principle Certification for Visible Poles in Meromorphic Continuation](/202607/08/2607.04568v1-determinant-characteristics-and-argument-principle-certification-for-visible-poles-in-meromorphic-continuation)  
+3. [A Word-Level Digital Reader of the Prasthanatrayi with Sankara's Bhasya: Corpus, Method, and an Open, Offline Reading Aid for the Advaita Vedanta Canon](/202607/09/2607.07282v1-a-word-level-digital-reader-of-the-prasthanatrayi-with-sankaras-bhasya-corpus-method-and-an-open-offline-reading-aid-for-the-advaita-vedanta-canon)  
    标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Small sums of roots of unity](/202607/08/2607.06098v1-small-sums-of-roots-of-unity)  
+1. [zk-ScalHard: Scalable and Hardware-Rooted Privacy-Preserving Authentication for Secure OTA Updates in Zonal SDVs](/202607/09/2607.07371v1-zk-scalhard-scalable-and-hardware-rooted-privacy-preserving-authentication-for-secure-ota-updates-in-zonal-sdvs)  
    标签：评分：7.9/10
    evidence：检索回退候选
-2. [Computing singular solutions of polynomial systems: towards superlinear convergence without deflation](/202607/08/2607.06329v1-computing-singular-solutions-of-polynomial-systems-towards-superlinear-convergence-without-deflation)  
+2. [From Noisy Traces to Root Causes: Structural Trajectory Analysis and Causal Extraction for Agent Optimization](/202607/09/2607.07702v1-from-noisy-traces-to-root-causes-structural-trajectory-analysis-and-causal-extraction-for-agent-optimization)  
    标签：评分：7.9/10
    evidence：检索回退候选
-3. [Hierarchical Acoustic-Semantic Modeling: Modality Separation and Semantic Coherence for Full-Duplex SLMs](/202607/08/2607.06540v1-hierarchical-acoustic-semantic-modeling-modality-separation-and-semantic-coherence-for-full-duplex-slms)  
+3. [Signed graphs with fixed smallest eigenvalue at least $-3$ and their lattices](/202607/09/2607.02951v1-signed-graphs-with-fixed-smallest-eigenvalue-at-least--3-and-their-lattices)  
    标签：评分：7.8/10
    evidence：检索回退候选
-4. [FairFlow: Demystifying and Mitigating Stereotype Bias in Text-to-Image Diffusion Transformers](/202607/08/2607.03180v1-fairflow-demystifying-and-mitigating-stereotype-bias-in-text-to-image-diffusion-transformers)  
+4. [Endogenous Feedback in Size-Structured Transport Equations](/202607/09/2607.02877v1-endogenous-feedback-in-size-structured-transport-equations)  
    标签：评分：7.8/10
    evidence：检索回退候选
-5. [A Systematic Methodology for Evaluating Failure Independence in LLM-Generated Code](/202607/08/2607.02808v1-a-systematic-methodology-for-evaluating-failure-independence-in-llm-generated-code)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-6. [Design-CP: Context Parallelism for Design of Protein Nanoparticles](/202607/08/2607.05439v1-design-cp-context-parallelism-for-design-of-protein-nanoparticles)  
+5. [First look at the evaluation of two-loop Feynman integrals for radiative return processes](/202607/09/2607.03343v1-first-look-at-the-evaluation-of-two-loop-feynman-integrals-for-radiative-return-processes)  
    标签：评分：7.7/10
    evidence：检索回退候选
-7. [Full Glyph Images Beat Token Embeddings: A Controlled Study for Transformers](/202607/08/2607.03994v1-full-glyph-images-beat-token-embeddings-a-controlled-study-for-transformers)  
+6. [Applying Answer Set Programming with Fuzzy Membership Functions: a Case Study](/202607/09/2607.03550v1-applying-answer-set-programming-with-fuzzy-membership-functions-a-case-study)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+7. [Exponential growth and decay estimates for eigenfunctions with complex eigenvalues](/202607/09/2607.04180v1-exponential-growth-and-decay-estimates-for-eigenfunctions-with-complex-eigenvalues)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Non-Line-of-Sight imaging using raster scanning at NIR wavelength](/202607/08/2607.04183v1-non-line-of-sight-imaging-using-raster-scanning-at-nir-wavelength)  
+8. [TileLens: Efficiently Using Large-Granularity Memory Systems with Transparent Two-Dimensional Memory Layout](/202607/09/2607.04031v1-tilelens-efficiently-using-large-granularity-memory-systems-with-transparent-two-dimensional-memory-layout)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [Noncommutative Anisotropic Diffusion in Hilbert Space. II. Global Closure of the Logarithmic Gradient, Lower Bounds, and Nanosystem Applications](/202607/08/2607.04131v1-noncommutative-anisotropic-diffusion-in-hilbert-space-ii-global-closure-of-the-logarithmic-gradient-lower-bounds-and-nanosystem-applications)  
+9. [Quaternion-Averaging-Based Adaptive Complementary Filter for Pedestrian Dead Reckoning With a Foot-Mounted AHRS](/202607/09/2607.05451v1-quaternion-averaging-based-adaptive-complementary-filter-for-pedestrian-dead-reckoning-with-a-foot-mounted-ahrs)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Full-Stack FP4: Stable LLM Pretraining with Quantized Projections, Optimizers, and Attention](/202607/08/2607.04422v1-full-stack-fp4-stable-llm-pretraining-with-quantized-projections-optimizers-and-attention)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-11. [Guaranteed Lower Eigenvalue Bounds for Spectral Galerkin Methods with Application to Schrödinger Operators](/202607/08/2607.04247v1-guaranteed-lower-eigenvalue-bounds-for-spectral-galerkin-methods-with-application-to-schrdinger-operators)  
+10. [A note on probabilistic powerdomains, RB-domains, and bc-domains](/202607/09/2607.04076v1-a-note-on-probabilistic-powerdomains-rb-domains-and-bc-domains)  
    标签：评分：6.7/10
+   evidence：检索回退候选
+11. [Non-invasive Blood Glucose Estimation from Wearable Physiological Signals](/202607/09/2607.04414v1-non-invasive-blood-glucose-estimation-from-wearable-physiological-signals)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
