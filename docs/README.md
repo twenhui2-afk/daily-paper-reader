@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-09
-- 运行时间：2026-07-10 05:20:51 UTC+8
+- 最新运行日期：2026-07-10
+- 运行时间：2026-07-11 05:07:05 UTC+8
 - 运行状态：成功
 - 本次总论文数：14
 - 精读区：3
@@ -15,55 +15,55 @@
 
 ### 今日简报（AI）
 - 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Newton polygons for the non-bipartite dimer model》（8.1/10）, 《POO-LPSP: Parallel Osprey Optimized Least Penalty-Squared Prioritization Methods for Priority Derivation in the Analytic Hierarchy Process》（8.0/10）
-- 速读：《zk-ScalHard: Scalable and Hardware-Rooted Privacy-Preserving Authentication for Secure OTA Updates in Zonal SDVs》（7.9/10）, 《From Noisy Traces to Root Causes: Structural Trajectory Analysis and Causal Extraction for Agent Optimization》（7.9/10）, 《Signed graphs with fixed smallest eigenvalue at least $-3$ and their lattices》（7.8/10）
+- 精读：《Canonical Join Trees》（8.6/10）, 《The Periodic Table and the Group SO(4,4): II. Double SO(4,2)-tower》（8.2/10）
+- 速读：《Spectral Diffusion for Protein Dynamics》（7.8/10）, 《Locally Approximating the Top Eigenvector of Bounded Entry Matrices》（7.4/10）, 《The $\ominus$-metric to compare phylogenetic networks》（7.4/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/09/README](/202607/09/README)
+- 详情：[/202607/10/README](/202607/10/README)
 
 ### 精读区论文标签
-1. [Newton polygons for the non-bipartite dimer model](/202607/09/2607.07503v1-newton-polygons-for-the-non-bipartite-dimer-model)  
-   标签：评分：8.1/10
+1. [Canonical Join Trees](/202607/10/2607.07992v1-canonical-join-trees)  
+   标签：评分：8.6/10
    evidence：检索回退候选
-2. [POO-LPSP: Parallel Osprey Optimized Least Penalty-Squared Prioritization Methods for Priority Derivation in the Analytic Hierarchy Process](/202607/09/2607.07313v1-poo-lpsp-parallel-osprey-optimized-least-penalty-squared-prioritization-methods-for-priority-derivation-in-the-analytic-hierarchy-process)  
-   标签：评分：8.0/10
+2. [The Periodic Table and the Group SO(4,4): II. Double SO(4,2)-tower](/202607/10/2607.08105v1-the-periodic-table-and-the-group-so44-ii-double-so42-tower)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-3. [A Word-Level Digital Reader of the Prasthanatrayi with Sankara's Bhasya: Corpus, Method, and an Open, Offline Reading Aid for the Advaita Vedanta Canon](/202607/09/2607.07282v1-a-word-level-digital-reader-of-the-prasthanatrayi-with-sankaras-bhasya-corpus-method-and-an-open-offline-reading-aid-for-the-advaita-vedanta-canon)  
-   标签：评分：8.0/10
+3. [Log-Insight: Automating Microservice Incident Diagnosis via Neuro-Symbolic Log Analysis](/202607/10/2607.08529v1-log-insight-automating-microservice-incident-diagnosis-via-neuro-symbolic-log-analysis)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [zk-ScalHard: Scalable and Hardware-Rooted Privacy-Preserving Authentication for Secure OTA Updates in Zonal SDVs](/202607/09/2607.07371v1-zk-scalhard-scalable-and-hardware-rooted-privacy-preserving-authentication-for-secure-ota-updates-in-zonal-sdvs)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-2. [From Noisy Traces to Root Causes: Structural Trajectory Analysis and Causal Extraction for Agent Optimization](/202607/09/2607.07702v1-from-noisy-traces-to-root-causes-structural-trajectory-analysis-and-causal-extraction-for-agent-optimization)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-3. [Signed graphs with fixed smallest eigenvalue at least $-3$ and their lattices](/202607/09/2607.02951v1-signed-graphs-with-fixed-smallest-eigenvalue-at-least--3-and-their-lattices)  
+1. [Spectral Diffusion for Protein Dynamics](/202607/10/2607.04134v1-spectral-diffusion-for-protein-dynamics)  
    标签：评分：7.8/10
    evidence：检索回退候选
-4. [Endogenous Feedback in Size-Structured Transport Equations](/202607/09/2607.02877v1-endogenous-feedback-in-size-structured-transport-equations)  
-   标签：评分：7.8/10
+2. [Locally Approximating the Top Eigenvector of Bounded Entry Matrices](/202607/10/2607.08556v1-locally-approximating-the-top-eigenvector-of-bounded-entry-matrices)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-5. [First look at the evaluation of two-loop Feynman integrals for radiative return processes](/202607/09/2607.03343v1-first-look-at-the-evaluation-of-two-loop-feynman-integrals-for-radiative-return-processes)  
-   标签：评分：7.7/10
+3. [The $\ominus$-metric to compare phylogenetic networks](/202607/10/2607.08259v1-the-ominus-metric-to-compare-phylogenetic-networks)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-6. [Applying Answer Set Programming with Fuzzy Membership Functions: a Case Study](/202607/09/2607.03550v1-applying-answer-set-programming-with-fuzzy-membership-functions-a-case-study)  
-   标签：评分：7.6/10
+4. [$K$-spherical horospherical averages on the Nagao quotient: tree combinatorics and exact discrepancy](/202607/10/2607.08704v1-k-spherical-horospherical-averages-on-the-nagao-quotient-tree-combinatorics-and-exact-discrepancy)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-7. [Exponential growth and decay estimates for eigenfunctions with complex eigenvalues](/202607/09/2607.04180v1-exponential-growth-and-decay-estimates-for-eigenfunctions-with-complex-eigenvalues)  
+5. [On $q$-pre-Lie algebras](/202607/10/2607.08389v1-on-q-pre-lie-algebras)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+6. [Tunable Emergent Gauge Fields from Skyrmions in a Quasicrystalline Lattice](/202607/10/2607.07948v1-tunable-emergent-gauge-fields-from-skyrmions-in-a-quasicrystalline-lattice)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+7. [Beyond Random Sampling: Distribution-Aware Alignment for Semi-Supervised Medical Image Segmentation](/202607/10/2607.04249v1-beyond-random-sampling-distribution-aware-alignment-for-semi-supervised-medical-image-segmentation)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [TileLens: Efficiently Using Large-Granularity Memory Systems with Transparent Two-Dimensional Memory Layout](/202607/09/2607.04031v1-tilelens-efficiently-using-large-granularity-memory-systems-with-transparent-two-dimensional-memory-layout)  
+8. [OBBSeg: Irregular Lesion Segmentation under Oriented Bounding Box Annotations](/202607/10/2607.06007v1-obbseg-irregular-lesion-segmentation-under-oriented-bounding-box-annotations)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [Quaternion-Averaging-Based Adaptive Complementary Filter for Pedestrian Dead Reckoning With a Foot-Mounted AHRS](/202607/09/2607.05451v1-quaternion-averaging-based-adaptive-complementary-filter-for-pedestrian-dead-reckoning-with-a-foot-mounted-ahrs)  
+9. [Displacement Preserving Relational Distillation for Robust Medical Segmentation](/202607/10/2607.04599v1-displacement-preserving-relational-distillation-for-robust-medical-segmentation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [A note on probabilistic powerdomains, RB-domains, and bc-domains](/202607/09/2607.04076v1-a-note-on-probabilistic-powerdomains-rb-domains-and-bc-domains)  
+10. [Mutually Exclusive Multiclass Lesion Segmentation in Neuroimaging: Binary-Guided Weak Supervision with Inter-Class Orthogonality](/202607/10/2607.03203v1-mutually-exclusive-multiclass-lesion-segmentation-in-neuroimaging-binary-guided-weak-supervision-with-inter-class-orthogonality)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+11. [Decoupled Single-Mask Annotation Noise Detection via Cross-Sectional Patch Self-Consistency](/202607/10/2607.05965v1-decoupled-single-mask-annotation-noise-detection-via-cross-sectional-patch-self-consistency)  
    标签：评分：6.7/10
-   evidence：检索回退候选
-11. [Non-invasive Blood Glucose Estimation from Wearable Physiological Signals](/202607/09/2607.04414v1-non-invasive-blood-glucose-estimation-from-wearable-physiological-signals)  
-   标签：评分：6.6/10
    evidence：检索回退候选
 
 
