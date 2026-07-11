@@ -6,64 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-10
-- 运行时间：2026-07-11 05:07:05 UTC+8
+- 最新运行日期：2026-07-11
+- 运行时间：2026-07-12 05:09:18 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Canonical Join Trees》（8.6/10）, 《The Periodic Table and the Group SO(4,4): II. Double SO(4,2)-tower》（8.2/10）
-- 速读：《Spectral Diffusion for Protein Dynamics》（7.8/10）, 《Locally Approximating the Top Eigenvector of Bounded Entry Matrices》（7.4/10）, 《The $\ominus$-metric to compare phylogenetic networks》（7.4/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Dilated Hankel determinants》（7.4/10）, 《UniClawBench: A Universal Benchmark for Proactive Agents on Real-World Tasks》（7.3/10）, 《DominoTree: Conditional Tree-Structured Drafting with Domino for Speculative Decoding》（7.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/10/README](/202607/10/README)
+- 详情：[/202607/11/README](/202607/11/README)
 
 ### 精读区论文标签
-1. [Canonical Join Trees](/202607/10/2607.07992v1-canonical-join-trees)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [The Periodic Table and the Group SO(4,4): II. Double SO(4,2)-tower](/202607/10/2607.08105v1-the-periodic-table-and-the-group-so44-ii-double-so42-tower)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [Log-Insight: Automating Microservice Incident Diagnosis via Neuro-Symbolic Log Analysis](/202607/10/2607.08529v1-log-insight-automating-microservice-incident-diagnosis-via-neuro-symbolic-log-analysis)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Spectral Diffusion for Protein Dynamics](/202607/10/2607.04134v1-spectral-diffusion-for-protein-dynamics)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-2. [Locally Approximating the Top Eigenvector of Bounded Entry Matrices](/202607/10/2607.08556v1-locally-approximating-the-top-eigenvector-of-bounded-entry-matrices)  
+1. [Dilated Hankel determinants](/202607/11/2607.08279v1-dilated-hankel-determinants)  
    标签：评分：7.4/10
    evidence：检索回退候选
-3. [The $\ominus$-metric to compare phylogenetic networks](/202607/10/2607.08259v1-the-ominus-metric-to-compare-phylogenetic-networks)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-4. [$K$-spherical horospherical averages on the Nagao quotient: tree combinatorics and exact discrepancy](/202607/10/2607.08704v1-k-spherical-horospherical-averages-on-the-nagao-quotient-tree-combinatorics-and-exact-discrepancy)  
+2. [UniClawBench: A Universal Benchmark for Proactive Agents on Real-World Tasks](/202607/11/2607.08768v1-uniclawbench-a-universal-benchmark-for-proactive-agents-on-real-world-tasks)  
    标签：评分：7.3/10
    evidence：检索回退候选
-5. [On $q$-pre-Lie algebras](/202607/10/2607.08389v1-on-q-pre-lie-algebras)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-6. [Tunable Emergent Gauge Fields from Skyrmions in a Quasicrystalline Lattice](/202607/10/2607.07948v1-tunable-emergent-gauge-fields-from-skyrmions-in-a-quasicrystalline-lattice)  
+3. [DominoTree: Conditional Tree-Structured Drafting with Domino for Speculative Decoding](/202607/11/2607.08642v1-dominotree-conditional-tree-structured-drafting-with-domino-for-speculative-decoding)  
    标签：评分：7.2/10
    evidence：检索回退候选
-7. [Beyond Random Sampling: Distribution-Aware Alignment for Semi-Supervised Medical Image Segmentation](/202607/10/2607.04249v1-beyond-random-sampling-distribution-aware-alignment-for-semi-supervised-medical-image-segmentation)  
-   标签：评分：6.9/10
+4. [ARDY: Autoregressive Diffusion with Hybrid Representation for Interactive Human Motion Generation](/202607/11/2607.08741v1-ardy-autoregressive-diffusion-with-hybrid-representation-for-interactive-human-motion-generation)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-8. [OBBSeg: Irregular Lesion Segmentation under Oriented Bounding Box Annotations](/202607/10/2607.06007v1-obbseg-irregular-lesion-segmentation-under-oriented-bounding-box-annotations)  
+5. [Spatial Graph Representation and Morphometric Analysis of the Pulmonary Vascular Tree From Computed Tomography Using Multi-Scale Hessian-Based Filter Fusion and TEASAR Skeletonization](/202607/11/2607.04457v1-spatial-graph-representation-and-morphometric-analysis-of-the-pulmonary-vascular-tree-from-computed-tomography-using-multi-scale-hessian-based-filter-fusion-and-teasar-skeletonization)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [Displacement Preserving Relational Distillation for Robust Medical Segmentation](/202607/10/2607.04599v1-displacement-preserving-relational-distillation-for-robust-medical-segmentation)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-10. [Mutually Exclusive Multiclass Lesion Segmentation in Neuroimaging: Binary-Guided Weak Supervision with Inter-Class Orthogonality](/202607/10/2607.03203v1-mutually-exclusive-multiclass-lesion-segmentation-in-neuroimaging-binary-guided-weak-supervision-with-inter-class-orthogonality)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-11. [Decoupled Single-Mask Annotation Noise Detection via Cross-Sectional Patch Self-Consistency](/202607/10/2607.05965v1-decoupled-single-mask-annotation-noise-detection-via-cross-sectional-patch-self-consistency)  
+6. [Multi-Resolution Feature Stem for Diabetic Retinopathy lesion segmentation](/202607/11/2607.08679v1-multi-resolution-feature-stem-for-diabetic-retinopathy-lesion-segmentation)  
    标签：评分：6.7/10
+   evidence：检索回退候选
+7. [SNR-Adaptive Unified Diffusion for Multi-Task Medical Image Segmentation](/202607/11/2607.03103v1-snr-adaptive-unified-diffusion-for-multi-task-medical-image-segmentation)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+8. [HPR-SAM: Hierarchical Probabilistic Representation Learning for Prompt-free SAM-based Medical Image Segmentation](/202607/11/2607.06972v1-hpr-sam-hierarchical-probabilistic-representation-learning-for-prompt-free-sam-based-medical-image-segmentation)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+9. [An Edge-aware Prompt-enhanced SAM for Ultrasound Image Segmentation](/202607/11/2607.07240v1-an-edge-aware-prompt-enhanced-sam-for-ultrasound-image-segmentation)  
+   标签：评分：6.5/10
+   evidence：检索回退候选
+10. [VCDP: Variation-Conditioned Distributional Proxy Learning for Semi-Supervised Medical Image Segmentation](/202607/11/2607.07416v1-vcdp-variation-conditioned-distributional-proxy-learning-for-semi-supervised-medical-image-segmentation)  
+   标签：评分：6.5/10
+   evidence：检索回退候选
+11. [Topology-Driven Transferability Estimation for 3D Medical Vision Foundation Models](/202607/11/2607.04199v1-topology-driven-transferability-estimation-for-3d-medical-vision-foundation-models)  
+   标签：评分：6.4/10
    evidence：检索回退候选
 
 

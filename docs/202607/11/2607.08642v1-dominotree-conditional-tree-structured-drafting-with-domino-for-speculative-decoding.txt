@@ -1,0 +1,741 @@
+Title: DominoTree: Conditional Tree-Structured Drafting with Domino for Speculative Decoding
+
+URL Source: https://arxiv.org/pdf/2607.08642v1
+
+Published Time: Fri, 10 Jul 2026 01:18:24 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# DominoTree: Conditional Tree-Structured Drafting with Domino for Speculative Decoding ∗
+
+Saw S. Lin (Zhiqi Zhang) Jyh-Shing Roger Jang 
+
+Abstract 
+
+Speculative decoding accelerates LLM inference by drafting several tokens and verifying them in parallel. Block-diffusion drafters such as DFlash produce a draft block in one pass but model only per-position marginals; best-first tree methods such as DDTree expand candidate trees from those marginals. The released Domino drafter adds a GRU-based causal correction that makes each draft token’s distribution path-dependent, a structure DDTree’s factorized formulation cannot represent. We introduce DominoTree, a training-free best-first draft tree scored by Domino’s conditional (non-factorized) correction along each root-to-node path, made practical by restricting the per-node correction to a candidate top-M . On Qwen3-4B across eight benchmarks, DominoTree reaches up to 6.6× speedup over autoregressive decoding and the highest mean accept length of any evaluated method (up to 10.7 tokens per round) at every temperature we test. DominoTree constructs its tree with a GPU-native, CUDA-graph builder — bit-identical to a reference Python implementation, so acceptance is unchanged — that keeps per-round tree construction cheap. With this builder as default, DominoTree wins throughput over the released Domino decoder — the very drafter it is built on, run at its own CUDA-graph best — at every temperature ( 9–10% overall on Qwen3-4B, up to +22% on Alpaca), and over DDTree/CaDDTree at every temperature we test (CI-clean paired-bootstrap improvements), not only at greedy decoding. On Qwen3-8B, DominoTree keeps the highest accepted length at every temperature and adds a decisive throughput win at T =0 (+24% over DDTree); at higher temperature that edge over DDTree/CaDDTree narrows to a tie and a small loss, while its Overall (aggregate) wins over DFlash and Domino persist. 
+
+## 1 Introduction 
+
+Every speculative decoding method lives inside the same efficiency identity: end-to-end speedup over autoregressive (AR) decoding is proportional to accepted tokens per round ( τ ) divided by the wall-clock cost of drafting and verifying that round ((1), Section 2.1). Draft quality raises τ ; draft 
+
+cost lowers the denominator — and the two trade off. Autoregressive drafters (e.g. the EAGLE line (Li et al., 2024a,b, 2025)) sit at one extreme: each drafted token conditions on every token drafted before it, but that costs γ strictly sequential forward passes for a length-γ draft. Block-diffusion drafters such as DFlash (Chen et al., 2026) sit at the other extreme: an entire block is proposed in a single parallel forward pass, but every position’s logits are then a marginal over tokens that will actually be realized elsewhere in the block, not a conditional on them, which caps how high τ can climb (Section 2.2). Domino (Huang et al., 2026) closes much of this gap without paying the autoregressive drafter’s full sequential cost: it keeps DFlash’s parallel backbone unchanged and adds a lightweight sequential correction — a GRU tracks which tokens have actually been sampled so far along the current draft  
+
+> ∗Code: https://github.com/slin-zhq/Domino-Tree
+> Department of Computer Science and Information Engineering, National Taiwan University. Correspondence to: Saw S. Lin (Zhiqi Zhang) < r13922176@ntu.edu.tw >.
+
+1arXiv:2607.08642v1 [cs.CL] 9 Jul 2026 GSM8K     
+
+> MATH-500
+> AIME25
+> HumanEval
+> MBPP
+> LCB
+> MT-Bench
+> Alpaca
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> Mean accept length  τ
+> 6.6
+> 8.1
+> 7.4
+> 6.8
+> 6.3
+> 7.4
+> 4.6
+> 3.0
+> 7.5
+> 8.7
+> 8.2
+> 7.7
+> 7.0
+> 8.2
+> 5.3
+> 3.7
+> 7.5
+> 8.7
+> 8.2
+> 7.7
+> 7.0
+> 8.2
+> 5.3
+> 3.7
+> 10.3
+> 9.1
+> 7.5
+> 7.0
+> 7.4
+> 7.0
+> 5.2
+> 3.9
+> 10.7
+> 9.8
+> 8.5
+> 8.0
+> 8.1
+> 7.9
+> 6.2
+> 4.8
+> (a)
+> GSM8K
+> MATH-500
+> AIME25
+> HumanEval
+> MBPP
+> LCB
+> MT-Bench
+> Alpaca
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> 8
+> Speedup over AR (x)
+> 4.48
+> 5.34
+> 4.47
+> 4.53
+> 4.30
+> 4.69
+> 2.96
+> 2.00
+> 4.96
+> 5.60
+> 4.89
+> 5.02
+> 4.70
+> 5.05
+> 3.36
+> 2.42
+> 4.97
+> 5.65
+> 4.88
+> 5.02
+> 4.70
+> 5.04
+> 3.36
+> 2.41
+> 6.41
+> 5.59
+> 4.33
+> 4.41
+> 4.73
+> 4.18
+> 3.23
+> 2.54
+> 6.63
+> 5.91
+> 4.67
+> 4.90
+> 5.10
+> 4.58
+> 3.69
+> 2.97
+> (b)
+> DFlash DDTree(16) CaDDTree Domino DominoTree(16)
+
+Figure 1. DominoTree vs. DFlash, DDTree, CaDDTree, and Domino, Qwen3-4B, T =0 , across the full eight-dataset grid (Table 1). Left: mean accept length τ . Right: speedup over autoregressive (AR) decoding. DFlash is the marginals-only block-diffusion drafter; DDTree and CaDDTree are the official reference tree methods on that native DFlash drafter; Domino, presented in the figure, runs at its fastest configuration (its CUDA-graph runner, which matches or beats the eager runner on every cell); DominoTree is our method, built with its GPU-native tree builder (Section 3.3), at its headline configuration (node budget 16, candidate width M =64 ). A larger node budget raises DominoTree’s accepted length further (Table 7). 
+
+path and nudges each position’s marginal logits toward the true conditional (Section 2.3). This correction is cheap specifically because it runs after the single expensive full-vocabulary projection, never repeating that projection per position. The published implementation, however, uses this correction to walk exactly one path through the draft block per decoding round and hands the single resulting chain to the target model for verification — there is no branching. This is the gap this paper is about. Tree-based drafting — verifying several candidate contin-uations in a single target-model forward pass instead of one — is a well-established way to raise 
+
+τ further, and it is exactly what DDTree (Ringel and Romano, 2026) and its cost-aware extension CaDDTree (Zhang et al., 2026) do on top of DFlash (Sections 2.4–2.5). Both assume the draft distribution factorizes : a candidate token’s score at block position i depends only on i, never on which tokens were chosen at positions < i within the same tree. That assumption is exactly true for DFlash’s marginals and exactly false for Domino’s GRU-corrected logits, which make position 
+
+i’s distribution depend on the realized path up to i — Domino is partial-conditional : backbone hidden states are path-independent, but the GRU correction state is not (Section 2.3, Structural Fact B). No published method builds a draft tree that exploits this: DDTree and CaDDTree are proven correct only for factorized marginals, and extending them to Domino naively either drops the correction back to a single path (Domino’s release) or ignores the correction entirely, gaining nothing algorithmically from Domino’s causal structure. We introduce DominoTree, a training-free tree-construction method that scores DDTree’s own best-first heap with node scores DDTree’s factorized formulation cannot express, computed by re-running Domino’s GRU correction along each candidate’s specific root-to-node path rather than reading a single per-position marginal. Domino’s correction weights are part of the publicly re-leased checkpoint, so this construction is training-free on public weights. On Qwen3-4B at T =0 ,DominoTree reaches 4.81 × speedup over AR decoding on average across the datasets tested and 
+
+7.98 accepted tokens on average — the highest mean accepted length of any evaluated method (DFlash, DDTree, CaDDTree, Domino) at every temperature we test (Table 1). 
+
+Contributions. 
+
+• DominoTree. A training-free draft-tree construction (Section 3) that makes the conditional 2scoring above affordable by restricting the per-node GRU correction to the marginal top-
+
+M candidates at each depth — delivering an Overall -rollup throughput win over Domino at its best (CUDA-graph) configuration at every temperature T ∈ { 0.0, 0.5, 1.0} on both models ( 9–10% on Qwen3-4B, 4–6% on Qwen3-8B; Table 2), on top of the highest mean accepted length of any evaluated method (Table 1). Compared against DDTree and CaD-DTree, DominoTree outperforms at every temperature we test ( +7 .67% [+5 .63 , +9 .80] at 
+
+T =0 ; +5 .18% [+3 .07 , +7 .29] at T =0 .5; +2 .55% [+0 .55 , +4 .59] at T =1 .0, paired-bootstrap 95% CI), on top of the higher accept length above. Code remains the one workload family that still loses to DDTree/CaDDTree (Table 2). 
+
+• GPU-native builder. A CUDA-graph implementation of the per-node conditional correc-tion (Section 3.3) that makes best-first conditional tree construction cheap enough to convert the accepted-length lead above into a throughput lead. It is bit-identical to a Python reference of the same algorithm, verified row-for-row at T =0 — a pure implementation contribution that changes nothing about which tree is built or which tokens are proposed (Section 4.3). 
+
+• CondAdaptive (negative result). We test whether CaDDTree’s cost-aware adaptive bud-get transfers to this non-factorized tree (Section 3.4). Its optimality framework plausibly transfers, but the GRU-corrected drafter’s cumulative path log-probabilities over-credit tar-get acceptance, so the resulting budget saturates at its cap and gives no gain over a fixed budget; we ship the fixed budget instead and report the calibration analysis as evidence for that choice. 
+
+• Controlled ablation. Holding the drafter, node budget, and verifier fixed and varying only the scoring function, conditional scoring improves throughput by +9 .2% [+8 .1, +10 .3] over marginal scoring (paired bootstrap 95% CI, Section 4.4), isolating the gain to conditioning on the realized path rather than tree-building itself. The best-first heap and the tree-attention verification step are DDTree’s mechanism, unmodified; the contribution above is entirely in the node score fed to that heap, which depends on the specific token sequence realized along each candidate’s path, not just on tree depth. 
+
+## 2 Background 
+
+2.1 Speculative decoding 
+
+Speculative decoding (Leviathan et al., 2023; Chen et al., 2023) accelerates autoregressive LLM inference by pairing a cheap draft model with the expensive target model. At each decoding round the drafter proposes a sequence (or, in tree-based methods, a small tree) of candidate continuation tokens; the target model then scores every candidate position in a single parallel forward pass and accepts the longest prefix (or root-to-leaf path, for a tree) whose tokens match what the target model itself would have sampled. Because the accepted tokens are guaranteed to come from the target model’s own distribution, speculative decoding is lossless up to floating-point tie-breaking : it changes only the number of target-model forward passes needed to produce a given output, not the output distribution itself. Tree-attention verification (Section 3.5) reorders bf16 reductions relative to token-serial decoding, which could in principle add further divergence; Section 4.5 shows it does not, at the same benign tie-level rate as chain-style verification, which is what substantiates the losslessness claim for trees specifically. 3End-to-end speedup over AR decoding can be written as 
+
+η = τ · Ltarget 
+
+Tdraft + Tverify 
+
+, (1) where τ is the mean number of tokens accepted per round (the acceptance length ), Ltarget is the cost of one target forward pass, and Tdraft , Tverify are the per-round drafting and verification costs. Two independent levers govern η: draft quality (which determines τ ) and draft cost (Tdraft ). A method that raises τ at the expense of a proportionally larger Tdraft need not raise η at all — this tension motivates both Domino’s design (Section 2.3) and the cost-aware tree-budget selection this paper builds on (Section 2.5). An autoregressive drafter conditions token i on all previously drafted tokens 1, . . . , i − 1, exactly the causal structure the target model uses, but each of the γ draft positions in a length-γ draft therefore requires its own sequential forward pass (and, in the worst case, its own full-vocabulary LM-head projection) — Tdraft scales with γ. Parallel (block) drafters trade this away. 
+
+2.2 DFlash: a block-diffusion drafter and why its logits are marginals 
+
+DFlash (Chen et al., 2026) drafts an entire block of B−1 tokens in a single non-causal forward pass. Given the last verified token xt, the backbone is fed a masked block [xt, [MASK] , . . . , [MASK] ]
+
+together with context features extracted from the target model’s own hidden states at the verified prefix, and produces one hidden representation Hi per draft position i ∈ { t+1 , . . . , t +B−1} in one parallel pass. Applying the (frozen, target-model) LM head to each Hi gives base logits 
+
+Lbase  
+
+> i
+
+= LMHead( Hi),
+
+which are the model’s best estimate of p(xt+i | x≤t) — conditioned on the verified prefix, but not 
+
+on whatever tokens will actually be sampled at the block’s other positions. Because every position attends to the same masked block simultaneously, and the other positions carry no real token information yet, Lbase  
+
+> i
+
+is a marginal : p(xt+i | x≤t), not the conditional p(xt+i | x≤t, x t+1 , . . . , x t+i−1)
+
+that the target model’s own autoregressive factorization actually uses. Sampling independently from these marginals introduces correlation errors across the block that compound with block length, and this is the structural source of the draft-quality gap between block-diffusion and autoregressive drafters. 
+
+2.3 Domino: a partial-conditional drafter 
+
+Domino (Huang et al., 2026) recovers much of this quality gap by adding a lightweight, sequential 
+
+causal correction on top of DFlash’s otherwise-unchanged parallel backbone, without re-running the expensive target LM head. Two components: 
+
+The causal encoder. A single-layer, no-bias GRU accumulates a running state from the embeddings of tokens actually sampled so far along the current draft path: 
+
+Si−1 = GRU( E≤i−1),
+
+where Ej is the (frozen) target-model embedding of the token sampled at position j. Si−1 carries exactly the information the parallel backbone never had access to: which specific tokens were realized at positions 1, . . . , i −1 on this particular draft attempt. 
+
+The logit-space correction head. Given the backbone’s hidden state Hi and the causal state 
+
+Si−1, a low-rank MLP produces a correction directly in logit space: 
+
+∆Li = W2 σ W1 [Hi; Si−1],
+
+4with W1 projecting down to a small bottleneck (rank 256 in the released checkpoints) and W2
+
+projecting back up to full vocabulary size, and σ a SiLU nonlinearity. The final draft logits are 
+
+Li = Lbase  
+
+> i
+
++∆ Li. Correction is applied in logit space, not hidden space, specifically so the expensive frozen LM head is touched only once (in the parallel backbone pass) rather than once per sequential correction step — otherwise the sequential branch would pay a second full-vocabulary projection at every position and erase most of DFlash’s cost advantage. At each position, the token actually sampled from Li = Lbase  
+
+> i
+
++ ∆ Li (not from Lbase  
+
+> i
+
+alone) is re-embedded and fed back into the GRU to advance Si, so the causal state always tracks the corrected pick that is actually sent to the target model for verification, not a hypothetical uncorrected one. Correction is skipped at the first draft position, since the anchor token is a verified fact, not a guess, and there is no realized-but-unseen information yet for the GRU to encode. Both components — the causal encoder and the correction head — are weights in the publicly released Domino checkpoint; everything we build on top of them in this paper (Section 3) is training-free on public weights, with no additional parameters or fine-tuning. 
+
+Two structural facts. These properties of Domino’s correction matter directly for how a draft tree can be built on top of it. 
+
+Fact A. Domino’s released decoder is chain-only. The published decoding loop samples exactly one token per draft position and advances a single GRU state; there is no branching. Nothing in the architecture prevents branching — multiple candidate tokens could be sampled and corrected at a given position, each carrying forward its own GRU state — but the released implementation does not do this. 
+
+Fact B. Domino is a partial-conditional drafter. The backbone representation Hi is shared and path-independent: it is computed once, in the single parallel pass, identical regardless of which tokens end up being sampled anywhere in the block. Only the correction ∆Li(Hi, S i−1) is path-dependent, through Si−1. Formally, Domino’s per-position distribution factors as 
+
+qDomino 
+
+ xt+i | x≤t, x t+1: t+i−1
+
+ = softmax 
+
+
+
+Lbase  
+
+> i
+
++ ∆ Li
+
+ Hi, S i−1(xt+1: t+i−1)
+
+,
+
+where Lbase  
+
+> i
+
+does not depend on xt+1: t+i−1 but ∆Li does. A fully conditional (autoregressive) drafter would need to re-run its entire backbone per branch, since every position’s represen-tation depends on the realized prefix; a purely marginal drafter (plain DFlash) never depends on the realized prefix at all, so branching costs nothing beyond a top-k read at each depth. Domino sits in between: branching a tree on top of it requires re-running only the cheap GRU-plus-correction branch per node, never the expensive backbone pass, because the backbone output is shared across every hypothetical branch. This is the structural fact that makes a conditional draft tree on Domino computationally plausible at all, and it is the fact DDTree’s and CaDDTree’s factorized formulation cannot represent. 
+
+2.4 DDTree: a best-first heap over factorized marginals 
+
+DDTree (Ringel and Romano, 2026) builds a draft tree directly on top of a block-diffusion drafter’s per-position marginals. Under a fixed node budget n, DDTree maintains a max-priority queue (heap) keyed by cumulative path log-probability: starting from the root’s children, it repeatedly pops the globally highest-cumulative-log-probability unexpanded leaf, adds it to the tree, and pushes its own children (again scored by the drafter’s per-position marginal at the child’s depth) onto the heap, until the node budget is exhausted. Because DDTree’s per-depth distributions are read directly from 5the drafter’s marginals Lbase  
+
+> i
+
+, this scoring is path-independent : two different candidate ancestors at the same depth would offer the identical menu of children and child scores, since the marginal drafter never conditions on which tokens are actually chosen along the path. The resulting tree is prefix-closed by construction (every node’s parent appears earlier in the pop order) and is verified in a single target-model forward pass using an ancestor-only causal attention mask — the standard tree-attention verification mechanism used by DDTree and SpecInfer (Miao et al., 2024) alike, which we reuse unmodified (Section 3.5). 
+
+2.5 CaDDTree: cost-aware adaptive budget 
+
+DDTree’s node budget n is a fixed hyperparameter, chosen offline per task. CaDDTree (Zhang et al., 2026) observes that expected acceptance length is non-decreasing in n — a bigger tree can never accept fewer tokens in expectation — so acceptance length alone gives no principled stopping rule: it always prefers the largest affordable tree, ignoring that a larger tree also costs more to verify. CaDDTree instead optimizes expected throughput directly. Writing Φ( n) = P 
+
+> s
+
+πs for the cumulative prefix-probability mass captured by the first n nodes (in best-first pop order) and modeling draft cost Cd (fixed) and verification cost Cv(n) (increasing, and assumed convex) as functions of the round, the expected-throughput objective at budget n is 
+
+θ(n) = 1 + Φ( n)
+
+Cd + Cv(n) .
+
+CaDDTree proves that under a convex Cv, θ is unimodal in n, which licenses a cheap greedy stopping rule: grow the tree node by node in best-first order and stop increasing n the first time θ stops improving. This removes the need for an offline per-task budget search, adapting the tree size to each round’s actual difficulty as measured by how quickly Φ( n) saturates. Both the unimodality proof and the greedy stopping rule are stated for the factorized case: Φ( n) is a sum over the same fixed per-position marginals DDTree’s heap uses, computed once per round independent of which path is being explored. Section 3.4 asks what survives when this identity is instead applied to a non-factorized, conditional tree: the throughput identity and the best-first monotonicity step it relies on plausibly extend to the conditional case via the same chain-rule argument CaDDTree’s own proof uses, so factorization by itself is not an obvious blocker — but candidate restriction (Section 3.2) prunes the per-node child set our heap actually searches, which departs from the exhaustive per-position support CaDDTree’s proof assumes. We therefore do not claim a proved optimum for the conditional case; we treat CaDDTree’s stopping rule, carried over to our heap, as a cost-aware heuristic . Separately, and more decisively, we find a purely empirical obstacle that defeats this heuristic whether or not CaDDTree’s optimality proof carries over to the non-factorized conditional case: miscalibration of the corrected drafter’s path-probabilities as target-acceptance estimates makes the resulting adaptive budget ineffective in practice, which we analyze in Section 3.4 and Section 6. 
+
+## 3 Methodology 
+
+We build a draft tree on top of the released Domino checkpoint, without any retraining or mod-ification to Domino’s weights. The construction has five pieces: (i) a best-first heap identical in mechanism to DDTree’s, but scored by Domino’s GRU-corrected conditional log-probabilities in-stead of path-independent marginals (Section 3.1); (ii) a candidate-restriction technique that makes the per-node correction affordable (Section 3.2); (iii) a GPU-native, CUDA-graph implementa-tion of that same per-node correction that removes the per-round Python-driven build overhead, 6verified bit-identical to the Python builder (Section 3.3); (iv) CondAdaptive, a native per-round adaptive-budget rule that extends CaDDTree’s cost-aware stopping criterion to this non-factorized setting (Section 3.4); and (v) tree-attention verification, borrowed unmodified, for which we claim no novelty (Section 3.5). 
+
+3.1 Conditional-scored best-first heap 
+
+The builder itself is DDTree’s algorithm, unmodified: a max-priority queue keyed by cumulative path log-probability, popped one node at a time in strictly non-increasing score order, each popped node contributing its own children back onto the heap, until a node budget n is exhausted or the maximum depth L is reached. What differs between DDTree-on-Domino and our method is entirely contained in one function — the children function — that the heap calls to score and expand a popped node’s children: 
+
+C(state , d ) −→ (tokens , log-probs , child-states ).
+
+Given a path state — the GRU hidden state summarizing the tokens realized from the root to that node — and a target depth, C returns the top-k candidate tokens at that depth, their log-probabilities, and (for the conditional variant) each candidate’s child-state: the GRU state after advancing by that one token, used in turn to score that child’s own children. Because the heap builder is written against this interface alone, the two scoring strategies plug into the identical builder; the comparison between them (Section 4.4) isolates the scoring function as the only variable, holding the tree-construction algorithm, budget, and verification fixed. 
+
+Marginal children (DDTree’s scorer). DDTree’s children function ignores the path state en-tirely and returns the top-k tokens of Domino’s own base (marginal) logits Lbase  
+
+> i
+
+at the requested depth i:
+
+Cmarg (·, d ) = top-k Lbase 
+
+> d
+
+.
+
+Because Lbase  
+
+> d
+
+is path-independent, this per-depth top-k is computed once per round and shared by every node at that depth. We use this scorer only as the ablation control “Marg@16,” isolating the effect of conditioning against our conditional scorer at matched budget, drafter, and verifier (Section 4.4); it is not a contribution of this paper. 
+
+Conditional children (our scorer). Our children function instead re-runs Domino’s own cor-rection machinery for the specific path that led to the node being expanded. Given the path’s GRU state Si−1 (threaded through the heap alongside each pushed candidate) and the shared backbone hidden state Hi at depth i:
+
+Ccond (Si−1, i ) = top-k
+
+
+
+Lbase  
+
+> i
+
++ ∆ Li(Hi, S i−1)
+
+
+
+,
+
+where ∆Li(Hi, S i−1) = W2 σ(W1[Hi; Si−1]) is exactly Domino’s released correction head (Sec-tion 2.3), applied here to a specific tree node’s path rather than to the single chain position Domino’s own decoder would visit. After scoring, the GRU is advanced once per candidate token to produce each child’s own state, which is carried forward to score its children in turn. Because the backbone pass Hi is shared and path-independent (Structural Fact B, Section 2.3), no additional backbone computation is needed to expand a wider or deeper tree; only the correction network and the GRU — both cheap relative to the full-vocabulary backbone projection — are re-run per node. 7Non-factorization of the conditional score. Cmarg is factorized : it reads Lbase  
+
+> d
+
+, which never depends on the realized path, so every node at depth d is offered the identical menu of children. Ccond 
+
+is not — ∆Li depends on the path-specific GRU state Si−1, so sibling subtrees generally receive different scores for the same candidate token — which places it outside the factorized case DDTree’s correctness argument and CaDDTree’s unimodality proof both assume (Section 2.3, Fact B). Our contribution is recognizing that Domino’s partial-conditional structure makes this non-factorized score cheap enough to plug into DDTree’s existing heap mechanism unchanged. 
+
+3.2 Candidate restriction and the best-first construction 
+
+The conditional children function’s dominant cost is ∆Li’s rank-256-to-vocabulary projection ( W2,mapping a 256-dimensional bottleneck to the full ∼150K-token vocabulary), computed once per tree node, sequentially, because best-first expansion pops and scores one node at a time by construction. At moderate node budgets this per-node full-vocabulary projection dominates tree-construction (“build”) time and, left unrestricted, consumes the acceptance advantage the conditional scoring provides. We restrict the per-node correction to the marginal top-M candidate tokens at that depth, M ≪ | V |, computed once per depth and shared across every node at that depth: gather the 
+
+M rows of W2 and the base log-probabilities for the top-M marginal tokens under Lbase  
+
+> d
+
+, then correct only that M -length slice ( 256 × M instead of 256 × | V |) before taking its top-k. Algorithm 1 states the resulting builder in full, combining the conditional scorer of Section 3.1 with this restriction. 
+
+Algorithm 1. Best-first conditional draft-tree construction 
+
+Require: backbone hidden states {Hi}Li=1 and base logits {Lbase  
+
+> i
+
+}Li=1 from one Domino forward pass; root GRU state S0; node budget n; candidate width M .1. Precompute , once per depth d: the top-M marginal token indices under Lbase  
+
+> d
+
+and the corre-sponding M rows of W2.2. function Children (Sd−1, d) — applies the correction; called once per node expansion, for the root (Step 3) and every interior pop (Step 4) alike :(a) ∆Ld ← W2 σ W1[Hd; Sd−1], restricted to the depth-d top-M slice. (b) return the top-k tokens, their corrected log-probabilities ℓd(·) under Lbase  
+
+> d
+
++ ∆ Ld over that slice, and their advanced GRU states. 3. H ← Children (S0, 1) , the root’s children at depth 1, each pushed with its corrected score ℓ1(·);
+
+T ← ∅.4. while |T | < n and H̸ = ∅:(a) Pop the node u = ( u1, . . . , u d) with largest cumulative corrected log-score σ(u), carrying GRU state Sd; add u to T .(b) if d < L : call Children (Sd, d +1) — recomputing ∆Ld+1 for this specific path — and push (u·v, σ (u) + ℓd+1 (v), S ′
+
+> d
+
+) for every returned (v, ℓ d+1 (v), S ′
+
+> d
+
+).5. return draft tree T .
+
+To be explicit about where correction applies: Children recomputes ∆Ld every time it is called — at the root (Step 3) and at every subsequent pop inside the while loop (Step 4) — so the top-k children returned at every node, throughout the tree, are drawn from the corrected logits Lbase  
+
+> d
+
++ ∆ Ld over the top-M slice, never from the uncorrected marginal alone. Sequential, single-node, best-first expansion is unchanged by candidate restriction: it only shrinks the per-node 8correction projection and its top-k operand from the full vocabulary down to M candidates, leaving the expansion’s order and the tree’s depth untouched. Candidate restriction is thus a pure per-node 
+
+FLOP reduction with no effect on tree shape — it is not a depth-vs-throughput trade at all. The 
+
+other residual per-node cost — kernel-launch overhead rather than FLOPs — is a distinct problem, and the batching mitigations that would remove it are the ones that sacrifice depth; we take both up next (Section 3.3). 
+
+3.3 GPU-native tree builder 
+
+Candidate restriction (Section 3.2) removes the dominant FLOP cost, but a residual per-node cost remains: best-first expansion is sequential — each pop reads its node’s corrected tokens and log-probabilities back into the Python heap before the next can be scored — and although the per-node correction is individually cheap, each pop launches fifteen to twenty CUDA kernels from Python, so kernel-launch overhead, not FLOPs, dominates. Batching nodes into one launch, the obvious fix, backfires: best-first exists to grow the tree deep along the single highest-scoring path, whereas a batched depth level spends the fixed node budget on shallow breadth before best-first order can choose what to extend — forfeiting the depth the conditional score depends on (its advantage comes from conditioning on the realized path, which only a deep path exercises). We instead remove the launch overhead the way Domino does for its own chain: capture the fixed-shape per-node correction as a CUDA graph and replay it. Best-first cannot be captured whole — which node pops next is data-dependent control flow a graph cannot express — so the Python heap keeps deciding pop order (Algorithm 1) and only the per-node correction is graphed. Being a line-by-line transcription of the eager math, the graphed builder is bit-identical: at T =0 
+
+on GSM8K and HumanEval its committed tokens and accept length match the Python builder’s row-for-row, so the tree is unchanged (Section 4.5). Only cost changes — at budget 16, M =64 it cuts per-round build time from 3.67 ms to 2.31 ms (Table 3). The three-graph construction and its static-buffer recipe are in Appendix C. 
+
+3.4 CondAdaptive: a native per-round adaptive budget 
+
+CaDDTree’s stopping rule (Section 2.5) picks the budget n∗ maximizing θ(n) = (1 + Φ( n)) /(Cd +
+
+Cv(n)) with Φ( n) = P 
+
+> s≤n
+
+πs. This identity never references factorization — it sums whatever cu-mulative path log-probabilities the heap produces — and our conditional builder already produces exactly πs = exp( ℓcond  
+
+> s
+
+) per popped node. CondAdaptive therefore inlines the rule into the condi-tional heap’s pop loop for free ( O(1) per pop): run Algorithm 1 to a generous cap, accumulate Φ( n)
+
+as nodes pop, and stop when θ(n) stops improving. Whether CaDDTree’s optimality proof survives candidate restriction is beside the point (Section 2.5); a separate obstacle defeats the rule outright. 
+
+Φ( n) treats πs as target acceptance, but on the GRU-corrected tree this estimator is over-credited : it predicts acceptance more often than the target realizes. An inflated Φ( n) keeps the marginal gain from one more node looking positive too long, so n∗ runs to the cap on nearly every round and CondAdaptive degenerates to a fixed budget with no gain over simply fixing it at 16. We adopt the fixed budget as the DominoTree method and report CondAdaptive as a mechanism-backed negative result; its calibration evidence is in Appendix B.3. 
+
+3.5 Tree-attention verification (borrowed, unmodified) 
+
+Verification is not a contribution of this paper: given the tree returned by either children function above, we reuse DDTree/SpecInfer’s tree-attention verification unmodified (Miao et al., 2024) — an ancestor-only causal attention mask lets one target-model forward pass score every tree position 9at once, and we commit the highest-scoring root-to-leaf path along which every edge is accepted (longest-accepted-path). This runs alongside, and does not modify, Domino’s own chain-only ver-ification; its near-flat cost as tree size grows is inherited from DDTree/SpecInfer, not engineered here. 
+
+## 4 Experiments 
+
+4.1 Setup 
+
+Models and hardware. Qwen3-4B target model paired with the released Domino draft check-point Qwen3-4B-Domino-b16 (block size 16, prefix length 1). Our harness (DominoTree) is a single-stream, batch-size-1 research harness built on the HuggingFace Transformers backend (Sec-tion 6); the reference harness (DFlash, DDTree, CaDDTree) is the official CaDDTree implementa-tion’s own backend, unmodified. These two harnesses run on a single dual-GPU node (two RTX 5080s, 16GB each), one harness per GPU, so that the DominoTree and reference rows of Table 1 are collected concurrently on the same machine without contending for the same device. The Qwen3-8B block uses Qwen3-8B-Domino-b16 on our side and native Qwen3-8B-DFlash-b16 for the DFlash/DDTree/CaDDTree side, collected on a single RTX A6000. The released Domino baseline is run in its own published benchmark, single-GPU. 1
+
+Datasets. All eight datasets used in Domino’s own evaluation: GSM8K, MATH-500, and AIME25 (math); HumanEval, MBPP, and LiveCodeBench (code); and MT-Bench and Alpaca (chat/instruction-following). MT-Bench is evaluated as a two-turn conversation, with each method threading its own first-turn answer into the second turn. 
+
+Generation length and sample size. We generate up to 2048 tokens per prompt, match-ing Domino’s own Table 1 convention and the reference implementation’s default protocol, and evaluate 50 prompts per dataset (AIME25 uses its available test-set size, 29 or 30 depending on temperature-run bookkeeping). The Qwen3-4B our-harness rows (DominoTree and its AR) were collected without an in-loop warmup prompt, so their first prompt is excluded as warmup. The reference harness, the released Domino benchmark, and all Qwen3-8B runs instead run an untimed warmup prompt before timing and average every prompt. Every reported number is thus a mean over warm prompts only. 
+
+Temperatures. We evaluate T ∈ { 0.0, 0.5, 1.0}. T =0 is greedy. For T > 0, DominoTree (our harness) samples the target posterior while keeping the draft proposal deterministic , matching the reference DDTree/CaDDTree harness so the tree comparison stays apples-to-apples; the released 
+
+Domino baseline follows its own published T > 0 decoding. Draft-side sampling is a separate axis, which we ablate in Table 10. Every method is lossless at every temperature (Section 6). 
+
+Baselines: a three-harness protocol. Table 1 spans three harnesses. (1) The reference harness 
+
+— the official CaDDTree implementation (commit a88f3f3 ) on its native drafter Qwen3-4B-DFlash-b16 
+
+— supplies AR , DFlash (Chen et al., 2026), DDTree (16) (Section 2.4), and CaDDTree (Sec-tion 2.5). (2) The released Domino decoder runs Domino (single chain) in its own published  
+
+> 1Domino’s CUDA-graph chain runner is sensitive to host-side contention from a concurrent job, so we collect it with the sibling GPU idle to measure its throughput cleanly; it is normalized by the lean common AR (see the
+> Baselines paragraph below).
+
+10 Table 1. Speedup over autoregressive (AR) decoding and mean accepted length τ (reported as speedup / τ )on the Domino evaluation suite, Qwen3-4B and Qwen3-8B. DFlash, DDTree, and CaDDTree run in the reference CaDDTree harness on the native DFlash drafter; Domino is the released Domino decoder run in its own benchmark; DominoTree (16) (node budget 16, candidate width M =64 , GPU-native builder) is our harness — both on the Domino drafter. Each speedup is over AR normalized within its own harness, except official Domino, which is normalized by the lean common AR rather than its own slow one (Section 4.1). Bold marks, per cell, the method(s) attaining the highest speedup and, separately, the highest τ ; the two need not agree. Qwen3-8B is evaluated at all three temperatures on a single RTX A6000; its speedups are normalized by each harness’s T =0 AR throughput (temperature-independent to within 1% ), as 8B T > 0 AR was not separately remeasured. 
+
+Model Method Math Code Chat Overall 
+
+GSM8K MATH-500 AIME25 HumanEval MBPP LCB MT-Bench Alpaca Avg. Temperature = 0 Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ
+
+Qwen3-4B DFlash 4.48 6.59 5.34 8.11 4.47 7.37 4.53 6.77 4.30 6.25 4.69 7.42 2.96 4.56 2.00 2.96 4.10 6.25 DDTree (16) 4.96 7.47 5.60 8.70 4.89 8.22 5.02 7.70 4.70 7.03 5.05 8.16 3.36 5.27 2.42 3.66 4.50 7.03 CaDDTree 4.97 7.47 5.65 8.70 4.88 8.22 5.02 7.70 4.70 7.03 5.04 8.16 3.36 5.27 2.41 3.66 4.50 7.03 Domino 6.41 10.27 5.59 9.08 4.33 7.47 4.41 7.05 4.73 7.38 4.18 6.99 3.23 5.23 2.54 3.90 4.43 7.17 
+
+DominoTree (16) 6.63 10.67 5.91 9.75 4.67 8.47 4.90 8.01 5.10 8.10 4.58 7.91 3.69 6.15 2.97 4.77 4.81 7.98 
+
+Qwen3-8B DFlash 4.86 6.58 5.72 7.77 5.28 7.25 4.87 6.64 4.46 6.03 5.24 7.29 3.06 4.27 2.21 3.13 4.46 6.12 DDTree (16) 5.07 7.42 5.89 8.65 5.11 7.68 5.12 7.58 4.55 6.79 5.48 8.22 3.31 5.01 2.60 3.94 4.64 6.91 CaDDTree 5.07 7.41 5.89 8.65 5.12 7.70 5.11 7.58 4.56 6.79 5.50 8.22 3.32 5.02 2.60 3.94 4.65 6.91 Domino 7.39 10.11 6.94 9.17 5.70 7.63 5.82 7.73 5.33 7.13 5.92 7.61 3.90 5.17 3.00 4.08 5.50 7.33 
+
+DominoTree (16) 7.32 10.53 7.11 10.04 5.99 8.41 5.92 8.49 5.58 8.03 6.07 8.30 4.30 6.01 3.37 4.89 5.71 8.09 
+
+Temperature = 0.5 Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ
+
+Qwen3-4B DFlash 4.39 6.38 5.03 7.58 3.94 6.53 4.40 6.57 4.12 5.99 4.61 7.28 2.88 4.39 1.95 2.90 3.92 5.95 DDTree (16) 4.83 7.24 5.41 8.39 4.31 7.23 4.98 7.62 4.75 7.10 4.96 8.00 3.38 5.28 2.38 3.62 4.38 6.81 CaDDTree 4.80 7.21 5.57 8.59 4.32 7.31 4.95 7.57 4.62 6.92 4.91 7.94 3.38 5.29 2.38 3.63 4.37 6.81 Domino 6.03 9.48 5.43 8.62 3.61 6.38 4.39 7.06 4.35 6.87 4.09 6.71 3.11 4.99 2.38 3.65 4.17 6.72 
+
+DominoTree (16) 6.21 9.89 5.61 9.25 4.13 7.38 4.79 7.83 4.97 7.86 4.38 7.57 3.57 5.97 2.91 4.67 4.57 7.55 
+
+Qwen3-8B DFlash 5.21 6.31 6.21 7.46 5.21 6.23 5.26 6.28 4.73 5.68 6.07 7.28 3.39 4.17 2.46 3.07 4.82 5.81 DDTree (16) 5.74 7.27 6.54 8.23 5.60 6.95 6.00 7.50 5.40 6.72 6.41 7.94 3.87 4.95 3.03 3.90 5.32 6.68 CaDDTree 5.76 7.26 6.51 8.26 5.65 7.02 5.95 7.47 5.36 6.69 6.56 8.20 3.94 5.02 3.02 3.88 5.34 6.73 Domino 6.74 9.13 6.53 8.69 4.96 6.65 5.19 7.02 5.00 6.93 5.84 7.47 3.56 4.83 2.81 3.92 5.08 6.83 
+
+DominoTree (16) 7.04 10.16 6.64 9.33 5.36 7.62 5.40 7.74 5.38 7.69 5.68 8.06 4.06 5.68 3.19 4.58 5.34 7.61 
+
+Temperature = 1 Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ Speedup τ
+
+Qwen3-4B DFlash 4.11 5.99 4.38 6.60 2.94 4.93 4.15 6.20 4.00 5.82 4.16 6.55 2.70 4.15 1.93 2.87 3.55 5.39 DDTree (16) 4.59 6.88 4.87 7.54 3.46 5.87 4.73 7.25 4.48 6.70 4.79 7.66 3.16 4.95 2.32 3.53 4.05 6.30 CaDDTree 4.55 6.83 4.90 7.58 3.48 5.89 4.59 7.05 4.49 6.70 4.84 7.75 3.15 4.91 2.36 3.59 4.04 6.29 Domino 5.41 8.34 4.54 7.26 2.86 4.95 3.98 6.29 4.11 6.31 3.92 6.33 2.88 4.58 2.34 3.53 3.76 5.95 
+
+DominoTree (16) 5.61 8.98 4.93 8.10 3.08 5.58 4.55 7.46 4.73 7.53 4.07 7.01 3.30 5.47 2.70 4.33 4.12 6.81 
+
+Qwen3-8B DFlash 4.88 6.01 5.39 6.58 3.94 4.72 4.60 5.67 4.46 5.37 5.54 6.59 3.16 3.89 2.49 3.08 4.31 5.24 DDTree (16) 5.28 6.77 5.88 7.47 4.68 5.81 5.22 6.63 5.03 6.34 6.16 7.63 3.59 4.56 2.89 3.71 4.84 6.12 CaDDTree 5.21 6.66 5.91 7.41 4.73 5.91 5.06 6.46 4.99 6.26 6.18 7.69 3.57 4.54 2.87 3.68 4.81 6.08 Domino 5.99 8.04 5.65 7.31 3.45 4.65 4.51 6.02 4.43 5.93 5.36 6.79 3.17 4.15 2.50 3.34 4.38 5.78 
+
+DominoTree (16) 6.07 8.92 5.52 7.72 4.07 5.78 4.88 6.91 4.65 6.81 5.44 7.55 3.56 5.02 2.89 4.21 4.64 6.61 
+
+benchmark. (3) Our harness runs DominoTree (16) , the candidate-restricted conditional tree (Sections 3.1–3.2) at budget 16 and width M =64 — our headline configuration, since CondAdap-tive (Section 3.4) does not improve on it (Section B.3); it runs on the same Domino drafter 
+
+Qwen3-4B-Domino-b16 as the Domino baseline. We normalize every method by speedup over AR. The reference methods and DominoTree each use their own harness’s AR, which agree to within 
+
+∼2% per dataset ( ≈66 tok/s) and define the lean common AR . Domino is normalized by that same lean common AR — not by its own AR, which its benchmark measures through its speculative loop at block size 1 and runs ∼23% slower. 2
+
+4.2 Main results 
+
+DominoTree (16), our headline configuration (node budget 16, candidate width M =64 ), attains the highest mean accepted length τ of any method on the Overall column of Table 1 at every temper-ature, and on 21 of the 24 individual dataset ×temperature cells; the exceptions are LiveCodeBench 
+
+2That block-size-1 loop retains per-token bookkeeping a purpose-built AR loop omits; normalizing Domino by it would inflate its speedup by ∼1.2×. See the public repo for details. 
+
+11 at every temperature and AIME25 at T =1 .0, where DDTree/CaDDTree’s marginal tree accepts more tokens per round. A larger budget raises τ further at added build cost (Table 7). That accepted-length lead makes DominoTree the fastest method Overall at every temperature on both models. Its win over the released Domino decoder it is built on is largest on chat — up to 
+
++22% on Alpaca (Qwen3-4B, T =0 .5; Table 1) — and, unlike dynamic methods whose edge fades as sampling sharpens, does not erode with temperature: on Qwen3-8B Alpaca it grows from +12 .3% 
+
+at T =0 to +15 .7% at T =1 .0, as the conditional tree keeps proposing high-acceptance continuations where the chain’s single path weakens. Table 2 makes the baseline comparison precise, reporting paired-bootstrap throughput ∆% (95% CI) by rollup and temperature; we state only the headline and leave every cell to the table. On the Overall 8-dataset rollup, DominoTree beats the released Domino it is built on at every temperature on both models — CI-clean, +9 to +10% on Qwen3-4B and +4 to +6% on Qwen3-8B. This is an aggregate win: on Qwen3-8B, Domino’s CUDA-graph runner still edges DominoTree in raw speedup on one dataset per temperature (Table 1 above), while the rollup favors DominoTree at every temperature. Against DDTree/CaDDTree the Overall win is CI-clean at every temperature on 4B and largest at T =0 on 8B ( +24% ), narrowing to a tie then a small loss as temperature rises, with Code the lone rollup that trails. The 8B throughput lead in particular exists only because of the GPU-native builder (Section 4.3), and absolute 4B/8B numbers are not comparable across the two GPUs (Section 6). 
+
+4.3 Python vs. GPU-native builder 
+
+A decoding round is bounded by the target model: verify , the single target forward, is 18 .7 ms/round, dwarfing draft (3.5), build (2.3), and commit (0.7) (Table 3), so the one drafter-side cost a tree method must control is the build stage. DominoTree’s default GPU-native builder and a refer-ence Python builder of the same algorithm (Algorithm 1) produce bit-identical trees (Section 3.3), so comparing them isolates build cost with the tree held fixed: draft , verify , and commit are unchanged, and the GPU-native builder’s entire 1.36 ms/round saving falls in build (Table 3). That cost difference is decisive for whether DominoTree’s accepted-length lead converts into a throughput lead against DDTree/CaDDTree. Table 4 shows what this buys: with the GPU-native builder as DominoTree’s default, Overall throughput vs. DDTree is a CI-clean win at every temperature we test (Table 2); with the identical trees built by the Python reference builder instead, the result degrades from a T =0 win to a T =0 .5 tie to a T =1 .0 loss. Against the Domino chain, both builders win at every temperature, but by a much wider margin under the GPU-native builder. 
+
+The effect amplifies at 8B. Tree construction re-queries the drafter once per expanded node, so build grows with the drafter: on Qwen3-8B (single A6000) the GPU-native builder’s per-round 
+
+build saving rises to 11 .7 ms, roughly 8× its 4B saving, while verify is essentially unchanged — confirming the difference is the builder, not GPU contention. This is decisive: under the Python builder DominoTree’s +10 .4% accepted-length lead over its chain converts to no throughput gain (95% CI [−1.37 , +1 .40] ), and the GPU-native builder is what turns that lead into the 8B throughput win of Table 1. 
+
+4.4 The gain comes from conditioning, not from tree-building 
+
+Table 1 establishes that DominoTree wins on acceptance length and, mostly, on throughput; this sub-section isolates why . Holding the Domino drafter, builder, and verifier fixed within our own harness, we compare the conditional-scored heap (Cond@16, this paper’s method) against a marginal-scored 12 Table 2. Paired-bootstrap throughput ∆% of DominoTree (16) vs. each baseline, with 95% CI, by model, rollup category, and temperature. vs. Domino compares raw per-prompt TPS on the same prompts; because DominoTree and official Domino share the lean common AR (Section 4.1), this raw-TPS ratio equals their speedup ratio; vs. DDTree (16) and vs. CaDDTree compare speedup-over-own-AR across harnesses (Sec-tion 4.1), since raw TPS is not comparable across harnesses. Bold marks CI-clean improvements ( ∆ > 0
+
+with 95% CI excluding zero); losses and ties are plain. 
+
+Category vs. Domino vs. DDTree (16) vs. CaDDTree 
+
+∆% 95% CI ∆% 95% CI ∆% 95% CI 
+
+Qwen3-4B 
+
+Temperature = 0 
+
+Math 5.40 [3.87 , 7.08 ] 13.62 [9.59 , 17 .75 ] 12.28 [7.38 , 17 .18 ]
+
+Code 9.51 [7.31 , 11 .88 ] -1.30 [−3.72 , 1.27] -1.22 [−3.67 , 1.32] 
+
+Chat 14.85 [11 .88 , 18 .27 ] 13.36 [9.90 , 17 .07 ] 13.45 [10 .03 , 17 .10 ]
+
+Overall 9.21 [7.95 , 10 .57 ] 7.67 [5.63 , 9.80 ] 7.26 [4.93 , 9.58 ]
+
+Temperature = 0.5 
+
+Math 5.48 [2.93 , 8.13 ] 11.96 [8.36 , 15 .71 ] 10.53 [6.77 , 14 .47 ]
+
+Code 9.99 [7.21 , 12 .79 ] -3.76 [−6.46 , −1.08 ] -2.51 [−5.39 , 0.41] 
+
+Chat 16.64 [13 .12 , 20 .37 ] 10.06 [6.30 , 14 .17 ] 9.83 [5.66 , 14 .21 ]
+
+Overall 9.89 [8.21 , 11 .61 ] 5.18 [3.07 , 7.29 ] 5.19 [3.08 , 7.45 ]
+
+Temperature = 1 
+
+Math 6.84 [3.46 , 10 .36 ] 7.62 [3.78 , 11 .55 ] 7.71 [3.81 , 11 .67 ]
+
+Code 10.86 [7.79 , 14 .04 ] -4.74 [−7.40 , −2.06 ] -4.28 [−6.97 , −1.57 ]
+
+Chat 14.73 [10 .34 , 19 .40 ] 7.62 [4.23 , 11 .17 ] 7.61 [4.11 , 11 .19 ]
+
+Overall 10.39 [8.38 , 12 .56 ] 2.55 [0.55 , 4.59 ] 2.78 [0.76 , 4.82 ]
+
+Qwen3-8B 
+
+Temperature = 0 
+
+Math 1.33 [−0.56 , 3.30] 28.57 [24 .98 , 32 .33 ] 28.49 [24 .82 , 32 .29 ]
+
+Code 3.28 [1.09 , 5.59 ] 16.11 [13 .32 , 19 .12 ] 15.85 [13 .11 , 18 .69 ]
+
+Chat 10.87 [8.40 , 13 .50 ] 29.85 [26 .39 , 33 .39 ] 29.51 [25 .94 , 33 .05 ]
+
+Overall 4.32 [3.03 , 5.67 ] 23.96 [21 .93 , 26 .04 ] 23.74 [21 .73 , 25 .82 ]
+
+Temperature = 0.5 
+
+Math 3.73 [1.01 , 6.60 ] 7.96 [4.32 , 11 .69 ] 7.88 [4.22 , 11 .71 ]
+
+Code 3.35 [0.42 , 6.40 ] -7.50 [−10 .35 , −4.70 ] -7.86 [−10 .68 , −5.02 ]
+
+Chat 13.94 [10 .75 , 17 .40 ] 4.92 [1.76 , 8.16 ] 3.81 [0.75 , 6.99 ]
+
+Overall 5.98 [4.24 , 7.76 ] 0.99 [−1.03 , 3.04] 0.55 [−1.50 , 2.58] 
+
+Temperature = 1 
+
+Math 2.05 [−1.74 , 5.97] 0.59 [−2.89 , 4.13] 0.70 [−2.85 , 4.48] 
+
+Code 5.15 [2.02 , 8.36 ] -8.87 [−11 .42 , −6.23 ] -7.90 [−10 .70 , −5.07 ]
+
+Chat 13.32 [9.02 , 17 .92 ] -0.41 [−3.47 , 2.73] 0.29 [−2.74 , 3.41] 
+
+Overall 5.95 [3.77 , 8.18 ] -3.50 [−5.39 , −1.64 ] -2.88 [−4.83 , −0.94 ]
+
+heap Marg@16 (Section 3.1) at matched node budget 16 — the only variable that differs is the chil-dren function. Table 1 cannot isolate this effect on its own: its DDTree/CaDDTree rows run on a different drafter and harness (native DFlash, the reference implementation) than DominoTree does, so a difference there could come from the drafter, the harness, or the scoring rule. Only Cond@16 vs. Marg@16, holding the drafter and harness fixed, isolates conditioning itself. Holding the heap mechanism, budget, and verifier fixed, switching only the node-scoring function from marginal to conditional yields a CI-clean +9 .2% Overall throughput improvement, with every rollup category’s CI excluding zero — our cleanest evidence that the throughput gain comes from conditioning on the realized path, not merely from having a tree at all. LiveCodeBench is the one dataset without a CI-clean win, consistent with it being DominoTree’s weakest regime against DDTree/CaDDTree elsewhere in this section (Table 1, Table 2). 13 Table 3. Per-round stage times (ms) of DominoTree (16) under the Python reference builder vs. the GPU-native builder (default), Overall across the eight datasets at T =0 (n=422 , after warmup-row exclusion). The two build bit-identical trees, so draft , verify , and commit match; the GPU-native builder’s benefit is confined to build (tree construction). Builder draft build verify commit total Python reference 3.53 3.67 18.65 0.70 26.54 GPU-native (default) 3.52 2.31 18.70 0.70 25.24                                
+
+> ∆(GPU −Python) −0.01 −1.36 +0 .06 +0 .00 −1.30
+> Table 4. Overall throughput ∆% of DominoTree (16) vs. each baseline, under the Python reference builder and under the GPU-native builder (DominoTree’s default), by temperature. Both rows compare the same trees — the two builders are bit-identical (Section 3.3) — so the only difference between them is build cost. Bold marks the GPU-native (default) column. vs. DDTree (16) vs. Domino Temperature Python builder GPU-native (default) Python builder GPU-native (default)
+> T=0 +1.99% +7.67% +3.83% +9.21%
+> T=0 .5-0.27% +5.18% +4.90% +9.89%
+> T=1 .0-2.69% +2.55% +4.28% +10.39%
+
+4.5 Losslessness 
+
+Losslessness here is a property of construction, not of the tree: the target verifier is unchanged, so every committed token is a valid target decode regardless of which candidates the tree proposed, up to the bf16 tie-breaking noted in Section 2.1. Empirically (Appendix A), DominoTree diverges from token-serial greedy decoding at the same rate as the vanilla Domino chain ( 7.44% vs. 6.51% 
+
+of prompts show any divergence, at nearly identical mean first-divergence index), with no bias toward either method diverging earlier. This is expected and benign — the same regime DDTree and SpecInfer already occupy — and does not bear on losslessness, which holds by construction for both. 
+
+## 5 Related Work 
+
+Speculative decoding and tree verification. Speculative decoding was introduced by Leviathan et al. (2023) and Chen et al. (2023). SpecInfer (Miao et al., 2024) generalized single-chain verifica-tion to tree-structured candidates, verifying an entire token tree in one target-model forward pass via an ancestor-only attention mask — the verification mechanism this paper reuses unmodified (Section 3.5). 
+
+Autoregressive tree drafters: EAGLE. The EAGLE line (Li et al., 2024a,b, 2025) builds high-quality draft trees on top of an autoregressive drafter, culminating in EAGLE-3’s (Li et al., 2025) training-time-test procedure. Because an autoregressive drafter’s hidden state at position i genuinely depends on the realized tokens at all earlier positions, branching an EAGLE-style tree requires re-running the (small, but nontrivial) draft model per branch — there is no shared, precomputed representation across branches the way there is for a block-diffusion backbone. Domino, and by extension our tree, avoid this cost by keeping the expensive backbone pass parallel and shared, and 14 Table 5. Conditioning ablation: Cond@16 vs. Marg@16, matched budget 16, Qwen3-4B, T =0 ,                                                                                             
+
+> max_new_tokens =2048 .Speedup is relative to each row’s own harness AR measurement; ∆% is
+> (Cond speedup /Marg speedup −1) with a paired, stratified bootstrap 95% CI ( B=5000 ). Bold marks sta-tistically significant improvements ( ∆>0with 95% CI excluding zero). Dataset / Rollup Cond speedup Cond τMarg speedup Marg τ∆% (95% CI) n
+> GSM8K 6.31 10.72 5.84 9.35 +8.1 [+6.0, +10.4] 50 MATH-500 5.59 9.77 5.14 8.68 +8.8 [+6.3, +11.5] 50 AIME25 4.50 8.48 4.05 7.26 +11.0 [+6.1, +16.7] 30 HumanEval 4.62 8.00 4.22 6.91 +9.4 [+7.5, +11.4] 50 MBPP 4.82 8.16 4.18 6.69 +15.4 [+12.1, +18.7] 50 LiveCodeBench 4.29 7.82 4.15 7.14 +3 .4 [ −0.2,+6 .5] 50 MT-Bench 3.48 6.14 3.21 5.30 +8.2 [+5.6, +11.3] 100 Alpaca 2.79 4.78 2.54 4.06 +10.2 [+7.0, +13.3] 50 Math Avg 5.47 9.66 5.01 8.43 +9.1 [+7.3, +11.1] 130 Code Avg 4.58 7.99 4.19 6.91 +9.4 [+7.6, +11.1] 150 Chat Avg 3.14 5.46 2.88 4.68 +9.1 [+7.0, +11.2] 150
+> Overall Avg 4.55 7.98 4.17 6.92 +9.2 [+8.1, +10.3] 430
+
+branching only the cheap sequential correction (Section 2.3, Structural Fact B) — a different point on the cost/branching trade-off than the EAGLE line occupies. 
+
+Block-diffusion drafting: DFlash. DFlash (Chen et al., 2026) is the parallel drafter backbone Domino, and therefore this paper, builds on (Section 2.2). DFlash itself drafts a single chain per round from its marginal per-position distributions; it does not build trees. 
+
+Marginal draft trees: DDTree. DDTree (Ringel and Romano, 2026) is the direct algorith-mic ancestor of the tree-construction mechanism used in this paper: a best-first heap over a block-diffusion drafter’s per-position marginals, verified with an ancestor-only attention mask (Sec-tion 2.4). Our conditional tree uses the identical heap mechanism; the entire technical contribution of this paper is a node-scoring function — Domino’s GRU-corrected, path-dependent conditional log-probability — that DDTree’s factorized formulation cannot express, because DDTree only ever consults per-position marginals that do not depend on which tokens are realized along a candidate’s own path (Section 3.1). 
+
+Cost-aware budgets: CaDDTree. CaDDTree (Zhang et al., 2026) replaces DDTree’s fixed, offline-tuned node budget with a per-round greedy stopping rule, proved optimal under a convexity assumption on verification cost, for the factorized case (Section 2.5). CondAdaptive (Section 3.4) inlines the same rule into our conditional tree’s pop loop; the optimality framework plausibly carries over, but the corrected drafter’s path-probabilities are miscalibrated as target-acceptance estimates, so the resulting budget gives no gain over a fixed one (Section B.3). 
+
+Closest related work: JetSpec. JetSpec (Hu et al., 2026) is, to our knowledge, the closest published method to our goal: it builds a causal draft tree directly on top of a parallel drafter, combining one-forward-pass drafting efficiency with branch-wise causal conditioning, by training a new causal parallel draft head aligned with the target model’s own factorization. The honest distinction is that JetSpec trains a new draft head end-to-end for tree-structured causal conditioning, whereas our method is training-free: it reuses Domino’s released, off-the-shelf correction head, 15 adding no new parameters and requiring no additional training data or compute. We flag plainly that this is a narrow niche: if a future revision of JetSpec is shown to be training-free as well, or if it adds a per-round adaptive budget we could not get CondAdaptive to deliver (Section B.3), the distinction we claim narrows substantially, since a purpose-trained causal head is a strictly more expressive mechanism than reusing a GRU correction that was not trained with tree branching in mind. 
+
+## 6 Limitations and Future Work 
+
+We state the current scope limits plainly rather than deferring them to a closing paragraph. 
+
+GPU-native builder: scope. DominoTree’s default builder is GPU-resident: heap management is left to Python, but per-node correction executes via CUDA-graph capture/replay rather than a per-node round-trip through eager PyTorch, analogous to Domino’s own CUDA-graphed chain correction (Section 3.3). What remains future work is extending this pattern beyond a single-stream research harness: a multi-request, batched, or serving-integrated (e.g. SGLang/vLLM) version of the same graph-capture idea. 
+
+A6000 and 5080 throughput are not directly comparable. This matters for the Qwen3-8B grid (Table 1), collected on a single RTX A6000 rather than the two RTX 5080s used for the Qwen3-4B grid this paper headlines. Microbenchmarking indicates the A6000’s verification-forward latency in this setup is both higher and noisier than the 5080’s, consistent with clock- or attention-kernel-throttling rather than the 5080’s cleaner memory-bandwidth-bound profile, so absolute tokens-per-second numbers from the two GPUs should not be compared directly. Only same-GPU relative comparisons — a tree method vs. its own chain baseline, or own-AR-normalized speedups — carry across the two grids. If anything, the GPU-native builder matters more at 8B than at 4B: the heavier Domino drafter makes tree construction costlier, so the builder’s per-round saving grows to 11 .52 ms and is what converts DominoTree’s accepted-length lead into its 8B throughput win (Section 4.3). 
+
+T > 0 draft convention. At T > 0 DominoTree drafts deterministically (best-first) and samples the target, accepting a draft token iff it equals the sampled target token, so the committed output is the target’s own temperature-sampled sequence (lossless). We verified from source that the reference DFlash/DDTree/CaDDTree implementation uses this identical convention, so that cross-harness comparison is convention-matched at every temperature; the released Domino baseline samples its own draft, as published. Draft-side sampling is a separate axis, ablated in Table 10. 
+
+Adaptive budgeting remains open. DominoTree ships a fixed node budget. CondAdaptive — our attempt to transfer CaDDTree’s cost-aware adaptive budget to this non-factorized setting — does not improve over it: the corrected drafter’s cumulative path-probabilities over-credit accep-tance, so the adaptive rule saturates at its cap (Sections 3.4, B.3). A calibrated per-round adaptive budget is left to future work. 
+
+Prototype, not a serving system. All results are produced by a single-stream, batch-size-1 research harness built on Hugging Face Transformers, not by an integration into a production serving stack (e.g. SGLang or vLLM). The tree builder is CUDA-graphed by default (Section 3.3), but batching, continuous scheduling, and multi-request serving are not implemented here. Throughput 16 numbers here are real, wall-clock GPU measurements on this research harness, not production-serving throughput. 
+
+## Acknowledgments 
+
+The Qwen3-4B experiments reported here (all main-text tables and figures) were run entirely on a dual-RTX-5080 (16GB each) workstation provided by the MIR Lab in the Department of Computer Science and Information Engineering, National Taiwan University. We additionally thank Delta Electronics, Inc. for supporting this work under the contract 114HT907014 , as identified by National Taiwan University, and helpful discussions throughout the project and for providing access to an RTX A6000 (49GB) node used for the Qwen3-8B measurements reported in this paper. 17 References 
+
+Charlie Chen, Sebastian Borgeaud, Geoffrey Irving, Jean-Baptiste Lespiau, Laurent Sifre, and John Jumper. Accelerating large language model decoding with speculative sampling. arXiv preprint arXiv:2302.01318 , 2023. Jian Chen, Yesheng Liang, and Zhijian Liu. Dflash: Block diffusion for flash speculative decoding. 
+
+arXiv preprint arXiv:2602.06036 , 2026. Lanxiang Hu, Zhaoxiang Feng, Yulun Wu, Haoran Yuan, Yujie Zhao, Yu-Yang Qian, Bojun Wang, Peng Zhao, Daxin Jiang, Yibo Zhu, Tajana Rosing, and Hao Zhang. Jetspec: Breaking the scaling ceiling of speculative decoding with parallel tree drafting. arXiv preprint arXiv:2606.18394 , 2026. Jianuo Huang, Yaojie Zhang, Qituan Zhang, Hao Lin, Hanlin Xu, and Linfeng Zhang. Domino: Decoupling causal modeling from autoregressive drafting in speculative decoding. arXiv preprint arXiv:2605.29707 , 2026. Yaniv Leviathan, Matan Kalman, and Yossi Matias. Fast inference from transformers via speculative decoding. In Proceedings of the 40th International Conference on Machine Learning (ICML) , 2023. Yuhui Li, Fangyun Wei, Chao Zhang, and Hongyang Zhang. EAGLE: Speculative sampling requires rethinking feature uncertainty. In Proceedings of the 41st International Conference on Machine Learning (ICML) , 2024a. Yuhui Li, Fangyun Wei, Chao Zhang, and Hongyang Zhang. EAGLE-2: Faster inference of language models with dynamic draft trees. arXiv preprint arXiv:2406.16858 , 2024b. Yuhui Li, Fangyun Wei, Chao Zhang, and Hongyang Zhang. EAGLE-3: Scaling up inference acceleration of large language models via training-time test. arXiv preprint arXiv:2503.01840 ,2025. Xupeng Miao, Gabriele Oliaro, Zhihao Zhang, Xinhao Cheng, Zeyu Wang, Zhengxin Zhang, Rae Ying Yee Wong, Alan Zhu, Lijie Yang, Xiaoxiang Shi, Chunan Shi, Zhuoming Chen, Daiyaan Ar-feen, Reyna Abhyankar, and Zhihao Jia. SpecInfer: Accelerating generative large language model serving with tree-based speculative inference and verification. In Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS) , 2024. Liran Ringel and Yaniv Romano. Accelerating speculative decoding with block diffusion draft trees. 
+
+arXiv preprint arXiv:2604.12989 , 2026. Shuai Zhang, Huachuan Qiu, Hongliang He, and Yong Dai. Cost-aware diffusion draft trees for speculative decoding. arXiv preprint arXiv:2606.01813 , 2026. 18 A Losslessness detail 
+
+Section 4.5 reports that DominoTree and Domino-chain 3 diverge from token-serial autoregressive (AR) decoding at the same bf16-tie rate, with no directional bias between them. Table 6 gives the full per-method detail behind that statement. We define a cell as one evaluated prompt at T =0 
+
+(each MT-Bench turn counted separately, matching the n column of Table 5), for 430 cells total across the eight datasets. For each cell we compare the method’s output to a pure token-serial AR decode of the same prompt and record whether the two match exactly, and, if not, the index of the first mismatched token (within a stored 128-token window). 
+
+Table 6. Losslessness check (Qwen3-4B, T =0 , 430 cells). Losslessness holds by construction because the target verifier is unchanged; this table checks only the finite-precision tie-breaking regime. “Exact match” counts cells where the method’s output is byte-identical to token-serial AR. Head-to-head (bottom row): among the 430 cells, how often DominoTree’s first divergence from AR occurs at an earlier, later, or the same token index as Domino-chain’s. Method Exact match vs. AR Mean first-divergence index n
+
+Domino-chain 28/430 (6.51%) 94.13 430 DominoTree (16) 32/430 (7.44%) 94.08 430 Head-to-head: DominoTree earlier 49, later 50, same index 331 
+
+The head-to-head row compares, per prompt, the first token index at which each method’s greedy decode diverges from token-serial AR: earlier and later count the prompts where DominoTree’s first divergence falls at a smaller or larger index than the chain’s, and same index counts prompts where the two first diverge at the same position — overwhelmingly the ∼93% of prompts where neither diverges from AR at all. Each entry is a single per-prompt first-divergence comparison, not a diverge-then-reconverge count. The near-even 49/50 split (DominoTree diverging earlier vs. later than the chain) against a large majority of same-index cells (331/430) indicates that whichever method a tie-break happens to favor is close to a coin flip, not a bias toward either method’s construction. 
+
+## B Additional ablations 
+
+B.1 Budget and candidate-width ablations 
+
+Two ablations isolate the two hyperparameters this paper introduces: the fixed node budget (Sec-tion 3.1) and the candidate-restriction width M (Section 3.2). Both are collected at the headline protocol (Qwen3-4B, T =0 , max_new_tokens = 2048 , n = 50 ), on GSM8K and Alpaca as represen-tative low- and high-acceptance workloads. Budget 16 is a CI-clean win on Alpaca but statistically flat to negative on GSM8K; budget 32 is the only setting with a CI-clean win on both workloads, at roughly double the build cost on Alpaca; budget 64 loses on both. There is no single winner: 16 favors a chat-heavy, low-build-cost deployment, 32 a mixed or math-heavy one. Table 1 reports fixed cond@16 as the headline setting,        
+
+> 3Throughout this appendix, Domino-chain denotes the single-path Domino chain built by our harness on the released Domino drafter (deterministic draft, accept-on-match verification) — a faithful same-harness reference that holds the drafter, timing, and verification fixed so each paired ∆% isolates DominoTree’s tree construction. It is distinct from the official Domino decoder benchmarked in the main-body Table 1, which is run in Domino’s own released harness; we use the same-harness chain in these ablations precisely so the paired per-prompt comparison varies only the tree.
+
+19 Table 7. Budget ablation: DominoTree at node budget ∈ { 16 , 32 , 64 } (M =64 fixed) vs. Domino-chain, Qwen3-4B, T =0 , max_new_tokens = 2048 , n = 50 . ∆% is paired per-prompt TPS delta vs. Domino-chain with 95% bootstrap CI. Bold marks statistically significant improvements ( ∆ > 0, 95% CI excluding zero). Budget Build ms τ ∆% vs. Chain (95% CI) Alpaca GSM8K Alpaca GSM8K Alpaca GSM8K 16 4.40 5.27 4.78 10.73 +16.6 [+11.3, +21.5] −5.5 [ −13 .9, +3 .2] 
+
+32 7.94 5.79 5.24 12.02 +10.9 [+2.4, +18.5] +9.9 [+3.9, +17.2] 
+
+64 11.17 9.81 5.67 12.86 −4.0 [ −7.7, −0.5] −9.2 [ −14 .4, −3.0] 
+
+chosen for its strength on the chat/low-τ regime where trees matter most, but this sweep shows 16 is not uniformly dominant across workloads.                 
+
+> Table 8. Candidate-restriction ablation: DominoTree at budget 16 with M∈ { 32 ,64 ,128 }vs. Domino-chain, Qwen3-4B, T=0 ,max_new_tokens = 2048 ,n= 50 .∆% is paired per-prompt TPS delta vs. Domino-chain with 95% bootstrap CI. Bold marks statistically significant improvements ( ∆>0, 95% CI excluding zero).
+
+Width M Build ms τ ∆% vs. Chain (95% CI) Alpaca GSM8K Alpaca GSM8K Alpaca GSM8K 32 6.01 3.61 4.72 10.59 −0.3 [ −8.5, +7 .3] −1.9 [ −3.5, −0.2] 
+
+64 3.89 3.58 4.78 10.73 +19.3 [+15.7, +22.8] −0.3 [ −2.1, +1 .6] 
+
+128 4.20 3.71 4.76 10.71 +16.5 [+12.6, +20.3] −0.5 [ −2.3, +1 .5] 
+
+M =32 is too restrictive to capture Alpaca’s gain and is a small but CI-clean loss on GSM8K; 64 and 128 both recover a large Alpaca win at a statistical tie on GSM8K, with 64 costing marginally less to build than 128 on both workloads. Unlike the budget sweep, this ablation has a clear default: 64 dominates 32 and matches 128’s benefit at lower cost, which is why it is this paper’s fixed setting throughout. Widening M beyond 128, up to the full vocabulary (Table 9), confirms the restriction costs no acceptance: accepted length is flat from M =16 to full vocabulary on math, code, and chat, so the marginal top-M already contains the tokens the correction would promote. A version of CondAdaptive that also adapts M is left to future work.                                       
+
+> Table 9. Candidate-width saturation: DominoTree (16) accepted length τvs. correction width M, up to the full vocabulary, Qwen3-4B, T=0 ,max_new_tokens = 2048 ,n= 50 . Accepted length is flat from M=16
+> to full vocabulary, so the top-Mrestriction (Section 3.2) loses no acceptance. Dataset M=16 M=64 M=128 M=256 full vocab GSM8K 10.57 10.72 10.71 10.68 10.63 HumanEval 7.90 8.00 8.05 8.01 8.07 Alpaca 4.59 4.78 4.76 4.77 4.81
+
+B.2 Draft-sampling ablation 
+
+Our harness drafts deterministically and samples only the target, whereas the released Domino decoder temperature-samples its draft (Section 6). Both are lossless under accept-on-match verifi-cation, but sampling the draft is a throughput loss: a temperature-sampled target most often lands 20 on its mode, which the greedy draft always proposes, so a sampled draft matches the target less of-ten. Table 10 measures this at the headline protocol. Sampling the draft lowers throughput in every 
+
+configuration we test; the single-path chain is hurt far more than the tree, whose multi-candidate breadth is more robust to a mis-sampled draft (its accepted length is essentially unchanged, moving by at most a few percent in either direction). This is why we draft deterministically throughout.                                                
+
+> Table 10. Draft-sampling ablation: effect of temperature-sampling the draft (vs. the deterministic draft this paper uses) on accepted length and throughput, Qwen3-4B, max_new_tokens = 2048 ,n= 50 .Each entry is ∆% = ( sampled −greedy )/greedy; sampling the draft lowers throughput in every cell. Domino-chain DominoTree (16) Dataset T∆τ%∆TPS% ∆τ%∆TPS% GSM8K 0.5 −3.8−9.1−2.1−5.3
+> GSM8K 1.0 −3.6−6.6−2.9−5.4
+> HumanEval 0.5 −0.4−5.1−0.1−3.4
+> HumanEval 1.0 −7.9−10 .8+0 .6−3.1
+> Alpaca 0.5 −9.9−13 .9−2.1−4.8
+> Alpaca 1.0 −15 .7−18 .1+1 .3−2.0
+
+B.3 CondAdaptive: a calibration-driven negative result 
+
+Section 3.4 derives CondAdaptive and defines an estimator as over-credited when it predicts higher target acceptance than what is actually realized. We measure exactly this: a calibration run ( n=40 ,
+
+T =0 , budget 16, M =64 ) compares the drafter’s predicted acceptance mass Φ = P 
+
+> s
+
+πs against the realized accept length. Φ exceeds the realized accept length by 1.16 × on GSM8K ( Φ = 10 .73 vs. actual 9.28 ) and 1.07 × on Alpaca ( Φ = 3 .97 vs. actual 3.72 ); the reliability curve (Figure 2) sits above the diagonal at every bin, and the over-confidence is larger on math than on chat. Because Φ( n) overstates how many of the next nodes will actually be accepted, the marginal throughput gain CaDDTree’s rule computes for adding one more node keeps looking positive well past the point where it should turn negative: the rule keeps expanding the tree instead of stopping. In practice this means the selected budget n∗ runs to the maximum budget cap on nearly every round, rather than settling on a smaller, round-specific value. CondAdaptive therefore degenerates to a fixed budget at the cap, with no throughput gain over simply fixing the budget at 16. We adopt the fixed budget as the DominoTree method and report CondAdaptive as a mechanism-backed negative result: the optimality framework transfers, but calibration, not the tree-construction idea, is what defeats it. 
+
+## C GPU-native builder: capture/replay construction 
+
+Section 3.3 establishes that DominoTree graph-captures only the per-node correction, leaving the Python heap untouched, and that the graphed builder is bit-identical to the eager one. This ap-pendix gives the capture/replay construction in full. 
+
+Three per-node graphs. We capture the per-node correction as three separate CUDA graphs — one for the per-round candidate setup, one for the correction proper below the prefix, and one for the simpler state-only expansion above the prefix — because these three sub-computations recur at different points in a build and cannot share a single capture. Each follows the standard 21 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Predicted per-node acceptance πs (bin mean)    
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Empirical accept rate
+> perfect calibration
+> GSM8K
+> Alpaca Figure 2. CondAdaptive calibration: predicted acceptance πsvs. empirical accept rate. Points fall below the diagonal (measured acceptance is lower than predicted), i.e. the estimator is over-credited, most severely on math.
+
+capture/replay recipe: static input buffers are allocated once, overwritten in place with copy_ before each replay, the graph is replayed as a single driver call, and results are read from static output buffers and cloned before the next pop’s replay overwrites them. The graphed path differs from the eager children function only in reading from these static buffers via index_select instead of direct Python indexing — same operations, shapes, and dtypes — which is why it is equivalent by construction rather than by post-hoc testing. 
+
+The one synchronization that remains. The read-back of each pop’s winning tokens into the Python heap cannot be graphed away: the heap needs those actual values to decide pop order, so one cuda.synchronize() per pop remains. What the CUDA graph removes is the Python-launch overhead surrounding that unavoidable sync, not the sync itself. Domino’s released 
+
+DraftCorrectionGraphRunner captures its entire k-step chain as one graph precisely because a chain has no such data-dependent read-back between steps; best-first’s per-pop heap decision is what forces the finer-grained, three-graph split here. 
+
+## D DominoTree vs. both Domino execution variants 
+
+The main body benchmarks Domino at its stronger execution — best-of the CUDA-graph and eager runners, which is the CUDA-graph runner on essentially every cell. For completeness, Table 11 reports DominoTree against both Domino execution variants separately. Both variants run the identical Domino drafter and decode the identical single chain, so their accepted length is the same 22 up to bf16 tie-breaking; they differ only in per-node execution cost. We therefore report speedup and DominoTree’s throughput advantage ∆% over each variant, and omit accepted length (identical across variants). DominoTree wins over the stronger CUDA-graph variant at every temperature on both models, and by a much larger margin over the eager variant. 
+
+Table 11. DominoTree (16) vs. both Domino execution variants: Overall speedup over AR (8-dataset macro-average, lean-common-AR normalization) and DominoTree’s throughput advantage ∆% over each. Both variants decode the identical tree, so accepted length is the same across variants (up to bf16 tie-breaking) and is omitted. Domino-graph is the CUDA-graph runner (the stronger variant, used as the main-body Domino baseline); Domino-eager is eager PyTorch. ∆% (bold) is 100( DominoTree /variant − 1) 
+
+on the Overall speedups. Model T DominoTree Domino-graph Domino-eager ∆% vs. graph / eager Qwen3-4B 0.0 4.81 4.43 4.28 +8.6 / +12.2 
+
+0.5 4.57 4.17 3.70 +9.5 / +23.5 
+
+1.0 4.12 3.76 3.21 +9.7 / +28.3 
+
+Qwen3-8B 0.0 5.71 5.50 5.02 +3.7 / +13.7 
+
+0.5 5.34 5.08 4.34 +5.2 / +23.1 
+
+1.0 4.64 4.38 3.59 +5.8 / +29.1 
+
+23
