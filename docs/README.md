@@ -6,73 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-14
-- 运行时间：2026-07-15 05:02:30 UTC+8
+- 最新运行日期：2026-07-15
+- 运行时间：2026-07-16 03:48:16 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《A Closed-Form Noise-Sensitivity Asymmetry for Causal Branch Selection in Minimal-Array TDoA Localization》（8.5/10）, 《From roots to paths: graphs simultaneously irregular with respect to rooted and ordinary paths》（8.5/10）
-- 速读：《Local monodromy of unit root F-isocrystals from Shimura varieties》（8.2/10）, 《A Faster Closest-Point Algorithm for the $A_n^*$ Lattices》（8.2/10）, 《Approximation Algorithms for Discounted Graph Search with Norm Objectives》（8.1/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Counting oriented spanning trees in generalized join digraphs》（8.3/10）, 《Hankel determinants of weighted binary sums of digits》（8.0/10）
+- 速读：《zk-ScalHard: Scalable and Hardware-Rooted Privacy-Preserving Authentication for Secure OTA Updates in Zonal SDVs》（7.2/10）, 《Alternating Extremes in Graceful Labelings of Full Binary Trees and Spider Trees》（7.1/10）, 《A mixed precision algorithm for the matrix square root》（7.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/14/README](/202607/14/README)
+- 详情：[/202607/15/README](/202607/15/README)
 
 ### 精读区论文标签
-1. [A Closed-Form Noise-Sensitivity Asymmetry for Causal Branch Selection in Minimal-Array TDoA Localization](/202607/14/2607.10129v1-a-closed-form-noise-sensitivity-asymmetry-for-causal-branch-selection-in-minimal-array-tdoa-localization)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [From roots to paths: graphs simultaneously irregular with respect to rooted and ordinary paths](/202607/14/2607.11700v1-from-roots-to-paths-graphs-simultaneously-irregular-with-respect-to-rooted-and-ordinary-paths)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-3. [PBW bases and centralisers for the $q$-Onsager algebra](/202607/14/2607.10097v1-pbw-bases-and-centralisers-for-the-q-onsager-algebra)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-4. [Genus bounds for knot polynomials of Lie superalgebras](/202607/14/2607.11735v1-genus-bounds-for-knot-polynomials-of-lie-superalgebras)  
+1. [Counting oriented spanning trees in generalized join digraphs](/202607/15/2607.12457v1-counting-oriented-spanning-trees-in-generalized-join-digraphs)  
    标签：评分：8.3/10
    evidence：检索回退候选
-5. [Bethe Ansatz without Nesting](/202607/14/2607.11617v1-bethe-ansatz-without-nesting)  
-   标签：评分：8.3/10
+2. [Hankel determinants of weighted binary sums of digits](/202607/15/2607.09376v1-hankel-determinants-of-weighted-binary-sums-of-digits)  
+   标签：评分：8.0/10
    evidence：检索回退候选
-6. [A decomposition of Weyl group multiple Dirichlet series for symmetrizable Kac-Moody root systems](/202607/14/2607.11834v1-a-decomposition-of-weyl-group-multiple-dirichlet-series-for-symmetrizable-kac-moody-root-systems)  
-   标签：评分：8.2/10
+3. [The Certification Limits of KS-Type Layer Relaxations: A Square-Root Ceiling and Its Breakdown](/202607/15/2607.12134v1-the-certification-limits-of-ks-type-layer-relaxations-a-square-root-ceiling-and-its-breakdown)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Local monodromy of unit root F-isocrystals from Shimura varieties](/202607/14/2607.10054v1-local-monodromy-of-unit-root-f-isocrystals-from-shimura-varieties)  
-   标签：评分：8.2/10
+1. [zk-ScalHard: Scalable and Hardware-Rooted Privacy-Preserving Authentication for Secure OTA Updates in Zonal SDVs](/202607/15/2607.07371v2-zk-scalhard-scalable-and-hardware-rooted-privacy-preserving-authentication-for-secure-ota-updates-in-zonal-sdvs)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-2. [A Faster Closest-Point Algorithm for the $A_n^*$ Lattices](/202607/14/2607.10479v1-a-faster-closest-point-algorithm-for-the-an-lattices)  
-   标签：评分：8.2/10
+2. [Alternating Extremes in Graceful Labelings of Full Binary Trees and Spider Trees](/202607/15/2607.12597v1-alternating-extremes-in-graceful-labelings-of-full-binary-trees-and-spider-trees)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-3. [Approximation Algorithms for Discounted Graph Search with Norm Objectives](/202607/14/2607.11301v1-approximation-algorithms-for-discounted-graph-search-with-norm-objectives)  
-   标签：评分：8.1/10
+3. [A mixed precision algorithm for the matrix square root](/202607/15/2607.12430v1-a-mixed-precision-algorithm-for-the-matrix-square-root)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-4. [WSqD: A Horizon-Free Learning Rate Schedule for Large Model Training](/202607/14/2607.10959v1-wsqd-a-horizon-free-learning-rate-schedule-for-large-model-training)  
-   标签：评分：8.0/10
+4. [First reduced model for integrated computations of helicon wave heating and current drive in magnetic fusion plasmas](/202607/15/2607.12512v1-first-reduced-model-for-integrated-computations-of-helicon-wave-heating-and-current-drive-in-magnetic-fusion-plasmas)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-5. [Masking Algorithm for CCD Bleeding in Korea Microlensing Telescope Network Images](/202607/14/2607.09148v1-masking-algorithm-for-ccd-bleeding-in-korea-microlensing-telescope-network-images)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-6. [ReProAgent: Tool-Augmented Multi-Stage Agentic Generation of Bug Reproduction Tests from Issue Reports](/202607/14/2607.09123v1-reproagent-tool-augmented-multi-stage-agentic-generation-of-bug-reproduction-tests-from-issue-reports)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-7. [On the density and surjectivity of $\mathbf{SO(3)}$-Witten-Reshetikhin-Turaev quantum representations](/202607/14/2607.09633v1-on-the-density-and-surjectivity-of-mathbfso3-witten-reshetikhin-turaev-quantum-representations)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-8. [Extension of the Equation $\sum\limits_{j=1}^{k}jF_{j}^{p}=F_{n}^{q}$ to a Family of Lucas Sequences](/202607/14/2607.09105v1-extension-of-the-equation-sumlimitsj1kjfjpfnq-to-a-family-of-lucas-sequences)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-9. [Faster Closest-Point Algorithms for the $E_6^*$ and $E_7^*$ Lattices](/202607/14/2607.10885v1-faster-closest-point-algorithms-for-the-e6-and-e7-lattices)  
+5. [Falsifying Causal Graphs With Outlier Events](/202607/15/2607.12145v1-falsifying-causal-graphs-with-outlier-events)  
    标签：评分：6.9/10
    evidence：检索回退候选
-10. [An X-Band Monopulse Direction-Finding Receiver Based on a Rat-Race Comparator and a $2\times2$ Antipodal Vivaldi Array](/202607/14/2607.10692v1-an-x-band-monopulse-direction-finding-receiver-based-on-a-rat-race-comparator-and-a-2times2-antipodal-vivaldi-array)  
+6. [Stochastic Stability of Nonlinear MPPI via Contraction Theory and Control Lyapunov Functions](/202607/15/2607.06945v1-stochastic-stability-of-nonlinear-mppi-via-contraction-theory-and-control-lyapunov-functions)  
    标签：评分：6.9/10
    evidence：检索回退候选
-11. [SpectraSensML Software: Mastering Complete Spectral Information for Luminescence Thermometry 2.0](/202607/14/2607.10807v1-spectrasensml-software-mastering-complete-spectral-information-for-luminescence-thermometry-20)  
+7. [Sharp Logarithmic Thresholds for Cut Schedules in an Abstract Branch-and-Cut Model](/202607/15/2607.06343v1-sharp-logarithmic-thresholds-for-cut-schedules-in-an-abstract-branch-and-cut-model)  
    标签：评分：6.8/10
+   evidence：检索回退候选
+8. [Weak convergence rate for the Cox-Ingersoll-Ross process](/202607/15/2607.07552v1-weak-convergence-rate-for-the-cox-ingersoll-ross-process)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+9. [Symplectic billiards as Minkowski billiards](/202607/15/2607.05986v1-symplectic-billiards-as-minkowski-billiards)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+10. [The Pathwise Approach to Metastability and its Applications to Galves--Löcherbach Models](/202607/15/2607.05652v1-the-pathwise-approach-to-metastability-and-its-applications-to-galves--lcherbach-models)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+11. [Granularity in Action: Graphing sources for social history](/202607/15/2607.07183v1-granularity-in-action-graphing-sources-for-social-history)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
