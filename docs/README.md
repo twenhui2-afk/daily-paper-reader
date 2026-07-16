@@ -6,64 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-15
-- 运行时间：2026-07-16 03:48:16 UTC+8
+- 最新运行日期：2026-07-16
+- 运行时间：2026-07-17 04:14:58 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Counting oriented spanning trees in generalized join digraphs》（8.3/10）, 《Hankel determinants of weighted binary sums of digits》（8.0/10）
-- 速读：《zk-ScalHard: Scalable and Hardware-Rooted Privacy-Preserving Authentication for Secure OTA Updates in Zonal SDVs》（7.2/10）, 《Alternating Extremes in Graceful Labelings of Full Binary Trees and Spider Trees》（7.1/10）, 《A mixed precision algorithm for the matrix square root》（7.0/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《How Far Can Root Cause Analysis Go on Real-World Telemetry Data?》（8.4/10）, 《TreeSRNF: Square-Root Normal Fields for Generative Modelling of the Geometric and Structural Variability in Tree-like 3D Objects》（8.2/10）
+- 速读：《SherAgent: Scaling Attack Investigation in the Wild via LLM-Empowered Iterative Query-Filter Backtracking》（7.9/10）, 《Gårding's Theorem for Posynomials》（7.9/10）, 《The Patchwork Problem in LLM-Generated Code》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/15/README](/202607/15/README)
+- 详情：[/202607/16/README](/202607/16/README)
 
 ### 精读区论文标签
-1. [Counting oriented spanning trees in generalized join digraphs](/202607/15/2607.12457v1-counting-oriented-spanning-trees-in-generalized-join-digraphs)  
-   标签：评分：8.3/10
+1. [How Far Can Root Cause Analysis Go on Real-World Telemetry Data?](/202607/16/2607.13548v1-how-far-can-root-cause-analysis-go-on-real-world-telemetry-data)  
+   标签：评分：8.4/10
    evidence：检索回退候选
-2. [Hankel determinants of weighted binary sums of digits](/202607/15/2607.09376v1-hankel-determinants-of-weighted-binary-sums-of-digits)  
+2. [TreeSRNF: Square-Root Normal Fields for Generative Modelling of the Geometric and Structural Variability in Tree-like 3D Objects](/202607/16/2607.13456v1-treesrnf-square-root-normal-fields-for-generative-modelling-of-the-geometric-and-structural-variability-in-tree-like-3d-objects)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+3. [Square-Root Law for Covert Communication with Warden-Favorable Side Information](/202607/16/2607.14013v1-square-root-law-for-covert-communication-with-warden-favorable-side-information)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+4. [SPECS: Speciated Evolutionary Circuit Synthesis](/202607/16/2607.14027v1-specs-speciated-evolutionary-circuit-synthesis)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+5. [Failure as a Process: An Anatomy of CLI Coding Agent Trajectories](/202607/16/2607.09510v1-failure-as-a-process-an-anatomy-of-cli-coding-agent-trajectories)  
    标签：评分：8.0/10
    evidence：检索回退候选
-3. [The Certification Limits of KS-Type Layer Relaxations: A Square-Root Ceiling and Its Breakdown](/202607/15/2607.12134v1-the-certification-limits-of-ks-type-layer-relaxations-a-square-root-ceiling-and-its-breakdown)  
+6. [Repairing Shape-Prior Shortcuts in Long-Range Single-Shot Fringe Projection Profilometry](/202607/16/2607.11928v1-repairing-shape-prior-shortcuts-in-long-range-single-shot-fringe-projection-profilometry)  
    标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [zk-ScalHard: Scalable and Hardware-Rooted Privacy-Preserving Authentication for Secure OTA Updates in Zonal SDVs](/202607/15/2607.07371v2-zk-scalhard-scalable-and-hardware-rooted-privacy-preserving-authentication-for-secure-ota-updates-in-zonal-sdvs)  
-   标签：评分：7.2/10
+1. [SherAgent: Scaling Attack Investigation in the Wild via LLM-Empowered Iterative Query-Filter Backtracking](/202607/16/2607.09176v1-sheragent-scaling-attack-investigation-in-the-wild-via-llm-empowered-iterative-query-filter-backtracking)  
+   标签：评分：7.9/10
    evidence：检索回退候选
-2. [Alternating Extremes in Graceful Labelings of Full Binary Trees and Spider Trees](/202607/15/2607.12597v1-alternating-extremes-in-graceful-labelings-of-full-binary-trees-and-spider-trees)  
-   标签：评分：7.1/10
+2. [Gårding's Theorem for Posynomials](/202607/16/2607.09168v1-grdings-theorem-for-posynomials)  
+   标签：评分：7.9/10
    evidence：检索回退候选
-3. [A mixed precision algorithm for the matrix square root](/202607/15/2607.12430v1-a-mixed-precision-algorithm-for-the-matrix-square-root)  
-   标签：评分：7.0/10
+3. [The Patchwork Problem in LLM-Generated Code](/202607/16/2607.08981v1-the-patchwork-problem-in-llm-generated-code)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-4. [First reduced model for integrated computations of helicon wave heating and current drive in magnetic fusion plasmas](/202607/15/2607.12512v1-first-reduced-model-for-integrated-computations-of-helicon-wave-heating-and-current-drive-in-magnetic-fusion-plasmas)  
-   标签：评分：7.0/10
+4. [Normalisation-Based Likelihood Ratio Estimation for Forensic Authorship Verification](/202607/16/2607.09501v1-normalisation-based-likelihood-ratio-estimation-for-forensic-authorship-verification)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-5. [Falsifying Causal Graphs With Outlier Events](/202607/15/2607.12145v1-falsifying-causal-graphs-with-outlier-events)  
+5. [Joint level-weight murmurations for holomorphic newforms](/202607/16/2607.08982v1-joint-level-weight-murmurations-for-holomorphic-newforms)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+6. [Tokenizer Transplantation: Mitigating Autoregressive Collapse in Edge-Efficient Bengali ASR](/202607/16/2607.09598v1-tokenizer-transplantation-mitigating-autoregressive-collapse-in-edge-efficient-bengali-asr)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+7. [Underwater Dead Reckoning with Deployable Situation-Triggered Covariance Scheduling](/202607/16/2607.10597v1-underwater-dead-reckoning-with-deployable-situation-triggered-covariance-scheduling)  
    标签：评分：6.9/10
    evidence：检索回退候选
-6. [Stochastic Stability of Nonlinear MPPI via Contraction Theory and Control Lyapunov Functions](/202607/15/2607.06945v1-stochastic-stability-of-nonlinear-mppi-via-contraction-theory-and-control-lyapunov-functions)  
+8. [Relaxation times of non-reversible Markov processes](/202607/16/2607.10801v1-relaxation-times-of-non-reversible-markov-processes)  
    标签：评分：6.9/10
    evidence：检索回退候选
-7. [Sharp Logarithmic Thresholds for Cut Schedules in an Abstract Branch-and-Cut Model](/202607/15/2607.06343v1-sharp-logarithmic-thresholds-for-cut-schedules-in-an-abstract-branch-and-cut-model)  
+9. [The planar Hopf algebra of noncommutative multi-indices](/202607/16/2607.10696v1-the-planar-hopf-algebra-of-noncommutative-multi-indices)  
    标签：评分：6.8/10
    evidence：检索回退候选
-8. [Weak convergence rate for the Cox-Ingersoll-Ross process](/202607/15/2607.07552v1-weak-convergence-rate-for-the-cox-ingersoll-ross-process)  
+10. [Adaptable Regularized CCA Tests for Independence of High-Dimensional Random Vectors](/202607/16/2607.10500v1-adaptable-regularized-cca-tests-for-independence-of-high-dimensional-random-vectors)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [Symplectic billiards as Minkowski billiards](/202607/15/2607.05986v1-symplectic-billiards-as-minkowski-billiards)  
+11. [SCOPE: Sidelobe-Controlled Off-grid Profile Estimation for Multiband Multistatic Target Localization in Upper Mid-Band ISAC Systems](/202607/16/2607.10549v1-scope-sidelobe-controlled-off-grid-profile-estimation-for-multiband-multistatic-target-localization-in-upper-mid-band-isac-systems)  
    标签：评分：6.8/10
-   evidence：检索回退候选
-10. [The Pathwise Approach to Metastability and its Applications to Galves--Löcherbach Models](/202607/15/2607.05652v1-the-pathwise-approach-to-metastability-and-its-applications-to-galves--lcherbach-models)  
-   标签：评分：6.7/10
-   evidence：检索回退候选
-11. [Granularity in Action: Graphing sources for social history](/202607/15/2607.07183v1-granularity-in-action-graphing-sources-for-social-history)  
-   标签：评分：6.6/10
    evidence：检索回退候选
 
 
