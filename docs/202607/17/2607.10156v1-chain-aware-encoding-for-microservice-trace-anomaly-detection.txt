@@ -1,0 +1,270 @@
+Title: Chain-Aware Encoding for Microservice Trace Anomaly Detection
+
+URL Source: https://arxiv.org/pdf/2607.10156v1
+
+Published Time: Tue, 14 Jul 2026 00:28:31 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# Chain-Aware Encoding for Microservice Trace Anomaly Detection 
+
+Yiliu Xu ∗, Ziwei Hong †, Zhongheng Yang ‡, Xinjin Li §, and Yu Ma ∗∗Carnegie Mellon University †Lehigh University ‡Northeastern University §Columbia University 
+
+Abstract —Microservice traces can be structurally anomalous even when every span returns normally—a payment flow that silently skips a risk check looks fine to any per-span monitor. Sequence models like DeepLog address this by predicting the next event, but they treat each API endpoint as a context-free token: the same endpoint reached through different invocation chains is mapped to the same vocabulary entry, even when its normal behavior differs across contexts. We propose encoding each event as an (endpoint, root-to-span invocation chain) pair instead. This simple change has two consequences: unseen chains are flagged without model inference, and next-event predictions become context-conditional, turning subtle path anomalies into clear outliers. We instantiate this idea in CHAIN LSTM, alightweight dual-task LSTM supporting per-event online detec-tion. On the TrainTicket benchmark, CHAIN LSTM achieves 94.3% F1 (+5.3pp over DeepLog) with comparable latency recall and 99.1% path recall. Case analysis shows that chain-aware encoding shifts median prediction probability on path anomalies from 0.91 to 0.002, suggesting a wider separation margin for threshold-based detection. 
+
+Index Terms —microservice, anomaly detection, distributed tracing, sequence modeling, AIOps 
+
+I. I NTRODUCTION 
+
+In microservice systems [1], [2], an anomalous trace can have every individual span return 200 OK with normal latency—yet the trace pattern is structurally wrong. A payment flow that bypasses a risk check due to a reordering bug looks normal to any per-span monitor. Liu et al. [3] report that rule-based methods at WeBank missed 20% of anomalies for exactly this reason. These implicit anomalies—wrong call ordering, missing calls, context-dependent latency shifts—are invisible to status-code checks and fixed thresholds [4], yet indicate real faults. Learning-based approaches address this gap but face trade-offs. DeepLog [5] predicts the next event in a flat endpoint sequence with an LSTM, enabling real-time detection but ignoring the invocation chain —the path through which aservice is reached. The same endpoint can have different normal behavior depending on its calling context, and col-lapsing these contexts creates blind spots. TraceAnomaly [3] captures invocation structure via a whole-trace VAE, but re-quires the complete trace before detection and is computation-ally heavyweight. Few existing approaches explicitly combine invocation-chain context with real-time incremental detection. We propose C HAIN LSTM, a lightweight LSTM-based ap-proach that bridges this gap. Our contributions are: (1) an 
+
+invocation chain-aware encoding that treats each (endpoint, chain) pair as a distinct token, enabling detection of structural anomalies not directly exposed by endpoint-only encodings and producing sharper context-conditional predictions; (2) a lightweight online instantiation of this encoding in a dual-task LSTM with simple path, latency, and length checks, supporting per-event detection during trace execution; (3) an evaluation on TrainTicket [6] showing 94 .3% F1, outperforming DeepLog by 5.3 points with only ∼65K parameters. We focus on trace-level implicit anomalies; our approach complements log-level and metric-level monitoring. In maintenance settings, such early structural alerts can help detect deployment regressions, validate service-call evolution, and narrow debugging to the first context-violating span. II. R ELATED WORK 
+
+Log- and trace-based approaches. DeepLog [5] pre-dicts the next log key from a sliding window via LSTM; extensions [7], [8] add semantic embeddings. Applied to traces, these methods treat each endpoint as context-independent, conflating events that differ in invocation history. TraceAnomaly [3] captures trace structure via a deep Bayesian network but requires complete traces; graph-based methods [9] apply GNNs at higher cost; TICAD [10] uses LSTMs at the microservice-pair level but does not tokenize the full root-to-span invocation chain or detect out-of-dictionary chains. 
+
+Positioning. We identify a representational limitation in endpoint-only sequence models: when the same endpoint is reached through different invocation contexts, an endpoint-only vocabulary cannot distinguish them, producing multi-modal predictions that mask context-dependent anomalies. CHAIN LSTM addresses this not by adding path features to a fixed model, but by changing the vocabulary itself: each (endpoint, chain) pair becomes a distinct token, which both sharpens context-conditional predictions and enables out-of-dictionary structural detection unavailable to endpoint-only models. III. M ETHOD 
+
+A. Problem Formulation and Detection Scope 
+
+A distributed trace T records the execution of a single user request across multiple microservices. We represent T as a time-ordered sequence of API call events: 
+
+T = ⟨e1, e 2, . . . , e n⟩ (1) where each event ei corresponds to a span and is characterized by a tuple: 
+
+ei = ( oi, c i, l i, ∆i, p i) (2) arXiv:2607.10156v1 [cs.SE] 11 Jul 2026 Here, oi is the endpoint, ci is the invocation chain leading to this event, li is the response latency, ∆i is the elapsed time since the previous event, and pi is the span index within the trace, globally z-score normalized using training-set statistics. 
+
+Definition (Invocation Chain). Given a span s in trace T ,the invocation chain of s is the ordered sequence of service operations from the trace entry point to s, including s itself. Formally, if s is reached through parent spans s0 → · · · → 
+
+sk−1 → s, then c = [ o(s0), . . . , o (sk−1), o (s)] where o(·)
+
+extracts the endpoint of a span. 
+
+Detection Task. Given the history ⟨e1, . . . , e i−1⟩, the goal is to determine at each step i whether ei is anomalous. A trace is flagged as anomalous if any of its events is detected as such, or if the trace as a whole exhibits structural anomaly. 
+
+Scope. Our method targets implicit anomalies: path anoma-lies (call order violations, missing calls, unexpected chains) and latency anomalies (deviations conditioned on the invoca-tion chain). We do not target explicit anomalies (HTTP 5xx, hard timeouts) which are handled by infrastructure monitoring. 
+
+B. Invocation Chain-Aware Feature Encoding 
+
+We address the representational limitation identified in Section II by treating each event as the pair (o, c ) of (endpoint, invocation chain), rather than by endpoint alone. This shift in vocabulary granularity has two distinct consequences for anomaly detection, both exploited in our detection procedure (Section III-D). 
+
+Consequence 1: Structural anomalies become out-of-dictionary tokens. Consider an endpoint E that is normally invoked through a fixed chain A → B → E. When a path anomaly removes the intermediate span B, E is reached directly, with an invocation chain that has never appeared during training. An endpoint-only model such as DeepLog [5] sees only E, a familiar normal endpoint, and does not raise an alarm. By contrast, a model that includes the chain in its vocabulary recognizes the new (endpoint, chain) pair as out-of-dictionary and immediately flags the anomaly. Such structural anomalies are not directly detectable by endpoint-only representations without additional context features. 
+
+Consequence 2: Next-event distributions become sharply context-conditional. The same vocabulary shift also concen-trates the sequence model’s predictions. Two events sharing an endpoint but reached through different chains often have different normal continuations. An endpoint-only vocabulary collapses these contexts, producing a multi-modal next-event distribution in which a context-violating call still appears plausible. A chain-aware vocabulary separates the contexts, yielding a more concentrated distribution and turning subtle context-violating events into clear distributional outliers. We quantify this effect in Section IV-F. 
+
+Invocation chain dictionary. From the training set, we extract all unique pairs (o, c ) and assign each a unique integer identifier. Let D denote this dictionary; we reserve index 0 for an <UNK> token, assigned to any (o, c ) pair not seen during training. The <UNK> token serves as the structural detection signal of Consequence 1. 
+
+Latency normalization. For each (o, c ) ∈ D , we compute the per-pair mean μ(o,c ) and standard deviation σ(o,c ) on the training set, and apply z-score normalization: 
+
+˜li = li − μ(oi,c i)
+
+max( σ(oi,c i), σ min ) (3) where σmin is set to the 5th percentile of per-chain standard deviations in the training set, preventing inflation when a pair has very few training samples. The elapsed time ∆i is normalized globally. During training, we clip ˜li to [−5, 5] to limit gradient impact from extreme outliers; at detection time, no clipping is applied so that anomalous events retain their full deviation signal. 
+
+Event vector. Each event ei is encoded as: 
+
+xi = [ Echain (ki) ∥ ˜li ∥ ˜∆i ∥ pi] (4) where Echain ∈ R|D|× de is a learnable embedding, ki =
+
+D(oi, c i) is the chain identifier, and pi is the span index within the trace, globally z-score normalized using training-set statistics. 
+
+C. Dual-Task LSTM Model 
+
+CHAIN LSTM uses a 2-layer LSTM [11] to process a sliding window of h encoded events. The hidden state hi−1 at the last time step feeds two prediction heads. The path head 
+
+produces a softmax distribution πi over D predicting the next event’s chain identifier. The latency head produces a scalar ˆli
+
+predicting normalized latency. We jointly train both heads with a multi-task loss: 
+
+L = Lpath + α · L lat (5) where Lpath is cross-entropy and Llat is MSE. 
+
+Why LSTM and Not Heavier Alternatives. The vocab-ulary size |D| in microservice systems is on the order of 
+
+10 2–10 3. An LSTM is sufficient and lightweight enough for real-time per-event detection; Transformers [12] offer greater capacity but at higher latency and memory cost for this scale. Whole-trace VAE-based approaches [3] cannot detect anomalies until trace completion; C HAIN LSTM’s incremental design enables flagging an anomalous span at step k of an n-step trace ( k < n ). 
+
+D. Online Detection Procedure 
+
+CHAIN LSTM combines four complementary detection mechanisms; the first three operate per-event, the fourth at trace completion. 
+
+M1: Unseen Chain Check. If (oi, c i) /∈ D , the trace is flagged as a path anomaly without requiring model inference. 
+
+M2: Path Prediction Check. Given the history window, the trace is flagged if πi[ki] < τ p, i.e., the softmax probability assigned to the actual chain ID falls below a threshold. We use 
+
+τp = 0 .2. Compared to the top-g criterion used in DeepLog, this soft probability threshold provides more fine-grained discrimination between expected and unexpected transitions. 
+
+M3: Dual-Channel Latency Check. We combine two complementary channels: (A) a model-based check that flags preserve prsv/GET sec/check              
+
+> sliding window (trace spans)
+> M1
+> chain /∈ D ?
+> no inference
+> Chain-Aware Encoding
+> (sec/check, [prsv →prsv/GET →sec/check]) →ki∈ D
+> x= [ E(k)∥˜l∥˜∆∥p]
+> 2-Layer LSTM
+> Path Head
+> next-event prob.
+> Latency Head
+> predicted lat.
+> M2 p < τ p?
+> path anomaly
+> M3 dual-ch.
+> latency anom.
+> online (M1–M3)
+> M4 length
+> post-trace
+> Normal / Anomaly
+> D
+> Fig. 1. CHAIN LSTM architecture. The chain-aware encoding (highlighted) replaces endpoint-only vocabulary with (endpoint, invocation chain) pairs, enabling out-of-dictionary detection (M1, dashed) without model inference. M2–M3 operate per-event using LSTM predictions; M4 checks trace structure at completion.
+
+events where the actual-to-predicted latency ratio li/ˆlraw  
+
+> i
+
+> τ r ,leveraging the LSTM’s learned chain-conditional expectations; and (B) a per-chain percentile fallback that flags li exceeding the q-th training percentile, providing robustness at trace boundaries and for rare chains. An event is flagged if either channel fires. 
+
+M4: Trace Length Check. At trace completion, we flag traces whose span count falls outside the per-root-endpoint 
+
+[min , max] range observed in training, catching span-deletion anomalies in short traces where surviving spans are individu-ally normal. A trace is reported as anomalous if any mechanism fires. M1–M3 operate online; M4 operates at trace completion as a structural safety net. We view M3 and M4 as lightweight safeguards for common latency and length anomalies; the main representation-level contribution lies in M1 and M2, which directly arise from chain-aware encoding. IV. E XPERIMENTS 
+
+We evaluate C HAIN LSTM on the TrainTicket benchmark to answer three research questions:  
+
+> •
+
+RQ1 : How does C HAIN LSTM compare with represen-tative baselines under the controlled evaluation setting?  
+
+> •
+
+RQ2 : What is the contribution of chain-aware encoding, and how sensitive is C HAIN LSTM to the window size?  
+
+> •
+
+RQ3 : What types of anomalies does C HAIN LSTM detect that endpoint-only approaches miss, and what is the underlying mechanism? 
+
+A. Dataset and Setup 
+
+Dataset. We use the TrainTicket [6] benchmark (41 ser-vices) with the publicly available trace dataset from Zen-odo [13]. After reconstructing traces by traceID , we obtain 9,200 normal traces (54,326 spans, median 3 spans per trace, 23 distinct endpoint labels, |D| =59 chain-aware tokens). For brevity, ts-X-service is shortened to X in case studies. 
+
+Train/Validation/Test split. Normal traces are split 70/15/15 into training (6,440), validation (1,380), and test (1,380) sets. The validation set serves two purposes: (1) early stopping during model training (normal traces only), and (2) threshold tuning for detection hyperparameters, where we inject anomalies into copies of validation normals (with a separate random seed) to form a labeled validation set. The test set is used only once for final evaluation. 
+
+Anomaly injection. Following standard practice [3], we inject two categories of anomalies into copies of the held-out test normals, each producing a paired variant of the source trace: 
+
+Latency anomalies (690 traces): For a randomly selected span, we multiply its duration by a factor uniformly sam-pled from [10 , 50] and propagate the added latency upward to all ancestor spans, simulating service slowdowns with realistic cascading effects. 
+
+Path anomalies (690 traces): We apply one of three struc-tural mutations: (i) span deletion —remove a non-root span and reparent its children to preserve a valid trace tree (only for traces with >4 spans to ensure detectability); (ii) span swap —exchange the timestamps of two distant, non-sibling spans from different subtrees; (iii) span duplication —insert a copy of a span at a non-adjacent position. The test set thus contains 1,380 normal + 1,380 anomaly = 2,760 traces. 
+
+B. Baselines 
+
+We compare against four baselines: Rule-based (μ + 3 σ la-tency threshold per endpoint), Isolation Forest (7-dimensional trace-level features, contamination =0.05), Autoencoder 
+
+(same features, reconstruction error threshold at the 95th percentile), and DeepLog [5] (same LSTM architecture and hyperparameters as CHAIN LSTM, but with endpoint-only vocabulary, top-g path detection, and per-endpoint latency percentile—no dual-channel latency, no position encoding, no trace length check). DeepLog is the primary comparison for evaluating chain-aware encoding. All hyperparameters ( g,percentile level) are selected on the validation set by grid search. 
+
+C. Implementation Details 
+
+We use h=2 , de=32 , dh=64 , a 2-layer LSTM ( ∼65K pa-rameters), trained with Adam (lr =1e-3, batch =128, early stop-ping patience =5, α=1 .0). Detection thresholds are selected on the validation set: for C HAIN LSTM, the latency percentile 
+
+q=96 .5 is chosen by grid search over {95 , 95 .5, . . . , 99 } to maximize F1, with τp=0 .2 and τr =5 fixed. For DeepLog, g=2 
+
+and q=97 .5 are jointly selected from g ∈ { 1, 2, 3, 5, 10 } and the same percentile grid. Per-event inference takes ∼0.6 ms on a single CPU core (averaged over 1,000 runs, batch size 1). TABLE I ANOMALY DETECTION RESULTS ON TRAIN TICKET . D ETECTION THRESHOLDS FOR CHAIN LSTM AND DEEP LOG ARE SELECTED ON THE VALIDATION SET . B EST RESULTS IN BOLD .                              
+
+> Method Prec. Rec. F1 Lat-R Path-R Rule-based 78.3 7.3 13.4 12.0 2.6 Isolation Forest 92.8 53.3 67.7 99.0 7.7 Autoencoder 83.3 0.7 1.4 1.2 0.3 DeepLog [5] 91.8 86.4 89.0 97.7 75.1
+> CHAIN LSTM (ours) 90.7 98.3 94.3 97.5 99.1
+
+D. Main Results (RQ1) 
+
+Table I reports detection performance. CHAIN LSTM achieves the highest F1 among the evaluated baselines (94.3%), outperforming our DeepLog reimplementation by 5.3 percentage points. The improvement is concentrated in recall (+12.0pp), reflecting C HAIN LSTM’s ability to detect path anomalies that endpoint-only prediction misses (path recall: 99.1% vs. 75.1%). Latency recall is comparable between the two methods (97.5% vs. 97.7%), confirming that the gap is driven by representation granularity rather than the latency detection mechanism. Traditional baselines (Rule-based, Iso-lation Forest, Autoencoder) operate on aggregate features and cannot exploit sequential call structure, leading to substantially lower performance. 
+
+E. Ablation and Sensitivity (RQ2) 
+
+Encoding ablation. To isolate chain-aware encoding, we train an endpoint-only model with the same architecture and 
+
+same M1–M4 detection pipeline, differing only in vocabulary (23 endpoint labels vs. 59 chain-aware tokens). This controlled ablation achieves 93.2% F1 (path recall 96.2%), compared with 94.3% F1 (path recall 99.1%) for C HAIN LSTM. Al-though the aggregate F1 gap is narrowed by overlapping OR-based detection mechanisms and TrainTicket’s shallow traces (median 3 spans), chain-aware encoding reduces missed path anomalies from 26 to 6 (of 690) and false positives from 155 to 140. Removing M4 or the latency loss ( α=0 ) changes F1 by ≤0.07 pp, indicating that the detector is robust to these auxiliary components. Section IV-F analyzes the prediction distributions behind the remaining gap. 
+
+Window size sensitivity. F1 is robust across h ∈ { 1, . . . , 5}
+
+(within 0.16 pp); we use h=2 because the median trace has only 3 spans. 
+
+F. Where Does Chain Awareness Help? (RQ3) 
+
+Because aggregate F1 mixes latency and path anomalies, we analyze the 166 anomaly traces detected by C HAIN LSTM but missed by DeepLog. Among these, 161 path-related cases fall into two categories, each illustrating one consequence of chain-aware encoding; the remaining 5 are latency-boundary cases resolved by dual-channel detection. 
+
+Category A: Out-of-dictionary chains (24 traces). The endpoint security/check is normally invoked exclu-sively through the chain preserve → preserve/GET →
+
+security/check . When a span deletion removes the in-termediate preserve/GET , the resulting invocation chain becomes a novel pair not seen in the training dictionary 
+
+D. C HAIN LSTM flags this immediately via M1, before any model inference. DeepLog, whose vocabulary contains only the endpoint security/check , observes a familiar normal token and has no mechanism to detect the topology change. While unseen chains require care under service evolution (Section V), these cases illustrate how the encoding exposes topology changes directly; Category B examines the in-vocabulary cases where the distributional effect is most visible. 
+
+Category B: Sharper context-conditional distributions (137 traces). The remaining cases involve anomalies where the endpoint is in-vocabulary but the invocation chain is unusual in the current context. Consider a trace where the sliding window ends with travel/queryInfo → travel/GET ;the actual next event is basic/GET , reached through a 6-hop chain via ticketinfo . DeepLog, predicting over endpoints, assigns basic/GET a probability of 0.99 —the endpoint is highly expected regardless of how it was reached. C HAIN L-STM, predicting over (endpoint, chain) pairs, distinguishes 
+
+which chain variant of basic/GET should appear: the actual (anomalous) chain receives p=1 .9×10 −5, while a different (normal) chain variant of the same endpoint receives p=0 .99 .The probability gap exceeds 10 4.Across all 137 such cases, DeepLog assigns the actual end-point a median probability of 0.88 (well above any reasonable threshold), while C HAIN LSTM assigns the actual (endpoint, chain) pair a median probability of 7 × 10 −5—a gap of four orders of magnitude (median 12 ,444 ×). In every one of these 137 cases, the endpoint ranks in DeepLog’s top-2 predictions. This illustrates a fundamental limitation of top-g endpoint pre-diction: once the endpoint itself is considered likely, the model has no mechanism to distinguish the anomalous invocation chain from a normal one. 
+
+Distributional advantage at the representation level. 
+
+Categories A and B explain where CHAIN LSTM detects anomalies that DeepLog misses. To test whether this advantage is systematic rather than case-specific, we compare C HAIN L-STM against the endpoint-only ablation from Section IV-E (identical architecture and pipeline), isolating the effect of vocabulary granularity on prediction distributions. Across all 571 path-anomaly events where C HAIN LSTM’s M2 fires, 93 receive a probability above 0.2 from the endpoint-only ablation—i.e., the endpoint-only model confi-dently judges these anomalies as normal (median p=0 .91 ). Under chain-aware encoding, the same events receive median 
+
+p=0 .002 (508 × lower)—the model’s judgment is reversed, not merely sharpened. These are systematic blind spots for endpoint-only prediction, not borderline cases that can be resolved by minor threshold tuning. Figure 2 (left) illustrates a representative case. A span-swap mutation reorders two spans within a trace; the anomalous span’s endpoint is GET , which is the most common next-event prediction in this context. The endpoint-only model assigns p=0 .998 to GET —indistinguishable from a normal GET     
+
+> queryForStatio
+> queryById
+> securityInfoCh
+> getLeftTicketO
+> getContactsByC
+> 0.0
+> 0.5
+> 1.0
+> Prob.
+> actual event
+> p = 0.9896
+> p
+> MISS
+> DeepLog (endpoint-only)
+> basic/GET|
+> station/quer
+> basic/quer
+> route/quer
+> order/secu
+> travel/GET|
+> 0.0
+> 0.5
+> 1.0
+> Prob.  actual event
+> p = 1.9e-05
+> p
+> DETECTED
+> ChainLSTM (chain-aware)
+> Endpt.
+> only
+> Chain
+> aware
+> Median
+> prob. 0.9524 0.0128
+> Mean
+> prob. 0.8051 0.0454
+> Across 375 path-anomaly
+> events with endpoint-only
+> prob. > 0.2
+
+Fig. 2. Distributional comparison between endpoint-only and chain-aware prediction. Left: Bars show next-token probabilities for the same event under endpoint-only (top) and chain-aware (bottom) vocabularies; the hatched bar marks the observed event. The comparison shows how a likely endpoint can become an unlikely chain variant. Right: Each dot is one path-anomaly event scored under both encodings; dotted lines mark τp=0 .2, and the shaded region contains events missed by endpoint-only prediction but detected by CHAIN LSTM. 
+
+event. C HAIN LSTM, however, splits GET into multiple chain-aware tokens depending on the invocation path. The actual (anomalous) chain token receives p=1 .1×10 −5, while a dif-ferent chain variant of the same endpoint receives most of the probability mass. The anomaly is invisible at endpoint granularity but becomes a clear outlier at chain granularity. Figure 2 (right) shows that this is not an isolated example: across all 93 blind-spot events, the dots are concentrated far below the diagonal, indicating that chain-aware encoding sys-tematically transforms high-confidence endpoint predictions into low-probability chain predictions. This provides a wider safety margin across a broad range of thresholds. V. D ISCUSSION 
+
+CHAIN LSTM demonstrates that chain-aware encoding ex-poses structural signals not directly represented by endpoint-only encodings, while retaining real-time per-event operation. Beyond the 166-trace detection gap, the distributional analysis (Figure 2) shows that chain-aware encoding systematically transforms a large class of path anomalies from distributional blind spots into clear outliers, shifting median prediction probability from 0.91 to 0.002 .
+
+When does chain-aware encoding help? The encoding’s advantage depends on invocation diversity: it is most effective when the same endpoint is reached through multiple distinct chains with different normal behaviors. In flat API gateway architectures where all calls route through a single proxy, chains collapse to depth one and the encoding degenerates to endpoint-only. TrainTicket, with |D| =59 tokens over 23 end-point labels, exhibits moderate diversity; production systems with deeper call graphs may show larger gains. 
+
+Dictionary evolution. A key practical question is distin-guishing new normal chains (from service evolution) from 
+
+anomalous chains . DeepLog treats all unseen tokens identi-cally. Chain-aware encoding enables a richer strategy: when a new (endpoint, chain) pair appears, detection can evolve from a hard unseen-chain rejection to a soft decision by marginalizing over all dictionary entries that share the same endpoint, P 
+
+> k:ep (k)= onew
+
+πi[k]. A high marginalized probability suggests the endpoint is expected in context and the new chain reflects legitimate evolution; a low score signals atrue anomaly. This two-level judgment is unavailable to flat-vocabulary approaches. The dictionary is constructed in a single O(n) pass; for production systems where |D| may reach 
+
+10 3–10 4, this remains within LSTM embedding capacity. 
+
+Encoding granularity trade-off. Full invocation chains represent one end of a design space. Caller-callee pairs (im-mediate parent only) yield smaller dictionaries but lose deep context; n-gram path models offer an intermediate granularity. We chose full chains because microservice traces are typi-cally shallow (median 3 spans in TrainTicket), keeping |D| 
+
+manageable. In systems with deep or highly variable call graphs, truncated chains or hierarchical encodings may provide a better trade-off between context richness and dictionary size. 
+
+Limitations and future work. (i) Our evaluation uses one benchmark, synthetic anomalies, and a balanced test set; thus, its precision and F1 may not reflect false-alarm burden at production anomaly rates. (ii) The injected path mutations are designed to exercise structural sensitivity and may not capture previously unseen but legitimate chains introduced by normal service evolution. The dictionary-evolution strat-egy above outlines how endpoint-marginalized scoring can soften unseen-chain rejection, but this strategy remains to be validated under continuous production evolution. (iii) We have not evaluated naturally occurring incidents or compared against intermediate context representations such as caller-callee pairs. Future work includes validation on production traces, adaptive dictionary updates for legitimate new chains, exploring the design space between endpoint-only and full-chain encoding (e.g., caller-callee pairs, n-gram paths, and hierarchical encodings), and extending chain-aware encoding to other sequential invocation settings. Related sequential decision research likewise highlights the value of representing context explicitly. Adaptive pressure incorporates upstream conditions in traffic control [14], while dynamic context se-lection and environment-aware interaction modeling support multi-agent learning and real-time trajectory prediction [15], [16]. VI. C ONCLUSION 
+
+We proposed C HAIN LSTM, a lightweight online detector that encodes trace events as (endpoint, invocation chain) pairs. On TrainTicket, it achieves 94.3% F1, outperforming DeepLog by 5.3 points with comparable latency recall and 99.1% path recall. Case analysis shows that invocation context exposes structural anomalies hidden by endpoint-only prediction, mo-tivating broader evaluation of chain-aware encoding. ACKNOWLEDGMENT 
+
+OpenAI ChatGPT and Codex assisted with language editing, TikZ figures, and auxiliary experimental scripts (e.g., result formatting, plotting); all outputs were reviewed by the authors. REFERENCES [1] B. H. Sigelman, L. A. Barroso, M. Burrows, P. Stephenson, M. Plakal, D. Beaver, S. Jaspan, and C. Shanbhag, “Dapper, a large-scale distributed systems tracing infrastructure,” Google Technical Report , 2010. [2] A. P. Boten, M. McLean, and D. Dyla, “OpenTelemetry: An open standard for distributed tracing,” in Proc. KubeCon + CloudNativeCon ,2019. [3] P. Liu, H. Xu, Q. Ouyang, R. Jiao, Z. Chen, S. Zhang, J. Yang, L. Mo, J. Zeng, W. Xue, and D. Pei, “Unsupervised detection of microservice trace anomalies through service-level deep Bayesian networks,” in Proc. IEEE International Symposium on Software Reliability Engineering (ISSRE) , 2020, pp. 48–58. [4] P. Notaro, J. Cardoso, and M. Gerndt, “A systematic mapping study in AIOps,” Proc. International Conference on Service-Oriented Computing (ICSOC) , pp. 110–123, 2020. [5] M. Du, F. Li, G. Zheng, and V. Srikumar, “DeepLog: Anomaly detection and diagnosis from system logs through deep learning,” in Proc. ACM Conference on Computer and Communications Security (CCS) , 2017, pp. 1285–1298. [6] X. Zhou, X. Peng, T. Xie, J. Sun, C. Ji, W. Li, and D. Ding, “Fault analysis and debugging of microservice systems: Industrial survey, benchmark system, and empirical study,” IEEE Transactions on Software Engineering , vol. 47, no. 2, pp. 243–260, 2021. [7] W. Meng, Y. Liu, Y. Zhu, S. Zhang, D. Pei, Y. Liu, Y. Chen, R. Zhang, S. Tao, P. Sun, and R. Zhou, “LogAnomaly: Unsupervised detection of sequential and quantitative anomalies in unstructured logs,” in Proc. International Joint Conference on Artificial Intelligence (IJCAI) , 2019, pp. 4739–4745. [8] X. Zhang, Y. Xu, Q. Lin, B. Qiao, H. Zhang, Y. Dang, C. Xie, X. Yang, Q. Cheng, Z. Li et al. , “Robust log-based anomaly detection on unstable log data,” in Proc. ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE) , 2019, pp. 807–817. [9] J. Chen, F. Liu, J. Jiang, G. Zhong, D. Xu, Z. Tan, and S. Shi, “TraceGra: A trace-based anomaly detection for microservice using graph deep learning,” Computer Communications , vol. 204, pp. 109–117, 2023. [10] Q. Du, L. Zhao, F. Tian, and Y. Han, “Trace-based anomaly detection with contextual sequential invocations,” in Proc. International Confer-ence on Database and Expert Systems Applications (DEXA) , ser. LNCS, 2023, pp. 95–109. [11] S. Hochreiter and J. Schmidhuber, “Long short-term memory,” Neural Computation , vol. 9, no. 8, pp. 1735–1780, 1997. [12] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” in Proc. Advances in Neural Information Processing Systems (NeurIPS) , 2017, pp. 5998–6008. [13] C. Lee, T. Yang, Z. Chen, Y. Su, Y. Yang, and M. R. Lyu, “Eadro: An end-to-end troubleshooting framework for microservices on multi-source data,” in Proc. IEEE/ACM International Conference on Software Engineering (ICSE) , 2023, pp. 1750–1762. [14] W. Duan, Z. Gao, J. He, and J. Xian, “Bayesian critique-tune-based reinforcement learning with adaptive pressure for multi-intersection traffic signal control,” IEEE Transactions on Intelligent Transportation Systems , vol. 26, no. 10, pp. 14 968–14 983, 2025. [15] W. Duan, Y. Yu, J. He, and Y. Shi, “Adaptive context length optimization with low-frequency truncation for multi-agent reinforcement learning,” in Advances in Neural Information Processing Systems , vol. 38, 2025. [16] W. Duan, “MAVEN-T: Multi-agent environment-aware enhanced neu-ral trajectory predictor with reinforcement learning,” arXiv preprint arXiv:2604.10169 , 2026.
