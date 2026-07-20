@@ -1,0 +1,982 @@
+Title: ADASCALE: An Adaptive Scaling and Placement Framework for Microservices Under Dynamics
+
+URL Source: https://arxiv.org/pdf/2607.15681v1
+
+Published Time: Mon, 20 Jul 2026 00:32:01 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# ADA SCALE : An Adaptive Scaling and Placement Framework for Microservices Under Dynamics 
+
+Ming Chen, Muhammed Tawfiqul Islam, Maria Rodriguez Read, Rajkumar Buyya, Fellow, IEEE 
+
+Abstract —Microservice applications are increasingly deployed across cloud–edge environments, where heterogeneous nodes and time-varying inter-node delays amplify the impact of placement decisions. At the same time, these applications face non-stationary traffic, shifts in the mix of root request operations that exercise different call graphs, and heterogeneous communication modes that determine how network latency and queuing propagate to end-to-end (E2E) performance. Existing autoscalers and network-aware schedulers typically handle only a subset of these dynam-ics, leading to either compute bottlenecks or inflated cross-node latency and thus SLO violations. We propose A DA SCALE , an adaptive framework that jointly scales and places microservice replicas under such multi-dimensional dynamics. ADA SCALE implements a Monitor– Analyzer–Planner–Executor (MAPE) loop that extracts per-edge and per-service demand from distributed traces and service-mesh metrics, identifies the most critical root operation under a mixed workload, computes SLO-aware replica targets, and then places replicas to minimize a demand-weighted latency objective given the current inter-node latency matrix. To react quickly to networking perturbations, ADA SCALE triggers a reactive placement loop, while a steady-state autoscaling loop handles demand shifts. We evaluate A DA SCALE on a cloud–edge Kubernetes clus-ter using the DeathStarBench Social Network application with three root operations under varying load and workload mixes. Across scenarios, ADA SCALE consistently meets SLO targets and improves both latency and throughput: compared with NetMARKS Scale, it achieves up to 1.56 ×, 1.93 ×, and 1.34 ×
+
+lower average response time (for compose-post, read-home-timeline, and read-user-timeline) and up to 2.16 ×, 1.32 ×, and 1.36 × higher throughput, respectively. 
+
+Index Terms —Microservices, Resource Management, Dynam-ics, Cloud Computing. 
+
+I. I NTRODUCTION 
+
+Microservice architecture is widely adopted for large-scale online services, decomposing an application into loosely cou-pled services that can be developed and deployed indepen-dently [1], [2]. Modern deployments increasingly span acloud–edge continuum, where replicas run on heterogeneous nodes to satisfy latency, cost, and locality requirements. In such environments, end-to-end (E2E) quality depends not only on per-service compute provisioning but also on replica placement: time-varying inter-node delays can quickly turn previously acceptable placements into latency bottlenecks [3], [4], [5]. Managing microservices under dynamics is difficult because several variabilities interact. User demand is non-stationary 
+
+Ming Chen, Muhammed Tawfiqul Islam, Maria Rodriguez Read, and Rajkumar Buyya are with the Quantum Cloud Computing and Distributed Systems (qCLOUDS) Laboratory, School of Computing and Information Systems, The University of Melbourne, Australia. 
+
+and bursty, requiring timely replica provisioning. Meanwhile, production applications usually serve multiple root operations (e.g., read vs. write paths) with different call graphs and often different E2E SLOs; shifts in the workload mix therefore change which services and edges dominate E2E latency. Dependencies also span heterogeneous communication modes (e.g., blocking RPC, message queues, and storage I/O), so identical network perturbations can manifest differently across edges. These effects are coupled: poor placement amplifies cross-node delay even with sufficient replicas, while under-provisioning creates compute bottlenecks even under favorable network conditions. Existing orchestration mechanisms typically handle only part of this problem. Kubernetes Horizontal Pod Autoscaler (HPA) [6] scales replicas based on utilization signals, but is blind to network state and to which root operation is currently SLO-critical. Network-aware schedulers [3], [4] can improve placement using service-mesh telemetry, yet often assume fixed replica budgets and do not explicitly reason about changing request mixes. Conversely, call-graph and SLO-analysis techniques can localize bottlenecks, but are often not designed to drive coordinated scaling and placement decisions under time-varying network states. These gaps motivate a uni-fied framework that continuously translates runtime call-graph behavior and network state into joint scaling and placement actions. This paper proposes A DA SCALE , an adaptive scaling and placement framework for distributed microservice applications under dynamics. A DA SCALE follows a Monitor–Analyzer– Planner–Executor (MAPE) loop that collects distributed traces, service metrics, and inter-node latency measurements; infers per-edge and per-service demand summaries from observed call graphs; derives SLO-aware replica targets under the current workload mix; and places replicas to reduce demand-weighted cross-node latency under current network conditions. A key design principle is two-timescale adaptation: A DA S-
+
+CALE uses a steady-state autoscaling loop to handle demand and workload-mix shifts, and a reactive placement loop to promptly mitigate network perturbations that threaten E2E SLO compliance. We implement A DA SCALE on Kubernetes with a service-mesh and tracing stack, and evaluate it on a cloud–edge cluster using the DeathStarBench Social Network benchmark [7], which exposes three root operations with distinct call graphs. Across a range of request rates and workload mixes, A DA S-
+
+CALE consistently meets SLO targets and improves both latency and throughput compared with Kubernetes HPA and 1arXiv:2607.15681v1 [cs.NI] 17 Jul 2026 NetMARKS Scale. This paper mainly makes the following contributions:  
+
+> •
+
+We formulate joint scaling and placement as an opti-mization problem that balances per-service resource cost against demand-weighted network latency under E2E and per-service quantile SLO constraints, and decompose it into tractable scaling and placement subproblems for online control.  
+
+> •
+
+We design and implement A DA SCALE as a two-timescale MAPE controller with (i) an SLO- and demand-aware autoscaler that identifies the most critical root operation under mixed workloads and computes per-service replica targets, and (ii) a greedy, latency- and capacity-aware placer that maps replicas to nodes using the current inter-node latency matrix.  
+
+> •
+
+We evaluate ADA SCALE on a real Kubernetes-based cloud–edge testbed, showing up to 1.93 × lower average response time and up to 2.16 × higher throughput than existing methods while maintaining SLO compliance under dynamic conditions. The rest of the paper is organized as follows: Section II presents background and challenges; Section III introduces the system model and telemetry-based demand estimation; Section IV formulates the joint problem; Section V details ADA SCALE ’s design; Section VI evaluates performance; Sec-tion VII reviews related work; and Section VIII concludes the paper. II. B ACKGROUND AND CHALLENGES 
+
+A. Background 
+
+Modern cloud applications increasingly adopt microservice architectures, managing an application as a collection of containerized, loosely coupled, fine-grained services [7], [2]. In cloud–edge continuums, services may run in centralized cloud data centers, on fog/edge nodes close to end users, or across both. A common hybrid pattern places latency-critical, user-facing services at the edge while keeping centralized or stateful components in the cloud, reducing user-perceived latency. However, end-to-end performance can drift over time due to both networking dynamics and workload dynamics (e.g., changing request intensity and call-graph mix). 
+
+B. Challenges 1) Networking Uncertainty: Varied networking conditions are common in cloud–edge clusters and interconnected fog devices. Microservice applications allocate a higher proportion of processing time to the networking stack than monolithic applications [7], since requests frequently traverse RPC/REST interfaces across services. As inter-node latency and available bandwidth vary over time, cross-node communication can become a dominant contributor to E2E latency and throughput degradation, even when per-service compute provisioning is sufficient. 
+
+Fig. 1: Root requests induce a time-varying mix of call graphs G = {G1, . . . , G K } with proportions π(t), where PKk=1 πk(t) = 1 .
+
+Fig. 2: Call-graph edges exhibit heterogeneous communication modes and traffic patterns. 
+
+2) Dynamics of Call Graphs: In a microservice dependency graph, if one service triggers another, we refer to them as 
+
+UM (upstream microservice) and DM (downstream microser-vice), respectively. The entry service receives incoming root requests , which are routed through downstream services to execute application logic. As shown in Figure 1, different root-request types exercise different call graphs, and the runtime workload is typically a time-varying mixture over these graphs. This mixture is dynamic in both (i) topology (which call paths are exercised) and (ii) proportions (how frequently each path occurs). Shifts in request mix therefore change which services or service pairs become hot and which paths dominate E2E latency. Shared services that appear in multiple call graphs (e.g., stateful storage) further couple demand across operations, making scaling and placement decisions dependent on the current mix rather than on a single static graph. 
+
+3) Communication Modes: Production traces from Alibaba and Meta show that microservice pairs interact through het-erogeneous communication modes (e.g., HTTP, gRPC, DB, MQ, and MC) [8], [9], [2], [10]. These modes induce different traffic shapes and sensitivities to load and network variation. In particular, DB/MC interactions are often heavy in traffic and can become bottlenecks under demand bursts or net-working perturbations, degrading upstream E2E performance. 2Moreover, as depicted in Figure 2, request/response sizes can be asymmetric (e.g., small requests but large payloads), so a placement/scaling policy should account for bidirectional traffic characteristics along each edge. Overall, effective management in cloud–edge settings must jointly consider: (1) time-varying inter-node latency and band-width; (2) dynamic call-graph topology and proportions under mixed root requests; and (3) heterogeneous communication modes that shape traffic and bottlenecks. These coupled chal-lenges motivate a systematic framework that estimates network and call-graph dynamics at runtime and drives coordinated scaling and placement decisions. III. S YSTEM MODEL 
+
+We consider a microservice application composed of state-less and stateful microservices S = {s1, . . . , s N } deployed on a cluster of compute nodes N = {n1, . . . , n M }. Each microservice s ∈ S has xs(t) ∈ N replicas (e.g., Kubernetes Pods) at time t. A single replica of s consumes a per-replica resource vector Rs = [ cs, m s] (CPU shares and memory), while node n offers capacity Cn = [¯ cn, ¯mn]. For network conditions of the cluster, we primarily consider the inter-node communication delays and assume these delays evolve randomly as time goes by. 
+
+A. Replica placement matrix. 
+
+In A DA SCALE implementation, a service may spread its replicas across multiple nodes. We therefore represent a place-ment at time t by a matrix 
+
+A(t) = As,n (t) 
+
+> s∈S , n ∈N
+
+,
+
+where As,n (t) ∈ N is the number of replicas of ser-vice s hosted on node n. The total replica count of s is 
+
+xs(t) = P 
+
+> n∈N
+
+As,n (t). In the implementation, the data fields assignments: {node 7 → replica count } and 
+
+replicas in the placement files encode As,n (t) and xs(t),respectively. 
+
+B. Workflows as mixtures of call graphs 
+
+In a deployed microservice application, multiple root re-quest types can coexist and thus trigger different call graphs. We refer to a root request as a request entering the application at its entry service (e.g., a front-end gateway). Incoming root requests arrive at a total rate λroot (t) and are partitioned into K
+
+request classes (e.g., compose-post, read-home-timeline, read-user-timeline) with per-class rates λk(t) and proportions 
+
+πk(t) = λk(t)max {λroot (t), 1} ,
+
+> K
+
+X
+
+> k=1
+
+πk(t) = 1 .
+
+Each root-request class k triggers its own call graph Gk =(Vk, E k). Thus, incoming root requests λroot (t) trigger atime-varying mixture over the microservice call graphs G =
+
+{G1, . . . , G K } with proportions π(t) = ( π1(t), . . . , π K (t)) .Each call graph Gk = ( Vk, E k) has Vk ⊆ S and directed edges e = ( u → v) ∈ Ek, where u and v denote upstream and downstream microservices. Over a time window Wt, we compute the following edge-level statistics from tracing spans: Each edge e is annotated with an attribute attr (e) = ⟨mode e, r e(t), θ e, w e(t), b e(t)⟩, (1) where:  
+
+> •
+
+mode e ∈ { HTTP , gRPC , MQ , DB , MC } captures the com-munication mode; different modes have distinct traffic tramit patterns.  
+
+> •
+
+re(t) is the estimated call rate (calls/second) on edge e; 
+
+> •
+
+θe identifies the callee interface (e.g., HTTP path, gRPC method, DB collection/op);  
+
+> •
+
+we(t) is the average edge-local service time (milliseconds), which can be obtained from child span durations in raw metrics traces;  
+
+> •
+
+be(t) is the byte rate (bytes/s) on e, which obtained from service-mesh traffic counters. 
+
+C. Edge statistics from traces 
+
+From each metrics span (e.g., Jaeger traces), we estimate, over a time window Wt, the following edge statistics: 
+
+pe(t) ≜ #root requests that traverse e
+
+max {#root requests , 1} ,rper-req  
+
+> e
+
+(t) ≜ #occurrences of e
+
+max {#requests that traverse e, 1} ,we(t) ≜ mean child-span duration for edge e. 
+
+(2) A root request is a request entering the application at its entry service. The quantity pe(t) is the probability that a root request exercises edge e, rper-req  
+
+> e
+
+(t) captures repeated invocations conditional on traversing e, and pe(t) · rper-req  
+
+> e
+
+(t) is the expected number of occurrences of e per root request. For the trace sampling strategies, we use probabilistic sampling, which means sampling traces based on a defined probability (e.g., 0.1 for 10% sampling). If the root request rate is λroot (t)
+
+and the tracing sampling probability is ρsample , then the call rate on edge e is estimated as 
+
+re(t) ≈ λroot (t) · pe(t) rper-req  
+
+> e
+
+(t)
+
+ρsample 
+
+.
+
+Here λroot (t) denotes the true root request rate (requests/s) for the application. We assume sampling is approximately uniform over requests, so rescaling by 1/ρ sample debiases the per-edge counts. 
+
+D. Service-level demand 
+
+Under sustained workloads on the deployed microservice application, we can obtain per-service demand metrics by aggregating call graph edge statistics. For each service s ∈ S 
+
+we define: 
+
+Rin  
+
+> s
+
+(t) = X
+
+> e=( u,s )
+
+re(t), Rout  
+
+> s
+
+(t) = X
+
+> e=( s,v )
+
+re(t),W in  
+
+> s
+
+(t) = 
+
+P 
+
+> e=( u,s )
+
+re(t) we(t)max {Rin  
+
+> s
+
+(t), 1} , Bin  
+
+> s
+
+(t) = X
+
+> e=( u,s )
+
+be(t),
+
+3where Rin  
+
+> s
+
+(t) and Rout  
+
+> s
+
+(t) are the total incoming and outgo-ing call rates of service s, W in  
+
+> s
+
+(t) is the average incoming work per call (ms), and Bin  
+
+> s
+
+(t) is the incoming byte rate which can be used as an importance weight when prioritizing services under stateful backends or high network overhead. In practice of A DA SCALE implementation, these quantities are produced by the service_edge_demand module as the services_demand table, while the per-edge quantities 
+
+re(t), we(t), be(t) appear in the edges_demand table. An approximate CPU demand (CPU-seconds per second) for service s is then CPU demand s(t) ≈ Rin  
+
+> s
+
+(t) · W in  
+
+> s
+
+(t)1000 
+
+which directly benefits the decisions of resource provisioning for replicas of service s. Here we(t) and W in  
+
+> s
+
+(t) are measured in milliseconds, so Rin  
+
+> s
+
+(t) · W in  
+
+> s
+
+(t)/1000 has units of CPU-seconds per second, i.e., an effective fraction of one CPU core under the simplifying assumption that we(t) is dominated by CPU service time. 
+
+E. Networking state (latency-only) 
+
+For each node pair (i, j ) ∈ N × N , a set of distributed agents continuously measures inter-node latency Li,j (t) using ICMP probes at a configurable interval. An inter-node latency matrix maintains these cross-node delay measurements: 
+
+L(t) = {Li,j (t) | i, j ∈ N } .
+
+ADA SCALE intentionally does not construct or use an explicit bandwidth prior to the current stage for three reasons: (i) most latency-sensitive microservice applications in our target setting are bottlenecked by CPU and queueing rather than raw network bandwidth; (ii) considering varying bandwidth across cluster nodes would significantly complicate the scaling decision process; (iii) evolving cross-node latencies across the cluster nodes is enough to emulate a dynamic computing environment. Considering the stateful services existing in the deployed microservice application, byte counters are used through be(t) and Bin  
+
+> s
+
+(t) to weight the contributions of the cross-node latencies, while the control objective is driven entirely by latency and resource metrics. Given a placement matrix A(t), the expected network latency for a single invocation on edge e = ( u, v ) between service u and service v is approximated as 
+
+¯Le
+
+ A(t), L (t) ≈ X
+
+> i,j ∈N
+
+Au,i (t)
+
+xu(t) · Av,j (t)
+
+xv (t) · Li,j (t). (3) Intuitively, ¯Le(A, L ) is the expected network delay per invocation on edge e = ( u, v ) if caller and callee replicas are chosen uniformly at random among the replicas of u and 
+
+v under placement A.
+
+F. Latency composition 
+
+For a root request that traverses call graph Gk, its end-to-end latency can be estimated by aggregating contributions along invocation paths: 
+
+Yk(t) ≈ X
+
+> (u,v )∈P k
+
+h ¯L(u,v )
+
+ A(t), L (t)
+
++ ϕmode e
+
+ xu(t), x v (t), r e(t)i
+
+.
+
+(4) where Pk denotes the multiset of edges on the request’s execution path within Gk, ¯L(u,v ) is the expected replica-averaged inter-node delay in Equation (3), and ϕmode e (·) cap-tures callee-side queueing and protocol semantics for edge e
+
+(e.g., blocking RPC delay, MQ enqueue/dequeue delay, storage I/O) as a function of replica counts and call rate. Note that 
+
+ϕmode e (·) depends on the call rate re(t) (through utilization and queueing), whereas we(t) is used only in the demand estimates of Section III-D. In practice, A DA SCALE does not attempt to solve Equa-tion (4) exactly. Instead, it uses span-level decomposition ,which attributes per-request latency contributions to individual services using traces. The approximations, together with the demand matrices described above, are sufficient to drive the optimization in real time. 
+
+G. Correlations with runtime dynamics 
+
+The end-to-end latency distribution is shaped by several coupled factors:  
+
+> •
+
+Replica counts x(t) = {xs(t)} determine per-service queue-ing and contention, and thus affect the ϕmode e terms in Equation (4).  
+
+> •
+
+Placement A(t) fixes which inter-node latencies Li,j (t) each edge (dependent service pair) experiences in Equation (3).  
+
+> •
+
+Call-graph demand, as summarized by {re(t)} and {Rin  
+
+> s
+
+(t)},reshapes both CPU demand and the contribution of each edge (dependent service pair) to end-to-end latency. These couplings make purely placement-only or scaling-only strategies suboptimal: a bad placement magnifies network delay even with sufficient replicas, while poor replica pro-visioning creates compute bottlenecks even under favorable network conditions. Therefore, ADA SCALE treats placement 
+
+and replica provisioning as a joint optimization problem driven by call-graph statistics, demand matrices, latency measurements, and resource constraints. 
+
+IV. P ROBLEM FORMULATION 
+
+Let the measured and estimated system state at time t be 
+
+S(t) =  L(t), {re(t), w e(t), b e(t)}e∈E , {Rin  
+
+> s
+
+(t), W in  
+
+> s
+
+(t)}s∈S ,
+
+where L(t) = {Li,j (t)} is the inter-node latency matrix, 
+
+re(t), w e(t), b e(t) are edge-level demand statistics from Sec-tionIII-C, and Rin  
+
+> s
+
+(t), W in  
+
+> s
+
+(t) are service-level demands from SectionIII-D. 4A. Latency-weighted objective 
+
+Given state S(t), A DA SCALE jointly determines a replica allocation matrix A = [ As,n ] and the replica counts xs =P 
+
+> n
+
+As,n that minimize total system cost while meeting service-level objectives. We define a constant value for per-service resource cost with per-replica unit cost cs (e.g., normalized CPU cost) for running service s, and a network latency cost that weights edges by call rate: 
+
+min  
+
+> A
+
+Cost (A; S(t)) ≜ X
+
+> s∈S
+
+csxs
+
+| {z }
+
+> resource cost
+
++ λL
+
+X
+
+> e=( u,v )∈E
+
+re(t) ¯Le
+
+ A, L (t)| {z }
+
+> latency cost
+
+(5) s.t. 
+
+X
+
+> s∈S
+
+As,n Rs ≤ Cn, ∀ n ∈ N , (6) 
+
+Qq [Y (x(A), A ; S(t))] ≤ τe2e , (7) 
+
+Qq [Ys(x(A), A ; S(t))] ≤ τs, ∀ s ∈ S SLO , (8) 
+
+As,n ∈ N, As,n ≥ 0. (9) Here:  
+
+> •
+
+λL > 0 balances resource usage against network latency.  
+
+> •
+
+¯Le(A, L (t)) is the replica-averaged edge latency defined in Equation (3).  
+
+> •
+
+Qq [Y (·)] denotes the q-quantile (e.g.,p50, p90, and p95) of the end-to-end latency distribution; τe2e is the configured end-to-end SLO for each types of root request.  
+
+> •
+
+Ys(·) denotes the per-service latency (from raw collected metrics spans), and τs are per-service p95 SLOs (from the SLO configuration file). In practice, Y (x(A), A ; S(t)) and 
+
+Ys(x(A), A ; S(t)) are not evaluated via the analytic model in Equation (4), but via recent latency samples collected from the tracing and metrics stack.  
+
+> •
+
+SSLO ⊆ S is the subset of services with explicit local SLOs. Constraint Equation (6) enforces per-node CPU and memory capacities. Constraint Equation (7) requires the q-quantile of end-to-end latency to stay below the global SLO, while Equation (8) enforces per-service SLOs where configured. 
+
+B. Demand-driven capacity estimation 
+
+Directly solving Equation (5)–(8) in terms of As,n is combinatorial and NP–hard. Instead, A DA SCALE separates the calculation of Scaling (i.e., how many replicas ) from 
+
+Placement (i.e., where to place them ). Given service-level demand CPU demand s(t) from Section III-D and ρmax  
+
+> s
+
+∈ (0 , 1) is the target max utilization per replica (e.g., 0.7 for CPU), we first estimate the required replica count for service s as 
+
+xdem  
+
+> s
+
+(t) = 
+
+ CPU demand s(t)
+
+μs ρmax 
+
+> s
+
+
+
+, (10) 
+
+Fig. 3: A DA SCALE framework architecture and components. where μs is the estimated processing capacity (CPU-seconds per second) of a single replica of s at the full utilization, 1
+
+and per-replica safe capacity will be estimated by μs ρmax  
+
+> s
+
+.This yields a demand-driven replica vector xdem (t) =
+
+{xdem  
+
+> s
+
+(t)}, which is then rounded up to the closest integer and adjusted by the autoscaler to satisfy the SLO constraints. Conditional on xdem (t), the placement subproblem chooses a feasible A with P 
+
+> n
+
+As,n = xdem  
+
+> s
+
+that approximately mini-mizes the network latency term in Equation (5). This two-stage decomposition is realized by the two-timescale adaptation mechanism via: (i) a slower demand-driven autoscaling loop that updates xdem (t); Compared with the current replica count 
+
+xcurrent (t) the xdem (t), the scaling actions of service s at time 
+
+t will accordingly be chose from 
+
+ScaleActions (s, t ) =  U p (s, t ), Down (s, t ), Hold (s, t )}
+
+; and (ii) while keeping the replica count xs of service s
+
+fixed, a faster reactive placement loop that updates the replica placement matrix A. In practice, the Analyzer enforces SLO constraints when determining replica targets, and the Planner assumes replica counts satisfy SLO feasibility and focuses on minimizing latency under placement constraints. 
+
+C. Dynamic cross-node delays 
+
+The latency matrix L(t) is inherently time-varying due to congestion, background traffic, and externally injected dynam-ics (e.g., emulated delays for experiments). A DA SCALE treats 
+
+L(t) as part of the observed state and reoptimizes placement whenever: (i) the change in average or high-percentile latency exceeds a threshold; or (ii) the end-to-end SLO Equation (7) is violated persistently. Concretely, the reactive placement loop reduces an approx-imate objective 
+
+min 
+
+> A′
+
+X
+
+> e=( u,v )
+
+re(t) ¯Le
+
+ A′, L (t)
+
+By weighting links by re(t), the controller focuses migra-tion budget on edges that both (i) are heavily exercised by   
+
+> 1In practice, μsis calculated by recent Prometheus CPU usage and per-replica throughput metrics.
+
+5the current workload and (ii) suffer from increased cross-node delays. V. P ROPOSED ADA SCALE FRAMEWORK 
+
+ADA SCALE is a demand- and latency-aware microser-vice resource manager that implements a Monitor–Analyzer– Planner–Executor (MAPE) control loop. At a high level, ADA SCALE repeatedly (i) monitors application and cluster state, (ii) analyzes SLO risk and demand under the current workload mix, (iii) plans a joint scaling and placement update, and (iv) executes the update safely using native cluster mecha-nisms. A key design principle is a separation of concerns : the analysis logic determines how many replicas are required per service to satisfy SLOs, while the placement logic determines 
+
+where to place those replicas to minimize latency under time-varying inter-node delays. At each control epoch t, A DA SCALE produces a placement plan consisting of: (i) desired replica totals {ˆxs(t)}s∈S and (ii) a replica–node assignment matrix A⋆(t) = A⋆s,n (t)
+
+(Section III), where A⋆s,n (t) is the number of replicas of service s planned to run on node n. The plan is computed from the measured state S(t) (Section IV), including demand estimates and the inter-node latency matrix L(t).The control loop mainly comprises five stages:  
+
+> •
+
+Step 1 (Monitor: cluster exporters). ADA SCALE collects cluster state including node capacities, the current replica assignment matrix A(t), and the inter-node latency matrix 
+
+L(t). 
+
+> •
+
+Step 2 (Monitor/Analyze: application telemetry and demand tables). ADA SCALE collects application teleme-try (distributed traces and service metrics) and con-structs demand summaries: per-edge demand statistics (call rates/work/bytes) and per-service demand statistics (aggre-gate call rates and CPU-demand proxies).  
+
+> •
+
+Step 3 (Analyzer: SLO- and demand-aware scaling de-cisions). ADA SCALE evaluates end-to-end and per-service SLO status, identifies the most critical root operations under a mixed workload, and derives per-service scaling actions (replica targets ˆxs(t)) using a combination of trace-based criticality and demand estimates.  
+
+> •
+
+Step 4 (Planner: latency-aware placement). Given replica targets and the current cluster network state L(t), A DA S- 
+
+> CALE
+
+computes a new assignment matrix A⋆(t) that reduces the demand-weighted latency objective while respecting node capacities.  
+
+> •
+
+Step 5 (Executor: actuation). ADA SCALE enforces 
+
+{ˆxs(t)} and A⋆(t) through safe rollouts and scheduling constraints, optionally with bounded parallelism κ ∈ N to reduce actuation time. This pipeline aligns with the state definition S(t) and the optimization goal in Section IV. We next detail each component. 
+
+A. Monitor 
+
+The Monitor produces a time-indexed snapshot of the sys-tem state used by subsequent stages. Conceptually, it maintains 
+
+Algorithm 1: Service Scaler with multi-root criticality and SLO-/demand-aware scaling 
+
+Input: Root request operations O with (τ e2e  
+
+> o
+
+, π o, So);service SLOs {τs}; observed per-root p95 
+
+{ bY 95  
+
+> o
+
+} from traces; observed per-service p95 
+
+{ bY 95  
+
+> s
+
+} and utilization us from metrics; demand tables providing CPU demand s and edge rates 
+
+r(u,v )
+
+Output: Replica targets {ˆxs} and weighted edges E(t)
+
+// Root operation priority 
+
+foreach o ∈ O do 
+
+vo ← max { bY 95  
+
+> o
+
+/ max( τ e2e  
+
+> o
+
+, 1) − 1, 0}
+
+κo ← πo · vo
+
+Select target root op o⋆ (e.g., max criticality) 
+
+// Service priorities 
+
+S⋆ ← S So⋆ // Services triggered by o⋆.
+
+foreach s ∈ S ⋆ do 
+
+ρs ← bY 95  
+
+> s
+
+/ max( τs, 1) // pressure ratio 
+
+Compute trace-based criticality crit s over Wt
+
+Compute demand share dem share s if demand tables exist (else set dem share s ← 0)
+
+ηs ← α · crit s + (1 − α) · dem share s
+
+score s ← ρs · ηs
+
+Initialize ˆxs ← xcur 
+
+> s
+
+// Propose actions with hysteresis 
+
+foreach s ∈ S ⋆ do 
+
+ˆxs ← xcur  
+
+> s
+
+; // hold by default 
+
+if ρs > θ ↑ or xdem  
+
+> s
+
+> x cur  
+
+> s
+
+then 
+
+action s ← scale up 
+
+ˆxs ← xcur  
+
+> s
+
++ 1 
+
+if ρs < θ ↓ and us < u ↓ then 
+
+action s ← scale down 
+
+ˆxs ← max  xmin  
+
+> s
+
+, x cur  
+
+> s
+
+− 1
+
+else 
+
+action s ← hold 
+
+// Scale-up budget 
+
+Let U ← { s ∈ S ⋆ : ˆ xs > x cur  
+
+> s
+
+}
+
+Keep only the top-K services in U by score s as scale-up; set others to hold (ˆxs ← xcur  
+
+> s
+
+)
+
+// Export edge weights for placement 
+
+Construct E(t) = {(u, v, ω u,v )} from demand/trace edges relevant to O⋆
+
+Set ωu,v ∝ r(u,v )
+
+return {ˆxs}, E(t)
+
+a cache D(t), which includes current replica placement matrix 
+
+A(t), current inter-node latency matrix L(t), node capacities, service metrics, and demand tables. 
+
+1) Workload and performance telemetry: ADA SCALE col-lects (i) distributed traces to recover call-graph structure and end-to-end latency samples, (ii) per-service performance met-rics such as p50/p90/p95 latencies and error rates, and (iii) 6Algorithm 2: Service Placer with greedy latency- and capacity-aware replica placement 
+
+Input: Current placement A; target replicas {ˆxs};latency matrix L(t); weighted edges E(t); node capacities and per-replica requests {Rs}
+
+Output: Planned placement A⋆
+
+A⋆ ← A
+
+Function Cost( A⋆)
+
+LatCost ← P 
+
+> (u,v,ω )∈E (t)
+
+ω · ¯L(u,v )(A⋆, L (t)) CapPenalty ← large penalty for exceeds capacity 
+
+return LatCost + CapPenalty 
+
+foreach service s do while P 
+
+> n
+
+A⋆s,n < ˆxs do 
+
+Find node n⋆ ∈ N minimizing COST (A⋆ + 1(s,n ))
+
+A⋆s,n ⋆ ← A⋆s,n ⋆ + 1 
+
+while P 
+
+> n
+
+A⋆s,n > ˆxs do 
+
+Let Ns = {n : A⋆s,n > 0}
+
+Find node n⋆ ∈ N s minimizing COST (A⋆ − 1(s,n ))
+
+A⋆s,n ⋆ ← A⋆s,n ⋆ − 1
+
+return A⋆
+
+resource telemetry such as CPU and memory usage. These measurements are aggregated over a short window Wt to provide a stable estimate of the current operating regime. 
+
+2) Demand tables (call-graph demand estimator): To make scaling and placement explicitly demand-aware , A DA SCALE 
+
+computes two demand summaries from the same telemetry window:  
+
+> •
+
+an edge-demand table that estimates, for each directed service dependency e = ( u, v ), its call rate re(t) (calls/s), expected work we(t) (ms, derived from span durations), and (when available) byte rate be(t) (bytes/s);  
+
+> •
+
+a service-demand table that aggregates incoming/outgoing rates and work, yielding Rin  
+
+> s
+
+(t), Rout  
+
+> s
+
+(t), W in  
+
+> s
+
+(t), and a CPU-demand proxy CPU demand s(t) ≈ Rin  
+
+> s
+
+(t) · W in  
+
+> s
+
+(t)/1000 
+
+(Section III-D). These demand tables instantiate the quantities in our system model and are reused by both the scaling logic (Analyzer) and the placement logic (Planner). 
+
+3) Cluster resource and placement telemetry: ADA SCALE 
+
+snapshots node capacities (CPU and memory) and the current replica assignment matrix A(t). For each service s, As,n (t)
+
+records how many replicas are currently placed on node n,and xs(t) = P 
+
+> n
+
+As,n (t) is the service replica count. The snapshot also records per-replica resource requests Rs needed for capacity checks in the planner. 
+
+4) Networking state (inter-node latency): ADA SCALE con-tinuously measures or infers a matrix of inter-node latencies 
+
+L(t) = {Li,j (t)}. We treat L(t) as a first-class runtime signal: changes in L(t) can trigger placement updates even if the workload mix is unchanged. This design captures dynamic environments (e.g., congestion, background interference, or in-jected delays) without requiring explicit bandwidth modeling. 
+
+B. Analyzer 
+
+The Analyzer transforms D(t) into per-service scaling ac-tions and a compact, demand-weighted call-graph represen-tation for placement. The Analyzer implements two coupled tasks: (i) SLO risk assessment under mixed root operations 
+
+and (ii) demand-aware scaling decisions .
+
+1) Root-operation criticality under mixed workloads: 
+
+Microservice applications often serve multiple root request classes O = {o1, . . . , o K }, each with its own end-to-end SLO target τ e2e  
+
+> o
+
+and workload proportion πo (from configuration or telemetry, with P 
+
+> o
+
+πo = 1 ). The Analyzer computes an observed end-to-end p95 latency bY (95)  
+
+> o
+
+(t) per root operation and defines a workload-weighted SLO risk score: 
+
+vo(t) ≜ max 
+
+( bY (95)  
+
+> o
+
+(t)max {τ e2e  
+
+> o
+
+, 1} − 1, 0
+
+)
+
+, κo(t) ≜ πo·vo(t).
+
+The system prioritizes root operations with large κo(t), ensur-ing that optimization effort is focused on request classes that are both frequent and SLO-threatening. 
+
+2) Service criticality and scaling actions: To select which services to scale, A DA SCALE computes a trace-based ser-vice criticality score crit s(t), and combines it with de-mand signals such as CPU demand s(t) or its normalized share. Given per-service SLO thresholds τs and observed p95 latencies bY (95)  
+
+> s
+
+(t), the Analyzer derives a pressure ra-tio ρs(t) = bY (95)  
+
+> s
+
+(t)/ max {τs, 1} and proposes an action 
+
+as(t) ∈ { scale up , scale down , hold } together with a replica target ˆxs(t). To avoid oscillations and limit control-plane disruption, A DA SCALE enforces a budget: only the top-K
+
+services by a composite priority (pressure combined with criticality/demand) are allowed to scale up in each epoch, while remaining services are held. 
+
+3) Demand-weighted edge set for placement: For place-ment planning, the Analyzer exports a weighted edge set 
+
+E(t) = {(u, v, ω u,v (t)) }, where (u, v ) is a service dependency and ωu,v (t) is proportional to the edge demand (e.g., call rate). This edge set summarizes which dependencies dominate end-to-end performance under the current workload mix and provides the primary signal for latency-aware placement. 
+
+C. Planner 
+
+The Planner computes a replica assignment plan A⋆(t)
+
+given (i) replica targets {ˆxs(t)} from the Analyzer, (ii) current placement A(t), (iii) node capacities, and (iv) the measured inter-node latency matrix L(t).
+
+1) Latency- and capacity-aware objective: The Planner minimizes a demand-weighted latency objective subject to capacity constraints. Using the weighted edge set E(t) and the replica-averaged edge latency ¯L(u,v )(A, L (t)) (Equation (3)), it evaluates: 
+
+LatCost( A) = X
+
+> (u,v )∈E (t)
+
+ωu,v (t) · ¯L(u,v )(A, L (t)) .
+
+7To discourage capacity violations, it adds a large penalty when the implied CPU or memory requests exceed any node capac-ity, yielding Cost( A; S(t)) = LatCost( A) + CapPenalty( A)
+
+as described in Section V-C. 
+
+2) Greedy replica placement and removal: As the joint problem is combinatorial, the Planner uses a greedy local search guided by Cost( A; S(t)) . For each service s, it com-pares the current replica count xs(t) = P 
+
+> n
+
+As,n (t) with the target ˆxs(t): if ˆxs(t) > x s(t) it adds replicas one-by-one to the node that yields the lowest cost; if ˆxs(t) < x s(t) it removes replicas one-by-one from the node whose removal causes the smallest cost increase. This produces a new assignment 
+
+A⋆(t) that is simultaneously demand-aware (through ωu,v (t)), latency-aware (through L(t)), and capacity-aware (through resource penalties). 
+
+D. Executor 
+
+The Executor actuates the scaling and placement decisions produced by the Planner. Its input is the plan ({ˆxs(t)}, A ⋆(t)) 
+
+for the current epoch. For each service s, it (i) enforces the replica target ˆxs(t) and (ii) constrains scheduling to the allowed node set Ns = {n | A⋆s,n (t) > 0} so that replicas run on planner-chosen nodes. When feasible, it additionally applies spreading rules that bias replicas toward the intended distribution encoded by A⋆(t). The Executor monitors rollout progress and declares success once the cluster converges to a state consistent with the plan (subject to timeouts). To reduce actuation latency, it supports bounded parallelism with a configurable concurrency limit κ.When putting all stages together, each decision epoch: (i) refreshes D(t) from telemetry, (ii) computes scaling actions and edge weights in the Analyzer, (iii) computes A⋆(t) in the Planner under the current L(t), and (iv) enforces the resulting plan in the Executor. This completes one MAPE iteration and realizes the two-stage decomposition: how many replicas are needed is decided by SLO- and demand-driven analysis, while 
+
+where to place replicas is decided by latency-aware planning under dynamic cross-node delays. VI. P ERFORMANCE EVALUATION 
+
+A. Cluster Testbed 
+
+We prototype and evaluate A DA SCALE on a Kubernetes-based cloud–edge testbed [11]. The testbed comprises 16 virtual machines (VMs): one control-plane node and fifteen worker nodes. The control-plane VM is equipped with 32 CPU cores (AMD x86 64), 32 GiB RAM, and a 16 Gbps network interface. Each worker VM provides 8 CPU cores from the same EPYC processor family, 32 GiB RAM, and a 16 Gbps link. 
+
+Software stack. All nodes run Ubuntu 22.04.2 LTS with Linux kernel 5.15.0. We deploy Kubernetes v1.27.4 on ten nodes and Kubernetes v1.28.4 on the remaining five nodes. Calico v3.26.1 is used as the CNI, Istio v1.20.3 provides the service mesh, and CRI-O serves as the container runtime (v1.27.1 on ten nodes and v1.28.11 on five nodes). 
+
+Intra-cluster connectivity and network dynamics. The VMs are hosted in the university’s dedicated research cloud. As a result, the baseline inter-node round-trip latency is very small (typically 0.2–1 ms), which we confirmed using ICMP ping measurements. To emulate cloud–edge networking dynamics in a controlled and repeatable manner, A DA SCALE 
+
+programmatically applies cross-node delay constraints within the cluster, inspired by TraDE [12]. Unless stated otherwise, we refresh these injected conditions periodically during exper-iments so that we can assess how well the evaluated policies adapt to time-varying network environments. 
+
+Benchmark application and request generation. We use the Social Network application from DeathStarBench [7] as the representative microservice workload, and we generate client requests using wrk2 [13]. Social Network implements a simplified social-media service and consists of 27 microser-vices supporting operations such as composing posts as well as reading user and home timelines. Different request types exercise different call-graph structures and traffic patterns, enabling us to evaluate A DA SCALE under diverse end-to-end execution paths. 
+
+B. Root Requests Analysis 
+
+In the Social Network benchmark, there are three types of root request operations. To define the SLO targets for each root request, different QPS are used to measure end-to-end performance and identify the kneepoint at which it is significantly affected. When QPS (Queries Per Second) increases, the tail latency of the corresponding microservice first gradually increases, then suddenly increases sharply at a specific QPS and latency value. We refer to such a point as a kneepoint to represent the QoS-violation point for a specific root operation request. Thus, under our experiment environment, we define the SLO target of a specific root operation by kneepoint QPS , where max load QPS is reached. To find the kneepoint QPS of each root request operation of the deployed social network application, we conducted load tests for each root request operation by gradually increasing the corresponding QPS from lower values to higher values, which saturate the deployed microservice application under each root request operation. As shown in Figure 4, we demon-strated different percentile metrics including AVG (average), p50 (median), p90 (90th Percentile), p95 (95th Percentile), and p99 (99th Percentile) for the response time under each root request. For all the root request operations, i.e., λ1(t), λ2(t)
+
+and λ3(t) , each percentile metric shows similar increasing trends as the QPS increases. Specifically, the kneepoint QPS for each root operation is approximately 400, 1300, and 400. 
+
+C. Service and Edge Demands in Call Graphs 
+
+To get fine-grained statistics of the call graph at run time, we define the service demand and edge demand in Section III-D. In the evaluation, we present a snapshot of the runtime service and edge demand under a 5-minute sustained mix workload (root requests proportion 1:3:6). Table I shows per-edge demand statistics inferred from Jaeger traces and Prometheus 8(a) Kneepoint QPS exploration of root request λ1(t) (b) Kneepoint QPS exploration of root request λ2(t) (c) Kneepoint QPS exploration of root request λ3(t)
+
+Fig. 4: In the Social Network benchmark, there are three types of root requests. To define the SLO for each root request, different QPS are sent to explore the kneepoints, at which the end-to-end performance is significantly affected. TABLE I: Per-edge demand statistics.                                                                                                    
+
+> Src Dst perper-req
+> ewe[ms] re[calls/s] be[bytes/s] S0 S1 0.106 1.063 275.376 10.63 –S0 S2 0.311 3.110 3.884 31.102 –S0 S3 0.567 5.669 2.618 56.693 –S1 S2 0.106 1.063 2.401 10.63 8913 S1 S3 0.106 1.063 40.996 10.63 9281 S1 S4 0.106 1.063 87.745 10.63 73395 S1 S5 0.106 1.063 0.023 10.63 8237 S1 S6 0.106 1.063 0.012 10.63 10886 S1 S7 0.106 1.063 0.014 10.63 13201 S1 S8 0.106 1.063 10.161 10.63 52095 S2 S8 0.311 3.110 0.011 31.102 21564 S3 S8 0.559 5.591 0.011 55.906 43380 S3 S9 0.106 1.063 38.724 10.63 7808 S4 S10 0.106 1.063 24.360 10.63 10915 S4 S11 0.106 1.063 1.497 10.63 39275
+
+traffic for a single time window Wt. For each edge e = ( u → v)
+
+we list the empirical probability pe, the expected number of traversals per root request rper-req  
+
+> e
+
+, the mean edge-local service time we in milliseconds, the estimated call rate re (calls/s), and the byte rate be (bytes/s). Under 5 minutes sustained mix workload (root requests proportion λ1 : λ2 : λ3 = 1 : 3 : 6) to the deployed microservice application, per-service demand statistics aggre-gated from edge-level demand in Table I for the same time window Wt. For each service s, we list Rin  
+
+> s
+
+, Rout  
+
+> s
+
+, W in  
+
+> s
+
+, and 
+
+Bin  
+
+> s
+
+as defined in Section III-D. Besides, Table II demonstrates the per-service demand statistics aggregated from edge-level demand in Table I for the same time window Wt. For each service s, we list Rin  
+
+> s
+
+, Rout  
+
+> s
+
+, W in  
+
+> s
+
+, and Bin  
+
+> s
+
+as defined in Section III-D. In Table I, S0 is the entry service which receives root requests and triggers the downstream services S1, S2 and S3.It can be observed that the probability pe of the root requests exercising the edges ( S0 → S1, S0 → S2, S0 → S3) are 0.106, 0.311, and 0.567, which are almost the same as the proportions of each request ( λ1 : λ2 : λ3 = 1 : 3 : 6 ). For Table II, the in-degree and out-degree counts of each service exactly match the actual service call graph structure in Social Network [7]. For instance, considering the entry service S0,the in-degree count is 0 because S0 is the entry service of the call graph, thus there is no upstream service for S0, and the out-degree count is 3 because the downstream services of S0
+
+TABLE II: Per-service demand statistics.                                                                                   
+
+> Service in deg out deg Rin
+> sRout
+> sWin
+> sBin
+> s
+> [calls/s] [calls/s] [ms] [bytes/s] S0 03098.425 00S1 1710.63 74.409 275.376 0S2 2141.732 31.102 3.506 8913 S3 2267.323 66.535 8.678 9281 S4 1210.63 21.26 87.745 73395 S5 1010.63 00.023 8237 S6 1010.63 00.012 10886 S7 1010.63 00.014 13201 S8 3097.638 01.116 117039 S9 1010.63 038.724 7808 S10 1010.63 024.360 10915 S11 1010.63 01.497 39275
+
+consist of S1, S2, and S3. Therefore, both tables accurately approximate the fine-grained statistics of the call graph .
+
+D. Performance Comparison 1) Compared Methods: To evaluate our proposed A DA S- 
+
+> CALE
+
+framework, we compared it with the Kubernetes Hor-izontal Pod Autoscaler (HPA) policy and the traffic-aware NetMARKS Scale, which was adapted from [3], targeting network-aware management for microservice applications. For K8s HPA, this is mainly achieved control loop that auto-matically adjusts the number of pod replicas in a workload (such as a Deployment or StatefulSet) to match observed demand. This is done to maintain performance and optimize resource usage without manual intervention. For the method of NetMARKS Scale, it adopts a similar service mesh with AdaScale, but focuses on optimizing the most communicated microservice pairs. 
+
+2) End-to-end Performance: The experiment results showed improved throughput and decreased average response time for different root operations (requests). 
+
+Response Time. For the social network benchmark ap-plication, we used the wrk2 tool to generate three re-quest types: compose-post , read-user-timeline ,and read-home-timeline . Each type shows distinct call graphs and traffic patterns across the application’s dependency graph. Figure 5 compares the normalized average response time under various workloads, including changes in QPS and root request operations. For these request types, A DA SCALE 
+
+9(a) root operation 1 Compose Post (b) root operation 2 Read User Timline (c) root operation 3 Read Home timeline 
+
+Fig. 5: Under each root requests and varying QPS, A DA SCALE outperformed existing methods in terms of response time. consistently outperforms existing methods, meeting SLO tar-gets across scenarios. Compared to NetMARKS Scale [3], ADA SCALE achieves up to 1.56 x lower response times for 
+
+compose-post , 1.93 x for read-home-timeline , and 1.34 x for read-user-timeline requests. Thus, A DA S- 
+
+> CALE
+
+outperforms existing methods in terms of response time. 
+
+Throughput. Throughput critical metrics for evaluating the deployed applications’ end-to-end performance in dy-namic computing environments. Throughput refers to the total quantity of transmitted data, including protocol overhead and retransmissions. In terms of throughput , we conducted exper-iments to measure the average throughput (requests/second) with different QPS of workloads and mixed root request operations. As shown in the three subplots of Figure 6, the proposed A DA SCALE achieves higher throughput across vari-ous scenarios. Specifically, compared with NetMARKS Scale [3], our method shows an overall higher throughput and outperforms it by up to 2.16x for compose-post re-quests, 1.32x for read-home-timeline requests, 1.36x for read-user-timeline requests. Thus, compared with the existing methods, our proposed method ADA SCALE 
+
+achieves higher overall throughput across various scenarios. 
+
+E. Limitations 
+
+We have limitations in the diversity of multiple deployed microservice applications and in dynamic bandwidth condi-tions. We plan to extend the proposed A DA SCALE in future work regarding the limitations. VII. R ELATED WORK 
+
+A. Microservice Management 
+
+FIRM [14], Erms [15], GrandSLAm [16], and Sage [17] leverage online telemetry and modeling to localize SLO violations, assign latency budgets to services, and trigger fine-grained reprovisioning or request reordering in shared microservice environments. TraDE [12] is proposed to rede-ploy microservice instances to maintain QoS under changing workloads and network conditions. CoScal [18] is presented as a multi-faceted scaling method integrating workload prediction methods and reinforcement learning. Yi Hu et al. investigate the dynamic service mesh orchestration by using probabilistic routing for microservice call graphs. Kai Peng et al. study large-scale service-mesh orchestration using Jackson queuing network theory and a three-stage heuristic [19]. However, these methods tend to ignore the influences of different types of root requests. 
+
+B. Call-Graph Dynamics Analysis 
+
+Several works analyze microservice dependencies and their impact on performance. Tian et al. [20] synthesize task-dependency graphs for data-parallel jobs from large-scale clus-ter traces. Yi Hu et al. introduce a joint optimization method for service deployment and request routing via fine-grained queuing network analysis [21]. Luo et al. [2] characterize microservice call graphs from Alibaba traces, categorizing microservice dependencies into three distinct types. Parslo [1] decomposes end-to-end SLO budgets into node-specific la-tency targets using gradient descent. Sage [17] also models dependencies when diagnosing QoS violations. However, these methods are generally time-consuming with high overheads to build the graph and are not suitable for dynamic incoming user requests. 
+
+C. Network-aware Microservice Scheduling 
+
+Network-aware microservice management methods exploit infrastructure-level metrics when placing microservice in-stances. Fangyu Zhang et al introduce a network-aware re-liability model and optimized microservice placement algo-rithms to enhance service reliability and reduce bandwidth consumption in mobile and IoT networks [4]. NetMARKS [3] is proposed as a dynamic Kubernetes scheduling approach leveraging Istio [22] network metrics to optimize containerized workflows for 5G edge applications. Marchese et al. extend the default Kubernetes scheduler with network-aware place-ment policies [23], [24]. OptTraffic [25] is a network-aware scheduling system that minimizes cross-machine traffic in containerized microservices under multi-replica deployment. However, these research works have limitations in considering the dynamic networking states across the cluster nodes. VIII. C ONCLUSIONS AND FUTURE WORK 
+
+We proposed, designed and implemented A DA SCALE , an adaptive scaling and placement framework for microservices under dynamics. Our framework mainly considers the dynam-ics, including cross-node delays, dynamic call graphs, and the root request operations. We designed A DA SCALE as an MAPE (Monitor–Analyzer–Planner–Executor) control loop with dif-ferent functionalities for each process. Besides, we proposed two algorithms for the service scaling and placement process 10 (a) root operation 1 Compose Post (b) root operation 2 Read User Timeline (c) root operation 3 Read Home timeline 
+
+Fig. 6: Under three types of root request operations and varying QPS, A DA SCALE outperformed existing methods in throughput. with the metrics and defined statistics from the service call graph. Experiments on a social network benchmark demon-strated the accuracy of root request operation modeling and showed that A DA SCALE could outperform existing methods in response time and throughput under dynamic conditions. REFERENCES [1] A. Mirhosseini, S. Elnikety, and T. F. Wenisch, “Parslo: A gradient descent-based approach for near-optimal partial slo allotment in microservices,” in Proceedings of the ACM Symposium on Cloud Computing , ser. SoCC ’21. New York, NY, USA: ACM, 2021, p. 442–457. [Online]. Available: https://doi.org/10.1145/3472883.3486985 [2] S. Luo, H. Xu, C. Lu, K. Ye, G. Xu, L. Zhang, Y. Ding, J. He, and C. Xu, “Characterizing microservice dependency and performance: Alibaba trace analysis,” in Proceedings of the ACM Symposium on Cloud Computing , ser. SoCC ’21. New York, NY, USA: ACM, 2021, p. 412–426. [Online]. Available: https://doi.org/10.1145/3472883.3487003 [3] L. Wojciechowski, K. Opasiak, J. Latusek, M. Wereski, V. Morales, T. Kim, and M. Hong, “Netmarks: Network metrics-aware kubernetes scheduler powered by service mesh,” in Proceedings of the IEEE INFOCOM 2021 - IEEE Conference on Computer Communications .IEEE Press, 2021, p. 1–9. [Online]. Available: https://doi.org/10.1109/ INFOCOM42981.2021.9488670 [4] F. Zhang, Y. Chen, H. Lu, and Y. Huang, “Network-aware reliability modeling and optimization for microservice placement,” IEEE Transac-tions on Network and Service Management , 2025. [5] M. Chen, M. T. Islam, M. R. Read, and R. Buyya, “ TraDE: Network and Traffic-aware Adaptive Scheduling for Microservices Under Dynamics ,” IEEE Transactions on Parallel & Distributed Systems , no. 01, pp. 1–14, Oct. 2025. [Online]. Available: https: //doi.ieeecomputersociety.org/10.1109/TPDS.2025.3626424 [6] “Kubernetes horizontal pod autoscaling.” https://kubernetes.io/docs/ tasks/run-application/horizontal-pod-autoscale/, 2025, accessed: 2025-11-06. [7] Y. Gan, C. Delimitrou, and et al, “An open-source benchmark suite for microservices and their hardware-software implications for cloud & edge systems,” in Proceedings of the 24th International Conference on Architectural Support for Programming Languages and Operating Systems , ser. ASPLOS ’19. New York, NY, USA: ACM, 2019, p. 3–18. [Online]. Available: https://doi.org/10.1145/3297858.3304013 [8] Meta, “Facebook distributed traces,” https://github.com/ facebookresearch/distributed traces, 2025, accessed: 2025-11-02. [9] Alibaba, “Alibaba microservice distributed traces,” https://github.com/ alibaba/clusterdata/tree/master/cluster-trace-microservices-v2022, 2025, accessed: 2025-11-02. [10] D. Huye, Y. Shkuro, and R. R. Sambasivan, “Lifting the veil on Meta’s microservice architecture: Analyses of topology and request workflows,” in 2023 USENIX Annual Technical Conference (USENIX ATC 23) .Boston, MA: USENIX Association, Jul. 2023, pp. 419–432. [Online]. Available: https://www.usenix.org/conference/atc23/presentation/huye [11] K. A. open-source container orchestration system, https://kubernetes.io/, 2025, accessed: 2025-11-02. [12] M. Chen, M. T. Islam, M. R. Read, and R. Buyya, “ TraDE: Network and Traffic-Aware Adaptive Scheduling for Microservices Under Dynamics ,” IEEE Transactions on Parallel & Distributed Systems , vol. 37, no. 01, pp. 76–89, Jan. 2026. [13] wrk2: An HTTP benchmarking tool based on wrk, https://github.com/ giltene/wrk2, 2025, accessed: 2025-11-02. [14] H. Qiu, S. S. Banerjee, S. Jha, Z. T. Kalbarczyk, and R. K. Iyer, “FIRM: An intelligent fine-grained resource management framework for SLO-Oriented microservices,” in Proceedings of the 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI 20) . USENIX Association, Nov. 2020, pp. 805–825. [Online]. Available: https://www.usenix.org/conference/osdi20/presentation/qiu [15] S. Luo, C. Xu, and et al, “Erms: Efficient resource management for shared microservices with sla guarantees,” in Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 , ser. ASPLOS 2023. New York, NY, USA: ACM, 2022, p. 62–77. [Online]. Available: https://doi.org/10.1145/3567955.3567964 [16] R. S. Kannan, L. Subramanian, A. Raju, J. Ahn, J. Mars, and L. Tang, “Grandslam: Guaranteeing slas for jobs in microservices execution frameworks,” in Proceedings of the Fourteenth EuroSys Conference 2019 , ser. EuroSys ’19. New York, NY, USA: ACM, 2019. [Online]. Available: https://doi.org/10.1145/3302424.3303958 [17] Y. Gan, M. Liang, S. Dev, D. Lo, and C. Delimitrou, “Sage: practical and scalable ml-driven performance debugging in microservices,” in Proceedings of the 26th ACM International Conference on Architectural Support for Programming Languages and Operating Systems , ser. ASPLOS ’21. New York, NY, USA: ACM, 2021, p. 135–151. [Online]. Available: https://doi.org/10.1145/3445814.3446700 [18] M. Xu, C. Song, S. Ilager, S. S. Gill, J. Zhao, K. Ye, and C. Xu, “Coscal: Multifaceted scaling of microservices with reinforcement learning,” 
+
+IEEE Transactions on Network and Service Management , vol. 19, no. 4, pp. 3995–4009, 2022. [19] Y. Hu, H. Ding, H. Chen, J. He, M. Hu, C. Cai, and K. Peng, “Collabo-rative orchestration with probabilistic routing for dynamic service mesh in clouds,” in IEEE INFOCOM 2025-IEEE Conference on Computer Communications . IEEE, 2025, pp. 1–10. [20] H. Tian, Y. Zheng, and W. Wang, “Characterizing and synthesizing task dependencies of data-parallel jobs in alibaba cloud,” in Proceedings of the ACM Symposium on Cloud Computing , ser. SoCC ’19. New York, NY, USA: ACM, 2019, p. 139–151. [Online]. Available: https://doi.org/10.1145/3357223.3362710 [21] Y. Hu, H. Wang, L. Wang, M. Hu, K. Peng, and B. Veeravalli, “Joint deployment and request routing for microservice call graphs in data centers,” IEEE Transactions on Parallel and Distributed Systems ,vol. 34, no. 11, pp. 2994–3011, 2023. [22] Istio: An open source service mesh, https://istio.io/, 2025, accessed: 2025-07-02. [23] A. Marchese and O. Tomarchio, “Network-aware container placement in cloud-edge kubernetes clusters,” in Proceedings of the 22nd IEEE International Symposium on Cluster, Cloud and Internet Computing (CCGrid) , 2022, pp. 859–865. [24] Marchese, Angelo and Tomarchio, Orazio, “Extending the kubernetes platform with network-aware scheduling capabilities,” in Proceedings of the 20th International Conference on Service-Oriented Computing (ICSOC 2022) . Berlin, Heidelberg: Springer-Verlag, 2022, p. 465–480. [Online]. Available: https://doi.org/10.1007/978-3-031-20984-0 33 [25] X. Zhu, X. Zhu, and et al, “On optimizing traffic scheduling for multi-replica containerized microservices,” in Proceedings of the 52nd International Conference on Parallel Processing , ser. ICPP ’23. New York, NY, USA: ACM, 2023, p. 358–368. [Online]. Available: https://doi.org/10.1145/3605573.3605646 
+
+11
