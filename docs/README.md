@@ -6,70 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-20
-- 运行时间：2026-07-21 04:48:48 UTC+8
+- 最新运行日期：2026-07-21
+- 运行时间：2026-07-22 05:01:51 UTC+8
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：5
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
-- 精读：《Classes of phylogenetic networks that are robust to root placement》（8.6/10）, 《Ehrhart $h^*$-distributions》（8.5/10）
-- 速读：《E3DGS: Unified Geometric-Photometric Equivariance for 3D Gaussian Splatting via Color-as-Geometry Embedding》（7.8/10）, 《Classical codes violate the conjectured square-root bound for quantum random access codes》（7.8/10）, 《Complex generalised weighing matrices in centraliser algebras of monomial representations》（7.7/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《Repeated differentiation of deterministic polynomials with asymptotically radial root distributions》（8.5/10）, 《KernelDiag: Agent-Based Root Cause Diagnosis for Kernel Crashes》（8.5/10）
+- 速读：《Computing Bunches of Semi-Periodic Solutions of Bivariate Exponential-Trigonometric Polynomial Equations with Separated Variables》（8.0/10）, 《PEARL: Auditable Repair for Scientific Reasoning Graph Extraction》（8.0/10）, 《Finding Adam in noisy trees》（7.9/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/20/README](/202607/20/README)
+- 详情：[/202607/21/README](/202607/21/README)
 
 ### 精读区论文标签
-1. [Classes of phylogenetic networks that are robust to root placement](/202607/20/2607.15625v1-classes-of-phylogenetic-networks-that-are-robust-to-root-placement)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [Ehrhart $h^*$-distributions](/202607/20/2607.15886v1-ehrhart-h-distributions)  
+1. [Repeated differentiation of deterministic polynomials with asymptotically radial root distributions](/202607/21/2607.16954v1-repeated-differentiation-of-deterministic-polynomials-with-asymptotically-radial-root-distributions)  
    标签：评分：8.5/10
    evidence：检索回退候选
-3. [ADASCALE: An Adaptive Scaling and Placement Framework for Microservices Under Dynamics](/202607/20/2607.15681v1-adascale-an-adaptive-scaling-and-placement-framework-for-microservices-under-dynamics)  
+2. [KernelDiag: Agent-Based Root Cause Diagnosis for Kernel Crashes](/202607/21/2607.17722v1-kerneldiag-agent-based-root-cause-diagnosis-for-kernel-crashes)  
    标签：评分：8.5/10
    evidence：检索回退候选
-4. [On the existence of Newman and Littlewood multiples for certain integer polynomials](/202607/20/2607.15520v1-on-the-existence-of-newman-and-littlewood-multiples-for-certain-integer-polynomials)  
+3. [Phasor Attention: Mean Root Square Normalization for Phase Manifold Preservation](/202607/21/2607.17822v1-phasor-attention-mean-root-square-normalization-for-phase-manifold-preservation)  
    标签：评分：8.4/10
    evidence：检索回退候选
-5. [Arithmetic circuit lower bounds from sumset expansion](/202607/20/2607.15848v1-arithmetic-circuit-lower-bounds-from-sumset-expansion)  
-   标签：评分：8.3/10
+4. [One-step lowest-variance selection in a Gaussian random-field model motivated by masked diffusion: Total correlation and a square root collision threshold](/202607/21/2607.17522v1-one-step-lowest-variance-selection-in-a-gaussian-random-field-model-motivated-by-masked-diffusion-total-correlation-and-a-square-root-collision-threshold)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+5. [Amortized Inference for Sampling Distributions Where the Bootstrap Fails](/202607/21/2607.16666v1-amortized-inference-for-sampling-distributions-where-the-bootstrap-fails)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+6. [Benjamini-Schramm limit of the heat semigroup on quantum graphs](/202607/21/2607.16489v1-benjamini-schramm-limit-of-the-heat-semigroup-on-quantum-graphs)  
+   标签：评分：8.1/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [E3DGS: Unified Geometric-Photometric Equivariance for 3D Gaussian Splatting via Color-as-Geometry Embedding](/202607/20/2607.15536v1-e3dgs-unified-geometric-photometric-equivariance-for-3d-gaussian-splatting-via-color-as-geometry-embedding)  
-   标签：评分：7.8/10
+1. [Computing Bunches of Semi-Periodic Solutions of Bivariate Exponential-Trigonometric Polynomial Equations with Separated Variables](/202607/21/2607.17349v1-computing-bunches-of-semi-periodic-solutions-of-bivariate-exponential-trigonometric-polynomial-equations-with-separated-variables)  
+   标签：评分：8.0/10
    evidence：检索回退候选
-2. [Classical codes violate the conjectured square-root bound for quantum random access codes](/202607/20/2607.15617v1-classical-codes-violate-the-conjectured-square-root-bound-for-quantum-random-access-codes)  
-   标签：评分：7.8/10
+2. [PEARL: Auditable Repair for Scientific Reasoning Graph Extraction](/202607/21/2607.17917v1-pearl-auditable-repair-for-scientific-reasoning-graph-extraction)  
+   标签：评分：8.0/10
    evidence：检索回退候选
-3. [Complex generalised weighing matrices in centraliser algebras of monomial representations](/202607/20/2607.16069v1-complex-generalised-weighing-matrices-in-centraliser-algebras-of-monomial-representations)  
-   标签：评分：7.7/10
+3. [Finding Adam in noisy trees](/202607/21/2607.18201v1-finding-adam-in-noisy-trees)  
+   标签：评分：7.9/10
    evidence：检索回退候选
-4. [Edge complexity of graphs](/202607/20/2607.15598v1-edge-complexity-of-graphs)  
+4. [Spinal Hanoi Towers Groups](/202607/21/2607.17739v1-spinal-hanoi-towers-groups)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+5. [TaintRadar: Semantic-Aware Taint-Style Vulnerability Detection via Augmented Code Property Graphs](/202607/21/2607.16456v1-taintradar-semantic-aware-taint-style-vulnerability-detection-via-augmented-code-property-graphs)  
    标签：评分：7.6/10
    evidence：检索回退候选
-5. [Atomic Design Transformer: Scaffold-Conditioned 3D Molecule Generation via xTB-Reward Reinforcement Learning](/202607/20/2607.15918v1-atomic-design-transformer-scaffold-conditioned-3d-molecule-generation-via-xtb-reward-reinforcement-learning)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-6. [Joint-decoupled iterative CBCT reconstruction with hybrid scatter estimation and voxel-adaptive beam hardening correction](/202607/20/2607.15812v1-joint-decoupled-iterative-cbct-reconstruction-with-hybrid-scatter-estimation-and-voxel-adaptive-beam-hardening-correction)  
+6. [CAMMAR: Culture-Aware Matryoshka for Metaphorical Arabic Representations](/202607/21/2607.15847v1-cammar-culture-aware-matryoshka-for-metaphorical-arabic-representations)  
    标签：评分：7.5/10
    evidence：检索回退候选
-7. [Region-Grounded Vision-Language Learning for Detection-Guided Mammographic Lesion Classification](/202607/20/2607.15615v1-region-grounded-vision-language-learning-for-detection-guided-mammographic-lesion-classification)  
+7. [Improved Almost laws for $SO(3)$](/202607/21/2607.15811v1-improved-almost-laws-for-so3)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+8. [Graph Coloring Approach to Solving Sudoku with Oscillatory Neural Networks](/202607/21/2607.15814v1-graph-coloring-approach-to-solving-sudoku-with-oscillatory-neural-networks)  
+   标签：评分：7.4/10
+   evidence：检索回退候选
+9. [Dynamical Equations for Poisson Galton--Watson Trees and Component Densities of Sparse Inhomogeneous Random Graphs](/202607/21/2607.16833v1-dynamical-equations-for-poisson-galton--watson-trees-and-component-densities-of-sparse-inhomogeneous-random-graphs)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Medical Image Segmentation based on Deep Active Contour and Mean Curvature Loss Function](/202607/20/2607.12586v1-medical-image-segmentation-based-on-deep-active-contour-and-mean-curvature-loss-function)  
+10. [Dynamical Optimal Transport with $\mathfrak{so}(d)$-Invariance: From Theory to Computation](/202607/21/2607.16782v1-dynamical-optimal-transport-with-mathfraksod-invariance-from-theory-to-computation)  
    标签：评分：6.9/10
    evidence：检索回退候选
-9. [Toward Efficient Weakly Supervised Semantic Segmentation Using Only Low-Magnification Histopathological Images](/202607/20/2607.10783v1-toward-efficient-weakly-supervised-semantic-segmentation-using-only-low-magnification-histopathological-images)  
+11. [The group $\mathrm{TK}_1$ of graded and valued division algebras](/202607/21/2607.17231v1-the-group-mathrmtk1-of-graded-and-valued-division-algebras)  
    标签：评分：6.8/10
-   evidence：检索回退候选
-10. [Metadata Supervised MRI Representations for Modelling and Controlling Acquisition Variability](/202607/20/2607.11295v1-metadata-supervised-mri-representations-for-modelling-and-controlling-acquisition-variability)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-11. [From Reconstruction to Interpretation: Zero-Setup Multi-Phase Segmentation of X-ray Tomography Data](/202607/20/2607.12175v1-from-reconstruction-to-interpretation-zero-setup-multi-phase-segmentation-of-x-ray-tomography-data)  
-   标签：评分：6.5/10
    evidence：检索回退候选
 
 
