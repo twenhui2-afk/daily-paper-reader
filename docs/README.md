@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-25
-- 运行时间：2026-07-26 04:07:27 UTC+8
+- 最新运行日期：2026-07-26
+- 运行时间：2026-07-27 04:42:00 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Adaptive Identity Anchoring: Closed-Loop Keyframe Placement for Synthetic Paired Supervision in Video Face Swapping》（7.5/10）, 《Open Veins of Algorithmic Auditing: Why AI Assessment Lags Behind Its Deployment in the Global South》（7.5/10）, 《Bound-Founded Semantics for Answer Set Programming with Difference Constraints: Preliminary Report》（7.4/10）
+- 速读：《On structured cosine sums and applications》（7.3/10）, 《Exceptional Points in a Parallel Double-Quantum-Dot Josephson Junction Coupled to a Ferromagnetic Reservoir》（7.2/10）, 《Cycle-Consistent and Uncertainty-Aware Neural Surrogates for Tokamak Edge Plasmas》（7.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/25/README](/202607/25/README)
+- 详情：[/202607/26/README](/202607/26/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Adaptive Identity Anchoring: Closed-Loop Keyframe Placement for Synthetic Paired Supervision in Video Face Swapping](/202607/25/2607.21434v1-adaptive-identity-anchoring-closed-loop-keyframe-placement-for-synthetic-paired-supervision-in-video-face-swapping)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-2. [Open Veins of Algorithmic Auditing: Why AI Assessment Lags Behind Its Deployment in the Global South](/202607/25/2607.21317v1-open-veins-of-algorithmic-auditing-why-ai-assessment-lags-behind-its-deployment-in-the-global-south)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-3. [Bound-Founded Semantics for Answer Set Programming with Difference Constraints: Preliminary Report](/202607/25/2607.21201v1-bound-founded-semantics-for-answer-set-programming-with-difference-constraints-preliminary-report)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-4. [Subcritical percolation and network archaeology on random recursive tree substrate networks](/202607/25/2607.21428v1-subcritical-percolation-and-network-archaeology-on-random-recursive-tree-substrate-networks)  
+1. [On structured cosine sums and applications](/202607/26/2607.20907v1-on-structured-cosine-sums-and-applications)  
    标签：评分：7.3/10
    evidence：检索回退候选
-5. [Extremal Functions and Widom Factors on Compact Riemann Surfaces](/202607/25/2607.21260v1-extremal-functions-and-widom-factors-on-compact-riemann-surfaces)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-6. [Diffusion posterior sampling enables zero shot kilometre scale wind forecasting over complex terrain](/202607/25/2607.21460v1-diffusion-posterior-sampling-enables-zero-shot-kilometre-scale-wind-forecasting-over-complex-terrain)  
+2. [Exceptional Points in a Parallel Double-Quantum-Dot Josephson Junction Coupled to a Ferromagnetic Reservoir](/202607/26/2607.20856v1-exceptional-points-in-a-parallel-double-quantum-dot-josephson-junction-coupled-to-a-ferromagnetic-reservoir)  
    标签：评分：7.2/10
    evidence：检索回退候选
-7. [Encoding Event-B Proof Rules in Prolog: An Interactive Sequent Prover for ProB](/202607/25/2607.21191v1-encoding-event-b-proof-rules-in-prolog-an-interactive-sequent-prover-for-prob)  
-   标签：评分：6.9/10
+3. [Cycle-Consistent and Uncertainty-Aware Neural Surrogates for Tokamak Edge Plasmas](/202607/26/2607.21407v1-cycle-consistent-and-uncertainty-aware-neural-surrogates-for-tokamak-edge-plasmas)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-8. [OFD-Net: Teacher-Free Reliable Semi-supervised Medical Image Segmentation with Orthogonal Feature Disentanglement Net of Foreground-Background](/202607/25/2607.16705v1-ofd-net-teacher-free-reliable-semi-supervised-medical-image-segmentation-with-orthogonal-feature-disentanglement-net-of-foreground-background)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-9. [Robust Multimodal Dynamic Object Segmentation](/202607/25/2607.18153v1-robust-multimodal-dynamic-object-segmentation)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-10. [Robust Activation Map Rectification for Weakly Supervised Volumetric Segmentation: Temporal Coherence as a Free Lunch](/202607/25/2607.19877v1-robust-activation-map-rectification-for-weakly-supervised-volumetric-segmentation-temporal-coherence-as-a-free-lunch)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-11. [ASTRA-Net: Anatomy-Specific Transfer and Representation Alignment for Drug-Induced Sleep Endoscopy Segmentation](/202607/25/2607.21370v1-astra-net-anatomy-specific-transfer-and-representation-alignment-for-drug-induced-sleep-endoscopy-segmentation)  
+4. [SAMRI-3D: Adapting SAM2 for 3D MRI Segmentation with Global Volume Tokens](/202607/26/2607.18014v1-samri-3d-adapting-sam2-for-3d-mri-segmentation-with-global-volume-tokens)  
    标签：评分：6.4/10
+   evidence：检索回退候选
+5. [PathAgentBench: Benchmarking Evidence-Seeking Vision-Language Models on Whole-Slide Pathology Image](/202607/26/2607.19261v1-pathagentbench-benchmarking-evidence-seeking-vision-language-models-on-whole-slide-pathology-image)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+6. [Anatomy-Aware 3D Mesh Refinement of Pericardium Segmentations on Computed Tomography](/202607/26/2607.19210v1-anatomy-aware-3d-mesh-refinement-of-pericardium-segmentations-on-computed-tomography)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+7. [UnDA: Unpaired Domain Alignment for Cross-Modal Knowledge Transfer in Medical Imaging](/202607/26/2607.21546v1-unda-unpaired-domain-alignment-for-cross-modal-knowledge-transfer-in-medical-imaging)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+8. [U-CFR: Uncertainty-Guided Cascade Forward Refinement for Interactive Segmentation](/202607/26/2607.20705v1-u-cfr-uncertainty-guided-cascade-forward-refinement-for-interactive-segmentation)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+9. [PC-Seg: Progressive Cross-View Consistency for 3D OCT Segmentation from Sparse 2D Annotations](/202607/26/2607.17718v2-pc-seg-progressive-cross-view-consistency-for-3d-oct-segmentation-from-sparse-2d-annotations)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+10. [PC-Seg: Progressive Cross-View Consistency for 3D OCT Segmentation from Sparse 2D Annotations](/202607/26/2607.17718v1-pc-seg-progressive-cross-view-consistency-for-3d-oct-segmentation-from-sparse-2d-annotations)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+11. [MIRAGE: Multi-scale Lesion-Informed Representation with Auxiliary Guidance for MRI Contrast Enhancement](/202607/26/2607.19137v1-mirage-multi-scale-lesion-informed-representation-with-auxiliary-guidance-for-mri-contrast-enhancement)  
+   标签：评分：6.1/10
    evidence：检索回退候选
 
 
