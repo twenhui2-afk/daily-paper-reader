@@ -6,73 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-28
-- 运行时间：2026-07-29 04:26:15 UTC+8
+- 最新运行日期：2026-07-29
+- 运行时间：2026-07-30 04:17:49 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Experimental Observation of Ghost Image Revivals via Structured Coherence》（8.6/10）, 《SPARC: Automated Root-Cause Analysis of Pre-Silicon Power Side-Channel Leakage in the Processor Design Flow》（8.5/10）
-- 速读：《General Polynomials and Eigenvalues Over Cayley--Dickson Algebras》（8.2/10）, 《Notes on Chevalley Groups and Root Category IV: Iwasawa Decomposition and Total Positivity》（8.2/10）, 《Roots of Bernstein-Sato polynomials for projective hypersurfaces with ordinary double points》（8.1/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《FMOPF: Latent Flow Matching with Constraint-Aware Interaction Priors for AC Optimal Power Flow》（7.8/10）, 《Output-Stage Design Optimization for High-Sensitivity SiSeRO CCDs and SiSeRO Active Pixel Sensors》（7.4/10）, 《Automorphisms of Bestvina-Brady Groups: IA Rigidity, Arithmetic Commensurability, and Finiteness》（7.3/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/28/README](/202607/28/README)
+- 详情：[/202607/29/README](/202607/29/README)
 
 ### 精读区论文标签
-1. [Experimental Observation of Ghost Image Revivals via Structured Coherence](/202607/28/2607.24486v1-experimental-observation-of-ghost-image-revivals-via-structured-coherence)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [SPARC: Automated Root-Cause Analysis of Pre-Silicon Power Side-Channel Leakage in the Processor Design Flow](/202607/28/2607.23218v1-sparc-automated-root-cause-analysis-of-pre-silicon-power-side-channel-leakage-in-the-processor-design-flow)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-3. [On the role of higher roots in prime ideal races](/202607/28/2607.23150v1-on-the-role-of-higher-roots-in-prime-ideal-races)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-4. [On AI Safety and Security Technical Debt in Engineering AI-Enabled Systems](/202607/28/2607.23365v1-on-ai-safety-and-security-technical-debt-in-engineering-ai-enabled-systems)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-5. [A Criterion to Determine True Minimum Distances of Goppa Codes](/202607/28/2607.23139v1-a-criterion-to-determine-true-minimum-distances-of-goppa-codes)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-6. [Matrix Kloosterman sums and product-trace estimates for semisimple algebras](/202607/28/2607.23275v1-matrix-kloosterman-sums-and-product-trace-estimates-for-semisimple-algebras)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [General Polynomials and Eigenvalues Over Cayley--Dickson Algebras](/202607/28/2607.23613v1-general-polynomials-and-eigenvalues-over-cayley--dickson-algebras)  
-   标签：评分：8.2/10
+1. [FMOPF: Latent Flow Matching with Constraint-Aware Interaction Priors for AC Optimal Power Flow](/202607/29/2607.22788v1-fmopf-latent-flow-matching-with-constraint-aware-interaction-priors-for-ac-optimal-power-flow)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-2. [Notes on Chevalley Groups and Root Category IV: Iwasawa Decomposition and Total Positivity](/202607/28/2607.23697v1-notes-on-chevalley-groups-and-root-category-iv-iwasawa-decomposition-and-total-positivity)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [Roots of Bernstein-Sato polynomials for projective hypersurfaces with ordinary double points](/202607/28/2607.24142v1-roots-of-bernstein-sato-polynomials-for-projective-hypersurfaces-with-ordinary-double-points)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
-4. [Common-Transmitter Multipath-Aware TDoA Localization for Acoustic Backscatter-Enabled IoUT Networks](/202607/28/2607.24022v1-common-transmitter-multipath-aware-tdoa-localization-for-acoustic-backscatter-enabled-iout-networks)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
-5. [Greedy Records and Bernstein Transfers for Fence and Circular-Fence Order Polynomials](/202607/28/2607.22767v1-greedy-records-and-bernstein-transfers-for-fence-and-circular-fence-order-polynomials)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-6. [Bifrost: Empowering Pretrained Language Model with Fallibility Representation for Log-Based Fault Diagnosis](/202607/28/2607.23169v1-bifrost-empowering-pretrained-language-model-with-fallibility-representation-for-log-based-fault-diagnosis)  
+2. [Output-Stage Design Optimization for High-Sensitivity SiSeRO CCDs and SiSeRO Active Pixel Sensors](/202607/29/2607.23087v1-output-stage-design-optimization-for-high-sensitivity-sisero-ccds-and-sisero-active-pixel-sensors)  
    标签：评分：7.4/10
    evidence：检索回退候选
-7. [Let AI Agents Translate Networks, Not Reason About Them](/202607/28/2607.22947v1-let-ai-agents-translate-networks-not-reason-about-them)  
+3. [Automorphisms of Bestvina-Brady Groups: IA Rigidity, Arithmetic Commensurability, and Finiteness](/202607/29/2607.23380v1-automorphisms-of-bestvina-brady-groups-ia-rigidity-arithmetic-commensurability-and-finiteness)  
    标签：评分：7.3/10
    evidence：检索回退候选
-8. [Dark matter imprints on a caustic encounter in an effective spinning black hole binary lens](/202607/28/2607.23300v1-dark-matter-imprints-on-a-caustic-encounter-in-an-effective-spinning-black-hole-binary-lens)  
+4. [Self-Referential Leading Digits of Exponential Sequences: Arithmetic Structure and Certified Search](/202607/29/2607.23662v1-self-referential-leading-digits-of-exponential-sequences-arithmetic-structure-and-certified-search)  
    标签：评分：7.3/10
    evidence：检索回退候选
-9. [Formalizing Flag Algebras in Lean](/202607/28/2607.23500v1-formalizing-flag-algebras-in-lean)  
+5. [Mass and Decay Properties of Toponium Using SUSY QM Factorization Method](/202607/29/2607.23643v1-mass-and-decay-properties-of-toponium-using-susy-qm-factorization-method)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+6. [Memory for Attention: Language-Conditioned Re-Perception with a Vision--Language--Motion Map](/202607/29/2607.23797v1-memory-for-attention-language-conditioned-re-perception-with-a-vision--language--motion-map)  
+   标签：评分：7.1/10
+   evidence：检索回退候选
+7. [Proper Bayes minimax multiple shrinkage estimation](/202607/29/2607.23717v1-proper-bayes-minimax-multiple-shrinkage-estimation)  
    标签：评分：6.9/10
    evidence：检索回退候选
-10. [Exponential Decay of Solutions to a Fluid-Plate Model with Small Initial Data](/202607/28/2607.23756v1-exponential-decay-of-solutions-to-a-fluid-plate-model-with-small-initial-data)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-11. [A Characterization of the Orthocomplement of the Tangent Space of Semiparametric Markov Models](/202607/28/2607.23439v1-a-characterization-of-the-orthocomplement-of-the-tangent-space-of-semiparametric-markov-models)  
+8. [A CIR-Type Diffusion Driven by Hermite Processes: Well-Posedness, Positivity and Malliavin Analysis](/202607/29/2607.23548v1-a-cir-type-diffusion-driven-by-hermite-processes-well-posedness-positivity-and-malliavin-analysis)  
    标签：评分：6.8/10
+   evidence：检索回退候选
+9. [Bi-Level Collaborative Learning for Few-Shot Scribble-Supervised Medical Image Segmentation](/202607/29/2607.25432v1-bi-level-collaborative-learning-for-few-shot-scribble-supervised-medical-image-segmentation)  
+   标签：评分：6.7/10
+   evidence：检索回退候选
+10. [Investigating the Visual Cues of CNNs for Vascular Segmentation: A Case Study in Microscopy and Fundus Imaging](/202607/29/2607.23371v1-investigating-the-visual-cues-of-cnns-for-vascular-segmentation-a-case-study-in-microscopy-and-fundus-imaging)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+11. [Open-Ended CT Volume Segmentation with Weak Supervision from Language](/202607/29/2607.25860v1-open-ended-ct-volume-segmentation-with-weak-supervision-from-language)  
+   标签：评分：6.6/10
    evidence：检索回退候选
 
 
