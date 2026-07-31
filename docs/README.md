@@ -6,73 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-30
-- 运行时间：2026-07-31 05:38:19 UTC+8
+- 最新运行日期：2026-07-31
+- 运行时间：2026-08-01 04:38:49 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Conformal Changepoint Localization and Root Cause Analysis with Corrupted Observations》（8.5/10）, 《Automorphism-invariant refinements of weakly branch actions via overlap functions》（8.4/10）
-- 速读：《MoSAIC: Aligned Intervention Supervision for Part-Local Motion Style Transfer》（7.9/10）, 《Paged Geophylogenies: A Coloring Approach to External Labeling with Tree Constraints》（7.4/10）, 《Egocentric Station Holding of Robotic Fish in Unknown Turbulent Background Flow》（7.2/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《PanDent: Toward Comprehensive Tooth-Level Structure-Language Consistency in Dental Radiology》（7.5/10）, 《BATS: Resource-Efficient Volumetric Segmentation with Boundary-Aware Mixed-Resolution Tokens》（7.4/10）, 《AuricularWorld: Hierarchical Action-Guided World Modeling for Fine-Grained Auricular Structure Segmentation from CT Scans》（7.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/30/README](/202607/30/README)
+- 详情：[/202607/31/README](/202607/31/README)
 
 ### 精读区论文标签
-1. [Conformal Changepoint Localization and Root Cause Analysis with Corrupted Observations](/202607/30/2607.26481v1-conformal-changepoint-localization-and-root-cause-analysis-with-corrupted-observations)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [Automorphism-invariant refinements of weakly branch actions via overlap functions](/202607/30/2607.26644v1-automorphism-invariant-refinements-of-weakly-branch-actions-via-overlap-functions)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-3. [Efficient Channel Prediction based on Gram-Square-Root Factorization using GMMs](/202607/30/2607.26959v1-efficient-channel-prediction-based-on-gram-square-root-factorization-using-gmms)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-4. [Small Brownian Loops Hitting SLE$_2$: An Exact Natural-Content Limit](/202607/30/2607.26439v1-small-brownian-loops-hitting-sle2-an-exact-natural-content-limit)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-5. [Erdős-Pósa property of rooted tree minors](/202607/30/2607.26638v1-erds-psa-property-of-rooted-tree-minors)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-6. [Nix to the Rescue for a Reproducible HPC-AI Software Stack](/202607/30/2607.26688v1-nix-to-the-rescue-for-a-reproducible-hpc-ai-software-stack)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [MoSAIC: Aligned Intervention Supervision for Part-Local Motion Style Transfer](/202607/30/2607.26304v1-mosaic-aligned-intervention-supervision-for-part-local-motion-style-transfer)  
-   标签：评分：7.9/10
+1. [PanDent: Toward Comprehensive Tooth-Level Structure-Language Consistency in Dental Radiology](/202607/31/2607.27378v1-pandent-toward-comprehensive-tooth-level-structure-language-consistency-in-dental-radiology)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-2. [Paged Geophylogenies: A Coloring Approach to External Labeling with Tree Constraints](/202607/30/2607.23559v1-paged-geophylogenies-a-coloring-approach-to-external-labeling-with-tree-constraints)  
+2. [BATS: Resource-Efficient Volumetric Segmentation with Boundary-Aware Mixed-Resolution Tokens](/202607/31/2607.26829v1-bats-resource-efficient-volumetric-segmentation-with-boundary-aware-mixed-resolution-tokens)  
    标签：评分：7.4/10
    evidence：检索回退候选
-3. [Egocentric Station Holding of Robotic Fish in Unknown Turbulent Background Flow](/202607/30/2607.24860v1-egocentric-station-holding-of-robotic-fish-in-unknown-turbulent-background-flow)  
+3. [AuricularWorld: Hierarchical Action-Guided World Modeling for Fine-Grained Auricular Structure Segmentation from CT Scans](/202607/31/2607.28487v1-auricularworld-hierarchical-action-guided-world-modeling-for-fine-grained-auricular-structure-segmentation-from-ct-scans)  
    标签：评分：7.2/10
    evidence：检索回退候选
-4. [Skillful forecasting of offshore winds from satellite scatterometer constellations](/202607/30/2607.27152v1-skillful-forecasting-of-offshore-winds-from-satellite-scatterometer-constellations)  
+4. [Benchmarking Foundation and Large Language Models for Few-Shot Medical Image Segmentation](/202607/31/2607.27856v1-benchmarking-foundation-and-large-language-models-for-few-shot-medical-image-segmentation)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+5. [Step-Attention Refinement of DINOv3 Features for Efficient Anterior Eye Segmentation](/202607/31/2607.27087v1-step-attention-refinement-of-dinov3-features-for-efficient-anterior-eye-segmentation)  
    标签：评分：7.1/10
    evidence：检索回退候选
-5. [Calibrating the Digital Twin Channel: Statistics-Consistent Sim-to-Lab Adaptation for W-Band Industrial OFDM Links](/202607/30/2607.26501v1-calibrating-the-digital-twin-channel-statistics-consistent-sim-to-lab-adaptation-for-w-band-industrial-ofdm-links)  
-   标签：评分：7.1/10
-   evidence：检索回退候选
-6. [Observations of a Solar Jet Triggered by Reconnection between Super-penumbral Fibrils and a Mini-filament](/202607/30/2607.26420v1-observations-of-a-solar-jet-triggered-by-reconnection-between-super-penumbral-fibrils-and-a-mini-filament)  
+6. [Unifying Active Learning and Semi-Supervised Learning for Medical Image Segmentation](/202607/31/2607.25014v1-unifying-active-learning-and-semi-supervised-learning-for-medical-image-segmentation)  
    标签：评分：7.0/10
    evidence：检索回退候选
-7. [Bhargava Gamma functions for determinant-admissible sets](/202607/30/2607.26321v1-bhargava-gamma-functions-for-determinant-admissible-sets)  
+7. [Effect of User-Prompted Priors on Semi-Automated Cancer Lesion Segmentation in Whole-Body Computed Tomography](/202607/31/2607.24210v1-effect-of-user-prompted-priors-on-semi-automated-cancer-lesion-segmentation-in-whole-body-computed-tomography)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Aligning LLM-Simulated and Human Examinees for Psychometric Calibration: A Cognitive Diagnostic Profiling Approach](/202607/30/2607.26317v1-aligning-llm-simulated-and-human-examinees-for-psychometric-calibration-a-cognitive-diagnostic-profiling-approach)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-9. [Denoising growth complexity: Data geometry and certified schedules for diffusion sampling](/202607/30/2607.26285v1-denoising-growth-complexity-data-geometry-and-certified-schedules-for-diffusion-sampling)  
+8. [Gaussian Volumetric Representation for Efficient Shear-Warp Visualization](/202607/31/2607.25377v1-gaussian-volumetric-representation-for-efficient-shear-warp-visualization)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [On the second moment and non-vanishing of central values of Hecke $L$-functions of $r$-th order characters](/202607/30/2607.27131v1-on-the-second-moment-and-non-vanishing-of-central-values-of-hecke-l-functions-of-r-th-order-characters)  
+9. [From Spatial Semantics to Temporal Context: Leveraging Gaze Trajectory for Weakly Supervised Medical Image Segmentation](/202607/31/2607.26542v1-from-spatial-semantics-to-temporal-context-leveraging-gaze-trajectory-for-weakly-supervised-medical-image-segmentation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-11. [Hub Neighbor-Degree Diagnostics for Sparse Random Graphs](/202607/30/2607.26624v1-hub-neighbor-degree-diagnostics-for-sparse-random-graphs)  
+10. [ESRVS: Extreme Semi-Supervised Retinal Vessel Segmentation with a Single Annotated Image](/202607/31/2607.24453v1-esrvs-extreme-semi-supervised-retinal-vessel-segmentation-with-a-single-annotated-image)  
    标签：评分：6.8/10
+   evidence：检索回退候选
+11. [Same Branches, Different Trees: A Bifurcation Connectedness Metric for Coronary Artery Segmentation and FFR-CT Decision Agreement](/202607/31/2607.28327v1-same-branches-different-trees-a-bifurcation-connectedness-metric-for-coronary-artery-segmentation-and-ffr-ct-decision-agreement)  
+   标签：评分：6.7/10
    evidence：检索回退候选
 
 
