@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-31
-- 运行时间：2026-08-01 04:38:49 UTC+8
+- 最新运行日期：2026-08-01
+- 运行时间：2026-08-02 04:04:42 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《PanDent: Toward Comprehensive Tooth-Level Structure-Language Consistency in Dental Radiology》（7.5/10）, 《BATS: Resource-Efficient Volumetric Segmentation with Boundary-Aware Mixed-Resolution Tokens》（7.4/10）, 《AuricularWorld: Hierarchical Action-Guided World Modeling for Fine-Grained Auricular Structure Segmentation from CT Scans》（7.2/10）
+- 速读：《AdaKAN: A dual-branch adaptive Kolmogorov-Arnold network for medical image segmentation》（6.0/10）, 《Diffusion Models in Medical Image Inpainting: Challenges, Solution Taxonomy, and Future Directions》（6.0/10）, 《A Smooth Phase-Separation Model for Weak-Boundary Segmentation of Homogeneous Structures》（6.0/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/31/README](/202607/31/README)
+- 详情：[/202608/01/README](/202608/01/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [PanDent: Toward Comprehensive Tooth-Level Structure-Language Consistency in Dental Radiology](/202607/31/2607.27378v1-pandent-toward-comprehensive-tooth-level-structure-language-consistency-in-dental-radiology)  
-   标签：评分：7.5/10
+1. [AdaKAN: A dual-branch adaptive Kolmogorov-Arnold network for medical image segmentation](/202608/01/2607.22891v1-adakan-a-dual-branch-adaptive-kolmogorov-arnold-network-for-medical-image-segmentation)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-2. [BATS: Resource-Efficient Volumetric Segmentation with Boundary-Aware Mixed-Resolution Tokens](/202607/31/2607.26829v1-bats-resource-efficient-volumetric-segmentation-with-boundary-aware-mixed-resolution-tokens)  
-   标签：评分：7.4/10
+2. [Diffusion Models in Medical Image Inpainting: Challenges, Solution Taxonomy, and Future Directions](/202608/01/2607.21904v1-diffusion-models-in-medical-image-inpainting-challenges-solution-taxonomy-and-future-directions)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-3. [AuricularWorld: Hierarchical Action-Guided World Modeling for Fine-Grained Auricular Structure Segmentation from CT Scans](/202607/31/2607.28487v1-auricularworld-hierarchical-action-guided-world-modeling-for-fine-grained-auricular-structure-segmentation-from-ct-scans)  
-   标签：评分：7.2/10
+3. [A Smooth Phase-Separation Model for Weak-Boundary Segmentation of Homogeneous Structures](/202608/01/2607.22053v1-a-smooth-phase-separation-model-for-weak-boundary-segmentation-of-homogeneous-structures)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-4. [Benchmarking Foundation and Large Language Models for Few-Shot Medical Image Segmentation](/202607/31/2607.27856v1-benchmarking-foundation-and-large-language-models-for-few-shot-medical-image-segmentation)  
-   标签：评分：7.2/10
+4. [CARDIAG: A Dense Segment Classification Benchmark of Deep Learning Architectures for Coronary Angiography](/202608/01/2607.22139v1-cardiag-a-dense-segment-classification-benchmark-of-deep-learning-architectures-for-coronary-angiography)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-5. [Step-Attention Refinement of DINOv3 Features for Efficient Anterior Eye Segmentation](/202607/31/2607.27087v1-step-attention-refinement-of-dinov3-features-for-efficient-anterior-eye-segmentation)  
-   标签：评分：7.1/10
+5. [LayoutLite: Token-Level Implicit Layout Analysis for Efficient Document OCR](/202608/01/2607.22200v1-layoutlite-token-level-implicit-layout-analysis-for-efficient-document-ocr)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-6. [Unifying Active Learning and Semi-Supervised Learning for Medical Image Segmentation](/202607/31/2607.25014v1-unifying-active-learning-and-semi-supervised-learning-for-medical-image-segmentation)  
-   标签：评分：7.0/10
+6. [From level set evolution to threshold optimization: A grayscale level set framework for image segmentation](/202608/01/2607.22255v1-from-level-set-evolution-to-threshold-optimization-a-grayscale-level-set-framework-for-image-segmentation)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-7. [Effect of User-Prompted Priors on Semi-Automated Cancer Lesion Segmentation in Whole-Body Computed Tomography](/202607/31/2607.24210v1-effect-of-user-prompted-priors-on-semi-automated-cancer-lesion-segmentation-in-whole-body-computed-tomography)  
-   标签：评分：6.9/10
+7. [Active few-shot segmentation by reinforcing data selection](/202608/01/2607.22371v1-active-few-shot-segmentation-by-reinforcing-data-selection)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-8. [Gaussian Volumetric Representation for Efficient Shear-Warp Visualization](/202607/31/2607.25377v1-gaussian-volumetric-representation-for-efficient-shear-warp-visualization)  
-   标签：评分：6.8/10
+8. [Metric Surface Reconstruction of Neurosurgical Scenes from Monocular Operating Microscope Images and Microscope Pose](/202608/01/2607.22773v1-metric-surface-reconstruction-of-neurosurgical-scenes-from-monocular-operating-microscope-images-and-microscope-pose)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-9. [From Spatial Semantics to Temporal Context: Leveraging Gaze Trajectory for Weakly Supervised Medical Image Segmentation](/202607/31/2607.26542v1-from-spatial-semantics-to-temporal-context-leveraging-gaze-trajectory-for-weakly-supervised-medical-image-segmentation)  
-   标签：评分：6.8/10
+9. [Learning Dense 2D-3D Correspondence for X-ray-to-CT Registration of Knee Bones](/202608/01/2607.22803v1-learning-dense-2d-3d-correspondence-for-x-ray-to-ct-registration-of-knee-bones)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-10. [ESRVS: Extreme Semi-Supervised Retinal Vessel Segmentation with a Single Annotated Image](/202607/31/2607.24453v1-esrvs-extreme-semi-supervised-retinal-vessel-segmentation-with-a-single-annotated-image)  
-   标签：评分：6.8/10
+10. [Patient-Agnostic Synthetic Pretraining for Efficient Patient-Specific Intraoperative 2D/3D Registration](/202608/01/2607.23343v1-patient-agnostic-synthetic-pretraining-for-efficient-patient-specific-intraoperative-2d3d-registration)  
+   标签：评分：6.0/10
    evidence：检索回退候选
-11. [Same Branches, Different Trees: A Bifurcation Connectedness Metric for Coronary Artery Segmentation and FFR-CT Decision Agreement](/202607/31/2607.28327v1-same-branches-different-trees-a-bifurcation-connectedness-metric-for-coronary-artery-segmentation-and-ffr-ct-decision-agreement)  
-   标签：评分：6.7/10
+11. [SILICA: Repurposing Diffusion Priors for Joint Glass Segmentation and Depth Estimation](/202608/01/2607.24249v1-silica-repurposing-diffusion-priors-for-joint-glass-segmentation-and-depth-estimation)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
