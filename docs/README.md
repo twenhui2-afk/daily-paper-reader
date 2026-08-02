@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-01
-- 运行时间：2026-08-02 04:04:42 UTC+8
+- 最新运行日期：2026-08-02
+- 运行时间：2026-08-03 04:21:58 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《AdaKAN: A dual-branch adaptive Kolmogorov-Arnold network for medical image segmentation》（6.0/10）, 《Diffusion Models in Medical Image Inpainting: Challenges, Solution Taxonomy, and Future Directions》（6.0/10）, 《A Smooth Phase-Separation Model for Weak-Boundary Segmentation of Homogeneous Structures》（6.0/10）
+- 速读：《MedXplore: Towards Reliable and Unbiased Generalized Category Discovery in Medical Imaging》（6.8/10）, 《Rad-JEPA 3D: Radiology Joint-Embedding Predictive Model for 3D Computed Tomography》（6.8/10）, 《A Hierarchical Framework for Graph Structure Learning in Histopathology Image Classification》（6.7/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/01/README](/202608/01/README)
+- 详情：[/202608/02/README](/202608/02/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [AdaKAN: A dual-branch adaptive Kolmogorov-Arnold network for medical image segmentation](/202608/01/2607.22891v1-adakan-a-dual-branch-adaptive-kolmogorov-arnold-network-for-medical-image-segmentation)  
-   标签：评分：6.0/10
+1. [MedXplore: Towards Reliable and Unbiased Generalized Category Discovery in Medical Imaging](/202608/02/2607.27620v1-medxplore-towards-reliable-and-unbiased-generalized-category-discovery-in-medical-imaging)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-2. [Diffusion Models in Medical Image Inpainting: Challenges, Solution Taxonomy, and Future Directions](/202608/01/2607.21904v1-diffusion-models-in-medical-image-inpainting-challenges-solution-taxonomy-and-future-directions)  
-   标签：评分：6.0/10
+2. [Rad-JEPA 3D: Radiology Joint-Embedding Predictive Model for 3D Computed Tomography](/202608/02/2607.26196v1-rad-jepa-3d-radiology-joint-embedding-predictive-model-for-3d-computed-tomography)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-3. [A Smooth Phase-Separation Model for Weak-Boundary Segmentation of Homogeneous Structures](/202608/01/2607.22053v1-a-smooth-phase-separation-model-for-weak-boundary-segmentation-of-homogeneous-structures)  
-   标签：评分：6.0/10
+3. [A Hierarchical Framework for Graph Structure Learning in Histopathology Image Classification](/202608/02/2607.26153v1-a-hierarchical-framework-for-graph-structure-learning-in-histopathology-image-classification)  
+   标签：评分：6.7/10
    evidence：检索回退候选
-4. [CARDIAG: A Dense Segment Classification Benchmark of Deep Learning Architectures for Coronary Angiography](/202608/01/2607.22139v1-cardiag-a-dense-segment-classification-benchmark-of-deep-learning-architectures-for-coronary-angiography)  
-   标签：评分：6.0/10
+4. [Efficient Ultrasound Image Segmentation with Token-Conditioned Neural Cellular Automata](/202608/02/2607.24529v1-efficient-ultrasound-image-segmentation-with-token-conditioned-neural-cellular-automata)  
+   标签：评分：6.6/10
    evidence：检索回退候选
-5. [LayoutLite: Token-Level Implicit Layout Analysis for Efficient Document OCR](/202608/01/2607.22200v1-layoutlite-token-level-implicit-layout-analysis-for-efficient-document-ocr)  
-   标签：评分：6.0/10
+5. [CXR-Retrieve: Compositional Text-to-Image Retrieval in Chest Radiography](/202608/02/2607.27779v1-cxr-retrieve-compositional-text-to-image-retrieval-in-chest-radiography)  
+   标签：评分：6.6/10
    evidence：检索回退候选
-6. [From level set evolution to threshold optimization: A grayscale level set framework for image segmentation](/202608/01/2607.22255v1-from-level-set-evolution-to-threshold-optimization-a-grayscale-level-set-framework-for-image-segmentation)  
-   标签：评分：6.0/10
+6. [Registration-Grounded Spectral Fusion for Unregistered WLI/NBI Endoscopic Lesion Segmentation](/202608/02/2607.26395v1-registration-grounded-spectral-fusion-for-unregistered-wlinbi-endoscopic-lesion-segmentation)  
+   标签：评分：6.5/10
    evidence：检索回退候选
-7. [Active few-shot segmentation by reinforcing data selection](/202608/01/2607.22371v1-active-few-shot-segmentation-by-reinforcing-data-selection)  
-   标签：评分：6.0/10
+7. [Anatomy Contextualized Adaption of CT Foundation Models](/202608/02/2607.27154v1-anatomy-contextualized-adaption-of-ct-foundation-models)  
+   标签：评分：6.5/10
    evidence：检索回退候选
-8. [Metric Surface Reconstruction of Neurosurgical Scenes from Monocular Operating Microscope Images and Microscope Pose](/202608/01/2607.22773v1-metric-surface-reconstruction-of-neurosurgical-scenes-from-monocular-operating-microscope-images-and-microscope-pose)  
-   标签：评分：6.0/10
+8. [PathView-Bench: Can Multimodal Large Language Models Achieve Fine-grained Multiscale Understanding of Pathology Images?](/202608/02/2607.28318v1-pathview-bench-can-multimodal-large-language-models-achieve-fine-grained-multiscale-understanding-of-pathology-images)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-9. [Learning Dense 2D-3D Correspondence for X-ray-to-CT Registration of Knee Bones](/202608/01/2607.22803v1-learning-dense-2d-3d-correspondence-for-x-ray-to-ct-registration-of-knee-bones)  
-   标签：评分：6.0/10
+9. [MedARC: Training-Free Adaptive Redundancy Compression of Visual Tokens for 3D Medical Vision-Language Models](/202608/02/2607.26554v1-medarc-training-free-adaptive-redundancy-compression-of-visual-tokens-for-3d-medical-vision-language-models)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-10. [Patient-Agnostic Synthetic Pretraining for Efficient Patient-Specific Intraoperative 2D/3D Registration](/202608/01/2607.23343v1-patient-agnostic-synthetic-pretraining-for-efficient-patient-specific-intraoperative-2d3d-registration)  
-   标签：评分：6.0/10
+10. [Negative controls reveal volume-driven confounding in radiomics and imaging foundation model features](/202608/02/2607.28423v1-negative-controls-reveal-volume-driven-confounding-in-radiomics-and-imaging-foundation-model-features)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-11. [SILICA: Repurposing Diffusion Priors for Joint Glass Segmentation and Depth Estimation](/202608/01/2607.24249v1-silica-repurposing-diffusion-priors-for-joint-glass-segmentation-and-depth-estimation)  
-   标签：评分：6.0/10
+11. [A Query-Efficient Stochastic Volume Rendering Framework for Time-Varying Implicit Neural Volumes](/202608/02/2607.28047v1-a-query-efficient-stochastic-volume-rendering-framework-for-time-varying-implicit-neural-volumes)  
+   标签：评分：6.3/10
    evidence：检索回退候选
 
 
