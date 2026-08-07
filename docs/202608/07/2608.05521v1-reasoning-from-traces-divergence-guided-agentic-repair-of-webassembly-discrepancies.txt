@@ -1,0 +1,429 @@
+Title: Reasoning from Traces: Divergence-Guided Agentic Repair of WebAssembly Discrepancies
+
+URL Source: https://arxiv.org/pdf/2608.05521v1
+
+Published Time: Fri, 07 Aug 2026 00:27:26 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# Reasoning from Traces: Divergence-Guided Agentic Repair of WebAssembly Discrepancies 
+
+Liyan Huang ∗ Kaicheng Wang ∗ Weihang Wang 
+
+University of Southern California Los Angeles, CA 
+
+{liyanhua,wangkaic,weihangw}@usc.edu 
+
+## Abstract 
+
+WebAssembly (Wasm) promises seamless reuse of C/C++ codebases as portable, fast, sandboxed binaries. In practice, however, this promise often falls short: recent studies show that cross-compiling the same C/C++ source to Wasm and native binaries frequently leads to runtime discrepancies, owing to library implementation differences or compiler bugs. Since the root causes lie in the platform-level runtime and are hidden beneath the source code, even state-of-the-art LLM-based repair agents often fail to fix these discrepancies. In this paper, we present WasmMend ,the first system to automatically repair Native-Wasm functional discrepancies. WasmMend converts the undirected exploration to a focused reasoning task in two stages: First, a novel differential trace analysis approach localizes the function where Wasm and native executions initially diverge; guided by this localization, LLM agents then reason about the root causes and generate patches that eliminate the divergent behavior. Experiments on real-world C/C++ projects show that WasmMend achieves a fix rate of 70.0%, compared to 50.2% for the agentic baseline and 54.5% for the approach augmented with repair-time LLM-based instrumentation, demonstrating the value of divergence-guided reasoning for cross-platform repair. 
+
+## 1 Introduction 
+
+WebAssembly (Wasm) [ 38 ] is a portable binary instruction format that serves as a compilation target for high-level languages such as C, C++, Rust, and Go, enabling secure and fast execution in web browsers [ 10 ]. A key promise of Wasm is seamless code migration: mature cross-compilation toolchains [ 19 , 35 ] allow developers to reuse existing C/C++ codebases as WebAssembly binaries with minimal effort [43]. However, recent studies [ 2, 32 , 43 ] reveal that the migration promise often breaks in practice. Platform-level differences, such as varied library implementations or compiler bugs, often cause functional discrepancies between native binaries (e.g., x86) and their Wasm counterparts, and result in silent bugs or crashes. For example, standard POSIX operations can trigger crashes in Wasm. Figure 1 illustrates a bug reported by Baradaran et al. [2] in PEGTL [ 36 ], a widely used parser library that uses memory-mapped files. While a C program that mmap s an empty file executes successfully on native, the Wasm version, however, crashes when running under Node.js, leaving minimal indication of the root cause within the original C source. These discrepancies can even pose real-world risks: Kalign [ 18 ], a widely used multiple sequence alignment tool in bioinformatics, quietly produces divergent outcomes for the same protein input under Wasm and native [ 43 ], corrupting the foundation of downstream analysis.                                       
+
+> ∗Equal contribution. Preprint. arXiv:2608.05521v1 [cs.SE] 6 Aug 2026 1// main . c
+> 2int fd =open ( " ./ empty_file " , O_RDWR ) ;
+> 3struct stat st ; fstat ( fd , & st ) ;
+> 4int size =st . st_size ; // == 0
+> 5// mmap the empty file with len 0
+> 6char * p =( char *) mmap ( NULL , size ,
+> ,→PROT_READ , MAP_PRIVATE , fd , 0) ;
+> 7printf ( " Program finished \ n " ) ;
+
+(a) Minimal reproducer.        
+
+> $gcc main . c -o main && ./ main Program finished
+
+(b) Native (gcc).              
+
+> $emcc main . c -o main . js && node main . js TypeError : Cannot read properties of null ( reading ’ length ’)
+
+(c) Emscripten (emcc Ver 3.1.54). 
+
+Figure 1: Example Native-Wasm discrepancy: Calling mmap on a zero-length file triggers a JavaScript glue code crash that never happens under native execution. (a) shows the minimal reproducer, (b) displays the native C execution, and (c) illustrates the Wasm execution via Node.js. The high cost of manually diagnosing and repairing these discrepancies motivates the need for automated approaches. While general-purpose Large Language Model (LLM)-based repair agents have achieved strong performance on benchmarks such as Defects4J [ 16 ], where bugs are often logical mistakes, these agents are ill-suited for Native-Wasm functional discrepancies. Over 95% of the discrepancies stem from environment settings, library implementations, or compiler bugs, which are hidden in the program’s internal state [ 2]. Our experiment showed that, without a causal signal to pinpoint the root cause, even state-of-the-art coding agents can be puzzled by undirected exploration inside the repository and often fail to fix the discrepancy. To address the challenge of Native-Wasm discrepancies, we propose WasmMend, an agentic repair framework that automates cause localization and source code patching. The core idea is to mirror how human experts debug cross-platform discrepancies: instrument source code, run both builds, and compare outputs to localize the divergence. Once the divergence is found, experts can effectively reason about its cause and develop a patch. As shown in Figure 2, given a repository with an observed discrepancy between Wasm and native execution, WasmMend first instruments the reachable functions associated with the discrepancy via the call graph. The following differential trace analysis compares the input and output states of the functions between native and Wasm executions to reconstruct an event stack, and reports the initial divergent event. WasmMend then invokes a repair loop involving two agents: an ANALYZE agent reasons about the cause and proposes a repair plan, and a PATCH agent synthesizes and applies the fix. The repair loop also includes an automated validation step that recompiles the patched source under Wasm and native toolchains and re-executes both builds. The validation step accepts a patch if both executions produce consistent outcomes, and the patch does not break program semantics; otherwise, it returns with a rejection reason for additional iterations. We evaluate WasmMend on the WasmChecker benchmark [ 2 ], the latest real-world C/C++ dataset for Native-Wasm functional discrepancy to our knowledge. The dataset consists of 34 nontrivial real-life discrepancies caused by library implementation divergences or compiler bugs in Emscripten, the most widely used C/C++ to Wasm compiler [ 30 ]. WasmMend achieves a fix rate of 70.0%, compared to 50.2% for the agentic baseline and 54.5% for the approach augmented with repair-time LLM-based instrumentation [14], demonstrating the value of our two-stage approach. In summary, this work makes the following contributions: • We introduce Native-Wasm functional discrepancy repair, a complex task where root causes are hidden beneath the source code; • We propose WasmMend, which guides agent-based repair with a novel differential trace match algorithm that symbolically localizes the discrepancy cause between native and Wasm executions; • We conduct an extensive evaluation across three state-of-the-art LLMs and multiple configurations, demonstrating WasmMend’s consistently superior performance over both undirected agentic repair and repair-time LLM instrumentation at comparable cost. 
+
+## 2 Related Work 
+
+Discrepancies between Wasm and Native Executions. With support across all major browsers [ 39 ], Wasm has seen wide adoption in web applications [ 11 , 37 , 48 ], edge computing [ 13 , 26 ], and the Internet of Things [ 21 , 29 , 40 ], driven by the promise of seamless code migration [ 43 ]. However, cross-compiling C/C++ to Wasm can silently violate native semantics [ 43 ]. While some stud-ies [ 32 , 33 ] highlight security vulnerabilities using the Juliet test suite [ 3 ], others examine functional 2Figure 2: Architecture of WasmMend behavioral discrepancies. Notably, Baradaran et al. [2] provides a comprehensive study on real-world repositories at scale, exposing the severity of these divergences. Yet, these works stop at detection and characterization. To our knowledge, WasmMend is the first system to automatically patch discrepancies between Wasm and native executions. 
+
+LLM-based Program Repair. LLMs serve as effective foundations for automated program re-pair [ 53 ]. Many approaches reason about bug root causes using source code logic and test sig-nals [ 5, 45 , 47 ], with some leveraging multi-turn conversational feedback (e.g., ChatRepair [ 44 ]) or few-shot demonstrations (e.g., ThinkRepair [ 51 ]). Recent agent-based methods push automatic program repair further [ 27 , 49 , 50 ]. For instance, AutoCodeRover [ 54 ] integrates structure-aware code search, RepairAgent [ 4 ] uses a state machine for tool-governed diagnosis, and MAGIS [ 34 ]coordinates role-specialized agents. However, these works largely focus on source-level logical bugs within standard benchmarks [ 15 , 16 , 23 , 24 ]. Reasoning from source alone often fails to capture the actual program states needed for Native-Wasm discrepancy patching. Even works that combine static analysis with LLM reasoning [ 22 , 25 ] or explicitly use LLM-driven instrumentation to obtain internal states, such as TraceCoder [ 14 ], TraceRepairer [ 41 ], and DebugRepair [ 42 ], remain unsuitable for our setting: the former cannot expose dynamic execution divergence, and the latter lacks concrete guidance for where to instrument. WasmMend, on the other hand, integrates a differential trace analysis that symbolically aligns native and Wasm executions and localizes the divergence, grounding the agents’ reasoning in focused execution evidence. 
+
+## 3 Methodology 
+
+This section details the design of WasmMend. We first formalize the Native-Wasm functional discrepancy repair problem (Section 3.1), and present WasmMend’s two stages: differential trace analysis (Section 3.2), which localizes the initial divergent event via cross-execution match; and divergence-guided agentic repair (Section 3.3), which analyzes the diagnosed evidence to synthesize and verify patches. 
+
+3.1 Problem Formulation 
+
+Given a repository S, a native compiler toolchain Cn (e.g., GCC) whose output serves as the ground truth, and a WebAssembly compiler toolchain Cw (e.g., Emscripten), a Native-Wasm functional discrepancy exists when there is an input I such that 
+
+exec (Cn(S), I )̸ ≡ exec (Cw(S), I ).
+
+Here, exec executes the compiled program and captures its observable behavior on a given input; ̸ ≡
+
+denotes a divergence in observable behaviors, such as mismatched standard outputs, differing exit codes, or one execution crashing while the other succeeds. Our objective is to synthesize a source-code patch P such that applying P to S (denoted S ⊕ P ) resolves the discrepancy while preserving the original native behavior: exec (Cn(S), I ) ≡ exec (Cn(S ⊕ P ), I ) ≡ exec (Cw(S ⊕ P ), I ). An example patch of the discrepancy displayed in Figure 1 is provided in Appendix C. 33.2 Differential Trace Analysis 
+
+To resolve discrepancies between native C/C++ and Wasm executions, WasmMend runs a novel differential trace analysis: it first instruments the target codebase to generate detailed execution traces, then diagnoses the initial divergence through cross-execution match. 
+
+3.2.1 Instrumentation 
+
+As illustrated in Figure 2, the first step of differential trace analysis is instrumentation. Leveraging call graphs and the location of the observed discrepancy (e.g., different test case outcomes), WasmMend automatically tracks function dependencies reachable from this location to identify all relevant functions in the repository and apply instrumentation, which involves the following phases: 
+
+Type Serialization. WasmMend identifies all user-defined types used as arguments, return values, or local variables within the relevant functions. As these structures can be nested, WasmMend analyzes their dependencies and applies a topological sort to ensure that independent base types are processed first. Following this sorted order, WasmMend applies a rule-based instrumentation method to traverse members in the types with Abstract Syntax Tree (AST) via libclang and form printers. 
+
+Function Instrumentation. For each function, WasmMend prints an entry message including a unique function ID and input states at the very beginning of the function, and exit messages including the same function ID and output states right before each function exit point. An AST-based approach is still applied to print each variable, and previously serialized types are printed directly via their generated printers. 
+
+LLM Assistance. Throughout the instrumentation process, WasmMend routinely recompiles the project and executes the accompanying unit tests (when available) to verify that the instrumented execution remains consistent with the original results. For example, compilation failures can occur when attempting to print standard library types like std::locale that lack predefined output stream operators. When such errors arise, WasmMend isolates the problematic type or function and employs an LLM to repair the injected code. If the LLM fails to resolve the issue, WasmMend allows it to enter the concession state, where the model can omit the serialization of specific variables or, if necessary, completely restore the original function. 
+
+3.2.2 Cross-Execution Match Algorithm 1: Cross-Execution Match                       
+
+> Input: NativeEvents, WasmEvents : Sequential stream of instrumented events from native/Wasm execution
+> Output: Root-cause discrepancy report
+> Stack ←[]
+> Suspects ←[]
+> forall evt ∈NativeEvents do
+> is_matched ←MatchWasmEvent(evt, WasmEvents)
+> if IsEntry(evt) then if is_matched then
+> Stack.Push(evt) UpdateSus(evt, Stack, Suspects)
+> else
+> // Entry Mismatch
+> return Report(Stack, Suspects, evt)
+> else if IsExit(evt) then if is_matched then
+> Stack.Pop() UpdateSus(evt, Stack, Suspects)
+> else
+> // Exit Mismatch
+> return Report(Stack, Suspects, evt)
+
+WasmMend processes the sequential stream of native execution events ( Na-tiveEvents ) as the ground truth and com-pares them against the Wasm events (WasmEvents ). The events are collected based on the function entry/exit mes-sages, and each event includes the func-tion ID, a flag for entry/exit, and the variable states. Algorithm 1 outlines the core of our differential trace analysis, which relies on event stack reconstruc-tion to pinpoint initial execution discrep-ancies. When WasmMend encounters an event, it searches the Wasm event pool for a match via MatchWasmEvent .A match requires identical function IDs and equivalent entry/exit states. How-ever, WasmMend does not require na-tive and Wasm events to appear at the same position in the stream, because ex-act function call sequences cannot be ensured due to unspecified behavior 2. The details regarding equivalent event matching are provided in Appendix D.2. When WasmMend identifies a matching entry event, it pushes the event into a shared stack; conversely, it pops the top event when matched exit events are found. Crucially, if a native event fails to find a 
+
+> 2An example is provided in Appendix D.1
+
+4match, WasmMend immediately traces the discrepancy to the event currently at the top of the stack. This logic holds true for both event types: an entry mismatch implies the divergence originated in the caller function, while an exit mismatch indicates the divergence occurred before the current function terminated. In both scenarios, the responsible function is the one currently recorded at the top of the stack. To account for incomplete trace logs caused by concessions in the instrumentation phase, WasmMend maintains a Suspects list, updated via the UpdateSus routine. WasmMend employs a witness mechanism that tracks the execution lifecycle of suspect functions by linking them to the entry and exit events of their callers. The detailed mechanics of how suspects are handled via these witnesses are also discussed in Appendix D.2. Once an unmatched event triggers the Report routine, WasmMend halts the trace analysis and bundles the diagnostic context. The reported evidence includes the mismatch, the current stack state, the events in Suspects , the available native and Wasm I/O states from the current event, and the definitions of relevant variable types. The context is subsequently passed to the repair agents to synthesize the fix to the discrepancy. 
+
+3.3 Divergence-Guided Agentic Repair 
+
+Given the divergence localized by differential trace analysis, WasmMend synthesizes the patch through an LLM-based agentic framework grounded in the reported evidence. 
+
+Divergence-Guided Reasoning. The agents investigate the divergence at two levels: 1) the agents reason about what aspects of the implementation might trigger the discrepancy, given the reported function source code along with its native and Wasm input/output values; and 2) the agents also examine the stack states and suspects to obtain a broader execution context when needed. This two-level analysis guides the agent toward a targeted understanding of how the discrepancy arises, thereby avoiding undirected exploration of the repository. To further support reasoning, WasmMend incorporates a patch-execute feedback mechanism for patch verification. After each patch attempt, the agents re-execute both Wasm and native builds and compare the updated outputs, enabling them to assess the patch’s impact on the divergence. Together, these designs enable a structured reasoning process: observe the mismatch, hypothesize the cause, and propose a patch, iterating with fresh evidence until the divergence is eliminated. 
+
+Agent Architecture WasmMend implements the divergence-guided reasoning design as an agentic framework with distinct capabilities: an ANALYZE agent for investigation and planning; and a PATCH agent for code editing and verification 3.• ANALYZE Agent. The ANALYZE agent investigates the root cause of the divergence. It can inspect source code across the project, compile and execute both Wasm and native builds to observe their behavior, or use a LLM-driven instrumentation tool to re-instrument functions to gather additional trace evidence. Once it formulates a concrete root cause hypothesis and patch plan, the framework transitions to the PATCH agent for patch generation and verification. • PATCH Agent. Given the proposed patch plan, the PATCH agent can generate patch code and modify the project source code. The agent can also verify whether the patch resolves the discrepancy against the native execution. The agent further validates the applied patch to prevent passing the test by altering the program’s original semantics rather than addressing the underlying divergence. A patch is accepted only when both validations pass; otherwise, the agent can revise the plan and re-attempt the patch, or move back to the ANALYZE agent for further investigation. 
+
+## 4 Evaluation 
+
+In this section, we evaluate WasmMend’s practical viability and underlying mechanics. After detailing our experimental setup (Section 4.1), we compare WasmMend’s effectiveness against two baselines (Section 4.2) and its efficiency regarding token cost (Section 4.3). Finally, we isolate the impact of our differential trace analysis (Section 4.4) and categorize remaining failure modes (Section 4.5). 
+
+> 3More details are available in Appendix D.3.
+
+5Table 1: Fix rate (%) across three model backends and three configurations defined in Section 4.1. Values in parentheses indicate absolute change relative to Baseline. WasmMend achieves the highest fix rate on all three models. 
+
+Model Baseline Repair-Time Instr. WasmMend Average 
+
+DeepSeek-V4-Pro 30.0 40.0 ( ↑10.0) 57.6 ( ↑27.6) 42.5 Gemini-3.0-Flash 64.1 68.8 ( ↑4.7) 72.9 ( ↑8.8) 68.6 Qwen3.5-Plus 56.5 54.7 ( ↓1.8) 69.4 ( ↑12.9) 60.2 Average 50.2 54.5 ( ↑4.3) 66.7 ( ↑16.5) 57.1 
+
+4.1 Evaluation Setup Dataset. Our evaluation focuses on C/C++ programs, the predominant source languages for We-bAssembly [ 11 ]. We evaluate WasmMend on the WasmChecker benchmark [ 2], the most compre-hensive existing benchmark studying Native-Wasm functional discrepancies in real-world C/C++ repositories so far. Following WasmChecker, we compile native x86 binaries with GCC on Linux and Wasm binaries with Emscripten [ 35 ]; we run Wasm binaries with Emscripten-generated JavaScript glue code via Node.js. Overall, our evaluation covers 34 unique Native-Wasm discrepancies from high-quality, real-world C/C++ repositories (at least 100 GitHub stars) identified by unit tests. 
+
+Manual root cause annotation. While WasmChecker includes a high-level categorization of discrepancy types, we extend it with detailed diagnostic information about the underlying causes to enable a finer-grained evaluation. We manually audit every repository, reproduce and investigate the divergence, and annotate each evaluated discrepancy with its root cause and corresponding functions. The resulting annotations serve as ground truth throughout our evaluation. 
+
+Models. We evaluate three latest models for Differential Trace Analysis and Divergence-Guided Repair: DeepSeek-V4-Pro [ 7] (April 2026), Qwen3.5-Plus [ 28 ] (February 2026), and Gemini-3.0-Flash [9] (December 2025). 
+
+Configurations. We evaluate three setups: (1) Baseline : the agent only has access to the observed discrepancy and the source code in the repository; (2) Repair-Time Instrumentation : adapting recent agent-based repair techniques [ 14 , 41 , 42 ], the agents are allowed to create their own instrumentation for program state inspection; and (3) WasmMend : the complete pipeline where the agents are also provided the evidence from differential trace analysis. 
+
+4.2 Effectiveness of WasmMend 
+
+We set a maximum budget of 50 agent iterations 4 (ANALYZE + PATCH) per run, and repeat each experiment five times to mitigate nondeterminism. A run is considered successful if it produces a patch that resolves the discrepancy, as defined in Section 3.1. We report the overall fix rate, calculated as the fraction of successful runs across all attempts. Table 1 evaluates the three configurations across three model backbones. WasmMend achieves an overall fix rate of 66.7%, demonstrating strong capabilities for patching Native-Wasm discrepancies and consistently outperforming both baselines across all underlying models. We first notice that repair-time LLM instrumentation alone yields only marginal improvement over the Baseline, whereas adding differential trace analysis contributes a substantially larger gain. This observation substantiates our central design claim: WasmMend’s gains are primarily driven by differential trace analysis. This is due to the nature of Native-Wasm functional discrepancies: the source code remains semantically identical across both builds, and the divergent signals emerge only at runtime. Repair-time LLM instrumentation [ 14 , 41 , 42 ] can expose such signals, but only when applied to certain functions, which are hard to identify merely from source inspection. To quantify this, we measured how often the agent’s repair-time instrumentation landed on the manually annotated ground truth root-cause functions. According to case studies, under the Repair-Time Instr. configuration, only 30.9% of instrumentation attempts hit the ground truth root cause 
+
+> 4Justification for the budget constraint is available in Appendix E.1.
+
+6Table 2: Detailed breakdown of average input tokens, output tokens, and cost (USD) per successful fix by configuration. The cost is calculated based on the API call pricing. WasmMend’s token usage and cost also include the spending on differential trace analysis. WasmMend’s cost is between the other two configurations while achieving better fix rate.                                                
+
+> Model Baseline Repair-Time Instr. WasmMend In Tok. Out Tok. Cost($) In Tok. Out Tok. Cost($) In Tok. Out Tok. Cost($)
+> DeepSeek-V4-Pro 463,234 6,852 0.83 509,380 7,374 0.91 504,173 11,312 0.92 Gemini-3.0-Flash 259,819 6,055 0.15 355,812 8,556 0.20 228,385 10,558 0.14 Qwen3.5-Plus 304,553 5,472 0.14 367,940 5,746 0.16 292,362 17,613 0.16 Average 342,536 6,126 0.37 411,044 7,225 0.43 341,640 13,171 0.41
+
+function, less than half the rate under WasmMend. This deficit is most acute for Qwen, which hits the root-cause function in only 21.5% of instrumentation attempts, making Qwen the only model whose Repair-Time Instr. fix rate falls below the Baseline. Cumulatively, across all three models, 70.8% of runs under this configuration that invoke the instrumentation tool never reach the root-cause function. The localization deficit correspondingly limits the Repair-time Instr. fix rate. The evidence from differential trace analysis under WasmMend, on the other hand, solves this bottleneck: it localizes the divergence via symbolic alignment of native and Wasm executions to provide a focused basis for agents’ reasoning, thereby improving fix effectiveness. We also notice that WasmMend provides the largest improvements for models prone to stalling on the ANALYZE agent, creating an inverse relationship between a model’s Baseline performance and its gain from WasmMend. For example, DeepSeek, the weakest at Baseline, gains the most, while Gemini, the strongest at Baseline, gains the least. Our iteration logs reveal that this inverse trend stems from where the models stall: DeepSeek exhausts its budget on initial understanding rather than on actual patching. On average, when a fix failed, DeepSeek’s Baseline runs 34.4 file-inspection actions but only 0.5 patch attempts. In contrast, Gemini’s Baseline transitions to writing code more often and runs an average of 6.6 patch attempts even when the final fix failed. This comparison demonstrates that DeepSeek struggles to understand the core issue on its own and stalls prematurely on the ANALYZE agent. By providing explicit trace analysis results, WasmMend directly supplies the evidence to help understand the discrepancy context. Consequently, DeepSeek’s average patch attempts double under WasmMend compared to Baseline settings, bringing the largest fix-rate improvement of 27.6 points. 
+
+4.3 Efficiency of WasmMend 
+
+We also evaluate the efficiency of WasmMend against the other two configurations in terms of token usage and overall cost. As Table 2 shows, WasmMend is highly cost-effective. For Gemini, WasmMend incurs the lowest overall cost among the three configurations, and for Qwen, its cost remains comparable to the Baseline — demonstrating WasmMend’s ability to achieve superior fix rates efficiently. Deeper analysis reveals that the LLM-assisted differential trace analysis accounts for approximately 10–25% of the total budget across all models. If we isolate costs strictly to the repair phase, WasmMend consistently emerges as the most efficient method across the board. Furthermore, we compare each model’s performance under fixed budgets based on the pricing in the models’ official documents 5. Figure 3 plots each model’s fix rate against a given budget to illustrate these dynamics. The curves show that WasmMend consistently yields the highest fix rate at almost any budget for both Gemini and DeepSeek, underscoring the cost-effectiveness of our approach. For Qwen, WasmMend and the Baseline perform similarly within the $0.20–$0.30 budget range; however, WasmMend successfully resolves a cluster of discrepancies at approximately $0.35, establishing a definitive performance lead beyond that point. We also check the budget distribution among different agents under the three configurations. In Table 3, we see that all three models spend more budget on patching to improve the quality of the fix under WasmMend. With a deeper look, we find that for all three models, compared to the other two configurations, the budget of WasmMend moves from reading/searching files in the ANALYZE 
+
+> 5Details are available in Appendix B.
+
+7Figure 3: Fix rate with respect to inference budget (USD). Across all evaluated LLMs, WasmMend (blue) consistently achieves the highest fix rate under equivalent budget constraints in most cases. Table 3: Budget share (%) and absolute cost per successful fix (USD, in parentheses) among the ANALYZE and PATCH agents under three configurations. Costs cover the repair-loop iterations only; the upstream differential-trace preprocessing under WasmMend is reported separately. Under WasmMend, the share spent on designing the fix grows because the ANALYZE phase is much shorter, leaving the agent a more proportional budget for the PATCH agent.                                 
+
+> Baseline Repair-Time Instr. WasmMend Model ANALYZE PATCH ANALYZE PATCH ANALYZE PATCH
+> DeepSeek-V4-Pro 71.7 ($0.60) 28.3 ($0.23) 76.3 ($0.69) 23.7 ($0.22) 68.0 ($0.63) 32.0 ($0.29) Gemini-3.0-Flash 72.0 ($0.11) 28.0 ($0.04) 75.3 ($0.15) 24.7 ($0.05) 54.7 ($0.08) 45.3 ($0.06) Qwen3.5-Plus 59.0 ($0.08) 41.0 ($0.06) 59.4 ($0.10) 40.6 ($0.06) 41.5 ($0.07) 58.5 ($0.09) Average 67.6 ($0.26) 32.4 ($0.11) 70.4 ($0.31) 29.6 ($0.11) 54.7 ($0.26) 45.3 ($0.15)
+
+agent to synthesizing a fix patch in the PATCH agent. For each patch synthesis, the agent also spends 30-40% more tokens, making the patch attempts more reliable under WasmMend. A detailed breakdown of how each model distributes its budget and tool utilization during the repair phase is provided in Appendix E.3. The underlying behavioral differences between models explain the distinct trajectories for WasmMend in Figure 3. DeepSeek’s smooth, gradual fix-rate growth reflects its tendency to heavily rely on the ANALYZE agent, continuously expending tokens to read files between patch attempts. In contrast, Gemini’s dramatic surge between $0.10 and $0.20 results from its prudent strategy of iteratively gathering comprehensive repair-time instrumentation context before shifting budget to synthesize a patch. Qwen displays a distinct step-wise pattern with two rapid growth periods: an initial spike (before $0.10) driven by its aggressive approach of proposing early patches with minimal upfront analysis, a slower increment when it leverages post-failure instrumentation to diagnose mistakes, followed by a subsequent bump (around $0.35) when it applies the improved, context-aware patch. 
+
+4.4 Influence of Differential Trace Analysis 
+
+While previous sections established WasmMend’s superior performance and analyzed varying model behaviors during repair, these repairs rely on evidence derived from differential trace analysis. Consequently, it is critical to determine how the quality of this trace evidence impacts WasmMend’s overall efficacy. To investigate this, we first evaluate the quality of trace analysis across different models. We use the previously mentioned ground truth root cause for each test point and verify whether each root cause appears in the differential trace analysis evidence. The root cause localization rates are reported in Table 4. Without LLM assistance, rule-based static instrumentation paired with cross-execution match isolates the majority of root causes (85.3%), demonstrating its robustness. Meanwhile, LLM integration further elevates the localization rate to over 90%, peaking at 100% when using Gemini. Our case studies reveal that the main issue with static-only instrumentation occurs when attempting to print a custom-defined type after a previous serialization failure, and LLMs can effectively resolve this instrumentation challenge. 8Table 4: Root cause localization rates (%) across various settings. The Static-Only method relies solely on rule-based instrumen-tation with no LLM intervention.      
+
+> Model RC Loc. Rate
+> Static-Only 85.3 DeepSeek-V4-Pro 94.1 Gemini-3.0-Flash 100.0 Qwen3.5-Plus 94.1
+
+Table 5: Fix rates (%) under varying trace analysis evidences. In the last two columns, all models use identical differential trace analysis results. WasmMend S uses static-only rule-based trace analysis. WasmMend G uses shared, Gemini-assisted trace analysis.                
+
+> Model WasmMend WasmMend SWasmMend G
+> DeepSeek-V4-Pro 57.6 44.1 59.4 Gemini-3.0-Flash 72.9 70.6 72.9 Qwen3.5-Plus 69.4 61.8 77.6 Average 66.7 58.8 70.0
+
+Table 5 evaluates WasmMend’s patch performance across varying trace analysis evidence. Replacing default trace evidence with a static-only approach (WasmMend S) consistently degrades the average performance, whereas high-quality Gemini-assisted trace analysis (WasmMend G) improves the performance—even boosting the average fix rate to 70.0%. WasmMend G excels by identifying all ground truth root causes, restoring complete call stacks in most cases, and thus providing downstream agents the necessary context to link discrepancies to causes. Conversely, while static analysis finds 85% of root causes, it sometimes omits certain functions from the stack due to instrumentation failure, which leads to broken call chains and misleads repair agents, causing the performance drop. Beyond overall performance trends, the different patterns of trace analysis across models also affect their repair strategies and results. A detailed breakdown of these model-specific behaviors is deferred to Appendix E.4. 
+
+4.5 Failure Analysis 
+
+Although differential trace analysis helped WasmMend to achieve higher fix rates, it still fails in some cases. We categorize these failures into two primary causes: strategy overload and platform complexity. Strategy overload accounts for 55.7% of all failures. In these instances, the agent identifies a broad set of potential patch locations and methods; while many candidate modifications appear plausible, only a small subset actually resolves the underlying discrepancy. Consequently, successful repair relies more on stochastic chance than logical deduction. Platform complexity accounts for 33.5% of failures, where discrepancies arise from subtle Wasm runtime semantics that are difficult to diagnose and fix. For example, a discrepancy in the fmt project [ 8] reflects a complex Emscripten bug involving the internal implementations of dup and pipe [ 12 ]. Even when the root cause is identified, the agent struggles to formulate an effective patch. 
+
+## 5 Conclusion & Future Works 
+
+In this paper, we introduce WasmMend, the first tool targeting automatic fixes for Native-Wasm discrepancies, a longstanding challenge in the WebAssembly development community. Our ex-periments demonstrate that WasmMend achieves superior effectiveness compared to existing con-figurations while maintaining comparable efficiency. Specifically, we find that having a separate cause-exploration phase to provide detailed guidance allows the LLM agents to focus on discrepancy fixing, thereby improving the final fix rate. Moving forward, several avenues exist to enhance WasmMend’s capability. A primary objective is to integrate LLM-driven techniques for the automated detection of Native-Wasm discrepancies, which would transition WasmMend from a repair utility into a comprehensive, end-to-end pipeline for robust C/C++ to WebAssembly migration. Generalizing our differential trace analysis to support other source languages, such as Rust and Go, can also be helpful to larger communities. We hope WasmMend serves the WebAssembly community as a practical tool for migrating C/C++ code, and inspires further research on cross-platform program repair. 9References 
+
+[1] Juan Altmayer Pizzorno and Emery D. Berger. Coverup: Effective high coverage test generation for python. Proc. ACM Softw. Eng. , 2(FSE), June 2025. doi: 10.1145/3729398. URL https: //doi.org/10.1145/3729398 .[2] Sara Baradaran, Liyan Huang, Mukund Raghothaman, and Weihang Wang. Reusing legacy code in wasm: Key challenges of compilation and code semantics preservation. In 2026 IEEE International Conference on Software Analysis, Evolution and Reengineering (SANER) , pages 181–192, 2026. doi: 10.1109/SANER67736.2026.00029. [3] Paul Black. Juliet 1.3 test suite: Changes from 1.2, 2018-06-14 2018. URL https://doi. org/10.6028/NIST.TN.1995 .[4] Islem Bouzenia, Premkumar Devanbu, and Michael Pradel. Repairagent: An autonomous, llm-based agent for program repair. In Proceedings of the IEEE/ACM 47th International Conference on Software Engineering , ICSE ’25, page 2188–2200. IEEE Press, 2025. ISBN 9798331505691. doi: 10.1109/ICSE55347.2025.00157. URL https://doi.org/10.1109/ICSE55347.2025. 00157 .[5] Xinyun Chen, Maxwell Lin, Nathanael Schärli, and Denny Zhou. Teaching large language models to self-debug, 2023. URL https://arxiv.org/abs/2304.05128 .[6] Yiyang Chen, Nuoqi Gui, Long Wang, Longfei Chen, Xuanqing Shi, Xi Cao, and Chao Zhang. TRIGFUZZ: Triggering Conditions Guided Directed Fuzzing . In 2026 IEEE Symposium on Security and Privacy (SP) , pages 4128–4146, Los Alamitos, CA, USA, May 2026. IEEE Computer Society. doi: 10.1109/SP63933.2026.00156. URL https: //doi.ieeecomputersociety.org/10.1109/SP63933.2026.00156 .[7] DeepSeek-AI. Deepseek-v4: Towards highly efficient million-token context intelligence, 2026. URL https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/ DeepSeek_V4.pdf .[8] fmt Team. fmt: A modern formatting library, 2025. URL https://github.com/fmtlib/fmt .[9] Google DeepMind. Gemini 3 flash model card. https://storage.googleapis.com/ deepmind-media/Model-Cards/Gemini-3-Flash-Model-Card.pdf , December 2025. [10] Andreas Haas, Andreas Rossberg, Derek L. Schuff, Ben L. Titzer, Michael Holman, Dan Gohman, Luke Wagner, Alon Zakai, and JF Bastien. Bringing the web up to speed with webassembly. SIGPLAN Not. , 52(6):185–200, June 2017. ISSN 0362-1340. doi: 10.1145/ 3140587.3062363. URL https://doi.org/10.1145/3140587.3062363 .[11] Aaron Hilbig, Daniel Lehmann, and Michael Pradel. An empirical study of real-world webassembly binaries: Security, languages, use cases. In Proceedings of the Web Con-ference 2021 , WWW ’21, page 2696–2708, New York, NY, USA, 2021. Association for Computing Machinery. ISBN 9781450383127. doi: 10.1145/3442381.3450138. URL 
+
+https://doi.org/10.1145/3442381.3450138 .[12] hly2019. “TypeError: Cannot read properties of null (reading ’length’)” with pipe + dup&dup2. GitHub issue #22030, emscripten-core/emscripten, 2024. URL https://github.com/ emscripten-core/emscripten/issues/22030 .[13] Mohammed Nurul Hoque and Khaled A. Harras. Webassembly for edge computing: Potential and challenges. IEEE Communications Standards Magazine , 6(4):68–73, 2022. doi: 10.1109/ MCOMSTD.0001.2000068. [14] Jiangping Huang, Wenguang Ye, Weisong Sun, Jian Zhang, Mingyue Zhang, and Yang Liu. Tracecoder: A trace-driven multi-agent framework for automated debugging of llm-generated code. arXiv preprint arXiv:2602.06875 , 2026. URL https://arxiv.org/abs/2602.06875 .[15] Carlos E. Jimenez, John Yang, Alexander Wettig, Shunyu Yao, Kexin Pei, Ofir Press, and Karthik Narasimhan. Swe-bench: Can language models resolve real-world github issues?, 2024. URL https://arxiv.org/abs/2310.06770 .10 [16] René Just, Darioush Jalali, and Michael D. Ernst. Defects4j: a database of existing faults to enable controlled testing studies for java programs. In Proceedings of the 2014 International Symposium on Software Testing and Analysis , ISSTA 2014, page 437–440, New York, NY, USA, 2014. Association for Computing Machinery. ISBN 9781450326452. doi: 10.1145/2610384. 2628055. URL https://doi.org/10.1145/2610384.2628055 .[17] Sungmin Kang, Juyeon Yoon, and Shin Yoo. Large language models are few-shot testers: Exploring llm-based general bug reproduction. In Proceedings of the 45th International Conference on Software Engineering , ICSE ’23, page 2312–2323. IEEE Press, 2023. ISBN 9781665457019. doi: 10.1109/ICSE48619.2023.00194. URL https://doi.org/10.1109/ ICSE48619.2023.00194 .[18] Timo Lassmann and Erik Sonnhammer. Kalign: An accurate and fast multiple sequence alignment algorithm. BMC bioinformatics , 6:298, 02 2005. doi: 10.1186/1471-2105-6-298. [19] Leaning Technologies. Cheerp: A C/C++ compiler for WebAssembly and JavaScript. https: //cheerp.io/ , 2026. [20] Caroline Lemieux, Jeevana Priya Inala, Shuvendu K. Lahiri, and Siddhartha Sen. Codamosa: Escaping coverage plateaus in test generation with pre-trained large language models. In 2023 IEEE/ACM 45th International Conference on Software Engineering (ICSE) , pages 919–931, 2023. doi: 10.1109/ICSE48619.2023.00085. [21] Borui Li, Hongchang Fan, Yi Gao, and Wei Dong. Bringing webassembly to resource-constrained iot devices for seamless device-cloud integration. In Proceedings of the 20th Annual International Conference on Mobile Systems, Applications and Services , MobiSys ’22, page 261–272, New York, NY, USA, 2022. Association for Computing Machinery. ISBN 9781450391856. doi: 10.1145/3498361.3538922. URL https://doi.org/10.1145/ 3498361.3538922 .[22] Fengjie Li, Jiajun Jiang, Jiajun Sun, and Hongyu Zhang. Hybrid automated program repair by combining large language models and program analysis. ACM Trans. Softw. Eng. Methodol. ,34(7), August 2025. ISSN 1049-331X. doi: 10.1145/3715004. URL https://doi.org/10. 1145/3715004 .[23] Derrick Lin, James Koppel, Angela Chen, and Armando Solar-Lezama. Quixbugs: a multi-lingual program repair benchmark set based on the quixey challenge. In Proceedings Companion of the 2017 ACM SIGPLAN International Conference on Systems, Programming, Languages, and Applications: Software for Humanity , SPLASH Companion 2017, page 55–56, New York, NY, USA, 2017. Association for Computing Machinery. ISBN 9781450355148. doi: 10.1145/3135932.3135941. URL https://doi.org/10.1145/3135932.3135941 .[24] Jiawei Liu, Chunqiu Steven Xia, Yuyao Wang, and Lingming Zhang. Is your code generated by chatgpt really correct? rigorous evaluation of large language models for code generation, 2023. URL https://arxiv.org/abs/2305.01210 .[25] Chandra Maddila, Adam Tait, Claire Chang, Daniel Cheng, Nauman Ahmad, Vijayaraghavan Murali, Marshall Roch, Arnaud Avondet, Aaron Meltzer, Victor Montalvao, Michael Hopko, Chris Waterson, Parth Thakkar, Renuka Fernandez, Kristian Kristensen, Sivan Barzily, Sherry Chen, Rui Abreu, Nachiappan Nagappan, Payam Shodjai, Killian Murphy, James Everingham, Aparna Ramani, and Peter C. Rigby. Agentic program repair from test failures at scale: A neuro-symbolic approach with static analysis and test execution feedback, 2025. URL 
+
+https://arxiv.org/abs/2507.18755 .[26] Pankaj Mendki. Evaluating webassembly enabled serverless approach for edge computing. In 
+
+2020 IEEE Cloud Summit , pages 161–166, 2020. doi: 10.1109/IEEECloudSummit48914.2020. 00031. [27] Huy Nhat Phan, Tien N. Nguyen, Phong X. Nguyen, and Nghi D. Q. Bui. Hyperagent: Generalist software engineering agents to solve coding tasks at scale, 2025. URL https: //arxiv.org/abs/2409.16299 .11 [28] QwenTeam. Qwen3.5: Towards native multimodal agents, February 2026. URL https: //qwen.ai/blog?id=qwen3.5 .[29] Partha Pratim Ray. An overview of webassembly for iot: Background, tools, state-of-the-art, challenges, and future directions. Future Internet , 15(8), 2023. ISSN 1999-5903. doi: 10.3390/fi15080275. URL https://www.mdpi.com/1999-5903/15/8/275 .[30] Alan Romano, Xinyue Liu, Yonghwi Kwon, and Weihang Wang. An empirical study of bugs in webassembly compilers. In 2021 36th IEEE/ACM International Conference on Automated Software Engineering (ASE) , pages 42–54, 2021. doi: 10.1109/ASE51524.2021.9678776. [31] Max Schäfer, Sarah Nadi, Aryaz Eghbali, and Frank Tip. An empirical evaluation of using large language models for automated unit test generation. IEEE Transactions on Software Engineering , 50(1):85–105, 2024. doi: 10.1109/TSE.2023.3334955. [32] Quentin Stiévenart, Coen De Roover, and Mohammad Ghafari. Security risks of porting c programs to webassembly. In Proceedings of the 37th ACM/SIGAPP Symposium on Applied Computing , SAC ’22, page 1713–1722, New York, NY, USA, 2022. Association for Computing Machinery. ISBN 9781450387132. doi: 10.1145/3477314.3507308. URL https://doi.org/ 10.1145/3477314.3507308 .[33] Quentin Stiévenart, Coen De Roover, and Mohammad Ghafari. The security risk of lacking compiler protection in webassembly. In 2021 IEEE 21st International Conference on Software Quality, Reliability and Security (QRS) , pages 132–139, 2021. doi: 10.1109/QRS54544.2021. 00024. [34] Wei Tao, Yucheng Zhou, Yanlin Wang, Wenqiang Zhang, Hongyu Zhang, and Yu Cheng. Magis: Llm-based multi-agent framework for github issue resolution. In Proceedings of the 38th International Conference on Neural Information Processing Systems , NIPS ’24, Red Hook, NY, USA, 2024. Curran Associates Inc. ISBN 9798331314385. [35] Emscripten Team. Emscripten: a complete open source LLVM-based compiler toolchain for WebAssembly, 2010. URL https://emscripten.org .[36] PEGTL Team. PEGTL: Parsing expression grammar template library. https://github.com/ taocpp/PEGTL , 2024. [37] Weihang Wang. Empowering web applications with webassembly: Are we there yet? In 2021 36th IEEE/ACM International Conference on Automated Software Engineering (ASE) , pages 1301–1305, 2021. doi: 10.1109/ASE51524.2021.9678831. [38] WebAssembly Community Group. Introduction to WebAssembly. https://webassembly. github.io/spec/core/intro/introduction.html , 2026. [39] WebAssembly Community Group. Webassembly browser support. https://webassembly. org/features/ , 2026. [40] Elliott Wen and Gerald Weber. Wasmachine: Bring iot up to speed with a webassembly os. In 
+
+2020 IEEE International Conference on Pervasive Computing and Communications Workshops (PerCom Workshops) , pages 1–4, 2020. doi: 10.1109/PerComWorkshops48775.2020.9156135. [41] Jiaqing Wu, Tong Wu, Manqing Zhang, Yunwei Dong, and Bo Shen. Runtime execution traces guided automated program repair with multi-agent debate, 2026. URL https://arxiv.org/ abs/2604.02647 .[42] Linhao Wu, Yifei Pei, Zhen Yang, Kainan Li, Zhonghang Lu, Hao Tan, Xiran Lyu, Jia Li, Yizhou Chen, Pengyu Xue, Kunwu Zheng, and Dan Hao. Debugrepair: Enhancing llm-based automated program repair via self-directed debugging, 2026. URL https://arxiv.org/abs/ 2604.19305 .[43] Xiao Wu, Alan Romano, Liyan Huang, Qiwen Yan, Cai Fu, and Weihang Wang. Broken promise: Differential analysis of functional discrepancies between webassembly and native binaries. In Proceedings of the ACM Web Conference 2026 , WWW ’26, page 5144–5154, New York, NY, USA, 2026. Association for Computing Machinery. ISBN 9798400723070. doi: 10.1145/3774904.3792193. URL https://doi.org/10.1145/3774904.3792193 .12 [44] Chunqiu Steven Xia and Lingming Zhang. Automated program repair via conversation: Fixing 162 out of 337 bugs for $0.42 each using chatgpt. In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis , ISSTA 2024, page 819–831, New York, NY, USA, 2024. Association for Computing Machinery. ISBN 9798400706127. doi: 10.1145/3650212.3680323. URL https://doi.org/10.1145/3650212.3680323 .[45] Chunqiu Steven Xia, Yifeng Ding, and Lingming Zhang. The plastic surgery hypothesis in the era of large language models. In 2023 38th IEEE/ACM International Conference on Automated Software Engineering (ASE) , pages 522–534, 2023. doi: 10.1109/ASE56229.2023.00047. [46] Chunqiu Steven Xia, Matteo Paltenghi, Jia Le Tian, Michael Pradel, and Lingming Zhang. Fuzz4all: Universal fuzzing with large language models. In 2024 IEEE/ACM 46th International Conference on Software Engineering (ICSE) , pages 1547–1559, 2024. [47] Chunqiu Steven Xia, Yinlin Deng, Soren Dunn, and Lingming Zhang. Demystifying llm-based software engineering agents. Proc. ACM Softw. Eng. , 2(FSE), June 2025. doi: 10.1145/3715754. URL https://doi.org/10.1145/3715754 .[48] Yutian Yan, Tengfei Tu, Lijian Zhao, Yuchen Zhou, and Weihang Wang. Understanding the performance of webassembly applications. In Proceedings of the 21st ACM Internet Measurement Conference , IMC ’21, page 533–549, New York, NY, USA, 2021. Association for Computing Machinery. ISBN 9781450391290. doi: 10.1145/3487552.3487827. URL 
+
+https://doi.org/10.1145/3487552.3487827 .[49] John Yang, Carlos E. Jimenez, Alexander Wettig, Kilian Lieret, Shunyu Yao, Karthik Narasimhan, and Ofir Press. Swe-agent: agent-computer interfaces enable automated software engineering. In Proceedings of the 38th International Conference on Neural Information Processing Systems , NIPS ’24, Red Hook, NY, USA, 2024. Curran Associates Inc. ISBN 9798331314385. [50] He Ye, Aidan Z.H. Yang, Chang Hu, Yanlin Wang, Tao Zhang, and Claire Le Goues. Adverintent-agent: Adversarial reasoning for repair based on inferred program intent. Proc. ACM Softw. Eng. ,2(ISSTA), June 2025. doi: 10.1145/3728939. URL https://doi.org/10.1145/3728939 .[51] Xin Yin, Chao Ni, Shaohua Wang, Zhenhao Li, Limin Zeng, and Xiaohu Yang. Thinkrepair: Self-directed automated program repair. In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis , ISSTA 2024, page 1274–1286, New York, NY, USA, 2024. Association for Computing Machinery. ISBN 9798400706127. doi: 10.1145/ 3650212.3680359. URL https://doi.org/10.1145/3650212.3680359 .[52] Kunpeng Zhang, Zongjie Li, Daoyuan Wu, Shuai Wang, and Xin Xia. Low-Cost and comprehen-sive non-textual input fuzzing with LLM-Synthesized input generators. In 34th USENIX Security Symposium (USENIX Security 25) , pages 6999–7018, Seattle, WA, August 2025. USENIX Association. ISBN 978-1-939133-52-6. URL https://www.usenix.org/conference/ usenixsecurity25/presentation/zhang-kunpeng .[53] Quanjun Zhang, Chunrong Fang, Yang Xie, Yuxiang Ma, Weisong Sun, Yun Yang, and Zhenyu Chen. A systematic literature review on large language models for automated program repair. 
+
+ACM Trans. Softw. Eng. Methodol. , March 2026. ISSN 1049-331X. doi: 10.1145/3799693. URL https://doi.org/10.1145/3799693 . Just Accepted. [54] Yuntong Zhang, Haifeng Ruan, Zhiyu Fan, and Abhik Roychoudhury. Autocoderover: Autonomous program improvement. In Proceedings of the 33rd ACM SIGSOFT Interna-tional Symposium on Software Testing and Analysis , ISSTA 2024, page 1592–1604, New York, NY, USA, 2024. Association for Computing Machinery. ISBN 9798400706127. doi: 10.1145/3650212.3680384. URL https://doi.org/10.1145/3650212.3680384 .13 A Limitations 
+
+WasmMend only targets the compilation of C/C++ projects to Wasm via the Emscripten toolchain. The rule-based instrumentation in our current implementation relies on C/C++ language features, such as type-specific printing conventions. However, the core design—differential trace analysis and divergence-guided agentic repair—is language-agnostic. Extending WasmMend to other source languages and toolchains (e.g., Rust or Go) requires only adapting the rule-based instrumentation, which we leave to future work. WasmMend assumes that a Native-Wasm discrepancy has already been observed and does not address the upstream problem of detecting such discrepancies. We position WasmMend as the repair component of a broader migration pipeline, in which an automated detection mechanism, such as LLM-driven test synthesis [ 1, 17 , 20 , 31 ] and LLM-guided input generation [ 6 , 46 , 52 ], would sit upstream. Integrating detection and repair into an end-to-end system is a promising direction for future work. Our evaluation uses test points drawn from WasmChecker [ 2], which to our knowledge is the most comprehensive and most recent benchmark of Native-Wasm functional discrepancies in real-world C/C++ repositories. While the absolute number is modest, we have filtered out trivial cases to retain only unique, representative discrepancies, ensuring that each evaluated case poses a substantive repair challenge. Expanding the benchmark as additional discrepancies is itself an open research direction. 
+
+## B Reproducibility 
+
+We will release the codebase to produce the experimental results at https://github.com/ wasmmend/wasmmend_arxiv . The implementation requires API keys for calls to DeepSeek-V4-Pro, Gemini-3.0-Flash, and Qwen3.5-Plus. The authors used $653.86 6 for both development and evaluation. All budget calculations in Section 4.3 are based on the pricing from the model owner’s official documentation: • DeepSeek-V4-Pro: $1.74/1M Input Tokens, $3.48/1M Output Tokens. 7
+
+• Gemini-3.0-Flash: $0.50/1M Input Tokens, $3.00/1M Output Tokens. 8
+
+• Qwen3.5-Plus: $0.50/1M Input Tokens, $3.00/1M Output Tokens. 9
+
+We set the temperature of these models to 0 for reproducibility and to mitigate nondeterminism. 
+
+## C Example patch for Figure 1                                
+
+> 1// open azero - length file
+> 2int fd =open ( " ./ empty_file " , O_RDWR ) ;
+> 3struct stat st ; fstat ( fd , & st ) ;
+> 4int size =st . st_size ; // == 0
+> 5char * p =( char *) mmap ( NULL , size ,
+> ,→PROT_READ , MAP_PRIVATE , fd , 0) ;
+
+(a) Original: always calls mmap .                                      
+
+> 1// open azero - length file
+> 2int fd =open ( " ./ empty_file " , O_RDWR ) ;
+> 3struct stat st ; fstat ( fd , & st ) ;
+> 4int size =st . st_size ; // == 0
+> 5char * p =( size == 0) ?NULL :( char *)
+> ,→mmap ( NULL , size , PROT_READ ,
+> ,→MAP_PRIVATE , fd , 0) ;
+
+(b) Fix: skip mmap when size is 0. 
+
+Figure 4: Example patch for Figure 1: a ternary guard for the mmap call under zero-length files, avoiding the Emscripten crash. Changes highlighted in yellow (original) and blue (patch). 
+
+> 6During our experiment, DeepSeek API provides a 75% off discount. Real cost may differ.
+> 7https://api-docs.deepseek.com/quick_start/pricing
+> 8https://ai.google.dev/gemini-api/docs/pricing#gemini-3-flash-preview
+> 9https://modelstudio.console.alibabacloud.com/?tab=doc#/doc/?type=model&url=2840914_2& modelId=group-qwen3.5-plus
+
+14 D Methodology 
+
+D.1 Example of Unspecified Behavior: Argument Evaluation Order                                                       
+
+> 1// ub_example . c
+> 2int first ( void ) {
+> 3printf ( " first () called \ n " ) ;
+> 4return 10;
+> 5}
+> 6int second ( void ) {
+> 7printf ( " second () called \ n " ) ;
+> 8return 20;
+> 9}
+> 10 int func ( int a , int b ) {
+> 11 return b+a ;
+> 12 }
+> 13 int main ( void ) {
+> 14 // Order of first () and second () is
+> ,→unspecified when executed .
+> 15 int result =func ( first () , second ()
+> ,→) ;
+> 16 printf ( " Result : % d \ n " , result ) ;
+> 17 return 0;
+> 18 }
+
+(a) Minimal reproducer.          
+
+> $gcc ub_example . c -o ub_example && ./ ub_example second () called first () called Result : 30
+
+(b) Native (gcc).          
+
+> $emcc ub_example . c -o ub_example . js && node ub_example . js first () called second () called Result : 30
+
+(c) Emscripten (emcc). 
+
+Figure 5: Example of unspecified behavior: the order of evaluation of function arguments is unspecified by the C standard, and the two toolchains pick different orders. (a) shows the minimal reproducer, (b) displays the native C execution where second() is evaluated first, and (c) illustrates the Wasm execution via Node.js where first() is evaluated first. An example of the unspecified behavior is provided in Figure 5. In the example, we cannot guarantee the sequence of first() and second() during Native and Wasm execution. Thus, we allow flexible matching in Section 3.2.2 and Algorithm 2. 
+
+D.2 Algorithms used in Differential Trace Analysis 
+
+Algorithm 2 details the MatchWasmEvent routine, which establishes cross-execution match by identifying equivalent events between the native and WebAssembly (Wasm) execution traces. For a given native event, WasmMend iterates through the indexed pool of Wasm events except for any records that have already been matched and marked as “used” during previous alignments. It then filters remaining candidates by ensuring identical function names. Once an event with the same function ID is found, WasmMend performs a granular, pairwise comparison of their detailed execution states. Crucially, because identical executions across different architectures naturally yield divergent low-level representations, WasmMend applies context-aware equivalence rules. If a paired state variable represents a platform-dependent value (such as a memory address or a file descriptor), WasmMend normalizes both values to an architecture-agnostic format before comparison. For all other standard data types, a direct equality check is enforced. If all state variables within the Wasm event align under these rules, WasmMend marks the Wasm event as “used” to prevent duplicate mapping, confirms the match, and halts the search. If no candidate in the pool satisfies these strict equivalence conditions, the routine concludes that the event is unmatched and flags a potential divergence in the execution trace. 15 Algorithm 2: Wasm Event Matching ( MatchWasmEvent )                                         
+
+> Input: evt : The target native event to match
+> WasmEvents : The indexed pool of Wasm events
+> Output: Boolean indicating if an equivalent Wasm event exists
+> forall w_evt ∈WasmEvents do
+> // Skip events that have already been successfully matched
+> if w_evt.IsUsed then continue if evt.FuncName == w_evt.FuncName then
+> is_equivalent ←True // Iterate through detailed state variables
+> forall (n_val ,w_val )∈Zip(evt.States, w_evt.States) do if IsMemOrFD(n_val) ∧IsMemOrFD(w_val) then
+> // Normalize platform-dependent values before comparison
+> if Normalize(n_val) ̸=Normalize(w_val) then
+> is_equivalent ←False
+> break else
+> // Direct comparison for standard values
+> if n_val ̸=w_val then
+> is_equivalent ←False
+> break if is_equivalent then
+> w_evt.IsUsed ←True // Mark as used to prevent duplicate mapping
+> return True // Equivalent match found
+> return False // No matching event found in the pool
+
+To robustly handle incomplete traces stemming from LLM instrumentation concessions, WasmMend employs a hierarchical witness mechanism, detailed in Algorithm 3. When an execution event corresponding to a concession-affected function enters the call stack, UpdateSus registers it in a 
+
+Suspects list and assigns its immediate caller (located at the second-to-top position of the Stack ) as its designated witness in SuspectPairs . Upon the suspect’s exit, WasmMend marks it as “ready to leave,” deferring its removal until its broader execution context fully closes. The resolution of a suspect’s status ultimately hinges on the exit event of its active witness. If the exiting witness is “clean”—the corresponding function did not experience any instrumentation concessions itself—WasmMend isolates the specific suspects currently mapped to it. Any of these associated suspects that are marked as ready to leave are deemed safe and removed from Suspects .Conversely, if the exiting witness also experienced concessions, it cannot guarantee the integrity of the execution state; therefore, it delegates its oversight responsibilities by updating the SuspectPairs 
+
+mapping to transfer its associated suspects to the next active caller up the stack. In edge cases where a compromised function has no available caller to inherit this role (either upon initial entry or when an unclean root witness exits), its witness mapping is simply set to None . This ensures the suspect is never released, preserving potential discrepancies originating from isolated or root-level concessions for the final diagnostic report. 16 Algorithm 3: Suspect Tracker ( UpdateSus )
+
+Input: evt : The current execution event 
+
+Stack : The current function call stack 
+
+Suspects : A list recording all current suspect events 
+
+Data: SuspectPairs , ReadyToLeave : Static lists // Ignore events that are neither concessions nor acting as witnesses 
+
+if ¬HasConcession(evt) ∧ ¬ IsWitness(evt) then return 
+
+// Handle functions that experienced LLM concessions 
+
+if HasConcession(evt) then if IsEntry(evt) then 
+
+// Add to the suspect list 
+
+Suspects.Append(evt) 
+
+if Stack.Size() > 1 then 
+
+// evt is at Top(); use the caller at SecondTop() as witness 
+
+witness ← Stack.SecondTop() 
+
+// Record the pair mapping 
+
+SuspectPairs[evt] ← witness MarkAsWitness(witness) 
+
+else 
+
+// Stack contains only evt; map to None so it is never released 
+
+SuspectPairs[evt] ← None 
+
+else 
+
+// Exit event: Suspect is ready to leave once a clean witness exits 
+
+ReadyToLeave.Add(evt) 
+
+// Handle exiting functions that are acting as witnesses 
+
+if IsWitness(evt) ∧ IsExit(evt) then 
+
+associated_suspects ← { s ∈ Suspects | SuspectPairs [s] = evt }
+
+if ¬HasConcession(evt) then 
+
+// Clean witness: Remove ready-to-leave suspects 
+
+forall suspect ∈ associated_suspects do if suspect ∈ ReadyToLeave then 
+
+Suspects.Remove(suspect) SuspectPairs.Remove(suspect) 
+
+else 
+
+// Unclean witness: Transfer suspects to the next caller up the stack 
+
+if Stack.Size() > 0 then 
+
+// evt was popped; caller is now at Top() 
+
+next_witness ← Stack.Top() 
+
+forall suspect ∈ associated_suspects do 
+
+SuspectPairs[suspect] ← next_witness MarkAsWitness(next_witness) 
+
+else 
+
+// No caller available to inherit suspects; map to None 
+
+forall suspect ∈ associated_suspects do 
+
+SuspectPairs[suspect] ← None 
+
+D.3 Agent Toolkits 
+
+WasmMend operates an ANALYZE agent for diagnosis and a PATCH agent for patch generation and code modification. Each agent exposes a curated toolkit; some tools are role-specific, while others are shared across both agents. We organize the tools used below by the agent that invokes them. 
+
+Tools used only by the ANALYZE agent. 
+
+• run_test : compile and run the failing test on Wasm or native with the original source code; returns filtered compile errors or raw test output. 17 • instrument_function : invoke an individual LLM agent for repair-time instrumentation. The instrumentation agent inserts debug prints into a function following instructions from the ANALYZE agent, compiles and runs both native and Wasm, and returns corresponding native and Wasm execution logs in the instrumented function. • analyze_instrumentation : mandatory follow-up to instrument_function ; record findings. • transition_to_patch : hand over to the PATCH agent once enough understanding has been gathered with a patch plan. 
+
+Tools used only by the PATCH agent. 
+
+• write_patch : apply a search-and-replace edit to a function, then automatically compile and run the test. • analyze_patch : mandatory follow-up to write_patch ; record ANALYSIS and whether the root cause was addressed; reject a patch if it is considered improper (e.g., changing the original program semantics to bypass the test). • transition_to_analyze : hand over to the ANALYZE agent if more information is needed. 
+
+Tools shared by both agents. General-purpose exploration, navigation, and workflow tools are available in either agent. • read_file : read arbitrary file lines by path and line range. • list_directory : list the directory and file structure of the project. • search_in_file : search a keyword or regular expression in a file. • read_test_source : return the source of the failing test function. • list_candidates : return the candidate functions and corresponding information obtained from differential trace analysis. • view_patch_history : view recent tool calls, patch attempts, and instrumentation results. • propose_plan : record or revise the current patch plan. 18 E Evaluation Supplementary 
+
+E.1 Justification for Experiment Budget 
+
+Before the large-scale evaluation, we experimented with higher iteration limits for the divergence-guided agentic repair phase. Results showed that when agents successfully fix discrepancies, they typically require fewer than 50 iterations. Conversely, when agents fail to resolve an issue, they remain unable to identify the root cause and waste tokens on reading files or patching irrelevant functions, even when given 10 to 20 additional iterations. Therefore, we capped the limit at 50 iterations to balance repair effectiveness with our experimental budget. 
+
+E.2 Effectiveness Results with Standard Errors 
+
+Table 6: Fix rate (%) across three model backends and three configurations defined in Section 4.1 with standard errors across 5 repeats. 
+
+Model Baseline Repair-Time Instr. WasmMend 
+
+DeepSeek-V4-Pro 30 .0±3.88 40 .0±2.00 57 .6±3.03 
+
+Gemini-3.0-Flash 64 .1±2.53 68 .8±3.17 72 .9±2.35 
+
+Qwen3.5-Plus 56 .5±2.16 54 .7±1.50 69 .4±0.72 
+
+Table 6 shows the result of the fix rate across three models and three configurations with standard error, supplementing Table 1. The standard errors are overall modest. 
+
+E.3 WasmMend Efficiency Breakdown 
+
+Table 7: WasmMend Usage Breakdown                                                
+
+> Model Trace Analysis Repair Total In Tok. Out Tok. cost ($) In Tok. Out Tok. cost ($) In Tok. Out Tok. cost ($)
+> DeepSeek-V4-Pro 32,826 3,986 0.071 475,615 8,316 0.857 504,173 11,312 0.917 Gemini-3.0-Flash 18,694 4,590 0.023 209,692 5,968 0.123 228,385 10,558 0.146 Qwen3.5-Plus 37,149 10,829 0.041 251,323 5,585 0.114 292,362 17,613 0.159 Average 29,556 6,468 0.045 316,921 6,626 0.368 341,640 13,171 0.407
+
+Table 8: WasmMend Repair Time Token Usage Breakdown. Share (%) denotes the budget share spent on each agents.                                  
+
+> Model ANALYZE Agent PATCH Agent In Tok Out Tok Cost ($) Share (%) In Tok Out Tok Cost ($) Share (%)
+> DeepSeek-V4-Pro 323,050.1 5,756.9 0.5821 67.97 152,564.4 2,559.0 0.2744 32.03 Gemini-3.0-Flash 108,853.9 4,226.8 0.0671 54.67 100,837.8 1,741.2 0.0556 45.33 Qwen3.5-Plus 103,967.1 2,381.2 0.0473 41.52 147,355.7 3,203.5 0.0666 58.48
+
+Table 7 details the token usage and corresponding costs for both the Differential Trace Analysis phase and the Repair phase when using the WasmMend configuration. Table 8 records the token usage and the corresponding cost among the ANALYZE agent and the PATCH agent, under WasmMend configuration. We also examine the budget distribution during WasmMend’s repair phase. DeepSeek allocates 67% of its budget to the ANALYZE agent, compared to 54% for Gemini and 42% for Qwen. However, this higher allocation does not necessarily yield a better analysis. Even when differential trace analysis evidence is available, DeepSeek relies heavily on reading files rather than deploying instrumentation. 19 Table 9: Average number of tokens spent before the first patch attempt. 
+
+model Baseline Repair-Time Instr. WasmMend 
+
+DeepSeek-V4-Pro 350401 378523 316167 Gemini-3.0-Flash 174375 243509 95448 Qwen3.5-Plus 133424 164089 93478 On average, DeepSeek invokes the read_file tool 5.31 times per successful patch, whereas Gemini and Qwen average fewer than three calls each. Conversely, Gemini and Qwen allocate 6–13% of their budgets to instrumentation during the repair phase to better understand behavioral discrepancies. The models also demonstrate distinct behaviors within the PATCH agent as demonstrated in Table 9. DeepSeek and Gemini are generally more cautious, typically reading files or deploying instrumen-tation prior to modifying code. In contrast, Qwen tends to alter files much earlier in the process. Furthermore, the models react differently to patch failures. Before attempting a new fix, DeepSeek usually rereads multiple files, which accounts for its significantly higher token usage. Gemini favors an iterative approach, alternating between file modification and patch analysis to align its reasoning with previously gathered instrumentation data. Qwen, however, typically proposes an initial patch first, only resorting to instrumentation to diagnose errors after a failure occurs. These behavioral differences explain the distinct WasmMend performance curves observed in Figure 3. DeepSeek’s fix rate increases relatively smoothly as its budget grows because it expends a substantial number of tokens reading files between patch attempts. Gemini’s fix rate surges dramatically between $0.10 and $0.20, which typically happens right after it achieves a comprehensive understanding of the discrepancy and writes the patch. Meanwhile, Qwen displays two periods of rapid growth: an initial spike between $0.00 and $0.10 during its first patch attempt, and a subsequent surge around $0.35 after it completes its post-failure instrumentation analysis and applies an improved patch. 
+
+E.4 Influence of Differential Trace Analysis — Model-wise Analysis 
+
+Among the evaluated models, Gemini demonstrated the highest proficiency by successfully locating all ground truth root causes. Our analysis indicates that Gemini outperforms DeepSeek and Qwen due to its advanced concession capabilities. Specifically, Gemini accurately interprets compilation error messages to identify and exclude problematic variables. In contrast, the other models struggle to parse this contextual information, defaulting instead to a naive reversion, skipping instrumenting the current function. Consequently, while the overall root cause location rates across the three models are comparable, Gemini produces clearer evidence. For instance, Gemini typically accompanies the ground truth root cause with detailed input and output values, whereas DeepSeek and Qwen often bury the root cause within a broader list of suspects. Under the static-only instrumentation setting (WasmMend S), model performance ranks as follows: DeepSeek < Qwen < Gemini. However, when provided with the stronger evidence generated in the WasmMend G setting, Qwen improves significantly, ultimately surpassing Gemini. An analysis of the repair details reveals that this shift in ranking is driven by both the quality of the differential trace analysis and Qwen’s distinct repair patterns. As discussed in Section 4.3, Qwen tends to modify code early and, if the patch fails, persists in trying to fix those initial modifications. As a result, if Qwen’s first patch targets a non-root-cause function, it frequently exhausts its repair budget and fails. By leveraging the superior trace analysis evidence from Gemini in the WasmMend G setting, Qwen is guided to patch the correct function from the outset, driving its improved performance. Conversely, DeepSeek shows only marginal improvement under the WasmMend G setting and experiences a sub-stantial performance drop under the WasmMend S setting. This occurs because DeepSeek consistently expends numerous iterations reading files, thereby minimizing the benefits of improved evidence. When the evidence is less reliable (as in the WasmMend S setting), DeepSeek spends even more iterations attempting to comprehend the repository, often exhausting its budget before executing any code changes. 20
