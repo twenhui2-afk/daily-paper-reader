@@ -6,55 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-09
-- 运行时间：2026-08-10 04:18:47 UTC+8
+- 最新运行日期：2026-08-10
+- 运行时间：2026-08-11 04:26:59 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Localization in Spatiotemporal Fields via Environmental PDEs》（7.7/10）, 《Empirical optimal transport potentials: fast rates and a functional central limit theorem》（7.6/10）, 《Positive rational series for reciprocal powers of Catalan's constant and Dirichlet beta values》（7.5/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《Optimal frequency scales for probing black-hole geometries》（8.2/10）
+- 速读：《A 60-Vertex Lower Bound for Cubic Bipartite Counterexamples to the Erdős-Gyárfás Conjecture》（7.7/10）, 《A Unified 2D Framework for DeepLesion Detection, Segmentation and Short Report Generation》（7.3/10）, 《H2AL: Hyperbolic Hierarchy-aware Aggregative Learning for Registration-based Few-shot Medical Image Segmentation》（7.3/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/09/README](/202608/09/README)
+- 详情：[/202608/10/README](/202608/10/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Optimal frequency scales for probing black-hole geometries](/202608/10/2608.01061v1-optimal-frequency-scales-for-probing-black-hole-geometries)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Localization in Spatiotemporal Fields via Environmental PDEs](/202608/09/2608.00272v1-localization-in-spatiotemporal-fields-via-environmental-pdes)  
+1. [A 60-Vertex Lower Bound for Cubic Bipartite Counterexamples to the Erdős-Gyárfás Conjecture](/202608/10/2608.02675v1-a-60-vertex-lower-bound-for-cubic-bipartite-counterexamples-to-the-erds-gyrfs-conjecture)  
    标签：评分：7.7/10
    evidence：检索回退候选
-2. [Empirical optimal transport potentials: fast rates and a functional central limit theorem](/202608/09/2608.00649v1-empirical-optimal-transport-potentials-fast-rates-and-a-functional-central-limit-theorem)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-3. [Positive rational series for reciprocal powers of Catalan's constant and Dirichlet beta values](/202608/09/2608.00429v1-positive-rational-series-for-reciprocal-powers-of-catalans-constant-and-dirichlet-beta-values)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-4. [RefactorAssist: Agentic Refinement for Reliable Code Refactoring](/202608/09/2608.00924v1-refactorassist-agentic-refinement-for-reliable-code-refactoring)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-5. [Residue construction of quantized Coulomb branches](/202608/09/2608.01379v1-residue-construction-of-quantized-coulomb-branches)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-6. [A sharp integral criterion for the Lane--Emden system of inequalities on weighted graphs](/202608/09/2608.01191v1-a-sharp-integral-criterion-for-the-lane--emden-system-of-inequalities-on-weighted-graphs)  
+2. [A Unified 2D Framework for DeepLesion Detection, Segmentation and Short Report Generation](/202608/10/2608.02805v1-a-unified-2d-framework-for-deeplesion-detection-segmentation-and-short-report-generation)  
    标签：评分：7.3/10
    evidence：检索回退候选
-7. [Conserved Quantities of Optimal Continuous-Thrust Trajectories in A Central Gravitational Field](/202608/09/2608.00842v1-conserved-quantities-of-optimal-continuous-thrust-trajectories-in-a-central-gravitational-field)  
+3. [H2AL: Hyperbolic Hierarchy-aware Aggregative Learning for Registration-based Few-shot Medical Image Segmentation](/202608/10/2608.07340v1-h2al-hyperbolic-hierarchy-aware-aggregative-learning-for-registration-based-few-shot-medical-image-segmentation)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+4. [Curia-MAE: Multi-Modal Multi-Anatomy MAE Pre-Training for 3D Medical Image Segmentation](/202608/10/2608.05844v1-curia-mae-multi-modal-multi-anatomy-mae-pre-training-for-3d-medical-image-segmentation)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+5. [Morphology-Aware Implicit Super-Resolution Network for Pathological Images](/202608/10/2608.03664v1-morphology-aware-implicit-super-resolution-network-for-pathological-images)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+6. [Curia-MAE: Multi-Modal Multi-Anatomy MAE Pre-Training for 3D Medical Image Segmentation](/202608/10/2608.05844v2-curia-mae-multi-modal-multi-anatomy-mae-pre-training-for-3d-medical-image-segmentation)  
+   标签：评分：7.1/10
+   evidence：检索回退候选
+7. [LocAnyMed: Vision-Language Grounding for Multimodal Medical Images](/202608/10/2608.03322v1-locanymed-vision-language-grounding-for-multimodal-medical-images)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Permission Denied: Policy-Graded Evaluation of Coding Agents in Hardened Environments](/202608/09/2608.02670v1-permission-denied-policy-graded-evaluation-of-coding-agents-in-hardened-environments)  
+8. [EliSeg: Verified Target Construction for Report-Grounded Abnormality Segmentation](/202608/10/2608.07299v1-eliseg-verified-target-construction-for-report-grounded-abnormality-segmentation)  
    标签：评分：6.9/10
    evidence：检索回退候选
-9. [DistMedVL: Distributional Vision-Language Alignment for Uncertainty-Aware Medical Image Segmentation](/202608/09/2608.05683v1-distmedvl-distributional-vision-language-alignment-for-uncertainty-aware-medical-image-segmentation)  
-   标签：评分：6.6/10
+9. [Toward surface-based registration of a virtual preoperative cutting guide onto the mandible for reconstruction surgery](/202608/10/2608.06599v1-toward-surface-based-registration-of-a-virtual-preoperative-cutting-guide-onto-the-mandible-for-reconstruction-surgery)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-10. [Context Matters: Support Set Selection and Failure Detection for In-Context Medical Image Segmentation](/202608/09/2608.05333v1-context-matters-support-set-selection-and-failure-detection-for-in-context-medical-image-segmentation)  
-   标签：评分：6.6/10
+10. [VoxStruct3D: Structure-Leading Flow Matching for Voxel-Space 3D MRI Synthesis](/202608/10/2608.04557v1-voxstruct3d-structure-leading-flow-matching-for-voxel-space-3d-mri-synthesis)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-11. [Learning to See Locally and Align Clinically with Pathology Semantics for Radiology Report Generation](/202608/09/2608.00279v1-learning-to-see-locally-and-align-clinically-with-pathology-semantics-for-radiology-report-generation)  
-   标签：评分：6.5/10
+11. [S$^3$-Diff: Structural Semantic Synergy Diffusion Model for High Fidelity Super Resolution of Pathological Images](/202608/10/2608.03540v1-s3-diff-structural-semantic-synergy-diffusion-model-for-high-fidelity-super-resolution-of-pathological-images)  
+   标签：评分：6.8/10
    evidence：检索回退候选
 
 
