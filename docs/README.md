@@ -6,73 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-11
-- 运行时间：2026-08-12 05:20:42 UTC+8
+- 最新运行日期：2026-08-12
+- 运行时间：2026-08-13 05:01:26 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Transitional evolution of the wave dispersion relation during helicon discharge ignition: an analytical theory from vacuum to steady operation》（8.6/10）, 《Forcing Quasirandomness via Rooted F-Densities》（8.5/10）
-- 速读：《Event-Time Hybrid Optimal Control for Robotic Table Tennis Serves》（8.3/10）, 《Sub-Rayleigh Imaging of Unequal-Intensity Sources: Near-Quantum-Limit Multiparameter Estimation》（8.2/10）, 《China RealDID: Verifiable Credentials Anchored in Legal Identity》（8.2/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Fluctuation-based evidence for number--phase dynamics in a frustrated orbital superfluid》（8.2/10）, 《Evaluator Ensembles Under Reward Hacking: Covariance Geometry and Finite-Search Guarantees》（8.1/10）
+- 速读：《Dipole-Field Magnetic Windows for Radio-Frequency Transmission Through Hypersonic Plasma Sheaths: A Reduced-Order Scaling Model》（7.8/10）, 《Exact Conditional Distributions of Chi-Square-Family Statistics for Two-Way Contingency Tables, by Cell-Separable Dynamic Programming》（7.8/10）, 《Reservoir Computing with Heterogeneous Magnetic Metamaterials》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/11/README](/202608/11/README)
+- 详情：[/202608/12/README](/202608/12/README)
 
 ### 精读区论文标签
-1. [Transitional evolution of the wave dispersion relation during helicon discharge ignition: an analytical theory from vacuum to steady operation](/202608/11/2608.08649v1-transitional-evolution-of-the-wave-dispersion-relation-during-helicon-discharge-ignition-an-analytical-theory-from-vacuum-to-steady-operation)  
-   标签：评分：8.6/10
+1. [Fluctuation-based evidence for number--phase dynamics in a frustrated orbital superfluid](/202608/12/2608.08124v1-fluctuation-based-evidence-for-number--phase-dynamics-in-a-frustrated-orbital-superfluid)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-2. [Forcing Quasirandomness via Rooted F-Densities](/202608/11/2608.08679v1-forcing-quasirandomness-via-rooted-f-densities)  
-   标签：评分：8.5/10
+2. [Evaluator Ensembles Under Reward Hacking: Covariance Geometry and Finite-Search Guarantees](/202608/12/2608.08002v1-evaluator-ensembles-under-reward-hacking-covariance-geometry-and-finite-search-guarantees)  
+   标签：评分：8.1/10
    evidence：检索回退候选
-3. [A proof of a conjecture on subtree roots](/202608/11/2608.07898v1-a-proof-of-a-conjecture-on-subtree-roots)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-4. [eIRWR: Enhanced Iterative Random Walk with Restart for Scalable Root Cause Analysis in Microservices](/202608/11/2608.08073v1-eirwr-enhanced-iterative-random-walk-with-restart-for-scalable-root-cause-analysis-in-microservices)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-5. [The Sharp Worst-Case Asymptotic Rate of the Barzilai--Borwein Method in $\mathbb R^d$ and Hilbert Spaces](/202608/11/2608.07839v1-the-sharp-worst-case-asymptotic-rate-of-the-barzilai--borwein-method-in-mathbb-rd-and-hilbert-spaces)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-6. [Points with Commuting Coordinates over Division Rings](/202608/11/2608.08316v1-points-with-commuting-coordinates-over-division-rings)  
-   标签：评分：8.3/10
+3. [GIM and Elliptic Lie algebras via Ringel--Hall Lie algebras](/202608/12/2608.07877v1-gim-and-elliptic-lie-algebras-via-ringel--hall-lie-algebras)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Event-Time Hybrid Optimal Control for Robotic Table Tennis Serves](/202608/11/2608.08157v1-event-time-hybrid-optimal-control-for-robotic-table-tennis-serves)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-2. [Sub-Rayleigh Imaging of Unequal-Intensity Sources: Near-Quantum-Limit Multiparameter Estimation](/202608/11/2608.07868v1-sub-rayleigh-imaging-of-unequal-intensity-sources-near-quantum-limit-multiparameter-estimation)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [China RealDID: Verifiable Credentials Anchored in Legal Identity](/202608/11/2608.07846v1-china-realdid-verifiable-credentials-anchored-in-legal-identity)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [Sparse departures from independence in two-way tables: a heteroscedasticity profile and detection boundary, an adaptive higher-criticism gate, and an assumption-lean exact anchor](/202608/11/2608.07979v1-sparse-departures-from-independence-in-two-way-tables-a-heteroscedasticity-profile-and-detection-boundary-an-adaptive-higher-criticism-gate-and-an-assumption-lean-exact-anchor)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-5. [Quantum tribology: acceleration-induced Stokes friction and Magnus force in correlated Bose fluids](/202608/11/2608.07912v1-quantum-tribology-acceleration-induced-stokes-friction-and-magnus-force-in-correlated-bose-fluids)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-6. [Hybrid spatial-temporal graph neural network Powered NDTs:Towards Next-Gen Smart Infrastructure Twins](/202608/11/2608.08306v1-hybrid-spatial-temporal-graph-neural-network-powered-ndtstowards-next-gen-smart-infrastructure-twins)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-7. [Essential p-dimension and Chern numbers](/202608/11/2608.08877v1-essential-p-dimension-and-chern-numbers)  
+1. [Dipole-Field Magnetic Windows for Radio-Frequency Transmission Through Hypersonic Plasma Sheaths: A Reduced-Order Scaling Model](/202608/12/2608.10018v1-dipole-field-magnetic-windows-for-radio-frequency-transmission-through-hypersonic-plasma-sheaths-a-reduced-order-scaling-model)  
    标签：评分：7.8/10
    evidence：检索回退候选
-8. [Jacobi Endpoint Pencils and Sharp Interlacing for Centered Binomial Samples](/202608/11/2608.08714v1-jacobi-endpoint-pencils-and-sharp-interlacing-for-centered-binomial-samples)  
+2. [Exact Conditional Distributions of Chi-Square-Family Statistics for Two-Way Contingency Tables, by Cell-Separable Dynamic Programming](/202608/12/2608.08576v1-exact-conditional-distributions-of-chi-square-family-statistics-for-two-way-contingency-tables-by-cell-separable-dynamic-programming)  
    标签：评分：7.8/10
    evidence：检索回退候选
-9. [Bootstrapping Vision-Language Model for Hysteroscopic Surgical Scene Segmentation](/202608/11/2608.09302v1-bootstrapping-vision-language-model-for-hysteroscopic-surgical-scene-segmentation)  
-   标签：评分：6.9/10
+3. [Reservoir Computing with Heterogeneous Magnetic Metamaterials](/202608/12/2608.08879v1-reservoir-computing-with-heterogeneous-magnetic-metamaterials)  
+   标签：评分：7.8/10
    evidence：检索回退候选
-10. [Beyond Isotropic Assumptions: Continuity-Constrained Segmentation and GPU Morphometry for Nanoscale GBM Analysis](/202608/11/2608.07575v1-beyond-isotropic-assumptions-continuity-constrained-segmentation-and-gpu-morphometry-for-nanoscale-gbm-analysis)  
+4. [Reservoir Computing with Heterogeneous Magnetic Metamaterials](/202608/12/2608.08879v2-reservoir-computing-with-heterogeneous-magnetic-metamaterials)  
+   标签：评分：7.7/10
+   evidence：检索回退候选
+5. [Exact Conditional Distributions of Chi-Square-Family Statistics for Two-Way Contingency Tables, by Cell-Separable Dynamic Programming](/202608/12/2608.08576v2-exact-conditional-distributions-of-chi-square-family-statistics-for-two-way-contingency-tables-by-cell-separable-dynamic-programming)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+6. [Price Information Is Not Enough: Ordering and Decision Rules in Storage Bidding](/202608/12/2608.08377v1-price-information-is-not-enough-ordering-and-decision-rules-in-storage-bidding)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+7. [Bootstrapping Vision-Language Model for Hysteroscopic Surgical Scene Segmentation](/202608/12/2608.09302v2-bootstrapping-vision-language-model-for-hysteroscopic-surgical-scene-segmentation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-11. [PARAGraph: Pathology-Anatomy-Aware Hierarchical Graph for Diabetic Retinopathy Grading](/202608/11/2608.08368v1-paragraph-pathology-anatomy-aware-hierarchical-graph-for-diabetic-retinopathy-grading)  
-   标签：评分：6.8/10
+8. [Foundation Model-Enabled Efficient Data Sampling (FEEDS): A label-efficient training strategy for pan-cancer, multi-tracer PET/CT datasets](/202608/12/2608.11076v1-foundation-model-enabled-efficient-data-sampling-feeds-a-label-efficient-training-strategy-for-pan-cancer-multi-tracer-petct-datasets)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+9. [Unlocking the Power of Medical Tabular Data via Semantic-Aware Multimodal Pre-training](/202608/12/2608.10522v1-unlocking-the-power-of-medical-tabular-data-via-semantic-aware-multimodal-pre-training)  
+   标签：评分：6.5/10
+   evidence：检索回退候选
+10. [DINO-3DRA: Leveraging 2D Foundation Model Semantics for 3D Cerebral Aneurysm Segmentation](/202608/12/2608.07767v1-dino-3dra-leveraging-2d-foundation-model-semantics-for-3d-cerebral-aneurysm-segmentation)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+11. [Do 3D Medical Foundation Models See Through MRI Artifacts? A Controlled Study of Representation Robustness](/202608/12/2608.06613v1-do-3d-medical-foundation-models-see-through-mri-artifacts-a-controlled-study-of-representation-robustness)  
+   标签：评分：6.4/10
    evidence：检索回退候选
 
 
