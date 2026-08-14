@@ -6,58 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-13
-- 运行时间：2026-08-14 04:47:58 UTC+8
+- 最新运行日期：2026-08-14
+- 运行时间：2026-08-15 05:10:05 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《The No-Meaning Falsity: The Structural Impossibility of the Arbitrary Sign in Classical Arabic》（8.3/10）
-- 速读：《Terahertz-based longitudinal phase space diagnostics of laser wakefield accelerated electron beams》（7.6/10）, 《Stationary Errors and Quantile Regression in Short Panels》（7.5/10）, 《Lightweight PID-Based Drift Mitigation for Cellular Traffic Forecasting》（7.3/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《CDGC-Net: 3D Medical Image Segmentation with Cooperative Dual-Scale Self-Attention and Grouped Channel Modeling》（7.0/10）, 《Inference-Time Orthogonal Seeding Enables Geometry-Aligned 3D Organ Segmentation for Slice-Propagation Methods》（6.9/10）, 《CoDiR: Confidence-Guided Diffusion Refinement for Semi-Supervised Histopathology Segmentation》（6.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/13/README](/202608/13/README)
+- 详情：[/202608/14/README](/202608/14/README)
 
 ### 精读区论文标签
-1. [The No-Meaning Falsity: The Structural Impossibility of the Arbitrary Sign in Classical Arabic](/202608/13/2608.07737v1-the-no-meaning-falsity-the-structural-impossibility-of-the-arbitrary-sign-in-classical-arabic)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Terahertz-based longitudinal phase space diagnostics of laser wakefield accelerated electron beams](/202608/13/2608.08586v1-terahertz-based-longitudinal-phase-space-diagnostics-of-laser-wakefield-accelerated-electron-beams)  
-   标签：评分：7.6/10
+1. [CDGC-Net: 3D Medical Image Segmentation with Cooperative Dual-Scale Self-Attention and Grouped Channel Modeling](/202608/14/2608.08575v1-cdgc-net-3d-medical-image-segmentation-with-cooperative-dual-scale-self-attention-and-grouped-channel-modeling)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-2. [Stationary Errors and Quantile Regression in Short Panels](/202608/13/2608.08750v1-stationary-errors-and-quantile-regression-in-short-panels)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-3. [Lightweight PID-Based Drift Mitigation for Cellular Traffic Forecasting](/202608/13/2608.08332v1-lightweight-pid-based-drift-mitigation-for-cellular-traffic-forecasting)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-4. [Automated Generation of Complexity-Validated Decision Scenarios Using Large Language Models](/202608/13/2608.08822v1-automated-generation-of-complexity-validated-decision-scenarios-using-large-language-models)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-5. [CoInS-Net: A Continuous Position-Aware Network for Joint Medical Image Interpolation and Segmentation](/202608/13/2608.09391v1-coins-net-a-continuous-position-aware-network-for-joint-medical-image-interpolation-and-segmentation)  
-   标签：评分：7.2/10
-   evidence：检索回退候选
-6. [APCReg: Anatomical-Prior-Guided Coarse-to-Fine CBCT--IOS Registration via Multi-View Projection and Reliability-Controlled Residual Correction](/202608/13/2608.09993v1-apcreg-anatomical-prior-guided-coarse-to-fine-cbct--ios-registration-via-multi-view-projection-and-reliability-controlled-residual-correction)  
-   标签：评分：7.1/10
-   evidence：检索回退候选
-7. [A Neighborhood Attention Transformer Network for Enhanced 3D Segmentation of the Left Anterior Descending Artery](/202608/13/2608.12274v1-a-neighborhood-attention-transformer-network-for-enhanced-3d-segmentation-of-the-left-anterior-descending-artery)  
+2. [Inference-Time Orthogonal Seeding Enables Geometry-Aligned 3D Organ Segmentation for Slice-Propagation Methods](/202608/14/2608.12658v1-inference-time-orthogonal-seeding-enables-geometry-aligned-3d-organ-segmentation-for-slice-propagation-methods)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [ProBAG: Prototype-Guided Boundary-Aware Graph Diffusion for Weakly Supervised Histopathology Segmentation](/202608/13/2608.11765v1-probag-prototype-guided-boundary-aware-graph-diffusion-for-weakly-supervised-histopathology-segmentation)  
-   标签：评分：6.8/10
+3. [CoDiR: Confidence-Guided Diffusion Refinement for Semi-Supervised Histopathology Segmentation](/202608/14/2608.11807v1-codir-confidence-guided-diffusion-refinement-for-semi-supervised-histopathology-segmentation)  
+   标签：评分：6.2/10
    evidence：检索回退候选
-9. [M-Net: Integrating Spectral Features and Physical Field Operators into Deep Learning for Medical Image Segmentation](/202608/13/2608.12196v1-m-net-integrating-spectral-features-and-physical-field-operators-into-deep-learning-for-medical-image-segmentation)  
-   标签：评分：6.8/10
+4. [Rethinking Medical Landmark Localization with Prototype Learning-based Progressive Offset Correction](/202608/14/2608.09182v2-rethinking-medical-landmark-localization-with-prototype-learning-based-progressive-offset-correction)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-10. [Predicting Functions, Not Features: KANs with Function-Space Joint-Embedding Predictive Learning for Medical Image Segmentation](/202608/13/2608.12050v1-predicting-functions-not-features-kans-with-function-space-joint-embedding-predictive-learning-for-medical-image-segmentation)  
-   标签：评分：6.8/10
+5. [Rethinking Medical Landmark Localization with Prototype Learning-based Progressive Offset Correction](/202608/14/2608.09182v1-rethinking-medical-landmark-localization-with-prototype-learning-based-progressive-offset-correction)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-11. [Dual-Domain Cross-Modal Decoding for Clinical Text-Guided Medical Image Segmentation](/202608/13/2608.11335v1-dual-domain-cross-modal-decoding-for-clinical-text-guided-medical-image-segmentation)  
-   标签：评分：6.3/10
+6. [A Framework for Joint Affine and Diffeomorphic Image Registration](/202608/14/2608.10769v1-a-framework-for-joint-affine-and-diffeomorphic-image-registration)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+7. [Bayesian adaptively-weighted ensembles for few-shot abdominal segmentation](/202608/14/2608.05815v1-bayesian-adaptively-weighted-ensembles-for-few-shot-abdominal-segmentation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+8. [Big, Bright, or Invisible: A Frozen-Feature Benchmark of 3D CT Foundation Models](/202608/14/2608.05960v1-big-bright-or-invisible-a-frozen-feature-benchmark-of-3d-ct-foundation-models)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+9. [OTLesMix: Wasserstein Barycenter and Optimal Transport Map for Synthetic Lesion Generation with Diverse Shapes and Locations](/202608/14/2608.06264v1-otlesmix-wasserstein-barycenter-and-optimal-transport-map-for-synthetic-lesion-generation-with-diverse-shapes-and-locations)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Representation-driven Endoscopic Visual Embedding Alignment for Latent Generation](/202608/14/2608.07176v1-representation-driven-endoscopic-visual-embedding-alignment-for-latent-generation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [EliSeg: Verified Target Construction for Report-Grounded Abnormality Segmentation](/202608/14/2608.07299v2-eliseg-verified-target-construction-for-report-grounded-abnormality-segmentation)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
