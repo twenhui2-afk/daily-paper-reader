@@ -6,55 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-16
-- 运行时间：2026-08-17 04:21:14 UTC+8
+- 最新运行日期：2026-08-17
+- 运行时间：2026-08-18 04:36:32 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《VIDS-Seg: Towards Reliable Uncertainty Quantification in Pediatric Cardiac Ultrasound Segmentation》（6.3/10）, 《UPolarSQ: Polar Representation Learning for Optic Disc and Peripapillary Atrophy Segmentation and Quantification in Fundus Photographs》（6.2/10）, 《MedPixel: A Unified Pixel-Language Model for Medical Reasoning and Segmentation》（6.2/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《Generalization Error Estimation for Primal--Dual Algorithms in Non-Smooth Regression》（8.6/10）, 《Marionette: Predicting World States, Rendering Geometry, Painting Appearance》（8.5/10）
+- 速读：《Verified Pythagorean Composition for Adaptive Cryptographic Games: Noise Flooding in Homomorphic Encryption》（8.3/10）, 《Limitations of post accelerating ion beams using the snowplow field in a near-critical density target》（8.2/10）, 《Spectral stability and slow--fast structure of traveling waves in a regularized sine--Gordon equation》（8.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/16/README](/202608/16/README)
+- 详情：[/202608/17/README](/202608/17/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Generalization Error Estimation for Primal--Dual Algorithms in Non-Smooth Regression](/202608/17/2608.13870v1-generalization-error-estimation-for-primal--dual-algorithms-in-non-smooth-regression)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
+2. [Marionette: Predicting World States, Rendering Geometry, Painting Appearance](/202608/17/2608.14530v1-marionette-predicting-world-states-rendering-geometry-painting-appearance)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+3. [Online Inference in Distributional Temporal-Difference Learning](/202608/17/2608.14408v1-online-inference-in-distributional-temporal-difference-learning)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+4. [MazeRunner: Nonlinear Task and Clue Orchestration for LLM-driven Black-Box Automated Penetration Testing](/202608/17/2608.14216v1-mazerunner-nonlinear-task-and-clue-orchestration-for-llm-driven-black-box-automated-penetration-testing)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+5. [Scale-dependent contraction of spatial wet-bulb temperature contrasts in eastern China](/202608/17/2608.14294v1-scale-dependent-contraction-of-spatial-wet-bulb-temperature-contrasts-in-eastern-china)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+6. [Diagonalizable Directed Laplacians by Positive Arc-Weight Design for Master Stability Analysis](/202608/17/2608.14439v1-diagonalizable-directed-laplacians-by-positive-arc-weight-design-for-master-stability-analysis)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [VIDS-Seg: Towards Reliable Uncertainty Quantification in Pediatric Cardiac Ultrasound Segmentation](/202608/16/2608.10903v1-vids-seg-towards-reliable-uncertainty-quantification-in-pediatric-cardiac-ultrasound-segmentation)  
+1. [Verified Pythagorean Composition for Adaptive Cryptographic Games: Noise Flooding in Homomorphic Encryption](/202608/17/2608.13846v1-verified-pythagorean-composition-for-adaptive-cryptographic-games-noise-flooding-in-homomorphic-encryption)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
+2. [Limitations of post accelerating ion beams using the snowplow field in a near-critical density target](/202608/17/2608.14521v1-limitations-of-post-accelerating-ion-beams-using-the-snowplow-field-in-a-near-critical-density-target)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+3. [Spectral stability and slow--fast structure of traveling waves in a regularized sine--Gordon equation](/202608/17/2608.14108v1-spectral-stability-and-slow--fast-structure-of-traveling-waves-in-a-regularized-sine--gordon-equation)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+4. [$C_2$-Cofiniteness and Rationality of the Icosahedral Orbifold $V_{L_2}^{A_5}$](/202608/17/2608.13872v1-c2-cofiniteness-and-rationality-of-the-icosahedral-orbifold-vl2a5)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+5. [Probabilistic indirect models for undrained shear strength: addressing significant data missing and variability with advanced imputation and machine learning techniques](/202608/17/2608.13934v1-probabilistic-indirect-models-for-undrained-shear-strength-addressing-significant-data-missing-and-variability-with-advanced-imputation-and-machine-learning-techniques)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+6. [Tuning crystal-fields by He-irradiation and orbital Widom line in SrVO$_3$ films](/202608/17/2608.14362v1-tuning-crystal-fields-by-he-irradiation-and-orbital-widom-line-in-srvo3-films)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+7. [Deterministic Spectral Sparsification in Almost-Linear Time for Dense Graphs](/202608/17/2608.13910v1-deterministic-spectral-sparsification-in-almost-linear-time-for-dense-graphs)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+8. [On Galois extensions of geometric fixed point spectra](/202608/17/2608.14510v1-on-galois-extensions-of-geometric-fixed-point-spectra)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+9. [What to Preserve, Where to Adapt: A Depth-Wise Analysis of Forgetting in Continual Gynecological Image Segmentation](/202608/17/2608.13660v1-what-to-preserve-where-to-adapt-a-depth-wise-analysis-of-forgetting-in-continual-gynecological-image-segmentation)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+10. [Generative Semantic Segmentation via an Observable Semantic-Image Interface and Hierarchical Generator Evidence Alignment](/202608/17/2608.11537v1-generative-semantic-segmentation-via-an-observable-semantic-image-interface-and-hierarchical-generator-evidence-alignment)  
    标签：评分：6.3/10
    evidence：检索回退候选
-2. [UPolarSQ: Polar Representation Learning for Optic Disc and Peripapillary Atrophy Segmentation and Quantification in Fundus Photographs](/202608/16/2608.08771v1-upolarsq-polar-representation-learning-for-optic-disc-and-peripapillary-atrophy-segmentation-and-quantification-in-fundus-photographs)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-3. [MedPixel: A Unified Pixel-Language Model for Medical Reasoning and Segmentation](/202608/16/2608.09818v1-medpixel-a-unified-pixel-language-model-for-medical-reasoning-and-segmentation)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-4. [Toward Mask Annotation-Free Surgical Instrument Segmentation from Endoscopic Images Using Text-Prompted Segment Anything Model 3 (SAM3)](/202608/16/2608.08844v1-toward-mask-annotation-free-surgical-instrument-segmentation-from-endoscopic-images-using-text-prompted-segment-anything-model-3-sam3)  
-   标签：评分：6.1/10
-   evidence：检索回退候选
-5. [Topology-Aware Query Selection for Surgical Instrument Instance Segmentation](/202608/16/2608.11607v1-topology-aware-query-selection-for-surgical-instrument-instance-segmentation)  
-   标签：评分：6.1/10
-   evidence：检索回退候选
-6. [Agentic Visual Reasoning in Whole-Slide Pathology Images via Active Perception](/202608/16/2608.08648v1-agentic-visual-reasoning-in-whole-slide-pathology-images-via-active-perception)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-7. [XClipGS: Exact Half-Space Clipping for Medical Volume Gaussian Splatting](/202608/16/2608.07760v1-xclipgs-exact-half-space-clipping-for-medical-volume-gaussian-splatting)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-8. [Compositional Cross-Modality Translation via Whole-Volume Multitask Latent Flow Matching](/202608/16/2608.08135v1-compositional-cross-modality-translation-via-whole-volume-multitask-latent-flow-matching)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-9. [$\texttt{DisMorph}$: learning to disentangle technical distortions from true biological change](/202608/16/2608.08173v1-textttdismorph-learning-to-disentangle-technical-distortions-from-true-biological-change)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-10. [BAP-MOS: Bandit-Based Adaptive Prompting for Boundary-Sensitive Multi-Organ Segmentation](/202608/16/2608.08191v1-bap-mos-bandit-based-adaptive-prompting-for-boundary-sensitive-multi-organ-segmentation)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [Gated Spatial Redundancy Projection for Pathology Transformer Attentions](/202608/16/2608.08374v1-gated-spatial-redundancy-projection-for-pathology-transformer-attentions)  
-   标签：评分：6.0/10
+11. [Anatomically Consistent Cross-Contrast Super-Resolution of Anisotropic Brain T2w MRI](/202608/17/2608.08401v1-anatomically-consistent-cross-contrast-super-resolution-of-anisotropic-brain-t2w-mri)  
+   标签：评分：6.3/10
    evidence：检索回退候选
 
 
