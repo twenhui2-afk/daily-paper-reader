@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-17
-- 运行时间：2026-08-18 04:36:32 UTC+8
+- 最新运行日期：2026-08-18
+- 运行时间：2026-08-19 04:33:16 UTC+8
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
@@ -15,64 +15,64 @@
 
 ### 今日简报（AI）
 - 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Generalization Error Estimation for Primal--Dual Algorithms in Non-Smooth Regression》（8.6/10）, 《Marionette: Predicting World States, Rendering Geometry, Painting Appearance》（8.5/10）
-- 速读：《Verified Pythagorean Composition for Adaptive Cryptographic Games: Noise Flooding in Homomorphic Encryption》（8.3/10）, 《Limitations of post accelerating ion beams using the snowplow field in a near-critical density target》（8.2/10）, 《Spectral stability and slow--fast structure of traveling waves in a regularized sine--Gordon equation》（8.2/10）
+- 精读：《LongRCA Bench: Diagnosing Responsible Roles and Root Causes in Long-Horizon Agent Failures》（8.6/10）, 《Better than square-root cancellation in Piatetski-Shapiro sequences》（8.5/10）
+- 速读：《eAVID: Asynchronous Verifiable Information Dispersal with Post-Dissemination Pruning》（8.4/10）, 《Five-Term and Higher Congruences Involving Arbitrary Sets and Short Intervals Modulo a Prime》（8.4/10）, 《An Idealized Delay-Differential Model of Scuba Diver Porpoising and Runaway Ascent》（8.3/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/17/README](/202608/17/README)
+- 详情：[/202608/18/README](/202608/18/README)
 
 ### 精读区论文标签
-1. [Generalization Error Estimation for Primal--Dual Algorithms in Non-Smooth Regression](/202608/17/2608.13870v1-generalization-error-estimation-for-primal--dual-algorithms-in-non-smooth-regression)  
+1. [LongRCA Bench: Diagnosing Responsible Roles and Root Causes in Long-Horizon Agent Failures](/202608/18/2608.15242v1-longrca-bench-diagnosing-responsible-roles-and-root-causes-in-long-horizon-agent-failures)  
    标签：评分：8.6/10
    evidence：检索回退候选
-2. [Marionette: Predicting World States, Rendering Geometry, Painting Appearance](/202608/17/2608.14530v1-marionette-predicting-world-states-rendering-geometry-painting-appearance)  
+2. [Better than square-root cancellation in Piatetski-Shapiro sequences](/202608/18/2608.15807v1-better-than-square-root-cancellation-in-piatetski-shapiro-sequences)  
    标签：评分：8.5/10
    evidence：检索回退候选
-3. [Online Inference in Distributional Temporal-Difference Learning](/202608/17/2608.14408v1-online-inference-in-distributional-temporal-difference-learning)  
+3. [Estimates for roots of Bernstein-Sato polynomials via log resolutions by orbifolds](/202608/18/2608.14885v1-estimates-for-roots-of-bernstein-sato-polynomials-via-log-resolutions-by-orbifolds)  
    标签：评分：8.5/10
    evidence：检索回退候选
-4. [MazeRunner: Nonlinear Task and Clue Orchestration for LLM-driven Black-Box Automated Penetration Testing](/202608/17/2608.14216v1-mazerunner-nonlinear-task-and-clue-orchestration-for-llm-driven-black-box-automated-penetration-testing)  
-   标签：评分：8.4/10
+4. [Absorbing phase transition in a queueing model of coupled adaptive agents](/202608/18/2608.14398v1-absorbing-phase-transition-in-a-queueing-model-of-coupled-adaptive-agents)  
+   标签：评分：8.1/10
    evidence：检索回退候选
-5. [Scale-dependent contraction of spatial wet-bulb temperature contrasts in eastern China](/202608/17/2608.14294v1-scale-dependent-contraction-of-spatial-wet-bulb-temperature-contrasts-in-eastern-china)  
-   标签：评分：8.4/10
+5. [An HFM-Inspired Random Access Preamble Design for NTN under High Doppler](/202608/18/2608.14168v1-an-hfm-inspired-random-access-preamble-design-for-ntn-under-high-doppler)  
+   标签：评分：8.0/10
    evidence：检索回退候选
-6. [Diagonalizable Directed Laplacians by Positive Arc-Weight Design for Master Stability Analysis](/202608/17/2608.14439v1-diagonalizable-directed-laplacians-by-positive-arc-weight-design-for-master-stability-analysis)  
-   标签：评分：8.3/10
+6. [C-infinity Compact-Support Wormholes with Exact Schwarzschild Exterior in Trace-Coupled Gravity](/202608/18/2608.14259v1-c-infinity-compact-support-wormholes-with-exact-schwarzschild-exterior-in-trace-coupled-gravity)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Verified Pythagorean Composition for Adaptive Cryptographic Games: Noise Flooding in Homomorphic Encryption](/202608/17/2608.13846v1-verified-pythagorean-composition-for-adaptive-cryptographic-games-noise-flooding-in-homomorphic-encryption)  
+1. [eAVID: Asynchronous Verifiable Information Dispersal with Post-Dissemination Pruning](/202608/18/2608.15469v1-eavid-asynchronous-verifiable-information-dispersal-with-post-dissemination-pruning)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+2. [Five-Term and Higher Congruences Involving Arbitrary Sets and Short Intervals Modulo a Prime](/202608/18/2608.15458v1-five-term-and-higher-congruences-involving-arbitrary-sets-and-short-intervals-modulo-a-prime)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+3. [An Idealized Delay-Differential Model of Scuba Diver Porpoising and Runaway Ascent](/202608/18/2608.14978v1-an-idealized-delay-differential-model-of-scuba-diver-porpoising-and-runaway-ascent)  
    标签：评分：8.3/10
    evidence：检索回退候选
-2. [Limitations of post accelerating ion beams using the snowplow field in a near-critical density target](/202608/17/2608.14521v1-limitations-of-post-accelerating-ion-beams-using-the-snowplow-field-in-a-near-critical-density-target)  
-   标签：评分：8.2/10
+4. [Phylogeny-based metrics of biodiversity: concepts and methods](/202608/18/2608.15278v1-phylogeny-based-metrics-of-biodiversity-concepts-and-methods)  
+   标签：评分：8.3/10
    evidence：检索回退候选
-3. [Spectral stability and slow--fast structure of traveling waves in a regularized sine--Gordon equation](/202608/17/2608.14108v1-spectral-stability-and-slow--fast-structure-of-traveling-waves-in-a-regularized-sine--gordon-equation)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [$C_2$-Cofiniteness and Rationality of the Icosahedral Orbifold $V_{L_2}^{A_5}$](/202608/17/2608.13872v1-c2-cofiniteness-and-rationality-of-the-icosahedral-orbifold-vl2a5)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-5. [Probabilistic indirect models for undrained shear strength: addressing significant data missing and variability with advanced imputation and machine learning techniques](/202608/17/2608.13934v1-probabilistic-indirect-models-for-undrained-shear-strength-addressing-significant-data-missing-and-variability-with-advanced-imputation-and-machine-learning-techniques)  
+5. [Self-fictitious-play for Potential Monotone Ergodic Mean-field Games](/202608/18/2608.15258v1-self-fictitious-play-for-potential-monotone-ergodic-mean-field-games)  
    标签：评分：7.9/10
    evidence：检索回退候选
-6. [Tuning crystal-fields by He-irradiation and orbital Widom line in SrVO$_3$ films](/202608/17/2608.14362v1-tuning-crystal-fields-by-he-irradiation-and-orbital-widom-line-in-srvo3-films)  
+6. [Borel graphs generated by commuting functions](/202608/18/2608.15422v1-borel-graphs-generated-by-commuting-functions)  
    标签：评分：7.9/10
    evidence：检索回退候选
-7. [Deterministic Spectral Sparsification in Almost-Linear Time for Dense Graphs](/202608/17/2608.13910v1-deterministic-spectral-sparsification-in-almost-linear-time-for-dense-graphs)  
+7. [Language models suffer from a curse of ambiguity](/202608/18/2608.15448v1-language-models-suffer-from-a-curse-of-ambiguity)  
    标签：评分：7.8/10
    evidence：检索回退候选
-8. [On Galois extensions of geometric fixed point spectra](/202608/17/2608.14510v1-on-galois-extensions-of-geometric-fixed-point-spectra)  
+8. [Spectral duality structures and the Fisher--Rao geometry of reset distributions](/202608/18/2608.15805v1-spectral-duality-structures-and-the-fisher--rao-geometry-of-reset-distributions)  
    标签：评分：7.8/10
    evidence：检索回退候选
-9. [What to Preserve, Where to Adapt: A Depth-Wise Analysis of Forgetting in Continual Gynecological Image Segmentation](/202608/17/2608.13660v1-what-to-preserve-where-to-adapt-a-depth-wise-analysis-of-forgetting-in-continual-gynecological-image-segmentation)  
+9. [Beyond Boundary Noise: Aggregated Aleatoric Uncertainty Fails to Capture Presence Ambiguity in 3D Lung Nodule Segmentation](/202608/18/2608.14766v1-beyond-boundary-noise-aggregated-aleatoric-uncertainty-fails-to-capture-presence-ambiguity-in-3d-lung-nodule-segmentation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Generative Semantic Segmentation via an Observable Semantic-Image Interface and Hierarchical Generator Evidence Alignment](/202608/17/2608.11537v1-generative-semantic-segmentation-via-an-observable-semantic-image-interface-and-hierarchical-generator-evidence-alignment)  
+10. [Comprehensive Benchmarking of Deep Learning Architectures for Lung Cancer Histopathology](/202608/18/2608.15915v1-comprehensive-benchmarking-of-deep-learning-architectures-for-lung-cancer-histopathology)  
    标签：评分：6.3/10
    evidence：检索回退候选
-11. [Anatomically Consistent Cross-Contrast Super-Resolution of Anisotropic Brain T2w MRI](/202608/17/2608.08401v1-anatomically-consistent-cross-contrast-super-resolution-of-anisotropic-brain-t2w-mri)  
-   标签：评分：6.3/10
+11. [Surface-to-Skeleton 3D Cephalometry: Estimating Hidden Skeletal Landmarks from CT-Derived External Soft-Tissue Surfaces](/202608/18/2608.12537v1-surface-to-skeleton-3d-cephalometry-estimating-hidden-skeletal-landmarks-from-ct-derived-external-soft-tissue-surfaces)  
+   标签：评分：6.1/10
    evidence：检索回退候选
 
 
