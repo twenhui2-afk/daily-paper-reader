@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-18
-- 运行时间：2026-08-19 04:33:16 UTC+8
+- 最新运行日期：2026-08-19
+- 运行时间：2026-08-20 04:42:03 UTC+8
 - 运行状态：成功
 - 本次总论文数：17
 - 精读区：6
@@ -15,63 +15,63 @@
 
 ### 今日简报（AI）
 - 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《LongRCA Bench: Diagnosing Responsible Roles and Root Causes in Long-Horizon Agent Failures》（8.6/10）, 《Better than square-root cancellation in Piatetski-Shapiro sequences》（8.5/10）
-- 速读：《eAVID: Asynchronous Verifiable Information Dispersal with Post-Dissemination Pruning》（8.4/10）, 《Five-Term and Higher Congruences Involving Arbitrary Sets and Short Intervals Modulo a Prime》（8.4/10）, 《An Idealized Delay-Differential Model of Scuba Diver Porpoising and Runaway Ascent》（8.3/10）
+- 精读：《Forward-Evolution Error Analysis and Adaptive Design for Matrix-Valued Diffusion Models》（8.3/10）, 《Physics-Informed Symbolic Regression for Predicting the Glass Transition Temperature of Alkali Borate Glasses》（8.2/10）
+- 速读：《Singular-weight Conway-invariant Jacobi forms of index four》（7.8/10）, 《Variations of colored multiset Eulerian polynomials and applications》（7.8/10）, 《Energy Balancing Weights for Mediation Analysis》（7.7/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/18/README](/202608/18/README)
+- 详情：[/202608/19/README](/202608/19/README)
 
 ### 精读区论文标签
-1. [LongRCA Bench: Diagnosing Responsible Roles and Root Causes in Long-Horizon Agent Failures](/202608/18/2608.15242v1-longrca-bench-diagnosing-responsible-roles-and-root-causes-in-long-horizon-agent-failures)  
-   标签：评分：8.6/10
+1. [Forward-Evolution Error Analysis and Adaptive Design for Matrix-Valued Diffusion Models](/202608/19/2608.15103v1-forward-evolution-error-analysis-and-adaptive-design-for-matrix-valued-diffusion-models)  
+   标签：评分：8.3/10
    evidence：检索回退候选
-2. [Better than square-root cancellation in Piatetski-Shapiro sequences](/202608/18/2608.15807v1-better-than-square-root-cancellation-in-piatetski-shapiro-sequences)  
-   标签：评分：8.5/10
+2. [Physics-Informed Symbolic Regression for Predicting the Glass Transition Temperature of Alkali Borate Glasses](/202608/19/2608.14853v1-physics-informed-symbolic-regression-for-predicting-the-glass-transition-temperature-of-alkali-borate-glasses)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-3. [Estimates for roots of Bernstein-Sato polynomials via log resolutions by orbifolds](/202608/18/2608.14885v1-estimates-for-roots-of-bernstein-sato-polynomials-via-log-resolutions-by-orbifolds)  
-   标签：评分：8.5/10
+3. [Evaluating Agentic Code Repair Capabilities in Distributed Systems](/202608/19/2608.14863v1-evaluating-agentic-code-repair-capabilities-in-distributed-systems)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-4. [Absorbing phase transition in a queueing model of coupled adaptive agents](/202608/18/2608.14398v1-absorbing-phase-transition-in-a-queueing-model-of-coupled-adaptive-agents)  
+4. [Prediction Inference of Time Series with Standard ReLU Deep Neural Networks](/202608/19/2608.15362v1-prediction-inference-of-time-series-with-standard-relu-deep-neural-networks)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+5. [Ghost Dynamics in Receptor Signalling Networks: A Fast--Slow Adaptive Extension of Competitive Cancer Inhibition Models](/202608/19/2608.15300v1-ghost-dynamics-in-receptor-signalling-networks-a-fast--slow-adaptive-extension-of-competitive-cancer-inhibition-models)  
    标签：评分：8.1/10
    evidence：检索回退候选
-5. [An HFM-Inspired Random Access Preamble Design for NTN under High Doppler](/202608/18/2608.14168v1-an-hfm-inspired-random-access-preamble-design-for-ntn-under-high-doppler)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
-6. [C-infinity Compact-Support Wormholes with Exact Schwarzschild Exterior in Trace-Coupled Gravity](/202608/18/2608.14259v1-c-infinity-compact-support-wormholes-with-exact-schwarzschild-exterior-in-trace-coupled-gravity)  
+6. [SysEvolve: An AI-native, safe, autonomous adversarial attack-defense co-evolutionary system](/202608/19/2608.15012v1-sysevolve-an-ai-native-safe-autonomous-adversarial-attack-defense-co-evolutionary-system)  
    标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [eAVID: Asynchronous Verifiable Information Dispersal with Post-Dissemination Pruning](/202608/18/2608.15469v1-eavid-asynchronous-verifiable-information-dispersal-with-post-dissemination-pruning)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-2. [Five-Term and Higher Congruences Involving Arbitrary Sets and Short Intervals Modulo a Prime](/202608/18/2608.15458v1-five-term-and-higher-congruences-involving-arbitrary-sets-and-short-intervals-modulo-a-prime)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-3. [An Idealized Delay-Differential Model of Scuba Diver Porpoising and Runaway Ascent](/202608/18/2608.14978v1-an-idealized-delay-differential-model-of-scuba-diver-porpoising-and-runaway-ascent)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-4. [Phylogeny-based metrics of biodiversity: concepts and methods](/202608/18/2608.15278v1-phylogeny-based-metrics-of-biodiversity-concepts-and-methods)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-5. [Self-fictitious-play for Potential Monotone Ergodic Mean-field Games](/202608/18/2608.15258v1-self-fictitious-play-for-potential-monotone-ergodic-mean-field-games)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-6. [Borel graphs generated by commuting functions](/202608/18/2608.15422v1-borel-graphs-generated-by-commuting-functions)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-7. [Language models suffer from a curse of ambiguity](/202608/18/2608.15448v1-language-models-suffer-from-a-curse-of-ambiguity)  
+1. [Singular-weight Conway-invariant Jacobi forms of index four](/202608/19/2608.15431v1-singular-weight-conway-invariant-jacobi-forms-of-index-four)  
    标签：评分：7.8/10
    evidence：检索回退候选
-8. [Spectral duality structures and the Fisher--Rao geometry of reset distributions](/202608/18/2608.15805v1-spectral-duality-structures-and-the-fisher--rao-geometry-of-reset-distributions)  
+2. [Variations of colored multiset Eulerian polynomials and applications](/202608/19/2608.15682v1-variations-of-colored-multiset-eulerian-polynomials-and-applications)  
    标签：评分：7.8/10
    evidence：检索回退候选
-9. [Beyond Boundary Noise: Aggregated Aleatoric Uncertainty Fails to Capture Presence Ambiguity in 3D Lung Nodule Segmentation](/202608/18/2608.14766v1-beyond-boundary-noise-aggregated-aleatoric-uncertainty-fails-to-capture-presence-ambiguity-in-3d-lung-nodule-segmentation)  
-   标签：评分：6.8/10
+3. [Energy Balancing Weights for Mediation Analysis](/202608/19/2608.15497v1-energy-balancing-weights-for-mediation-analysis)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-10. [Comprehensive Benchmarking of Deep Learning Architectures for Lung Cancer Histopathology](/202608/18/2608.15915v1-comprehensive-benchmarking-of-deep-learning-architectures-for-lung-cancer-histopathology)  
-   标签：评分：6.3/10
+4. [Bezoutian Decoupling for Conformal Yang--Mills Multiplets in $(A)dS$](/202608/19/2608.15628v1-bezoutian-decoupling-for-conformal-yang--mills-multiplets-in-ads)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-11. [Surface-to-Skeleton 3D Cephalometry: Estimating Hidden Skeletal Landmarks from CT-Derived External Soft-Tissue Surfaces](/202608/18/2608.12537v1-surface-to-skeleton-3d-cephalometry-estimating-hidden-skeletal-landmarks-from-ct-derived-external-soft-tissue-surfaces)  
+5. [Spectral duality structures and the Fisher--Rao geometry of reset distributions](/202608/19/2608.15805v2-spectral-duality-structures-and-the-fisher--rao-geometry-of-reset-distributions)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+6. [Singular-weight Conway-invariant Jacobi forms of index four](/202608/19/2608.15431v2-singular-weight-conway-invariant-jacobi-forms-of-index-four)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+7. [Interactive Whole Slide Images for RL-based Tumour Segmentation](/202608/19/2608.16607v1-interactive-whole-slide-images-for-rl-based-tumour-segmentation)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+8. [MaLViL: Multi-axis Low-rank Vision-LSTM for Medical Image Segmentation](/202608/19/2608.17635v1-malvil-multi-axis-low-rank-vision-lstm-for-medical-image-segmentation)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+9. [GSToken: Geometry-Structured Gaussian Tokens for Compact 3D Medical Image Representation](/202608/19/2608.17425v1-gstoken-geometry-structured-gaussian-tokens-for-compact-3d-medical-image-representation)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+10. [HounsWorld: A Multimodal World Model for Hidden Patient-State Readout, Reconstruction, and Simulation](/202608/19/2608.12904v1-hounsworld-a-multimodal-world-model-for-hidden-patient-state-readout-reconstruction-and-simulation)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+11. [Spatial Message Passing in Language Space for Pathology Image Interpretation](/202608/19/2608.14309v1-spatial-message-passing-in-language-space-for-pathology-image-interpretation)  
    标签：评分：6.1/10
    evidence：检索回退候选
 
