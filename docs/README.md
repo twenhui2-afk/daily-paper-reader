@@ -6,73 +6,70 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-19
-- 运行时间：2026-08-20 04:42:03 UTC+8
+- 最新运行日期：2026-08-20
+- 运行时间：2026-08-21 04:15:49 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：16
+- 精读区：5
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Forward-Evolution Error Analysis and Adaptive Design for Matrix-Valued Diffusion Models》（8.3/10）, 《Physics-Informed Symbolic Regression for Predicting the Glass Transition Temperature of Alkali Borate Glasses》（8.2/10）
-- 速读：《Singular-weight Conway-invariant Jacobi forms of index four》（7.8/10）, 《Variations of colored multiset Eulerian polynomials and applications》（7.8/10）, 《Energy Balancing Weights for Mediation Analysis》（7.7/10）
+- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
+- 精读：《Teeth2Point: A Two-Stage Dental CBCT ROI-to-Point Segmentation Framework》（8.6/10）, 《Orthogonal Polynomial Approximation for Matrix Log Normalization in Global Covariance Pooling》（8.4/10）
+- 速读：《The critical probability for percolation on finite graphs》（7.2/10）, 《Gaudin models for some classical multivariate distributions》（7.1/10）, 《A Positive Proportion of the Reduced D'Arcais Polynomials is not Hurwitz》（7.1/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/19/README](/202608/19/README)
+- 详情：[/202608/20/README](/202608/20/README)
 
 ### 精读区论文标签
-1. [Forward-Evolution Error Analysis and Adaptive Design for Matrix-Valued Diffusion Models](/202608/19/2608.15103v1-forward-evolution-error-analysis-and-adaptive-design-for-matrix-valued-diffusion-models)  
-   标签：评分：8.3/10
+1. [Teeth2Point: A Two-Stage Dental CBCT ROI-to-Point Segmentation Framework](/202608/20/2608.18667v1-teeth2point-a-two-stage-dental-cbct-roi-to-point-segmentation-framework)  
+   标签：评分：8.6/10
    evidence：检索回退候选
-2. [Physics-Informed Symbolic Regression for Predicting the Glass Transition Temperature of Alkali Borate Glasses](/202608/19/2608.14853v1-physics-informed-symbolic-regression-for-predicting-the-glass-transition-temperature-of-alkali-borate-glasses)  
+2. [Orthogonal Polynomial Approximation for Matrix Log Normalization in Global Covariance Pooling](/202608/20/2608.19021v1-orthogonal-polynomial-approximation-for-matrix-log-normalization-in-global-covariance-pooling)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+3. [FinRCA-Bench: Benchmarking Evidence Retrieval and Reasoning for Financial AI Systems](/202608/20/2608.18534v1-finrca-bench-benchmarking-evidence-retrieval-and-reasoning-for-financial-ai-systems)  
    标签：评分：8.2/10
    evidence：检索回退候选
-3. [Evaluating Agentic Code Repair Capabilities in Distributed Systems](/202608/19/2608.14863v1-evaluating-agentic-code-repair-capabilities-in-distributed-systems)  
+4. [Interface Capacity and Architectural Replenishment Determine Entanglement-Generation Speed in Quantum Networks](/202608/20/2608.19020v1-interface-capacity-and-architectural-replenishment-determine-entanglement-generation-speed-in-quantum-networks)  
    标签：评分：8.2/10
    evidence：检索回退候选
-4. [Prediction Inference of Time Series with Standard ReLU Deep Neural Networks](/202608/19/2608.15362v1-prediction-inference-of-time-series-with-standard-relu-deep-neural-networks)  
+5. [Schur polynomials twisted by roots of unity and reciprocal pairs: torsion filters, fusion quotients, and an equal-rank reduction at odd order](/202608/20/2608.18302v1-schur-polynomials-twisted-by-roots-of-unity-and-reciprocal-pairs-torsion-filters-fusion-quotients-and-an-equal-rank-reduction-at-odd-order)  
    标签：评分：8.2/10
-   evidence：检索回退候选
-5. [Ghost Dynamics in Receptor Signalling Networks: A Fast--Slow Adaptive Extension of Competitive Cancer Inhibition Models](/202608/19/2608.15300v1-ghost-dynamics-in-receptor-signalling-networks-a-fast--slow-adaptive-extension-of-competitive-cancer-inhibition-models)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
-6. [SysEvolve: An AI-native, safe, autonomous adversarial attack-defense co-evolutionary system](/202608/19/2608.15012v1-sysevolve-an-ai-native-safe-autonomous-adversarial-attack-defense-co-evolutionary-system)  
-   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Singular-weight Conway-invariant Jacobi forms of index four](/202608/19/2608.15431v1-singular-weight-conway-invariant-jacobi-forms-of-index-four)  
-   标签：评分：7.8/10
+1. [The critical probability for percolation on finite graphs](/202608/20/2608.19145v1-the-critical-probability-for-percolation-on-finite-graphs)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-2. [Variations of colored multiset Eulerian polynomials and applications](/202608/19/2608.15682v1-variations-of-colored-multiset-eulerian-polynomials-and-applications)  
-   标签：评分：7.8/10
+2. [Gaudin models for some classical multivariate distributions](/202608/20/2608.18930v1-gaudin-models-for-some-classical-multivariate-distributions)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-3. [Energy Balancing Weights for Mediation Analysis](/202608/19/2608.15497v1-energy-balancing-weights-for-mediation-analysis)  
-   标签：评分：7.7/10
+3. [A Positive Proportion of the Reduced D'Arcais Polynomials is not Hurwitz](/202608/20/2608.18842v1-a-positive-proportion-of-the-reduced-darcais-polynomials-is-not-hurwitz)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-4. [Bezoutian Decoupling for Conformal Yang--Mills Multiplets in $(A)dS$](/202608/19/2608.15628v1-bezoutian-decoupling-for-conformal-yang--mills-multiplets-in-ads)  
-   标签：评分：7.6/10
+4. [On a conjecture on the Kasami APN function: reductions, structure theorems, a proof for $k\bmod n\in\{1,2,n{-}2,n{-}1\}$, and exhaustive verification for $n\le 13$](/202608/20/2608.18584v1-on-a-conjecture-on-the-kasami-apn-function-reductions-structure-theorems-a-proof-for-kbmod-nin12n-2n-1-and-exhaustive-verification-for-nle-13)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-5. [Spectral duality structures and the Fisher--Rao geometry of reset distributions](/202608/19/2608.15805v2-spectral-duality-structures-and-the-fisher--rao-geometry-of-reset-distributions)  
-   标签：评分：7.6/10
+5. [Limitations of RMS-based Stability Assessment of Converter-based Grids: A Case Study](/202608/20/2608.18989v1-limitations-of-rms-based-stability-assessment-of-converter-based-grids-a-case-study)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-6. [Singular-weight Conway-invariant Jacobi forms of index four](/202608/19/2608.15431v2-singular-weight-conway-invariant-jacobi-forms-of-index-four)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-7. [Interactive Whole Slide Images for RL-based Tumour Segmentation](/202608/19/2608.16607v1-interactive-whole-slide-images-for-rl-based-tumour-segmentation)  
+6. [Tensor Field Models](/202608/20/2608.18808v1-tensor-field-models)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [MaLViL: Multi-axis Low-rank Vision-LSTM for Medical Image Segmentation](/202608/19/2608.17635v1-malvil-multi-axis-low-rank-vision-lstm-for-medical-image-segmentation)  
+7. [Toric Representation Type of the Veronese Surface](/202608/20/2608.18806v1-toric-representation-type-of-the-veronese-surface)  
    标签：评分：6.9/10
    evidence：检索回退候选
-9. [GSToken: Geometry-Structured Gaussian Tokens for Compact 3D Medical Image Representation](/202608/19/2608.17425v1-gstoken-geometry-structured-gaussian-tokens-for-compact-3d-medical-image-representation)  
-   标签：评分：6.6/10
+8. [Exact Matching-Polynomial Solution of the Periodic Baxter-Fendley $Z_N$ Clock Chain](/202608/20/2608.18633v1-exact-matching-polynomial-solution-of-the-periodic-baxter-fendley-zn-clock-chain)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-10. [HounsWorld: A Multimodal World Model for Hidden Patient-State Readout, Reconstruction, and Simulation](/202608/19/2608.12904v1-hounsworld-a-multimodal-world-model-for-hidden-patient-state-readout-reconstruction-and-simulation)  
-   标签：评分：6.2/10
+9. [SiNMULI: Novel Signed Network Approach for Malicious URL Identification](/202608/20/2608.19190v1-sinmuli-novel-signed-network-approach-for-malicious-url-identification)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-11. [Spatial Message Passing in Language Space for Pathology Image Interpretation](/202608/19/2608.14309v1-spatial-message-passing-in-language-space-for-pathology-image-interpretation)  
-   标签：评分：6.1/10
+10. [Lévy Attention: Single-Pass Predictive Uncertainty for Continuous-Time Attention](/202608/20/2608.19171v1-lvy-attention-single-pass-predictive-uncertainty-for-continuous-time-attention)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+11. [Space-Efficient Hierholzer for Undirected Graphs](/202608/20/2608.19081v1-space-efficient-hierholzer-for-undirected-graphs)  
+   标签：评分：6.7/10
    evidence：检索回退候选
 
 

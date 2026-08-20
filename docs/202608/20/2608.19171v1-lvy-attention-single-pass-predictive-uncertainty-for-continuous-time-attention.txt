@@ -1,0 +1,865 @@
+Title: Lévy Attention: Single-Pass Predictive Uncertainty for Continuous-Time Attention
+
+URL Source: https://arxiv.org/pdf/2608.19171v1
+
+Published Time: Thu, 20 Aug 2026 01:11:38 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# Lévy Attention: Single-Pass Predictive Uncertainty for Continuous-Time Attention 
+
+Sotirios P. Chatzis sotirios.chatzis@cut.ac.cy GenML Laboratory, Department of Electrical Engineering and Computer Science and Engineering Cyprus University of Technology, Limassol, Cyprus 
+
+Loukas Papadoulas luke@ethicalaicy.com Ethical AI Novelties Cyprus 
+
+## Abstract 
+
+Deep models for irregularly-sampled time series answer queries at arbitrary continuous timestamps, yet report nothing about how far each answer should be trusted. We show that the attention layer itself can close that gap: with the right stochastic formulation, the pass that makes each prediction also reports, in closed form and at no extra cost, how far that prediction should be trusted. We introduce Lévy Attention , a cross-attention operator whose output is a stochastic integral against an inhomogeneous Poisson random measure: query–key compatibilities assemble an intensity over a continuous (time × channel) index space, the measure scatters atoms under it, and the output averages an interpolated value field at those atoms. In expectation Lévy Attention reduces to a mollified cosine-kernel attention, so it replaces a softmax layer and trains with exact gradients. What distinguishes it is what softmax discards: row normalisation divides out the total compatibility mass, and the spread of the attended values is never surfaced. The Poisson construction preserves both in closed form as the evidence Λq and the disagreement tr ΣV (q), and an exact variance identity makes their combination ˆ σ(q) = √tr ΣV (q) φ(Λ q ) the root-mean-square deviation of the sampled operator. No head is trained for it: the deterministic pass that makes the prediction emits it. In the experiments, disagreement carries the signal; the evidence factor swings from uninformative on dense data to strongly informative on sparse. On the t-PatchGNN benchmark the operator swap costs at most 5 .6% accuracy against a matched control and nothing on the sparsest dataset, and a transplant into the benchmark’s own model preserves its accuracy. Across matched five-seed suites the free disagreement signal improves on the sparsification error of 20-pass MC dropout in every seed of a dense and a sparse benchmark, and attains the best such error of any training-free estimator we measure on the dense one. The combined ˆ σ scales a validation-calibrated Gaussian whose zero-sample CRPS improves on a fifty-draw sampler, a split-conformal wrapper on top of it reaches nominal coverage at every level, and one pass ranks an unseen cohort of 3,383 patients by trust in 1.4 seconds. 
+
+## 1 Introduction 
+
+Models for irregularly-sampled multivariate time series (IMTS), such as clinical records, climate stations, and asynchronous sensors, increasingly follow a common pattern: encode the observed ( ti, variable , value) triplets, then answer queries at arbitrary continuous timestamps through attention (Shukla & Marlin, 2021; Zhang et al., 2024; Yalavarthi et al., 2024). The prediction interface is a function of continuous time; the natural next question is a per-query one: how much should this particular answer be trusted? A vital-sign estimate interpolated inside a dense observation window and one extrapolated across a six-hour gap in a sparse record should not carry the same authority. Downstream consumers (alarm thresholds, active sensing, compute triage) need to know the difference. 1arXiv:2608.19171v1 [cs.LG] 19 Aug 2026 The standard answers all pay for uncertainty separately from prediction. Deep ensembles (Lakshminarayanan et al., 2017) train and evaluate K models; MC dropout (Gal & Ghahramani, 2016) runs K stochastic passes; diffusion-based imputers such as CSDI (Tashiro et al., 2021) draw ∼100 samples per query; learned variance or confidence heads (Kendall & Gal, 2017) add a trained output and pay for it in accuracy (§5.4). A parallel line on single-pass deterministic uncertainty (Liu et al., 2020; Mukhoti et al., 2023) obtains uncertainty from one forward pass, but does so by constraining or augmenting the network around a standard backbone. None of these derives uncertainty from the attention mechanism itself, the very component that decides, query by query, which observations the answer rests on. This paper takes that step: it turns the attention layer itself into the uncertainty interface, at zero marginal cost — no second model, no extra passes, no trained head, no change to the loss. We formulate cross-attention over a continuous index space as stochastic integration against an inhomogeneous Poisson random measure :1
+
+the query–key compatibility kernel defines an intensity λq (s) over the index space, a Poisson measure Nq
+
+scatters random atoms under that intensity, and the output averages a continuously interpolated value field at the atoms. 
+
+Intuition. Picture the query as a flashlight sweeping the timeline of observations, shining brighter over the ones it matches well. Softmax attention averages the brightness everywhere and reports a single number. Lévy Attention instead lets the brightness scatter a random handful of points . More points fall where the beam is brighter; none fall where it is dark. The output averages the observed values at those points (fig. 1). The brightness then does triple duty. Its total , Λ q , is how much light the query found at all: the evidence .How far the lit values spread, counting the brightest most, is how much those observations disagree: the 
+
+disagreement , tr ΣV (q). The square root of their ratio is how much the sampled answer would wobble from draw to draw. It is readable from the beam itself, before a single point is drawn. Three properties follow from this one construction: 1. Drop-in mean. In expectation Lévy Attention reduces to a mollified cosine-kernel attention (Theorem 1), so the deterministic mean path (§2.4) trains with exact gradients and replaces a softmax layer without architectural surgery. 2. Closed-form, pre-sample uncertainty. The same forward pass emits two per-query statistics in closed form: the total intensity Λ q (the evidence ) and the value spread tr ΣV (q) (the disagreement ). Both are short reductions over quantities the pass has already computed. Their extra cost is O(L) per query on top of a shared O(Ld ) precompute, where L is the number of cells of the discretised index space (128 by default) and d is the value dimension; this is negligible next to the O(nd ) kernel row. Theorem 2 shows that the output deviates from its mean with root-mean-square deviation exactly ˆσ(q) = √tr ΣV (q) φ(Λ q ), where φ(Λ) ≈ 1/Λ. No sampling, no extra pass, no auxiliary head. 3. Cheap error bars on demand. When a point prediction is not enough, error bars come almost free from the same trained model. Everything expensive — the encoder, the compatibility kernel, the beam and the values it lights — is computed once, and one sample costs no more than scattering a fresh handful of points under that same beam and re-averaging. K samples therefore cost one encoder pass plus K redraws in operation count, rather than K full passes, and their spread is the error bar (§2.4). Evidence and disagreement are the two failure modes attention can report on itself: the query may find 
+
+too little relevant mass, or it may find plenty that conflicts . Softmax attention discards the first at the row-normalisation, dividing the partition function out, and never surfaces the second; the Poisson construction preserves both. The disagreement factor gives the better ranking of queries; ˆ σ, which carries the units of the operator’s own deviation, is what §5.5 calibrates into an interval scale. 
+
+Contributions.    
+
+> 1The name Lévy records that a Poisson random measure is the jump mechanism of a Lévy process (the Lévy–Itô decomposition); the output
+
+∫ V dN q is the corresponding compound-Poisson integral (Kingman, 1993). 
+
+21. Mechanism (§2): attention as stochastic integration against a Poisson random measure on a (time ×
+
+channel) index space, with a deterministic mean path for training and a sampling path for on-demand error bars. 2. Theory (§3): a mean identity and an exact variance identity whose scale ˆ σ(q) factorises into disagreement over evidence; we also bound the mollification bias. 3. Evidence (§5), organised around one claim, the uncertainty is free . Accuracy survives the swap: on the sparsest dataset our backbone attains a lower MSE than every published value with either decode layer, which we therefore credit to the backbone family rather than to the operator, and a drop-in transplant into t-PatchGNN leaves that model’s accuracy within its own seed spread. The free disagreement signal then beats 20-pass MC dropout on AUSE in every seed of matched five-seed suites on a dense and a sparse benchmark, and on the dense one matches the best ranking any frozen-model estimator attains in our suite; better ranking exists only by changing the model or fitting on labels, and we measure what each route costs. Calibrated and split-conformal intervals follow from the identity, one pass screens an unseen 3 ,383-record cohort, and ablations tie each ingredient of the construction to its effect. 
+
+## 2 Lévy Attention 
+
+2.1 Setting and notation 
+
+A query set {qj }mj=1 cross-attends into n observation tokens with features ki, v i ∈ Rd (per head) and timestamps 
+
+ti ∈ [0 , 1] (normalised time). The index space is S = [0 , 1] 2: the first axis is physical time, the second a learned channel coordinate that spreads variables observed at the same instant, at the resolution the grid allows. Integrals over S are taken with respect to the Lebesgue measure, written L. Keys receive positions 
+
+si = (ti, c i
+
+), ci = (1 + e−(w⊤  
+
+> vxi+bv)
+
+)−1 ∈ (0 , 1) , (1) where xi ∈ Rdmodel is the token’s feature before the per-head split and ( wv , b v ) is one affine map per head, the only learned part; the time coordinate is given by the data .
+
+2.2 The operator in four steps 
+
+(i) Compatibility and intensity. Query–key compatibility uses a scaled cosine kernel (Liu et al., 2022): with ˆ q = q/ ∥q∥, ˆki = ki/∥ki∥,
+
+κ(q, k i) = exp (√d ⟨ˆq, ˆki⟩). (2) 
+
+κ is not row-normalised, so its absolute scale is meaningful: it will become the evidence. The cosine form bounds the logit to [ −√d, √d], keeping unnormalised masses on a comparable scale across queries, where raw dot-product logits would let them vary over orders of magnitude. Each key spreads its compatibility mass over S through a Gaussian mollifier, centred at its position and normalised to unit Lebesgue mass per key. The two axes of S carry no shared scale, so each has its own bandwidth: for u = ( ut, u v ) and ε = ( εt, ε v ), write ∥u∥2 
+
+> ε
+
+:= u2 
+
+> t
+
+/ε 2 
+
+> t
+
++ u2 
+
+> v
+
+/ε 2 
+
+> v
+
+. Then 
+
+δε(s − si) = e−∥ s−si∥2 
+
+> ε/2
+
+∫ 
+
+> S
+
+e−∥ s′−si∥2  
+
+> ε/2
+
+dL(s′) ,
+
+∫
+
+> S
+
+δε(s − si) dL(s) = 1 (3) In words, δε is a smoothed stand-in for a point mass at si: a Gaussian bump that integrates to one over S,i.e. a probability density on the index space. Normalising over S rather than by the closed-form Gaussian constant matters near the boundary of [0 , 1] 2, where part of the bump would otherwise fall outside the domain and the key would lose mass. On this basis, we introduce the attention intensity 
+
+λq (s) = τ
+
+> n
+
+∑
+
+> i=1
+
+κ(q, k i) δε(s − si), Λq := 
+
+∫
+
+> S
+
+λq dL = τ
+
+> n
+
+∑
+
+> i=1
+
+κ(q, k i), (4) with rate τ > 0, fixed at 0 .5 throughout. The total intensity Λ q is exactly the (scaled) partition function of the kernel: the quantity softmax divides out and discards. 3qk1 k2
+
+> . . .
+
+kn
+
+v1 v2
+
+> . . .
+
+vn
+
+Stage 1    
+
+> positions from timestamps time ∈[0 ,1]
+
+Stages 2–3: intensity & Poisson measure Nqti (given)    
+
+> λq(s) = τ
+
+∑            
+
+> iκ(q, k i)δε(s−si)
+> S1
+> S2
+> S3SZq s1
+> s2
+> sn λq ≈0⇒no atoms
+> time ∈[0 ,1]
+
+Stage 4: value field V (s) (RBF interpolation)  
+
+> V(s)
+
+∑Zq 
+
+> j=1
+
+V (Sj ) 
+
+> Λq=
+
+∫ λq dL
+
+> evidence : total mass the query found ¯a(q) =
+
+∫ V λ q dL
+
+> Λq
+> mean (training path)
+> a(q) =
+
+
+
+> 1
+> Zq
+
+∑       
+
+> j
+> V(Sj),Zq≥1¯a(q),Zq= 0
+
+Output    
+
+> ÷Zq
+> tr ΣV(q)
+> disagreement : spread of
+> Vunder the beam ˆσ(q) =
+
+√tr ΣV (q) φ(Λ q )  
+
+> φ(Λ) ≃1/Λ
+> uncertainty , pre-sample
+
+Figure 1: The Lévy Attention pipeline on a time series. Observation tokens sit at positions si = ( ti, c i)(orange stars; the channel coordinate is suppressed in the sketch). The intensity λq (s) is the flashlight beam of §1; the Poisson measure scatters atoms under its peaks (red dots) and none where the beam is dark, and the output averages the value field there. The same pass meters the beam: total mass Λ q (evidence ), value spread tr ΣV (q) ( disagreement ), and their combination ˆ σ(q) (theorem 2). 
+
+(ii) Random measure. The attention intensity now drives a sampling mechanism. Nq is the Poisson random measure on S with intensity λq : a random scatter of points in the index space, called atoms , in which every region A ⊆ S receives a Poisson-distributed number of atoms with mean ∫ 
+
+> A
+
+λq dL, independently across disjoint regions. Atoms therefore concentrate under the peaks of the intensity, where the compatible observations sit. Where the query found no compatible mass, the intensity vanishes and no atoms fall. In particular, the total atom count is itself Poisson: 
+
+Zq := Nq (S) ∼ Poisson(Λ q ). (5) The evidence a query finds determines how many atoms it gets to average over. 
+
+(iii) Value field. The atoms of Nq fall at arbitrary points of S, not at the key positions, so the value read at an atom must be defined everywhere; the observed vi are therefore interpolated into a field V : S → Rd by partition-of-unity RBF interpolation with the same bandwidths: 
+
+V (s) = 
+
+∑ni=1 vi ψε(s − si)
+
+∑ni=1 ψε(s − si) , ψε(u) = e−∥ u∥2 
+
+> ε/2
+
+. (6) The weights sum to one, so V (s) is everywhere a convex combination of the observed values (a Nadaraya– Watson average). 
+
+(iv) Output. The Lévy Attention output is the sample mean over the atoms S1, . . . , S Zq of Nq , with a mean fallback on the empty draw: 
+
+a(q) = 
+
+
+
+1
+
+ZqZq
+
+∑
+
+> j=1
+
+V (Sj ), Zq ≥ 1,
+
+¯a(q), Zq = 0 ,
+
+¯a(q) := 
+
+∫ 
+
+> S
+
+V λ q dL
+
+Λq
+
+. (7) Two remarks. Returning ¯ a(q) on the empty draw is what keeps the operator exactly unbiased (theorem 1) and leaves no query unanswered; training and default inference never draw at all, substituting the deterministic 4mean ¯ a(q), which has exact gradients, throughout (§2.4). The fallback value ¯ a(q) is the mollified cosine attention : as εt, ε v → 0 it is exactly the discrete cosine-kernel attention ∑ 
+
+> i
+
+κ(q, k i)vi/ ∑ 
+
+> i
+
+κ(q, k i) for pairwise-distinct key positions. 
+
+2.3 Discretisation and implementation 
+
+The operator of §2.2 is defined through integrals over S. The implementation replaces them by sums over a fixed grid. This subsection gives the full recipe and states exactly what the grid changes and what it preserves. 
+
+Grid. S = [0 , 1] 2 is partitioned into L = Lt × Lv axis-aligned cells of equal Lebesgue measure ∆ = 1 /L , with centres s∗
+
+> 1
+
+, . . . , s ∗
+
+> L
+
+. The resolution is tied to the bandwidths, Lt = ⌈1/ε t⌉ and Lv = ⌈1/ε v ⌉, so one cell spans about one bandwidth per axis. The defaults are ε = (1 /16 , 1/8), giving the 16 × 8 grid. §5.7 sweeps this choice. 
+
+Discrete mollifier. The bump of eq. (3) is evaluated at the cell centres and renormalised over the grid, per key: 
+
+δ∆ 
+
+> ε
+
+(s∗ 
+
+> l
+
+− si) = e−∥ s∗  
+
+> l−si∥2
+> ε/2
+
+∆ ∑Ll′=1 e−∥ s∗   
+
+> l′−si∥2
+> ε/2
+
+, ∆
+
+> L
+
+∑
+
+> l=1
+
+δ∆ 
+
+> ε
+
+(s∗ 
+
+> l
+
+− si) = 1 . (8) Each key therefore carries exactly unit mass on the grid, wherever it sits relative to cell centres and boundaries, so no compatibility mass is lost to discretisation. 
+
+Discrete intensity. The per-cell intensities and their total are 
+
+λl = τ ∆
+
+> n
+
+∑
+
+> i=1
+
+κ(q, k i) δ∆ 
+
+> ε
+
+(s∗ 
+
+> l
+
+− si), Λq =
+
+> L
+
+∑
+
+> l=1
+
+λl = τ
+
+> n
+
+∑
+
+> i=1
+
+κ(q, k i). (9) The second equality is exact by eq. (8). The evidence meter on the grid equals its continuous counterpart; Λq involves no approximation. On the deterministic mean path (§2.4) τ cancels, since only the normalised intensity λq /Λq enters, so it is a non-parameter there; in the sampled modes it sets the expected atom count. For the signals below it rescales Λ q uniformly across queries, which leaves the 1 /Λq ranking exactly unchanged and the ˆ σ ranking unchanged wherever φ(Λ) ≈ 1/Λ, the regime every experiment here operates in. Its effect on absolute scale is absorbed by the one-time validation calibration of §5.1. 
+
+Discrete value field. Equation (6) is evaluated at the cell centres, giving one vector Vl = V (s∗ 
+
+> l
+
+) per cell through the same partition-of-unity weights. Cells far from every key inherit a blend of the nearest values; they also receive vanishing attention intensity, so they do not influence the output. 
+
+Sampling on the grid. The grid sampler draws a vector of independent per-cell counts, and eq. (5) becomes their sum: 
+
+Nl ∼ Poisson( λl) independently for l = 1 , . . . , L, Zq =
+
+> L
+
+∑
+
+> l=1
+
+Nl ∼ Poisson(Λ q ). (10) The sampled output and the fallback of eq. (7) become 
+
+a(q) = 
+
+
+
+1
+
+ZqL∑
+
+> l=1
+
+Nl Vl, Zq ≥ 1,
+
+¯a(q), Zq = 0 ,
+
+¯a(q) = 
+
+> L
+
+∑
+
+> l=1
+
+pl Vl, pl = λl
+
+Λq
+
+. (11) The discretisation does not disturb the statistics of the operator. Conditional on the total count Zq , the vector of cell counts is multinomial with probabilities ( p1, . . . , p L): each atom lands in cell l independently with probability pl. This is the discrete form of the Poisson process’s conditional property. 
+
+What discretisation costs. Two approximations enter. The evidence carries none, by eq. (9). The output ¯a(q) is a coarse-grained rather than discrete-kernel attention, and that mollification gap is the one we bound (§3, section A.3); the grid’s own effect on accuracy we measure instead, by sweeping its resolution (§5.7). 5Engineering details. Heads are folded into the batch; each head learns its own channel map wv , so key positions differ per head, and the three signals of eq. (12) are computed per head and reported as head means. Queries are decoded in chunks to bound the kernel-matrix memory. Empty-history samples, present in USHCN month-chunks, receive one neutral token so that the encoder’s masked attention stays defined. 
+
+2.4 Two modes, one operator 
+
+Deterministic mean mode (default; training and bulk inference). Training a network through a sampled operator is normally the painful part. One must either differentiate through the draw with a relaxation such as Gumbel–softmax, or accept high-variance gradients; either way the loss becomes noisy. Here none of this is needed. Wherever the network would use the sampled output a(q), we substitute its expectation ¯ a(q) from eq. (11). At the layer this substitution is exact, not an approximation: the mean identity of §3 (theorem 1) guarantees E[a(q)] = ¯ a(q). And ¯ a(q) is an ordinary deterministic expression, an O(Ld ) weighted sum with exact gradients, at the same cost as one sampled output. Training therefore involves no sampling at all: no relaxation, no train/inference distribution gap, no sampling variance in the loss. At inference the same substitution applies. If only a point prediction is wanted, output ¯ a(q) and never draw an atom. We call this deterministic route the mean path , as opposed to the sampled path of eq. (11). 
+
+What is then still random? The randomness is not discarded; it is metered . The same forward pass emits, per query at O(L) extra cost on top of a shared O(Ld ) precompute, Λq
+
+︸︷︷︸ 
+
+> evidence
+
+, tr ΣV (q) = ∑
+
+> l
+
+pl ∥Vl∥2 − ∥ ¯a(q)∥2
+
+︸ ︷︷ ︸ 
+
+> disagreement ( pl=λl/Λq)
+
+, ˆσ(q) = 
+
+√
+
+tr ΣV (q) φ(Λ q ), (12) where φ(Λ) = E[1{Z ≥ 1}/Z ] ≃ 1/Λ (theorem 2). ˆσ(q) is precisely the root-mean-square deviation the sampled operator would exhibit, obtained without drawing a single sample. Three clarifications. φ(Λ) is the expected reciprocal of the number of atoms being averaged, zero on the empty draw where the output sticks to the mean, and behaves as 1 /Λ once atoms are plentiful. ˆ σ(q) is one scalar per query, the root expected squared Euclidean deviation of the layer’s d-dimensional output; calibrating it against held-out targets turns it into a scale for the head’s scalar prediction (§5.5); per-coordinate spread, if it is wanted, needs K draws of the layer output. And no loss term ever touches these signals; they are read-outs of quantities the trained kernel already computes. We call them the free signals : no extra pass, no extra parameters, no training change. Together they are the model’s uncertainty interface .
+
+K-draw mode (on-demand error bars). When a predictive distribution is required, the kernel κ(q, k i), the cell intensities λl and the value field Vl are computed once, and only the O(L) count vector ( N1, . . . , N L)is redrawn K times; the K outputs propagate through the (small) remainder of the network. The empirical spread converges to ˆ σ(q) at the layer; in operation count this yields end-to-end error bars at 1 encoder pass + K re-runs of the decode step (§2.5). §5.6 measures this. 
+
+2.5 Computational cost 
+
+For m queries, n keys, L grid cells and head dimension d, the operator shares softmax attention’s O(mnd )kernel cost and adds three grid terms: O(nLd ) to build the value field (once per head), O(mnL ) to assemble the cell intensities, and O(mLd ) for the output reduction. Since L is constant in n, the total remains O(mnd ) asymptotically, and the premium is confined to the one layer the operator replaces (§5.5). Drawing K samples redraws only the length-L count vector, so it costs 
+
+O(KmL ) to redraw and O(KmLd ) to re-average, plus K passes of the small decode head, not K passes of the network. Our implementation re-runs the whole network per draw; table 8 prices it. 
+
+## 3 Theory 
+
+This section establishes the claims the construction rests on: the mean path is unbiased (theorem 1), and the pre-sample signals are exactly the deviation of the sampled operator (theorem 2). Throughout, expectations 6are over Nq conditioned on inputs. The results are stated in grid form, with continuum counterparts in parentheses, and their proofs use two distributional facts: conditional on the total count Zq , the cell counts are multinomial with probabilities pl = λl/Λq (§2.3), and Zq itself is Poisson(Λ q ), which is what turns the per-count statements into statements about the evidence. They therefore hold for the per-cell sampler of eq. (11) exactly as stated, and no separate discrete analysis is needed. Full proofs are in section A. 
+
+Theorem 1 (Mean identity) . For every query with Λq > 0, E[a(q)] = ¯ a(q).
+
+The proof is the conditional property of Poisson processes: given Zq = z ≥ 1 the atoms are i.i.d. with density 
+
+λq /Λq , so every conditional mean equals ¯ a(q), and the {Zq =0 } branch returns ¯ a(q) by construction. Two consequences: the mean path used for training is unbiased for the sampled operator, and the deviation identity below is centred at the trained prediction itself. 
+
+Theorem 2 (Exact variance identity) . For every query with Λq > 0, let ΣV (q) = ∑ 
+
+> l
+
+plVlV ⊤ 
+
+> l
+
+− ¯a(q)¯ a(q)⊤
+
+with pl = λl/Λq be the covariance of the value field under the normalised intensity (in the continuum, the covariance of V (S) under S ∼ λq /Λq ). Then 
+
+E∥∥a(q) − ¯a(q)∥∥2 = tr ΣV (q) · φ(Λ q ), so ˆσ(q) = 
+
+√
+
+tr ΣV (q) φ(Λ q ). (13) 
+
+Both factors are reductions over quantities the forward pass has already produced, and the third is a scalar function of the first: 
+
+Λq =
+
+> L
+
+∑
+
+> l=1
+
+λl = τ
+
+> n
+
+∑
+
+> i=1
+
+κ(q, k i)
+
+︸ ︷︷ ︸
+
+> evidence
+
+, tr ΣV (q) = 
+
+> L
+
+∑
+
+> l=1
+
+pl∥Vl∥2 − ∥ ¯a(q)∥2
+
+︸ ︷︷ ︸
+
+> disagreement
+
+,φ(Λ) = E
+
+[ 1{Z≥1}
+
+> Z
+
+]
+
+= e−Λ
+
+∫ Λ0
+
+et − 1
+
+t dt = 1Λ + O(Λ −2), Z ∼ Poisson(Λ) . (14) 
+
+So the deviation scale is one square root of two grid reductions, and it factorises as 
+
+ˆσ(q) ≈√disagreement 
+
+√evidence .
+
+Theorem 2 is an identity rather than a bound. It also fixes the direction of the evidence, and repairs an intuitive but wrong signal. Because ˆ σ falls as the evidence Λ q rises, the uncertainty signal the evidence induces on its own is the reciprocal 1/Λq ; this is the quantity scored as “evidence only” in the tables below, while Λ q itself remains the evidence meter. On its own it ignores the values entirely, so a query attending to a hundred identical values reports the same uncertainty as one attending to a hundred conflicting ones, though its true variance is zero. The disagreement factor is therefore not optional, and §5.4 confirms it. One caution about the shape of φ. It is not monotone: it vanishes at Λ = 0, rises to a maximum of about 0.52 near Λ ≈ 1.5, and decays as 1 /Λ beyond. The reading “less evidence, larger ˆ σ” therefore applies for Λq ≳ 2; below that, the Zq =0 fallback dominates and the sampled operator sticks to the mean, so ˆ σ shrinks again. Every experiment in this paper operates far above this region: mean evidence ranges from 62 to 632 even under the coverage stress test of fig. 3, and on the PhysioNet interpolation test set the smallest evidence over all 65 ,976 queries is 28. 
+
+Mollification bias. How far is ¯ a(q) from the discrete cosine-kernel attention it replaces? A standard mollification argument (section A.3) bounds the gap by a Gaussian tail in ˜ rmin , the minimum key separation measured in the mollifier metric ∥·∥ ε: the two operators agree up to a gap that decays like n e −˜r2min /32 , so separation must grow like √log n bandwidths for it to bite. Our operating points do not enter it: bandwidths stay wide, so ¯ a acts as a smoother over neighbouring observations. Many keys share a cell, and ¯ a is best read as a coarse-grained attention in its own right. Whether coarse-graining costs accuracy is an empirical question, answered by the matched softmax control in §5.2. 
+
+What the identities certify. The sampled operator, exactly, around the trained prediction: sampling is replaced by a closed form, and the structure of the signals is derived rather than chosen. What they do not 7settle is predictive error; that transfer is a measurement, and §5.4 makes it — with a shape the decomposition predicts: disagreement should out-rank the combined ˆ σ where errors are dominated by value conflict, and evidence should start contributing where they come from missing mass. Both happen. The identity also separates their uses: tr ΣV is a per-query ordering, while ˆ σ is the layer’s own deviation, in the units of an output, so one global affine map turns it into an interval scale. 
+
+## 4 Related Work 
+
+Attention for irregular time series. mTAN (Shukla & Marlin, 2021) attends from reference time points with learned time embeddings; ContiFormer (Chen et al., 2023) pairs attention with ODE dynamics; GraFITi (Yalavarthi et al., 2024) and t-PatchGNN (Zhang et al., 2024) treat IMTS forecasting as graph interaction, the latter defining the benchmark protocol we adopt. Under the t-PatchGNN protocol all of them are scored as point predictors and report no per-query reliability; where a probabilistic variant exists (mTAN’s VAE, Latent-ODE, CRU’s filtered state), its spread costs repeated latent draws and the protocol never reports it. Our operator is closest in spirit to mTAN (mTAND in table 1; continuous-time kernel smoothing of observations) but replaces the deterministic average with a metered random measure whose moments are the uncertainty interface. Table 1 puts the two under the benchmark’s own protocol, where our Lévy model is the more accurate on all three datasets. 
+
+Uncertainty in deep models. Ensembles (Lakshminarayanan et al., 2017) and MC dropout (Gal & Ghahramani, 2016) pay K models or K passes; CSDI (Tashiro et al., 2021) obtains calibrated distributions for TS imputation at ∼100 diffusion samples per query; heteroscedastic heads (Kendall & Gal, 2017) train an uncertainty output; SNGP (Liu et al., 2020) obtains single-pass uncertainty from a distance-aware GP output layer, and DDU (Mukhoti et al., 2023) from a post-hoc feature-space density on a spectrally-normalised backbone. Our signal differs in provenance: it is not trained to predict error and requires no architectural constraint. It is the closed-form second moment of the attention operator itself, with theorem 2 tying it to the output distribution by identity rather than by fit; both factors are derived quantities, not learned outputs. Evidential deep learning (Sensoy et al., 2018; Amini et al., 2020) makes the closest terminological contact: it too reports single-pass uncertainty through an evidence quantity, but there the evidence is the learned output of a head trained under a bespoke loss, whereas Λ q is the kernel’s partition function, read off the pass rather than fitted. 
+
+Stochastic and continuous attention. Bayesian Attention Modules (Fan et al., 2020) sample attention weights from a learned distribution, estimating uncertainty by repeated passes; continuous-domain attention (Martins et al., 2020) moves the index space to the continuum but keeps a deterministic density; Performer-style random features (Choromanski et al., 2021) use sampling to approximate softmax cheaply. Our Poisson construction uses randomness for neither regularisation nor approximation: the count channel makes the partition function observable (Λ q ) and the value spread quantifiable (tr ΣV ), before any sample is drawn. 
+
+Probabilistic models with native IMTS uncertainty. GRU-ODE-Bayes (De Brouwer et al., 2019) propagates a filtering posterior through continuous-time dynamics; Gaussian-process adapters and multi-task GPs (Li & Marlin, 2016; Futoma et al., 2017) carry a GP posterior over the imputed series into a downstream classifier; neural processes and their attentive variant (Garnelo et al., 2018; Kim et al., 2019) deliver uncertainty at arbitrary index points through a latent process. These models obtain uncertainty by committing to a probabilistic architecture; our interface instead retrofits an attention layer and leaves the backbone untouched: its signals certify the operator exactly rather than approximating a posterior. §5.4 runs the family’s most directly comparable representative, the deterministic-path variant TNP-D (Nguyen & Grover, 2022), under our own protocol and reports where it wins (error ranking) and where it loses: accuracy, and the predictive distribution that follows from it (§5.5). On the kernel-attention side, random-feature attentions (Peng et al., 2021) use sampling, and linear attentions (Katharopoulos et al., 2020) deterministic feature maps, to approximate softmax. DUQ (van Amersfoort et al., 2020) joins SNGP and DDU in the deterministic single-pass family. β-NLL (Seitzer et al., 2022) targets the accuracy cost of heteroscedastic training; §5.4 runs it on both suites. Our split-conformal wrapper of §5.5 is textbook split conformal (Lei et al., 2018); the adaptive line that drops exchangeability to handle distribution shift (Gibbs & Candès, 2021) is the branch it does not belong to. 85 Experiments 
+
+Every experiment serves one claim: the marginal cost of the uncertainty is zero, given the pass that already ran . The qualifier is the operator swap itself, which is why accuracy comes first: the interface is only free if the predictions do not pay for it, and table 1 prices exactly that. 
+
+5.1 Setup 
+
+Backbone. A small transformer, trained from scratch for each dataset. Every observation becomes one token: a linear embedding of its value, Fourier features of its timestamp, and a learned per-variable vector. Three softmax self-attention blocks encode the n tokens jointly. The encoded tokens become the keys and values of a single cross-attention decode layer, and that layer is the Lévy layer. Each query is a ( t, variable) pair, embedded like a token but without the value. Each token sits at its position si of eq. (1). A small MLP head turns the layer’s output into the scalar prediction. The matched control swaps the one Lévy layer for softmax cross-attention, under the same projections. Everything else is identical: same architecture, same recipe, ∼0.7M parameters. The two models differ by 516 parameters, the learned channel map of eq. (1). 
+
+Training. Standard supervised regression, end to end, with masked MSE on the hidden targets. The loss is computed on the mean path: wherever the sampled output a(q) would appear, ¯ a(q) appears instead (§2.4). Training therefore involves no sampling and no relaxation. Optimisation is Adam with early stopping on validation MSE at the benchmark’s patience; the interpolation study instead uses AdamW for a fixed sixty epochs (section B). Poisson-sampled training exists only as an ablation arm (§5.7). Full hyperparameters are in section B. 
+
+Error-ranking metrics. Uncertainty signals are scored by how well they rank per-query errors. Spearman 
+
+ρ between the signal and |error | asks whether the signal orders queries the way their true errors do: ρ = 1 is a perfect triage order, 0 is no relation. AUSE (Ilg et al., 2018) asks how fast error leaves when the least-trusted queries are removed: discard queries in the signal’s order and track the error of what remains (the sparsification curve), then measure the area between that curve and the one drawn by an oracle that discards by true error. Zero means the signal removes error as fast as knowing the errors would, and larger is worse. A query is one hidden (time, variable) target; both metrics pool all test queries of all records and variables into a single ranking, on the benchmark’s normalised scale. 
+
+Whose errors each signal ranks. Both metrics are computed same-backbone , since AUSE is defined against each model’s own oracle. Signals read from one trained model — ours and every post-hoc baseline — therefore rank that same model’s deterministic errors, which is what makes them directly comparable; baselines that predict differently by construction, such as the ensemble average or a trained head’s own output, rank their own errors instead. 
+
+Which metric decides. AUSE is the primary ranking metric of this paper , because the decision the interface is built for is triage: discard the least-trusted queries and ask how fast error leaves. Spearman ρ is secondary , reporting global monotonicity of signal against error. CRPS (the continuous ranked probability score; Gneiting & Raftery, 2007) is the primary metric for predictive distributions (§5.5), and ∆MAE and wall-clock are the cost axis against which every quality number is read. 
+
+Calibration. Wherever “val-calibrated” appears, the interval scale is the affine map a s (q) + b applied to whatever scale s the estimator emits ( s = ˆ σ for ours), with ( a, b ) fitted once on the validation targets, globally across variables, by a coarse grid search over the CRPS of the Gaussian predictive it defines. For a Gaussian, CRPS is closed-form, so neither the fit nor the reported score draws a sample. Nothing is ever fitted on test data. Figure 2 previews what this buys: continuous confidence bands from the single deterministic pass, quantified in §5.5. 
+
+Protocol. We evaluate on the t-PatchGNN benchmark (Zhang et al., 2024) using its unmodified public pipeline on its three openly-available datasets: PhysioNet 2012 (41 vars, 24h →24h forecast), Human Activity (12 vars, 3000ms →1000ms), and USHCN (5 vars, monthly chunks). MIMIC is excluded as it requires credentialed access under the PhysioNet Credentialed Health Data License. We report mean ±std over 5 seeds unless stated otherwise, matching the benchmark’s protocol; the transplant of §5.3 and the rerun of table 10 90.0 0.2 0.4 0.6 0.8 1.0 time (fraction of window) 1.00            
+
+> 0.75
+> 0.50
+> 0.25
+> 0.00 0.25 0.50 normalised value
+> Temperature
+> ±band (1 pass, free)
+> prediction ± MC-dropout band (20 passes) observed (context) held-out truth
+> 0.0 0.2 0.4 0.6 0.8 1.0 time (fraction of window) 1
+> 01234
+> FiO 2
+> 0.0 0.2 0.4 0.6 0.8 1.0 time (fraction of window) 2
+> 1
+> 012
+> Heart rate
+
+Figure 2: The uncertainty interface in use: three variables from three held-out PhysioNet records. One deterministic forward pass of the seed-0 interpolation checkpoint produces the continuous prediction curve and the shaded band a ˆσ(q) + b at every point of the timeline (the validation calibration of §5.1). The band tightens where observations are dense and opens in the gaps. The dashed outline is the 20-pass MC-dropout band under its own validation-calibrated scale. The band is a one-sigma interval, not an envelope; table 6 measures coverage at the 80, 90 and 95% levels. use 3, and every standard deviation in this paper is the unbiased sample estimator. A seed sets initialisation and training randomness; the benchmark’s splits are fixed by its pipeline. In the interpolation study of §5.4 the seed additionally redraws the record split and the masking. 
+
+Same-environment anchoring. Published numbers can hide environment drift, and one benchmark metric (USHCN) lives on a dataset-specific scale. We therefore ran the benchmark’s own t-PatchGNN, with its released code and canonical hyperparameters, in our environment (last block of table 1): it reproduces its published PhysioNet and Activity numbers to 0 .7% and 3 .8% respectively, validating the pipeline, and provides the reference value for USHCN. Every cross-environment comparison below is read against these anchors. 
+
+5.2 Accuracy: what the operator swap costs 
+
+The load-bearing comparison in table 1 is between its last two rows: one backbone, one recipe, one parameter count, differing in a single layer. Against that matched control the Lévy layer costs 2 .0% on PhysioNet, 5 .6% on Activity, and −0.2% on USHCN, a statistical tie (4 .64 ±0.05 vs 4 .65 ±0.06). That is the accuracy cost of the interface: at most 5 .6%, and on the sparsest dataset none at all. Placed against the published field, the same two rows read as follows. On PhysioNet the model places fifth among the published IMTS methods, behind the same-environment anchor — a gap the matched softmax control shares almost in full, so it is the backbone’s and not the operator’s. On Activity it places third among the published methods, between t-PatchGNN and Warpformer, and level with the same-environment anchor. On USHCN the Lévy model attains a lower MSE than every published value in the column, Hi-Patch and t-PatchGNN included. 2 The control matches it, so we attribute the dataset to the backbone family rather than to the operator; what the operator adds there is the interface, at no accuracy cost at all. What no row of table 1 reports is what the remaining sections measure: every prediction in our Lévy row arrives with per-query evidence, disagreement, and a calibrated deviation scale, from the pass that produced it. 
+
+5.3 A drop-in transplant into the benchmark model 
+
+The drop-in claim is tested most directly by transplanting the operator into the state-of-the-art model itself. t-PatchGNN aggregates its M patch tokens per variable with a time-blind linear layer and decodes each query time with an MLP; we replace only that output block, keeping the same MLP on top. Queries are the 
+
+> 2
+
+We flag this rather than celebrate it: USHCN is the benchmark’s lowest-dimensional dataset (5 variables) and its metric lives on a dataset-specific scale; the same-environment anchor (5 .03) validates the pipeline, and both decode layers share the value, so we read it as a backbone-family effect and draw no operator-level claim from it. 
+
+10 Table 1: IMTS forecasting under the t-PatchGNN protocol: MSE ↓, mean ±std. †Quoted from Zhang et al. (2024) (Table 1; 5 seeds). ‡Quoted from the same-protocol reruns of Luo et al. (2025) (5 seeds). Anchor = the benchmark’s model run in our environment; all rows measured by us use 5 seeds, matching the benchmark’s seed protocol. Our rows share one untuned configuration across datasets. Percentages quoted against this table are computed from the unrounded means, not from the two-decimal cells. Bold: best per column; underline: second.                                                                                                                                                                         
+
+> Model PhysioNet (×10 −3)Activity (×10 −3)USHCN (×10 −1)DLinear (Zeng et al., 2023) †41.86 ±0.05 4.03 ±0.01 6.21 ±0.00 TimesNet (Wu et al., 2023) †16.48 ±0.11 3.12 ±0.01 5.58 ±0.05 Crossformer (Zhang & Yan, 2023) †6.66 ±0.11 4.29 ±0.20 5.25 ±0.04 Graph WaveNet (Wu et al., 2019) †6.04 ±0.28 2.89 ±0.03 5.29 ±0.04 GRU-D (Che et al., 2018) †5.59 ±0.09 2.94 ±0.05 5.54 ±0.38 SeFT (Horn et al., 2020) †9.22 ±0.18 12.20 ±0.17 5.80 ±0.19 Raindrop (Zhang et al., 2022) †9.82 ±0.08 14.92 ±0.14 5.78 ±0.22 Warpformer (Zhang et al., 2023) †5.94 ±0.35 2.79 ±0.04 5.25 ±0.05 mTAND (Shukla & Marlin, 2021) †6.23 ±0.24 3.22 ±0.07 5.33 ±0.05 Latent-ODE (Rubanova et al., 2019) †6.05 ±0.57 3.34 ±0.11 5.62 ±0.03 CRU (Schirmer et al., 2022) †8.56 ±0.26 6.97 ±0.78 6.09 ±0.17 Neural Flows (Biloš et al., 2021) †7.20 ±0.07 4.05 ±0.13 5.35 ±0.05 GraFITi ‡5.11 ±0.19 3.03 ±0.14 5.07 ±0.03 t-PatchGNN †4.98 ±0.08 2.66 ±0.03 5.00 ±0.04 Hi-Patch ‡4.86 ±0.03 2.57 ±0.02 4.94 ±0.05 t-PatchGNN (anchor, our env.) 5.01 ±0.06 2.76 ±0.07 5.03 ±0.07 Backbone + softmax decode (control) 5.68 ±0.27 2.58 ±0.02 4.65 ±0.06 Backbone + Lévy decode (ours) 5.80 ±0.17 2.73 ±0.04 4.64 ±0.05
+
+Table 2: Transplanting the decode layer into t-PatchGNN: test MSE ↓ under its own protocol (mean ±std over 3 seeds for the two transplants; the Original row is a single seed and carries no spread). The Original row is the unmodified model retrained in the same batch as the transplants. All three rows come from one batch, so the comparison is within-run throughout. Scales as in table 1.                            
+
+> Output block PhysioNet (×10 −3)Activity (×10 −3)USHCN (×10 −1)Original (time-blind linear + MLP) 5.11 2.70 5.01 Softmax decode layer + MLP 5.22 ±0.02 2.74 ±0.13 5.02 ±0.04 Lévy decode layer + MLP 5.17 ±0.12 2.73 ±0.06 5.02 ±0.12
+
+model’s own time encodings, keys are the M patch tokens positioned at their observation-time centroids, and attention runs per variable, so the index space is pure time. Parameter counts stay within 5% of the original, a matched softmax transplant isolates the Lévy construction, and every variant is trained from scratch inside the benchmark’s own unmodified loop. The comparison is three output blocks per dataset, each transplant trained at three seeds, all in the same batch. On every dataset the Lévy transplant of table 2 sits within its own three-seed spread of the single-seed original: the differences are at most 1 .2%, smaller than the standard deviations printed beside them. It is also level with its own softmax transplant. The interface comes along at no extra cost. On sparse USHCN, the regime where the evidence factor carries information (§5.4), the transplanted ˆ σ retains predictive rank (ρ = 0 .18 ±0.09 over 3 seeds). What a practitioner takes from this section is a recipe: an already-built IMTS model acquires the uncertainty interface for the cost of one output block and one retraining. 11 Table 3: Error ranking on the forecasting test sets (Spearman ρ ↑ / AUSE ↓; mean ±std over 5 seeds), from the same single forward pass as the predictions of table 1; all three signals are free and available before the head has run.                
+
+> Signal (1 free pass) PhysioNet Activity USHCN
+> 1/Λq(evidence only) 0.01 ±0.04 / 0 .59 ±0.03 0.03 ±0.05 / 0 .61 ±0.05 0.40 ±0.10 / 0 .43 ±0.06 tr ΣV(q) (disagreement only) 0.22 ±0.10 / 0 .49 ±0.09 0.09 ±0.06 / 0 .55 ±0.06 0.47 ±0.11 / 0 .40 ±0.07 ˆσ(q) (ours, combined) 0.12 ±0.08 / 0 .51 ±0.05 0.07 ±0.06 / 0 .56 ±0.06 0.49 ±0.10 / 0 .37 ±0.06
+
+5.4 Per-query uncertainty: how well the free signals rank errors 
+
+Throughout, the instruments under test are the three free signals of eq. (12), read from the deterministic pass; everything they are compared against either ignores the trained model entirely or obtains its signal through extra passes, extra models, a post-hoc fit, or modified training. We are aware of no published error-ranking numbers for IMTS models, so every row here is measured by us on one backbone. 
+
+The regime split. Table 3 shows the theory’s decomposition living in the data. On dense benchmarks (PhysioNet, Activity: many observations near every query) the evidence factor is uninformative ( ρ ≈ 0) and 
+
+disagreement carries all the signal. On sparse USHCN (monthly chunks with empty stretches) evidence becomes strongly informative ( ρ = 0 .40 ±0.10 alone), and the combined ˆ σ(q) ties the disagreement factor at the top on both metrics: 0 .37 ±0.06 against 0 .40 ±0.07 on AUSE, 0 .49 ±0.10 against 0 .47 ±0.11 on Spearman, with the per-seed difference changing sign. That swing, from ρ ≈ 0 on dense data to 0 .40 on sparse, is exactly what the decomposition predicts. Read eq. (12) accordingly as a ranker : monitor tr ΣV , read Λ q as the coverage meter, and take the combined ˆ σ only where coverage is what varies. §5.5 reads it as a scale instead. 
+
+The suite in the dense regime. Hiding 30% of the observed points of PhysioNet 2012 (set-a) yields about 66 ,000 held-out targets per seed whose true values we know, and with them the room to run the established alternatives on one backbone (table 4). Read by what each row costs rather than by the table’s blocks, the rows split in two. Among estimators that leave the trained predictor untouched, the free disagreement signal attains the best sparsification error measured (AUSE 0 .438 ±.025). One estimator ties it, a variance head fitted post hoc on the same frozen features (0 .441 ±.023), and the head pays labels and a supervised fit for the tie. The other baselines in that tier rank behind both: twenty passes of MC dropout at 0 .482 (behind in every one of the five seeds), a DDU-style feature density at 0 .476, a last-layer Laplace posterior at 0 .536, every read-out of the matched softmax control, the closest being its own value dispersion at 0 .471, and every data-only heuristic, the closest at 0 .606. So 0 .44 is what reading a frozen model achieves on this dataset, across every estimator we measure. We call it the frozen-model ceiling of this suite. The free signal reaches it with no training change, no extra pass and no head. The other tier changes the model, and each route through it costs a training or a supervised fit. Five ensemble trainings buy a marginally better Spearman and a worse AUSE (0 .461); a Gaussian-NLL head buys a large ranking gain (0 .242) at +14 .1±5.1% MAE, which β-NLL halves without removing; and a matched Transformer Neural Process, probabilistic by construction, lands on our own NLL head to within noise (0 .247 ±.015, losing to it in every seed) while costing +25 .4±7.0% MAE. 
+
+The suite in the sparse regime. The free signals’ strongest claims live where coverage varies, so the suite is rerun on USHCN interpolation; table 5 reports the same-model signals with the sampling, density, and ensemble baselines, and the trained heads in its lower block. tr ΣV beats twenty-pass MC dropout on AUSE 
+
+in every seed , and its margin over dropout is five times the dense-data one (0 .341 vs 0 .560 here, against 0 .438 vs 0 .482 on PhysioNet), while its Spearman leads in four seeds of five (0 .480 ±0.137 vs 0 .294 ±0.024). It is a statistical tie with the DDU density (the seeds split 3–2 on both metrics) and leads the last-layer Laplace in four seeds of five. The evidence factor, uninformative on dense data, here carries ρ = 0 .34 alone and carries ˆσ to 0 .42. The K-draw spread agrees with its closed form seed by seed, as theorem 2 demands; section C checks the same identity directly. The data-only heuristics stay uninformative ( |ρ| ≤ 0.05 in every seed), so what the evidence factor reads on sparse data is not raw density. 12 Table 4: PhysioNet 2012 interpolation: per-query error ranking. Every row is mean ±std over the same 5 seeds, one training per seed. The upper block holds estimators whose uncertainty is read out without any fit to labelled targets; the lower block holds estimators that fit theirs on labels, whether by changing the model, its training, or by fitting something new on a frozen one, each scored on its own errors. Bold: best AUSE in the upper block. “Passes”: forward passes at inference. ∆MAE: each row’s test-MAE change against the point-head model (negative = more accurate). §Data-only heuristics: observation pattern alone, no model and no forward pass. ∥Attention-weighted value dispersion, measured on the matched softmax control. ¶Last-layer Laplace (Daxberger et al., 2021). ∗∗ TNP-D (Nguyen & Grover, 2022), a Transformer Neural Process matched to our tokenisation, width, depth, optimiser and epoch budget. Recipes for all are in section B.                                                                                       
+
+> Signal Passes Spearman ρ↑AUSE ↓∆MAE
+> time gap, same variable §00.019 ±.016 0.698 ±.024 –time gap, any variable §00.009 ±.002 0.658 ±.014 –same-variable count §00.043 ±.016 0.606 ±.015 –windowed density §00.038 ±.018 0.621 ±.022 –softmax partition function (control) 10.060 ±.019 0.605 ±.013 –softmax attention entropy (control) 10.009 ±.022 0.629 ±.016 –softmax value dispersion (control) ∥10.138 ±.029 0.471 ±.018 –1/Λq(evidence only) 10.067 ±.024 0.610 ±.026 –ˆσ(q) (ours, combined) 10.124 ±.025 0.536 ±.024 –
+> K-draw spread ( K=8) 1+8 0.113 ±.025 0.548 ±.023 –tr ΣV(q) (ours, disagreement) 10.213 ±.044 0.438 ±.025 –DDU-style feature density 10.180 ±.032 0.476 ±.035 –last-layer Laplace ¶10.123 ±.028 0.536 ±.028 –MC dropout (20 passes) 20 0.182 ±.012 0.482 ±.009 –deep ensemble (5 ×models) 50.225 ±.003 0.461 ±.005 −5.3±1.1%
+> Estimators that fit their uncertainty on labelled targets
+> post-hoc variance head (frozen backbone) 10.216 ±.034 0.441 ±.023 0.0% heteroscedastic Gaussian-NLL head 10.487 ±.023 0.242 ±.013 +14 .1±5.1%
+> β-NLL head ( β=0 .5) 10.459 ±.006 0.256 ±.002 +7 .2±2.3% TNP-D, natively probabilistic ∗∗ 10.485 ±.027 0.247 ±.015 +25 .4±7.0%
+
+Where error comes from missing coverage rather than value conflict, supervision of the representation pays: five trainings put the ensemble ahead on AUSE rather than behind it as on dense data (0 .302 against 0 .341, inside the seed spread) at ∆MAE −1.1%, and the post-hoc variance head reaches 0 .19. A practitioner holding labels should spend them. The free signal is priced for the case where nobody is holding any: no labels, no fit, no extra pass, and available before the head has run. Its evidence factor is bimodal across seeds here: four of five give ρ = 0 .35 to 0 .52, one gives −0.07, and that single seed is the whole of the wide spread in the table. TNP-D again out-ranks the free signal, at +6 .5±1.8% MAE. But on this dataset it is itself out-ranked on AUSE in all five seeds by our own Gaussian-NLL head, and beaten, in four seeds of five on each metric, by the post-hoc variance head on the frozen model, which costs no accuracy at all. Committing to a probabilistic architecture yields less here than fitting a small head on a frozen deterministic one. 
+
+Beyond the two suites. A three-seed rerun under the forecasting protocol extends the paid comparison to all three datasets (table 10 in section B) and carries one fact: twenty dropout passes are an unstable instrument, tying, trailing or leading the free tr ΣV depending on dataset and metric, and failing outright on Activity ( ρ = −0.02 ±0.01 at the default dropout rate, and negative at every rate of a single-seed sweep). The five-seed suites of tables 4 and 5 supersede that rerun on the two datasets they share with it. 
+
+5.5 Calibrated distributions, self-monitoring, and measured cost 
+
+So far the free signals have been used as ranks, and tr ΣV has carried that job. But ˆ σ carries the units of a deviation, through theorem 2, so it is the one we calibrate into a scale. 13 Table 5: USHCN interpolation in the sparse regime (30% masking; 5 seeds, one training per seed; same protocol and metrics as table 4, over the same-model signals and the trained and sampling baselines). Spearman ρ ↑ / AUSE ↓, mean ±std. No AUSE entry is bolded: the block minimum is a five-training ensemble, and among the one-pass rows the closest comparison (DDU) splits the seeds 3–2. ∆MAE is each row’s test-MAE change against the point-head model, and (–) marks the upper-block rows that read that model’s own predictions. §Data-only heuristics as in table 4: no model, no forward pass.                                                                           
+
+> Signal Passes Spearman ρ↑AUSE ↓∆MAE
+> time gap, same variable §00.009 ±.007 0.728 ±.026 –time gap, any variable §00.005 ±.006 0.735 ±.034 –same-variable count §0−0.018 ±.025 0.759 ±.027 –windowed density §00.030 ±.011 0.700 ±.015 –1/Λq(evidence only) 10.341 ±.239 0.506 ±.214 –ˆσ(q) (ours, combined) 10.415 ±.241 0.412 ±.153 –
+> K-draw spread ( K=8) 1+8 0.403 ±.234 0.418 ±.145 –tr ΣV(q) (ours, disagreement) 10.480 ±.137 0.341 ±.047 –DDU-style feature density 10.507 ±.041 0.348 ±.033 –last-layer Laplace 10.409 ±.066 0.462 ±.090 –MC dropout (20 passes) 20 0.294 ±.024 0.560 ±.050 –deep ensemble (5 ×models) 50.568 ±.030 0.302 ±.026 −1.1±1.2%
+> Estimators that fit their uncertainty on labelled targets
+> post-hoc variance head 10.660 ±.039 0.191 ±.024 0.0% Gaussian-NLL head 10.653 ±.025 0.187 ±.012 +4 .6±2.0%
+> β-NLL head 10.636 ±.081 0.188 ±.045 +9 .3±6.6% TNP-D, natively probabilistic 10.619 ±.040 0.210 ±.016 +6 .5±1.8%
+
+What we compute. (i) A predictive distribution. For a query q the network returns a scalar prediction 
+
+μ(q), the head’s output on the mean path ¯ a(q); the same pass returns ˆ σ(q) from eq. (12). We read μ as a location and a rescaled ˆ σ as a scale, 
+
+p(y | q) = N (μ(q), s (q)2), s(q) = a ˆσ(q) + b. (15) The rescaling is needed because ˆ σ is the deviation of the layer’s d-dimensional output, not of the scalar the head emits; the two scalars ( a, b ) are fitted once on the validation split by the grid search of §5.1, and never on test. A predictive law F is scored against a realised target y by its continuous ranked probability score, CRPS( F, y ) = 
+
+∫
+
+> R
+
+(F (x) − 1{x ≥ y})2 dx, (16) where F is the predicted cumulative distribution function and 1{·} the indicator. A point prediction is the degenerate law F = 1{x ≥ μ}, for which the integral collapses to |μ − y|: the CRPS of a point model is its MAE, which is what makes point and distributional rows directly comparable. For a Gaussian F the integral is closed-form, so evaluating eq. (16) on eq. (15) needs no sample. 
+
+(ii) Prediction intervals. The coverage of an interval is the fraction of test targets that fall inside it, and a level-(1 −α) interval should have coverage 1 − α. Reading the level off eq. (15) gives the Gaussian interval 
+
+Gα(q) = μ(q) ± z1−α/ 2 s(q), with z1−α/ 2 the standard normal quantile. Split conformal reads the multiplier off the data instead, assuming no shape at all. Over the ncal validation queries ( qi, y i), score each by how many interval-widths it was off by, and take the corresponding upper quantile of those scores: 
+
+Ri = |yi − μ(qi)|
+
+s(qi) , Qα = the ⌈(ncal +1)(1 −α)⌉ 
+
+> ncal
+
+quantile of {Ri}ncal  
+
+> i=1
+
+, Cα(q) = μ(q) ± Qα s(q). (17) The conformal interval Cα(q) has coverage at least 1 − α in finite samples, whatever the shape of the errors, provided calibration and test queries are exchangeable : their joint law is unchanged by reordering. 14 Table 6: Predictive distributions on PhysioNet 2012 interpolation. Top: CRPS ↓ at 30% masking (mean ±std over five seeds) for the distributional baselines of table 4; the last two rows are the same model read as a point prediction and by sampling (§2.4). Every row receives the same affine validation calibration; the raw column drops it and is empty for ˆ σ, which carries no units of the prediction. Bold: lowest calibrated CRPS. 
+
+Bottom: empirical coverage and median interval width of the Gaussian and of its split-conformal wrapper, one checkpoint.                                      
+
+> Predictive distribution, 30% masked val-calibrated raw
+> deep ensemble (5 ×models) 0.229 ±.005 0.258 ±.005 post-hoc variance head (frozen backbone) 0.241 ±.005 0.248 ±.006
+> ours : Gaussian on ˆ σ, 0 samples 0.244 ±.006 –
+> β-NLL head 0.255 ±.012 0.256 ±.011 Gaussian-NLL head 0.269 ±.011 0.271 ±.011 TNP-D, natively probabilistic 0.295 ±.020 0.298 ±.020
+> ours : deterministic mean (CRPS = MAE) 0.317 ±.007 –
+> ours : spread of Kdraws, one seed, K=1 /8/50 0.318 /0.268 /0.262 –Nominal level 80% 90% 95% Gaussian coverage (%) 80.2 87.1 90.8 Conformal coverage (%) 80.8 90.6 95.3 Gaussian median width 0.87 1.12 1.33 Conformal median width 0.89 1.32 1.80
+
+(iii) Self-monitoring. The width s(q) reacts to the input, not to past mistakes. Nothing is refitted at test time: the model is frozen and ( a, b ) stay at their validation values. What does change is ˆ σ(q), which is recomputed on every query. Hide observations and the evidence Λ q of eq. (14) falls; φ(Λ q ) rises as Λ q falls; ˆ σ(q) and hence s(q) grow. The interval widens because the input got thinner, before any error has been observed. 
+
+The measurements. Table 6 scores eq. (15) against the distributional baselines of table 4, each calibrated the same way. The last two rows are the same trained model read two other ways. Reported as a point prediction the model scores 0 .317, which is its MAE. Sampled, it saturates by K≈8 and gets to 0 .262 at fifty draws. The Gaussian of eq. (15) scores 0 .244 on those same predictions and draws nothing. Three rows lose to it, and all three bought their scale by training: the β-NLL head at 0 .255, the Gaussian-NLL head at 0 .269, and TNP-D at 0 .295. Each loses in all five of its seeds. What they lose on is location, not shape. These same rows are among the sharpest error rankers in table 4, and its ∆MAE column prices their ranking at 7 to 25% worse predictions. CRPS charges for that error directly, and a sharper ranking does not repay it. Two rows do better, and each names its price: the deep ensemble at 0 .229 for five trainings, the post-hoc head at 0 .241 for a set of labels and a fit on them. Five trainings and a label set are the two prices this paper measures everywhere else. On coverage, Gα(q) is exact at the 80% level and a few points short at 90% and 95%, the signature of errors with heavier tails than a Gaussian; Cα(q) lands on the nominal level at all three, and its 95% interval pays about a third more width for it. Under someone else’s protocol the same read-out holds up: table 7 runs it through the unmodified CSDI imputation pipeline (Tashiro et al., 2021), where one deterministic pass places behind only the conditional diffusion the benchmark was built for, which needs one hundred samples per target. Figure 3 exercises (iii): as we hide context, true error rises by 81% and the self-reported s(q) rises faster, driven by the evidence falling from 632 to 62. The operator’s own premium is one layer deep, 1 .7× a matched softmax cross-attention layer at our operating point ( n=512, m=128, width 128 over 4 heads, L=128). §5.6 prices all of it at deployment scale. 15 Table 7: Our model under the unmodified CSDI imputation protocol (PhysioNet, 10% missing, five folds). All rows use the quantile-CRPS estimator of Tashiro et al. (2021), imported unmodified; for our Gaussian predictive its nineteen quantiles are available in closed form, so our row needs no sample. Our row is measured; the others are the values Tashiro et al. (2021) report under the same protocol. 
+
+Method Samples per target CRPS ↓
+
+CSDI (conditional diffusion) 100 0.238 ±0.001 
+
+ours : Gaussian on ˆ σ 0 0.327 ±0.005 unconditional diffusion 100 0.360 GP-based imputers – 0.489 and up 0 20 40 60 80 context observations hidden (%) 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0 4.5 relative to full coverage       
+
+> true error (MAE) self-reported (calibrated)
+> 632 441 315 189 126 62
+
+Figure 3: Coverage-degradation stress test (PhysioNet interpolation, fixed targets). Both curves are normalised to their full-coverage value. Grey numbers give the mean evidence Λ q at each level. The model’s self-reported deviation tracks its true degradation without ever seeing an error. 
+
+5.6 Screening an unseen cohort in seconds 
+
+PhysioNet 2012 ships a second partition, set-b, that no training run, validation fit, or design decision in this paper ever touched; it is drawn from the same clinical distribution, and of its 4,000 records we keep the 3,383 with 20 to 512 time-varying observations, the loader’s padding envelope. We stream it through the set-a-trained model as a deployment rehearsal. One consumer GPU ranks the never-seen cohort by trust in 1.4 seconds; flagging the worst decile this way matches what 20-pass MC dropout delivers in 18.5 seconds. The cohort’s full dense timeline, 35 million uncertainty-quantified queries, takes 6.8 seconds. Every row of table 8 is measured on the same RTX 3090. 
+
+Protocol. Each record conditions on 70% of its observations; the remaining 30% are hidden targets, over the challenge’s 36 time-varying variables. One deterministic pass per batch returns all predictions, and its per-patient MAE is the error stream the single-model signals are scored on. A per-patient trust score is the mean of a per-query uncertainty signal over the record’s hidden-target queries, the same set whose MAE defines the error stream; sorting the cohort by it yields the intake list. Quality columns are measured over five same-recipe set-a trainings with fixed screening targets, reported as mean ±std; wall-clocks come from one reported checkpoint. 
+
+Triage quality. Across five same-recipe trainings, the flagged decile carries +29 .9±2.8% excess error under tr ΣV against +29 .6±0.7% under twenty-pass dropout, a statistical tie at one fourteenth of the cost. Whole-cohort Spearman orders the estimators by what they cost: the five-model ensemble leads at 0 .52 ±.01 after five trainings, dropout follows at 0 .49 ±.01 after twenty passes, a label-fitted post-hoc head at 0 .46 ±.05, and one pass gives 0 .43 ±.08, matching or beating dropout on two of five trainings, though its spread across retrainings is the widest in the column. The softmax control’s dispersion analogue reached 0 .28 on its single control run, well behind the free tr ΣV . The regime story of §5.4 repeats at patient granularity: disagreement dominates, ˆ σ is diluted by its evidence factor (0 .18 ±.05), and evidence alone is uninformative (0 .05 ±.03). 16 Table 8: Cohort screening: the set-a-trained model on the untouched set-b partition (3,383 records; 30% hidden targets per record, 373,713 queries), one RTX 3090. Upper block: patient-level triage quality, mean ±std over five same-recipe trainings; wall-clock is the full screening pass on the reported checkpoint; bold marks the best wall-clock and the best mean of each quality column. Flagged decile: mean per-patient MAE of the 10% least-trusted patients, as % change against the cohort mean; larger means better ranking. 
+
+> ¶
+
+The ensemble is scored on its own averaged predictions (cohort MAE 0 .305 ±0.002 against the single model’s 0.322 ±0.003). ¶¶ Post-hoc head: fitted per seed on frozen set-a features (∆MAE = 0). ∥Softmax value dispersion: matched control, single run (cohort MAE 0 .306). Neither is separately timed. Lower block: 
+
+wall-clock for the dense continuum (36 variables × 288 times per record).                                            
+
+> Screening: patient-level triage quality
+> Trust signal Passes Wall-clock Spearman ρ↑Flagged decile
+> tr ΣV(ours) 11.35 s 0.43 ±.08 +29 .9±2.8% ˆσ(ours) 11.35 s 0.18 ±.05 +18 .6±1.4% 1/Λq(ours) 11.35 s 0.05 ±.03 +9 .4±0.7% MC dropout spread 20 18.5 s 0.49 ±.01 +29 .6±0.7% Deep ensemble spread ¶55.3 s 0.52 ±.01 +32 .9±0.9%Post-hoc variance head ¶¶ 1–0.46 ±.05 +30 .5±1.8% Softmax value disp. (control) ∥1–0.28 +24 .3%
+> Continuum: wall-clock for 35,074,944 uncertainty-quantified queries
+> Free signals, 1 pass (ours) 6.8 s
+> MC dropout, 20 passes 133.5 s
+> K-draw sampling, K=50 428.7 s Deep ensemble, 5 passes (after 5 trainings, 14.7 min) 32.1 s
+
+The same deliverable, at cohort scale. The continuum pass answers all 35 ,074 ,944 queries in 6 .8 seconds, about 5 .2 million uncertainty-quantified predictions per second; the lower block of table 8 prices the same deliverable for every alternative. 
+
+5.7 Ablations 
+
+The index space must spread co-temporal variables. The top block of table 9 settles the geometry of the index space. With a purely temporal index space the value field averages all variables observed near the same instant, and temporal resolution barely repairs it: MAE improves only from 0 .386 to 0 .365 across an 8 × range of cells, and each run stays ∼30% behind its own softmax control. A single learned channel coordinate (eq. (1)) brings the gap to 1 .5%. For IMTS the index space is therefore (given time) × (learned channel): the data supplies the axis it can, and learning supplies the one it cannot. 
+
+The interface at scale. The free signals are not a small-model artefact. The middle block of table 9 grows the backbone from 0.2M to 20.3M parameters under one recipe (PhysioNet interpolation, seed 0). Below about 0.7M both accuracy and the signals collapse: the smallest model has ρ ≈ 0, and its calibration fits 
+
+a=0, so its band is constant and its PICP entry measures the marginal error scale, not a per-query interval. From 0.7M upward, accuracy improves monotonically across the entire range, the error ranking of ˆ σ trends upward with size (from ρ = 0 .16 to 0 .23, with a flat middle), the disagreement ranking stays stable, and the calibrated coverage (PICP) stays within a point of nominal through 5.1M parameters and within two points at the two largest sizes. The interface needs enough capacity to exist and then holds across the remaining 29 × span of parameters, as the size-independent identity of §3 predicts. 
+
+Sensitivity to the grid. The discretisation is not a tuned parameter. The bottom block of table 9 sweeps it around the default 16 × 8 grid (PhysioNet interpolation, seed 0) and accuracy stays flat: MAE within 0.305–0 .310 across an 8 × range of cell counts. The ranking quality of the free signals is not monotone in cell count, with the best AUSE at 16 × 16. The rate τ is a non-parameter in the same sense, and more strongly: 17 Table 9: Ablations, all on PhysioNet interpolation. Top — index-space geometry (MAE ↓; each row is compared against the matched softmax control of its own run, in row order 0 .289, 0 .288, 0 .286, 0 .298); bold: best MAE. Percentages quoted in §5.7 are computed from the unrounded values, not from the three-decimal cells. Middle — backbone size (seed 0, one recipe): ρ is Spearman between signal and error, PICP the fraction of targets inside the nominal-80% interval under the per-size validation-calibrated scale; bold marks the best per row for MAE, ρ and AUSE, while PICP is scored against the nominal 0 .80 so no entry is bolded. 
+
+Bottom — grid resolution (seed 0), Lt × Lv time cells × channel cells; bold: best AUSE.                                                                         
+
+> Index space SGrid MAE
+> time only 80.386 time only 32 0.371 time only 64 0.365 time ×learned channel (ours) 16 ×80.302
+> 0.2M 0.7M 2.7M 5.1M 10.8M 20.3M MAE 0.407 0.305 0.285 0.273 0.263 0.251
+> ρ(ˆ σ)−0.03 0.16 0.15 0.16 0.20 0.23
+> AUSE (tr ΣV)0.62 0.40 0.41 0.42 0.39 0.42 PICP@80 0.79 0.79 0.79 0.79 0.78 0.78
+> Grid Lt×Lv8×416 ×8 (default) 32 ×816 ×16 MAE 0.310 0.305 0.308 0.306 AUSE (tr ΣV)0.478 0.394 0.413 0.378
+
+swept over [0 .1, 2] on the same checkpoint, a 20 × range, it leaves test MAE at 0 .3047 to four decimals and moves the disagreement AUSE by 5 ×10 −4, as §2.3 predicts for the mean path. 
+
+Sampled vs. mean training. The mean path costs nothing to take. Training on the Poisson-sampled path (straight-through) instead gives test MAE 0.307 against the mean path’s 0.309, a 0 .7% difference well inside the seed spread and exactly what theorem 1 predicts; we therefore default to the mean path and keep its exact gradients for free. Each block of table 9 is a separate training run, and every comparison in this section is made within its own run. 
+
+## 6 Discussion 
+
+Lévy Attention turns the attention layer itself into the uncertainty interface: the partition function that softmax discards becomes an evidence meter, the value spread it never surfaces becomes a disagreement meter, and an exact variance identity welds the two into a per-query deviation scale available before sampling, or entirely without it. The empirical picture in §5 matches that construction from the single query up to the cohort. Better per-query error ranking than the free signal exists in the interpolation suites, and none of it comes there without changing the model or fitting something new. The free signal is not the best available estimate of error; it is the best available for nothing. The practical consequence is a change of default. While uncertainty costs a second model, twenty extra passes, or a supervised probe fitted on labelled data, it remains a feature to be budgeted for and, in practice, dropped. Once it is a by-product of the pass that already ran, there is no longer a reason for a prediction at an arbitrary timestamp to arrive without it. The interface also answers for queries nobody asked to predict. ˆσ(q) is defined for any q, so one pass scores every candidate measurement location at once, where dropout would pay K passes and an ensemble K models. 
+
+Limitations. The identities certify the operator’s own sampling deviation, not predictive error; the transfer from one to the other is empirical, and §5.4 measures it rather than proves it. That measurement has edges: the evidence factor is uninformative wherever coverage is dense, on Activity none of the free signals ranks 18 errors well (table 10), and on sparse USHCN the evidence factor is bimodal across seeds (§5.4). The predictive distribution of §5.5 assumes a Gaussian shape whose tails the coverage table shows to be optimistic at the higher levels, and the conformal guarantee assumes exchangeability between calibration and test queries, so neither survives distribution shift unmodified. ˆσ is one scalar per query, the deviation of the layer’s 
+
+d-dimensional output, and needs its one-time validation calibration before it acts as a scale for the head’s scalar prediction. Finally, the evidence is confined to a single cross-attention decode layer atop backbones of at most 20.3M parameters on three public IMTS benchmarks; the coverage table reports one checkpoint, and the ablations one seed. 
+
+## Broader Impact Statement 
+
+The cohort screening of §5.6 is a deployment rehearsal, not a clinical tool. The trust score ranks records by how fragile the model’s own answers are; it does not detect deterioration, and a well-covered record can still be mispredicted. Any clinical use would require prospective validation, and the intervals of §5.5 inherit the caveats stated there and in the Limitations above: Gaussian tails are optimistic at high levels, and the conformal guarantee does not survive distribution shift. More broadly, uncertainty estimates cheap enough to be always on can create false reassurance if consumers read them as error bounds; they are rankings and calibrated scales, and §5.4 measures exactly how far each can be trusted. 
+
+## Reproducibility Statement 
+
+Every number in this paper is measured by us, except the rows explicitly marked as quoted in table 1, whose sources are cited; and the published CSDI-protocol baselines quoted in table 7. The benchmark pipelines we evaluate under are public and are imported unmodified: splits, normalisation, collate functions, and metrics are the original authors’ code. All datasets are openly available (PhysioNet 2012 set-a and set-b, Human Activity, USHCN); MIMIC is excluded because it requires credentialed access. Seeds, splits, and hyperparameters are stated in §5.1 and section B. On PhysioNet set-a, records denser than 512 observations are subsampled with a per-file checksum seed, so the subsample is identical in every process and across runs. The complete code (operator, benchmark adapters, every experiment and figure script), the raw result files behind every table and figure, and the interactive in-browser demo of the trained model will be released. Every experiment in the paper runs on a single consumer GPU; the training suite costs under thirty GPU-hours, plus evaluation. 
+
+## References 
+
+A. Amini, W. Schwarting, A. Soleimany, and D. Rus. Deep evidential regression. In NeurIPS , 2020. M. Biloš, J. Sommer, S. S. Rangapuram, T. Januschowski, and S. Günnemann. Neural flows: Efficient alternative to neural ODEs. In NeurIPS , 2021. Z. Che, S. Purushotham, K. Cho, D. Sontag, and Y. Liu. Recurrent neural networks for multivariate time series with missing values. Scientific Reports , 8(1):6085, 2018. Y. Chen, K. Ren, Y. Wang, Y. Fang, W. Sun, and D. Li. ContiFormer: Continuous-time transformer for irregular time series modeling. In NeurIPS , 2023. K. Choromanski et al. Rethinking attention with Performers. In ICLR , 2021. E. Daxberger, A. Kristiadi, A. Immer, R. Eschenhagen, M. Bauer, and P. Hennig. Laplace redux: Effortless Bayesian deep learning. In NeurIPS , 2021. E. De Brouwer, J. Simm, A. Arany, and Y. Moreau. GRU-ODE-Bayes: Continuous modeling of sporadically-observed time series. In NeurIPS , 2019. X. Fan, S. Zhang, B. Chen, and M. Zhou. Bayesian attention modules. In NeurIPS , 2020. 19 J. Futoma, S. Hariharan, and K. Heller. Learning to detect sepsis with a multitask Gaussian process RNN classifier. In ICML , 2017. Y. Gal and Z. Ghahramani. Dropout as a Bayesian approximation: Representing model uncertainty in deep learning. In ICML , 2016. M. Garnelo, J. Schwarz, D. Rosenbaum, F. Viola, D. J. Rezende, S. M. A. Eslami, and Y. W. Teh. Neural processes. In ICML Workshop on Theoretical Foundations and Applications of Deep Generative Models ,2018. I. Gibbs and E. Candès. Adaptive conformal inference under distribution shift. In NeurIPS , 2021. T. Gneiting and A. E. Raftery. Strictly proper scoring rules, prediction, and estimation. Journal of the American Statistical Association , 102(477):359–378, 2007. M. Horn, M. Moor, C. Bock, B. Rieck, and K. Borgwardt. Set functions for time series. In ICML , 2020. E. Ilg, Ö. Çiçek, S. Galesso, A. Klein, O. Makansi, F. Hutter, and T. Brox. Uncertainty estimates and multi-hypotheses networks for optical flow. In ECCV , 2018. A. Katharopoulos, A. Vyas, N. Pappas, and F. Fleuret. Transformers are RNNs: Fast autoregressive transformers with linear attention. In ICML , 2020. A. Kendall and Y. Gal. What uncertainties do we need in Bayesian deep learning for computer vision? In 
+
+NeurIPS , 2017. H. Kim, A. Mnih, J. Schwarz, M. Garnelo, S. M. A. Eslami, D. Rosenbaum, O. Vinyals, and Y. W. Teh. Attentive neural processes. In ICLR , 2019. J. F. C. Kingman. Poisson Processes . Oxford University Press, 1993. B. Lakshminarayanan, A. Pritzel, and C. Blundell. Simple and scalable predictive uncertainty estimation using deep ensembles. In NeurIPS , 2017. J. Lei, M. G’Sell, A. Rinaldo, R. J. Tibshirani, and L. Wasserman. Distribution-free predictive inference for regression. Journal of the American Statistical Association , 113(523):1094–1111, 2018. S. C.-X. Li and B. Marlin. A scalable end-to-end Gaussian process adapter for irregularly sampled time series classification. In NeurIPS , 2016. J. Z. Liu, Z. Lin, S. Padhy, D. Tran, T. Bedrax-Weiss, and B. Lakshminarayanan. Simple and principled uncertainty estimation with deterministic deep learning via distance awareness. In NeurIPS , 2020. Z. Liu et al. Swin transformer v2: Scaling up capacity and resolution. In CVPR , 2022. Y. Luo, B. Zhang, Z. Liu, and Q. Ma. Hi-Patch: Hierarchical patch GNN for irregular multivariate time series. In ICML , 2025. A. F. T. Martins, A. Farinhas, M. Treviso, V. Niculae, P. M. Q. Aguiar, and M. A. T. Figueiredo. Sparse and continuous attention mechanisms. In NeurIPS , 2020. J. Mukhoti, A. Kirsch, J. van Amersfoort, P. H. S. Torr, and Y. Gal. Deep deterministic uncertainty: A new simple baseline. In CVPR , 2023. T. Nguyen and A. Grover. Transformer neural processes: Uncertainty-aware meta learning via sequence modeling. In ICML , 2022. H. Peng, N. Pappas, D. Yogatama, R. Schwartz, N. A. Smith, and L. Kong. Random feature attention. In 
+
+ICLR , 2021. Y. Rubanova, R. T. Q. Chen, and D. Duvenaud. Latent ODEs for irregularly-sampled time series. In NeurIPS ,2019. 20 M. Schirmer, M. Eltayeb, S. Lessmann, and M. Rudolph. Modeling irregular time series with continuous recurrent units. In ICML , 2022. M. Seitzer, A. Tavakoli, D. Antic, and G. Martius. On the pitfalls of heteroscedastic uncertainty estimation with probabilistic neural networks. In ICLR , 2022. M. Sensoy, L. Kaplan, and M. Kandemir. Evidential deep learning to quantify classification uncertainty. In 
+
+NeurIPS , 2018. S. N. Shukla and B. M. Marlin. Multi-time attention networks for irregularly sampled time series. In ICLR ,2021. Y. Tashiro, J. Song, Y. Song, and S. Ermon. CSDI: Conditional score-based diffusion models for probabilistic time series imputation. In NeurIPS , 2021. J. van Amersfoort, L. Smith, Y. W. Teh, and Y. Gal. Uncertainty estimation using a single deep deterministic neural network. In ICML , 2020. Z. Wu, S. Pan, G. Long, J. Jiang, and C. Zhang. Graph WaveNet for deep spatial-temporal graph modeling. In IJCAI , 2019. H. Wu, T. Hu, Y. Liu, H. Zhou, J. Wang, and M. Long. TimesNet: Temporal 2D-variation modeling for general time series analysis. In ICLR , 2023. V. K. Yalavarthi, K. Madhusudhanan, R. Scholz, N. Ahmed, J. Burchert, S. Jawed, S. Born, and L. Schmidt-Thieme. GraFITi: Graphs for forecasting irregularly sampled time series. In AAAI , 2024. A. Zeng, M. Chen, L. Zhang, and Q. Xu. Are transformers effective for time series forecasting? In AAAI ,2023. Y. Zhang and J. Yan. Crossformer: Transformer utilizing cross-dimension dependency for multivariate time series forecasting. In ICLR , 2023. X. Zhang, M. Zeman, T. Tsiligkaridis, and M. Zitnik. Graph-guided network for irregularly sampled multivariate time series. In ICLR , 2022. J. Zhang, S. Zheng, W. Cao, J. Bian, and J. Li. Warpformer: A multi-scale modeling approach for irregular clinical time series. In KDD , 2023. W. Zhang, C. Yin, H. Liu, X. Zhou, and H. Xiong. Irregular multivariate time series forecasting: Atransformable patching graph neural networks approach. In ICML , 2024. 
+
+## A Proofs 
+
+A.1 Proof of Theorem 1 (mean identity) 
+
+By the conditional property of Poisson processes (Kingman, 1993), given Zq = z ≥ 1 the atoms S1, . . . , S z are i.i.d. with density fq = λq /Λq on S. Hence E[a(q) | Zq = z] = ES∼fq [V (S)] = ¯ a(q) for every z ≥ 1, independent of z. On {Zq = 0 } the output equals ¯ a(q) by definition. Averaging over Zq gives E[a(q)] = ¯ a(q). 
+
+A.2 Proof of Theorem 2 (variance identity) 
+
+Conditional on Zq = z ≥ 1, a(q) = 1
+
+> z
+
+∑zj=1 V (Sj ) with V (Sj ) i.i.d., mean ¯ a(q) and covariance ΣV (q) (the covariance of V (S) under S ∼ fq ; on the grid, of the Vl under pl). Therefore 
+
+E[∥a(q) − ¯a(q)∥2 ∣∣ Zq = z] = tr ΣV (q)
+
+z , z ≥ 1,
+
+21 while the {Zq = 0 } branch contributes 0 (the fallback returns ¯ a(q) exactly). Taking expectation over 
+
+Zq ∼ Poisson(Λ q ), 
+
+E∥a(q) − ¯a(q)∥2 = tr ΣV (q) ∑
+
+> z≥1
+
+e−Λq Λzq
+
+z z ! = tr ΣV (q) φ(Λ q ).
+
+For the asymptotics of φ: φ(Λ) = E[Z−11{Z ≥ 1}] is the truncated inverse moment of a Poisson variable, whose standard expansion Λ −1 + Λ −2 + O(Λ −3) gives φ(Λ) = 1 /Λ + O(1 /Λ2) as Λ → ∞ . Every series term 
+
+e−ΛΛz /(z z !) vanishes at Λ = 0, so φ(0 +) = 0; this is what makes φ non-monotone, with the maximum 0 .517 at Λ = 1 .503 quoted in §3. 
+
+A.3 Mollification bias 
+
+Proposition 1 (Mollification bias) . Let a⋆(q) be the discrete cosine-kernel attention and let ˜rmin =min i̸=j ∥si − sj ∥ε be the minimum key separation measured in the mollifier metric ∥u∥2 
+
+> ε
+
+= u2 
+
+> t
+
+/ε 2 
+
+> t
+
++ u2 
+
+> v
+
+/ε 2
+
+> v
+
+of §2.2. For ˜rmin ≥ 4, ∥¯a(q) − a⋆(q)∥ ≤ C V max n e −˜r2min /32 uniformly in q, where Vmax = max l∥Vl∥ (in the continuum sup s∥V (s)∥, which the partition-of-unity structure bounds by max i∥vi∥) and C absorbs the boundary renormalisation of the mollifier (bounded above and below at any fixed ε). 
+
+The separation must be measured in ∥·∥ ε, not Euclidean distance: with anisotropic bandwidths a Euclidean-separated pair can be arbitrarily close along the narrow axis, and the competing-key ratio below then fails. Proof sketch: decompose ¯ a(q)−a⋆(q) over per-key mollifier averages ˜vi −vi, where ˜vi = ∫ 
+
+> S
+
+V (s) δε(s−si) dL(s)is the value field averaged against the mollifier centred on key i; split each integral at the ∥·∥ ε-ball of radius ˜rmin /4 around si; inside that ball every competing key j satisfies ∥x − sj ∥ε ≥ 3˜ rmin /4, so its mollifier ratio against key i is at most e−˜r2min /4; outside, the Gaussian tail mass in the ε-metric is O(e−˜r2min /32 ); combine with the convexity of the kernel weights. 
+
+## B Experimental details 
+
+Backbone. dmodel = 128, 3 encoder blocks, 4 heads, dropout 0 .1; decode layer as in §5.1; head MLP 128 → 128 → 1. Adam, lr 10 −3, early stopping patience 10 on validation MSE (the benchmark’s protocol), batch sizes and histories per dataset as in the benchmark’s canonical scripts (PhysioNet 24h/32; Activity 3000ms/32; USHCN 24mo/192). Interpolation study. PhysioNet 2012 set-a over the challenge’s 36 time-varying variables, the general descriptors excluded (the forecasting pipeline of table 1 keeps its own 41-variable convention), 70/15/15 record split, per-variable z-scoring from train statistics, 30% of observed points hidden per record, capped at the loader’s 128-target envelope (resampled each epoch), 60 epochs, AdamW 3 ×10 −4;MC dropout uses 20 train-mode passes of the same checkpoint; the decode layer stays in mean mode, so the measured spread is dropout’s alone and carries no Poisson sampling. Compute. The training suite (more than a hundred runs) takes under thirty GPU-hours, plus evaluation; each run uses a single consumer GPU. Forecasting baseline rerun (table 10). Non-finite outputs on empty-context extremes are zeroed, identically for both variants, on top of the neutral-token handling of §2. TNP-D baseline (tables 4 to 6). 
+
+Deterministic Transformer Neural Process (Nguyen & Grover, 2022). Context tokens carry (time, variable, value); target tokens carry (time, variable) only. One masked transformer runs over the concatenation, with a mask that lets targets attend to the context and to themselves but never to another target, so no target sees another’s answer. A two-layer head emits ( μ, σ ) per target with a softplus-plus-floor parameterisation, trained by Gaussian maximum likelihood. Width, depth, head count, dropout, optimiser, learning rate, batch size, epochs, splits and masking are ours, unchanged, so the comparison isolates the estimator. CRPS comparison of predictive distributions (§5.5). Five seeds at 30% masking. Per seed we train the point model, the Gaussian-NLL head, the β-NLL head and a five-member ensemble, and fit the post-hoc variance head on the point model’s frozen features. Each row’s predictive Gaussian uses that row’s own location and scale, scored by the same closed-form CRPS of a Gaussian, with the affine scale a s + b applied to that row’s own scale s, fitted on validation by the same grid search as §5.1. Uncalibrated scores are also recorded for the rows whose scale carries the units of the prediction. TNP-D is scored by the same closed-form expression, with its own validation calibration. Baseline suite. Every row is oriented so that larger means less trusted, as 1 /Λq is for the evidence (§3); counts and partition functions are therefore negated or reciprocated before 22 scoring. The softmax read-outs come from the matched control’s own attention weights αi and its own errors: value dispersion ∑ 
+
+> i
+
+αi∥vi∥2 − ∥ ∑ 
+
+> i
+
+αivi∥2, the reciprocal partition function 1 / ∑ 
+
+> i
+
+κ(q, k i), and the entropy of {αi}. The four data-only heuristics read the observation pattern alone and vary only through the per-seed data split: time to the nearest same-variable observation, time to the nearest observation of any variable, the count of same-variable observations, and that count restricted to observations falling within one sixteenth of the record’s time span of the query. The post-hoc variance head is trained per seed on that seed’s frozen features, so its ∆MAE is zero by construction. The deep ensemble trains five point-head models from different initialisations. The trained head replaces the final linear layer and its loss (Gaussian NLL). The DDU-style density fits a 20-component GMM on PCA-projected penultimate features of the trained point model. The β-NLL head reweights the per-point Gaussian NLL by σ2β with stopped gradient, 
+
+β = 0 .5 (Seitzer et al., 2022). The last-layer Laplace fits a Gaussian posterior on the final linear layer by the generalised Gauss–Newton over the training queries, with homoscedastic noise from train residuals and prior precision grid-tuned on validation NLL. The CSDI-protocol run imports their public dataset, masking, folds, and quantile-CRPS code unmodified; our model trains per fold on their train split with self-masked targets, and the affine scale is fitted on their validation split by their own CRPS. Table 10: Free against paid under the forecasting protocol, all three datasets. Superseded on PhysioNet and USHCN by the five-seed suites of tables 4 and 5; on Activity it is the paper’s only comparison against a paid estimator. Spearman ρ ↑ except in the block labelled AUSE ↓; mean ±std over 3 seeds. MC dropout ranks the Lévy run’s own error stream; the softmax rows rank the matched control’s. §5.4 reads the numbers.                                    
+
+> Signal PhysioNet Activity USHCN
+> Lévy model (free, 1 pass)
+> ˆσ(q)0.04 ±0.03 0.07 ±0.05 0.49 ±0.15 tr ΣV(q)0.21 ±0.05 0.08 ±0.06 0.55 ±0.12 1/Λq−0.09 ±0.06 0.04 ±0.03 0.26 ±0.23 MC dropout (20 passes) 0.24 ±0.05 −0.02 ±0.01 0.52 ±0.09
+> AUSE ↓on the same runs
+> tr ΣV(q)0.497 ±.049 0.545 ±.045 0.332 ±.073 MC dropout (20 passes) 0.405 ±.052 0.658 ±.005 0.407 ±.121
+> Softmax control (own errors, 1 pass)
+> value dispersion 0.13 ±0.11 0.23 ±0.02 0.22 ±0.17 partition function 0.02 ±0.10 0.08 ±0.01 0.34 ±0.11 attention entropy 0.07 ±0.07 0.01 ±0.01 −0.20 ±0.06
+
+## C Calibration tests 
+
+Unit tests accompanying the code verify: (T1) the grid identity ∑ 
+
+> l
+
+λl = τ ∑ 
+
+> i
+
+κ(q, k i), at a maximum relative error of 1 .2×10 −7, which is float32 machine precision; (T2) the Monte-Carlo mean of the sampled operator converges to ¯ a(q), matching it to under 1% of its norm at 4 ,000 draws; (T3) the ratio of empirical to predicted deviation (ˆ σ) stays within 2% of one across queries at 4 ,000 draws; (T4) identical values drive ˆ σ → 0 while 1/Λq remains bounded away from zero: the counterexample to evidence-only uncertainty. 23
