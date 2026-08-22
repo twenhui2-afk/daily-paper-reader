@@ -1,0 +1,1064 @@
+CSG-Mamba: A Convolutional Scoring Gating
+Vision State Space Network for Endoscopic Polyp
+Segmentation
+Yuliang Wang*
+, Jiaqi Wu*
+, Jiaye Song
+, and Shuxia Ren(B)
+School of Advanced Interdisciplinary Studies, Tiangong University, Tianjin, China
+t_rsx@126.com
+Abstract. Accurate polyp segmentation is critical for computer-aided
+colonoscopy, yet endoscopic images often contain low-contrast boundaries,
+mucosal texture interference, specular highlights, and device-dependent
+appearance shifts. Vision State Space Models (SSMs) provide efficient
+long-range modeling with linear complexity, but existing Vision Mamba
+segmentation models typically convert 2D features into 1D scanning se-
+quences, which may weaken local geometric continuity and over-smooth
+irregular contours. We propose CSG-Mamba, a convolutional scoring
+gating Vision State Space network for endoscopic polyp segmentation.
+Built on a VM-UNet-style asymmetric U-shaped encoder-decoder, CSG-
+Mamba inserts a Convolutional Scoring Gating (CSG) module at the
+semantically rich bottleneck. CSG generates a local spatial score map
+through pointwise and large-kernel depthwise convolutions and recali-
+brates state-space features by multiplicative gating. Experiments with
+three random seeds show that CSG-Mamba achieves 0.9220 Dice and
+15.87 HD95 on Kvasir-SEG, and 0.7418 Dice and 0.6570 mIoU on CVC-
+ColonDB, outperforming the baselines on most overlap and recall metrics
+while maintaining competitive boundary accuracy. Code is available at
+https://github.com/GGMANUTD/CSG-Mamba.
+Keywords: Medical image segmentation · Polyp segmentation · Vi-
+sion State Space Models · Mamba · Convolutional gating · Zero-shot
+generalization
+1
+Introduction
+Polyp segmentation is a fundamental task in computer-aided endoscopic analysis.
+Real colonoscopy images are affected by low contrast, mucosal texture interference,
+specular highlights, motion blur, and substantial variations in lesion scale and
+appearance. A practical model must therefore achieve high in-domain overlap
+while maintaining robustness on external datasets collected with different devices
+and acquisition protocols.
+Fully convolutional networks established end-to-end dense prediction [13]. U-
+Net [18], UNet++ [28], and residual U-shaped variants [7,27] provide strong local
+* These authors contributed equally to this work.
+arXiv:2608.14146v1  [cs.CV]  14 Aug 2026
+
+
+2
+Y. Wang et al.
+inductive bias, while PraNet [4] improves polyp segmentation through reverse
+attention. However, pure convolution is limited in modeling long-range depen-
+dencies. Transformer-based methods such as TransUNet [2] and PVT-style dense
+prediction backbones [23] alleviate this limitation through self-attention or hier-
+archical token representations, but their memory and computational costs remain
+high for dense prediction. State Space Models (SSMs), from S4 [6] to Mamba [5],
+provide linear-time sequence modeling. Vision Mamba [29], VMamba [11], VM-
+UNet [19], VM-UNetV2 [26], and SegMamba [25] extend this modeling paradigm
+to visual and medical segmentation tasks.
+The key limitation is that visual Mamba models rely on sequential scanning,
+whereas low-contrast segmentation depends strongly on 2D spatial continuity.
+SS2D unfolds 2D features into 1D sequences along multiple directions, expanding
+contextual coverage while potentially weakening local adjacency around fine
+boundaries. This mismatch may lead to over-smoothing, under-segmentation,
+and boundary displacement.
+We propose CSG-Mamba to complement global state-space modeling with
+local convolutional scoring. A lightweight Convolutional Scoring Gating (CSG)
+module is inserted at the bottleneck, where semantic information is concentrated
+and the spatial resolution is compact. CSG generates a spatial score map through
+pointwise and large-kernel depthwise convolutions and recalibrates features by
+multiplicative gating. To isolate the effect of the proposed module, the Mamba-
+based models are trained under the same zero-inference-cost stabilization protocol,
+including deep supervision, EMA, and DropPath.
+The main contributions of this work are summarized as follows.
+– We propose CSG-Mamba for endoscopic polyp segmentation. The method
+introduces convolutional scoring gating into the bottleneck of a U-shaped
+Vision State Space network, using lightweight local convolutional priors to
+compensate for the loss of 2D spatial continuity caused by SS2D sequential-
+ization.
+– We design the CSG module by combining large-kernel convolutional scor-
+ing with multiplicative gating, allowing local boundary-aware responses to
+regulate global state-space features without introducing matrix attention.
+– We adopt a consistent training protocol for the Mamba-based comparisons,
+using deep supervision, EMA, and stochastic depth to reduce optimization
+variance without adding inference overhead.
+– We conduct experiments with three random seeds on Kvasir-SEG, CVC-
+ClinicDB, and CVC-ColonDB, showing favorable parameter efficiency, bound-
+ary accuracy, and cross-domain generalization under this matched protocol.
+2
+Related Work
+2.1
+Polyp Image Segmentation
+FCN [13] first showed that classification networks can be converted into dense
+predictors, and U-Net [18] established the dominant encoder-decoder framework
+
+
+CSG-Mamba for Endoscopic Polyp Segmentation
+3
+for medical image segmentation. UNet++ [28] narrows the semantic gap between
+encoder and decoder features through nested skip pathways and deep supervision.
+Residual learning [7] further improves optimization and leads to variants such
+as ResUNet [27]. For polyp segmentation, PraNet [4] uses a parallel partial
+decoder and reverse attention to mine boundary regions. These CNN-based
+methods are stable and efficient, but their local receptive fields limit global shape
+modeling. DeepLabv3+ [3] and Transformer models, including TransUNet [2] and
+PVT [23], introduce broader context through atrous convolution, self-attention,
+or hierarchical tokens. Nevertheless, modeling long-range dependencies remains
+expensive for high-resolution dense prediction. This work instead focuses on
+Vision State Space Models and improves their local boundary representation.
+2.2
+Vision State Space Models
+S4 [6] enables deep long-sequence learning with structured state-space parame-
+terization, and Mamba [5] introduces input-dependent selective modeling while
+preserving linear complexity. Vision Mamba [29] and VMamba [11] adapt selec-
+tive state-space modeling to visual inputs, with VMamba using SS2D to scan
+2D feature maps. In medical segmentation, VM-UNet [19], VM-UNetV2 [26],
+U-Mamba [16], and SegMamba [25] show that state-space blocks can provide effi-
+cient contextual modeling. However, SS2D still converts local 2D neighborhoods
+into scan-order relationships. For low-contrast pixel-level segmentation, this con-
+version can weaken contour integrity. We therefore introduce local convolutional
+priors at the module level so that Mamba-style global modeling and CNN-style
+boundary bias can complement each other.
+2.3
+Attention, Gating, and Deep Supervision
+Attention U-Net [20] and CBAM [24] show that explicit feature selection can
+suppress background interference. Large-kernel and depthwise convolution can
+also expand local receptive fields at low cost [3,12]. Inspired by these ideas, CSG
+generates spatial scores using pointwise and depthwise convolutions and applies
+multiplicative feature gating without matrix attention. Deep supervision [10],
+used in UNet++ [28] and medical frameworks such as nnU-Net [8], is combined
+with EMA in our training protocol to stabilize optimization on small datasets.
+The auxiliary heads are removed during inference.
+3
+Method
+3.1
+Overall Architecture
+Fig. 1 illustrates CSG-Mamba. Given an image X ∈RH×W ×3, Patch Embedding
+projects it to F0 ∈R
+H
+4 × W
+4 ×C. The encoder stacks VSS Blocks and uses Patch
+Merging to reduce the resolution and increase the channel dimension. At the
+deepest stage, a CSG module recalibrates the bottleneck feature, where semantic
+
+
+4
+Y. Wang et al.
+Patch Embedding
+VSS block × 2 
+Patch Expanding
+VSS block × 2 
+Patch Merging
+VSS block × 2 
+CSG Module
+(Bottleneck)
+VSS block × 2 
+Patch Expanding
+VSS block × 2 
+Patch Expanding
+VSS block × 2 
+Patch Merging
+VSS block × 2 
+Patch Merging
+C
+2
+8
+W
+8
+H
+
+
+C
+4
+16
+W
+16
+H
+
+
+C
+8
+32
+W
+32
+H
+
+
+C
+2
+8
+W
+8
+H
+
+
+C
+4
+16
+W
+16
+H
+
+
+C
+8
+32
+W
+32
+H
+
+
+C
+4
+W
+4
+H
+
+
+3
+W
+H
+
+
+VSS block × 1
+Patch Expanding
+Final Projection
+C
+4
+W
+4
+H
+
+
+1
+W
+H
+
+
+Addition
+Auxiliary Supervision
+(Training Only)
+Fig. 1. Overall architecture of CSG-Mamba. The CSG module is inserted at the
+bottleneck, and auxiliary supervision is used only during training.
+information is concentrated and the convolutional overhead is low. The decoder
+uses Patch Expanding and skip connections to recover spatial resolution, followed
+by a 1 × 1 prediction head.
+The implementation follows VMamba-Tiny. Encoder channels are 96, 192,
+384, and 768 with depths [2, 2, 2, 2], and decoder depths are [2, 2, 2, 1]. As detailed
+in Fig. 2 (b), each VSS Block sets the state dimension to 16, the local convolution
+kernel size to 3, the expansion ratio to 2, and the time-step projection rank
+to ⌈dmodel/16⌉. PatchEmbed2D is implemented as a 4 × 4 stride-4 convolution.
+PatchMerging2D projects 4C channels to 2C, while PatchExpand2D doubles
+the spatial resolution and halves the channel dimension. The final expansion
+upsamples the feature map by a factor of 4 to produce the segmentation mask.
+3.2
+Visual State Space Block and SS2D
+A continuous state-space model can be formulated as
+dh(t)
+dt
+= Ah(t) + Bx(t),
+y(t) = Ch(t),
+(1)
+where x(t) denotes the input, h(t) denotes the hidden state, y(t) denotes the
+output, and A, B, and C are learnable or input-dependent parameters. After
+discretization, the model can be written as
+hk = ¯Ahk−1 + ¯Bxk,
+yk = Chk.
+(2)
+The selective state-space mechanism in Mamba makes some parameters
+dependent on input tokens, enabling the model to adaptively retain or discard
+
+
+CSG-Mamba for Endoscopic Polyp Segmentation
+5
+Addition
+Element-wise Multiplication
+Linear layer
+Activation
+Layer norm
+Linear layer
+DW-Conv
+Activation
+SS2D
+Layer norm
+Linear layer
+F in
+F out
+F in
+F out
+1×1
+PW-Conv
+7×7 
+DW-Conv
+BatchNorm
+&
+Sigmoid
+Spatial Scoring Branch 
+Identity Path 
+(a) CSG Module
+(b) VSS Block
+Fig. 2. Detailed structures of the proposed components: (a) CSG module; (b) VSS
+Block.
+information according to content [5]. In visual tasks, the input is no longer a
+1D sentence sequence but a 2D feature map. VMamba [11] adopts SS2D to
+scan features along multiple directions, thereby approximating 2D contextual
+propagation. For a feature map F ∈RH′×W ′×C, SS2D can be abstracted as
+SS2D(F) = Merge (S→(F), S←(F), S↓(F), S↑(F)) ,
+(3)
+where S denotes 1D selective scanning and Merge fuses multi-directional outputs.
+SS2D provides global modeling with linear complexity, but it converts local 2D
+adjacency into scan-order relationships. As shown in Fig. 3, adjacent boundary
+pixels may be separated after unfolding, which can weaken local continuity.
+3.3
+Convolutional Scoring Gating Module
+The objective of CSG is to inject local boundary priors into state-space features.
+As shown in Fig. 2 (a), CSG preserves the original bottleneck feature and uses a
+spatial scoring branch to generate a multiplicative gate. Let the input bottleneck
+feature be F ∈RC×H′×W ′. CSG first performs channel mixing with a bias-free
+1 × 1 pointwise convolution and then extracts local context using a bias-free
+depthwise convolution. In the main model, k = 7. After BatchNorm and a sigmoid
+activation, the spatial scoring map is
+G = σ (BN (DWConv7×7 (PWConv1×1(F)))) .
+(4)
+
+
+6
+Y. Wang et al.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+1
+2
+3
+4
+5
+6
+7
+8
+9
+(a) Scan Expanding
+1
+2
+3
+···
+8
+9
+1
+4
+7
+···
+6
+9
+9
+8
+7
+···
+2
+1
+9
+6
+3
+···
+4
+1
+1
+2
+3
+···
+8
+9
+1
+4
+7
+···
+6
+9
+9
+8
+7
+···
+2
+1
+9
+6
+3
+···
+4
+1
+(b) Scan Merging
+Fig. 3. Illustration of SS2D operations: (a) scan expanding unfolds 2D features into
+directional 1D scanning sequences; (b) scan merging restores and fuses the scanned
+sequences into a 2D feature representation.
+The final output is
+Fout = F ⊙G,
+(5)
+where ⊙denotes element-wise multiplication. Compared with additive residual
+fusion, multiplicative gating provides an explicit mechanism for suppressing
+unreliable background responses while preserving locally salient boundary or
+lesion features. The 7 × 7 depthwise convolution provides a wider local field than
+a 3 × 3 convolution at low cost. In the controlled ablation variants, pointwise and
+depthwise convolutions are kept in the same order, while the kernel size (3 × 3 or
+7×7) and fusion rule (additive residual fusion or multiplicative gating) are varied
+independently. This factorial design separates the effect of the local receptive
+field from the effect of the gating formulation under matched training settings.
+3.4
+Training Objective and Zero-Inference-Cost Training Strategies
+We optimize binary polyp segmentation using a joint BCE and Dice objective.
+Given the predicted probability map ˆY and the ground-truth mask Y, the
+segmentation objective for a single output branch is defined as
+Lseg = LBCE( ˆY, Y) + LDice( ˆY, Y),
+(6)
+where the Dice term directly optimizes foreground overlap and is written as
+LDice = 1 −
+2 P
+i ˆyiyi + ϵ
+P
+i ˆyi + P
+i yi + ϵ.
+(7)
+To improve training stability, auxiliary heads are attached to the 16 × 16
+and 32 × 32 decoder outputs. These heads project 384 and 192 channels to one
+channel, respectively, and upsample the predictions to 256 × 256. Let the final
+output be ˆY0 and the auxiliary outputs be ˆY1 and ˆY2. The total objective is
+Ltotal = Lseg( ˆY0, Y) + 0.5Lseg( ˆY1, Y) + 0.25Lseg( ˆY2, Y).
+(8)
+During training, EMA weights are maintained with decay 0.999. During
+inference, EMA weights are used and all auxiliary heads are removed. Thus,
+
+
+CSG-Mamba for Endoscopic Polyp Segmentation
+7
+deep supervision and EMA affect only optimization and introduce no additional
+inference cost. This training protocol is applied consistently to VM-UNet, VM-
+UNetV2, and CSG-Mamba; therefore, the VM-UNet control baseline differs
+from CSG-Mamba by removing the proposed CSG module while keeping the
+optimization setting matched.
+4
+Experimental Setup
+4.1
+Datasets
+Kvasir-SEG [9] was used for training and in-domain evaluation, with a fixed split
+of 800 training, 100 validation, and 100 test images. For zero-shot cross-domain
+evaluation, the model trained on Kvasir-SEG was directly tested on all 612 CVC-
+ClinicDB [1] images and all 380 CVC-ColonDB [22] images, without fine-tuning
+or adaptation.
+4.2
+Implementation Details
+All images were resized to 256 × 256. Training augmentations included random
+horizontal and vertical flipping with probability 0.5 and random rotation with
+probability 0.5, with rotation angles sampled from [0◦, 360◦]. Validation and
+test images were resized and normalized using the Kvasir mean and standard
+deviation, followed by per-image min-max stretching to [0, 255].
+Models were trained for 300 epochs with a batch size of 32. AdamW [15] used
+a learning rate of 1 × 10−4, β = (0.9, 0.999), ϵ = 10−8, and a weight decay of
+10−2. Cosine annealing [14] used Tmax = 300 and ηmin = 10−5 without warmup.
+The prediction threshold was fixed at 0.5. Validation was performed at epoch 1
+and every 30 epochs, and the checkpoint with the highest validation Dice was
+selected.
+For a fair comparison among Vision Mamba variants, VM-UNet, VM-UNetV2,
+and CSG-Mamba all used DropPath 0.3, EMA 0.999, and the same deep super-
+vision setting. All core results were obtained with three random seeds (42, 123,
+and 999) and are reported as the mean ± standard deviation. Metrics include
+mIoU, Dice, HD95, Accuracy, and Sensitivity, covering region overlap, boundary
+error, and lesion recall [17,21].
+4.3
+Compared Methods
+We compared CSG-Mamba with U-Net [18], ResUNet [27], PraNet [4], Tran-
+sUNet [2], VM-UNet [19], and VM-UNetV2 [26]. All methods used the same
+split, input size, and evaluation protocol. CSG-Mamba uses the VMamba-Tiny
+pretrained backbone, a mirror-style VM-UNet decoder, and the proposed CSG
+module. VM-UNet is the strict structural control baseline without CSG but with
+the same deep supervision, EMA, and DropPath settings, while VM-UNetV2 is
+treated as an independent Mamba-based comparison method trained under the
+same stabilization protocol.
+
+
+8
+Y. Wang et al.
+Image
+GT
+U-Net
+ResUNet
+PraNet
+TransUNet
+VM-UNet
+CSG-Mamba
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Fig. 4. Qualitative segmentation results. Columns show the image, ground truth, U-Net,
+ResUNet, PraNet, TransUNet, VM-UNet, and CSG-Mamba.
+5
+Experimental Results and Analysis
+5.1
+Main Results
+Fig. 4 shows qualitative comparisons on challenging samples. CNN models may
+produce contour shrinkage or boundary discontinuities, Transformer models
+may introduce false positives around highlights or folds, and VM-UNet can
+over-smooth boundaries. In these examples, CSG-Mamba more closely follows
+fragmented edges and suppresses lesion-like background responses.
+Table 1 reports in-domain results on the Kvasir-SEG test set. CSG-Mamba
+achieves the best mIoU, Dice, HD95, Accuracy, and Sensitivity. Compared with
+VM-UNet, it improves Dice by 0.0042 and reduces HD95 by 2.38 with a moderate
+parameter increase. Compared with TransUNet, it uses approximately one-third
+of the parameters while obtaining a higher Dice score.
+Table 2 reports zero-shot results on the full CVC-ClinicDB test set. CSG-
+Mamba achieves the best mIoU, Dice, and Sensitivity, while VM-UNet obtains
+the lowest HD95 and VM-UNetV2 has slightly higher Accuracy. Compared with
+VM-UNet, CSG-Mamba improves mIoU, Dice, and Sensitivity by 0.0076, 0.0056,
+and 0.0125, respectively, with a 0.90 increase in HD95.
+
+
+CSG-Mamba for Endoscopic Polyp Segmentation
+9
+Table 1. In-domain evaluation results on Kvasir-SEG (mean±std).
+Model
+mIoU
+Dice
+HD95↓
+Accuracy
+Sensitivity
+Params
+U-Net
+0.7875 ± 0.0017
+0.8572 ± 0.0006
+33.30 ± 1.49
+0.9687 ± 0.0010
+0.8804 ± 0.0068
+31.04M
+ResUNet
+0.7995 ± 0.0094
+0.8656 ± 0.0081
+30.67 ± 3.98
+0.9703 ± 0.0010
+0.8878 ± 0.0053
+63.85M
+PraNet
+0.8453 ± 0.0027
+0.9006 ± 0.0014
+20.66 ± 1.57
+0.9764 ± 0.0017
+0.9169 ± 0.0117
+24.51M
+TransUNet
+0.8540 ± 0.0064
+0.9082 ± 0.0061
+17.69 ± 0.71
+0.9776 ± 0.0005
+0.9184 ± 0.0094
+99.04M
+VM-UNet
+0.8620 ± 0.0034
+0.9178 ± 0.0020
+18.25 ± 1.42
+0.9804 ± 0.0009
+0.9284 ± 0.0042
+27.43M
+VM-UNetV2
+0.8661 ± 0.0021
+0.9180 ± 0.0016
+17.40 ± 1.76
+0.9809 ± 0.0010
+0.9278 ± 0.0095
+27.63M
+CSG-Mamba
+0.8677 ± 0.0049
+0.9220 ± 0.0031
+15.87 ± 0.48
+0.9817 ± 0.0008
+0.9301 ± 0.0017
+32.30M
+Table 2. Zero-shot test results on the full CVC-ClinicDB dataset (mean±std).
+Model
+mIoU
+Dice
+HD95↓
+Accuracy
+Sensitivity
+U-Net
+0.5922 ± 0.0093
+0.6762 ± 0.0111
+73.10 ± 4.79
+0.9539 ± 0.0010
+0.7077 ± 0.0238
+ResUNet
+0.5760 ± 0.0278
+0.6602 ± 0.0264
+75.48 ± 4.84
+0.9451 ± 0.0070
+0.7199 ± 0.0082
+PraNet
+0.7403 ± 0.0181
+0.8163 ± 0.0167
+34.73 ± 3.98
+0.9684 ± 0.0032
+0.8449 ± 0.0139
+TransUNet
+0.7497 ± 0.0031
+0.8260 ± 0.0017
+30.27 ± 0.80
+0.9697 ± 0.0008
+0.8434 ± 0.0065
+VM-UNet
+0.7689 ± 0.0050
+0.8437 ± 0.0044
+24.72 ± 1.02
+0.9751 ± 0.0015
+0.8489 ± 0.0092
+VM-UNetV2
+0.7643 ± 0.0057
+0.8364 ± 0.0066
+30.04 ± 2.48
+0.9754 ± 0.0009
+0.8363 ± 0.0150
+CSG-Mamba
+0.7765 ± 0.0079
+0.8493 ± 0.0074
+25.62 ± 1.28
+0.9753 ± 0.0008
+0.8614 ± 0.0069
+Table 3 reports zero-shot results on the more challenging CVC-ColonDB test
+set. CSG-Mamba achieves the best mIoU, Dice, Accuracy, and Sensitivity, im-
+proving Dice over VM-UNet and VM-UNetV2 by 0.0133 and 0.0205, respectively.
+VM-UNet has slightly lower HD95, but CSG-Mamba reduces HD95 by 14.70
+compared with VM-UNetV2.
+Fig. 5 compares HD95 across datasets. CSG-Mamba obtains the lowest HD95
+on Kvasir-SEG and substantially mitigates the boundary degradation of VM-
+UNetV2 on the CVC-ColonDB test set. On CVC-ClinicDB, its HD95 is slightly
+higher than that of VM-UNet but remains close.
+5.2
+Parameter Efficiency Analysis
+Fig. 6 shows parameter efficiency. CSG-Mamba has a parameter scale similar
+to U-Net but improves Dice by 0.0648. It is also substantially smaller than
+TransUNet while achieving a higher Dice score, suggesting that the additional
+CSG parameters are effective for boundary modeling.
+5.3
+Ablation on the CSG Mechanism
+Table 4 reports a controlled mechanism ablation at the bottleneck. To avoid
+conflating several design choices, this experiment uses a 2 × 2 factorial design
+to decouple two factors: the depthwise convolution kernel size (3 × 3 or 7 × 7)
+and the feature fusion rule (additive residual fusion with ReLU or multiplicative
+gating with sigmoid). All variants are evaluated with the same three-seed protocol
+and the same stabilization settings as the main Mamba-based experiments. This
+design evaluates two separate questions: whether a wider local field is useful and
+whether multiplicative gating changes boundary behavior beyond merely adding
+a convolutional branch.
+
+
+10
+Y. Wang et al.
+Table 3. Zero-shot test results on CVC-ColonDB (mean±std).
+Model
+mIoU
+Dice
+HD95↓
+Accuracy
+Sensitivity
+U-Net
+0.4883 ± 0.0281
+0.5603 ± 0.0294
+109.21 ± 11.37
+0.9519 ± 0.0029
+0.5677 ± 0.0241
+ResUNet
+0.4597 ± 0.0183
+0.5270 ± 0.0208
+123.58 ± 9.22
+0.9512 ± 0.0037
+0.5359 ± 0.0205
+PraNet
+0.6029 ± 0.0179
+0.6811 ± 0.0215
+69.77 ± 8.07
+0.9632 ± 0.0020
+0.6829 ± 0.0265
+TransUNet
+0.5878 ± 0.0171
+0.6670 ± 0.0196
+53.42 ± 10.22
+0.9535 ± 0.0015
+0.6947 ± 0.0252
+VM-UNet
+0.6399 ± 0.0068
+0.7285 ± 0.0060
+39.70 ± 0.74
+0.9629 ± 0.0004
+0.7372 ± 0.0101
+VM-UNetV2
+0.6436 ± 0.0082
+0.7213 ± 0.0100
+56.65 ± 5.10
+0.9662 ± 0.0004
+0.7233 ± 0.0055
+CSG-Mamba
+0.6570 ± 0.0097
+0.7418 ± 0.0091
+41.95 ± 3.47
+0.9676 ± 0.0018
+0.7519 ± 0.0063
+Kvasir-SEG
+CVC-ClinicDB
+CVC-ColonDB
+0
+10
+20
+30
+40
+50
+60
+HD95 (pixels)
+18.2
+24.7
+39.7
+17.4
+30.0
+56.6
+15.9
+25.6
+42.0
+VM-UNet
+VM-UNetV2
+CSG-Mamba
+Fig. 5. Cross-domain HD95 comparison with error bars over three random seeds.
+Here, Add denotes additive residual fusion with ReLU, and Gate denotes
+sigmoid-based multiplicative gating. Because Kvasir Dice is concentrated in a
+narrow high-performance range, HD95 provides a more sensitive indication of
+boundary behavior. With a fixed 3 × 3 kernel, replacing additive fusion with
+gating reduces Kvasir HD95 from 17.41 to 15.70 pixels while keeping Dice nearly
+unchanged, indicating that gating mainly affects localization rather than regional
+overlap.
+The 7×7 additive branch gives the best in-domain Dice and HD95, showing the
+benefit of a wider local field, but it increases cross-domain HD95 on ClinicDB and
+ColonDB. With the same 7 × 7 kernel, multiplicative gating reduces these HD95
+values to 25.62 and 41.95 and improves the external Dice values to 0.8493 and
+0.7418. Thus, CSG is selected for a balanced boundary-oriented trade-off: large-
+kernel convolution supplies local context, while multiplicative gating regulates
+this context under domain shift.
+5.4
+Ablation on CSG Placement
+Table 5 compares CSG insertion positions under the same three-seed protocol,
+with VM-UNet (“none”) as the reference. Bottleneck-only achieves the best
+
+
+CSG-Mamba for Endoscopic Polyp Segmentation
+11
+20
+40
+60
+80
+100
+Parameters (M)
+0.85
+0.86
+0.87
+0.88
+0.89
+0.90
+0.91
+0.92
+0.93
+Kvasir-SEG Dice
+U-Net
+ResUNet
+PraNet
+TransUNet
+VM-UNet
+CSG-Mamba (Ours)
+U-Net
+Params: 31M
+Dice: 0.8572
+ResUNet
+Params: 64M
+Dice: 0.8656
+PraNet
+Params: 25M
+Dice: 0.9006
+TransUNet
+Params: 99M
+Dice: 0.9082
+VM-UNet
+Params: 27M
+Dice: 0.9178
+CSG-Mamba
+Params: 32M
+Dice: 0.9220
+Fig. 6. Parameter efficiency scatter plot on Kvasir-SEG.
+Table 4. Ablation on the CSG mechanism at the bottleneck (mean±std).
+Bottleneck
+variant
+Kvasir
+HD95↓
+Kvasir
+Dice
+ClinicDB
+HD95↓
+ClinicDB
+Dice
+ColonDB
+HD95↓
+ColonDB
+Dice
+Params
+None
+18.25 ± 1.42
+0.9178 ± 0.0020 24.72 ± 1.02 0.8437 ± 0.0044 39.70 ± 0.74 0.7285 ± 0.0060 27.43M
+DW 3 × 3 + Add
+17.41 ± 0.36
+0.9240 ± 0.0035
+26.45 ± 1.47
+0.8482 ± 0.0002
+41.40 ± 4.98 0.7441 ± 0.0019 32.18M
+DW 3 × 3 + Gate
+15.70 ± 1.29
+0.9237 ± 0.0031
+27.28 ± 2.31
+0.8465 ± 0.0061
+46.65 ± 7.02
+0.7348 ± 0.0083 32.18M
+DW 7 × 7 + Add
+15.59 ± 0.84 0.9260 ± 0.0033 27.15 ± 2.03
+0.8447 ± 0.0038
+46.00 ± 1.12
+0.7292 ± 0.0020 32.30M
+DW 7 × 7 + Gate (CSG) 15.87 ± 0.48
+0.9220 ± 0.0031
+25.62 ± 1.28 0.8493 ± 0.0074 41.95 ± 3.47
+0.7418 ± 0.0091 32.30M
+Kvasir HD95 (15.87), the best ClinicDB Dice (0.8493), and a strong ColonDB
+Dice (0.7418). Decoder-only gives the highest Kvasir Dice but sharply increases
+ColonDB HD95, suggesting sensitivity to in-domain texture patterns. Encoder-
+only obtains the best ColonDB Dice at the cost of weaker Kvasir and ClinicDB
+overlap, while insertion at all positions adds parameters and degrades Kvasir
+HD95. Overall, bottleneck placement offers the most balanced trade-off between
+in-domain boundary quality, cross-domain generalization, and parameter cost.
+6
+Discussion
+The results suggest that Vision State Space Models benefit from cooperation
+with local inductive biases rather than relying solely on sequential state-space
+scanning. State-space scanning provides efficient long-range modeling, but it
+is not naturally aligned with pixel-level boundary prediction. The mechanism
+ablation shows that the large depthwise kernel supplies local boundary context,
+while multiplicative gating improves the cross-domain HD95 trade-off under the
+7 × 7 setting without merely amplifying domain-specific textures.
+
+
+12
+Y. Wang et al.
+Table 5. Ablation on CSG placement (mean±std).
+Position
+Kvasir
+HD95↓
+Kvasir
+Dice↑
+ClinicDB
+HD95↓
+ClinicDB
+Dice↑
+ColonDB
+HD95↓
+ColonDB
+Dice↑
+Params
+none
+18.25 ± 1.42
+0.9178 ± 0.0020 24.72 ± 1.02 0.8437 ± 0.0044 39.70 ± 0.74 0.7285 ± 0.0060 27.43M
+encoder only
+17.82 ± 1.83
+0.9155 ± 0.0051
+26.25 ± 0.84
+0.8398 ± 0.0023
+42.37 ± 6.27 0.7431 ± 0.0169 29.11M
+decoder only
+16.96 ± 1.26 0.9235 ± 0.0042 29.91 ± 0.87
+0.8389 ± 0.0009 58.09 ± 13.13 0.7147 ± 0.0256 33.94M
+bottleneck only 15.87 ± 0.48 0.9220 ± 0.0031
+25.62 ± 1.28 0.8493 ± 0.0074 41.95 ± 3.47
+0.7418 ± 0.0091 32.30M
+all
+19.31 ± 2.77
+0.9145 ± 0.0129
+27.80 ± 1.17
+0.8418 ± 0.0067
+49.89 ± 6.80
+0.7353 ± 0.0101 40.50M
+The ClinicDB results also show that cross-domain generalization cannot be
+summarized by a single metric. CSG-Mamba obtains the highest mIoU, Dice,
+and Sensitivity on ClinicDB, although VM-UNet has a slightly lower HD95.
+On ColonDB, CSG-Mamba obtains stronger region overlap and recall, while
+VM-UNet remains slightly better in HD95. This pattern suggests that CSG tends
+to retain suspected lesion regions, which may reduce missed detections but can
+also lead to mild boundary expansion.
+Several limitations remain. The experiments focus on 2D polyp segmentation,
+and the generalizability of CSG to other medical tasks requires further study.
+Although the Mamba-based comparisons share the same deep supervision, EMA,
+and DropPath settings, future work can further evaluate CSG under additional
+training recipes and on data from more clinical centers.
+7
+Conclusion
+This paper proposes CSG-Mamba for endoscopic polyp segmentation. To com-
+pensate for the weakened 2D continuity caused by SS2D sequence unfolding,
+CSG-Mamba inserts a lightweight convolutional scoring gating module at the
+bottleneck. Under a matched zero-inference-cost training protocol for the Mamba-
+based methods, CSG-Mamba achieves the best Dice and HD95 on Kvasir-SEG,
+the best mIoU, Dice, Accuracy, and Sensitivity on CVC-ColonDB, and the best
+mIoU, Dice, and Sensitivity on CVC-ClinicDB. These results indicate that com-
+bining local convolutional priors with global state-space modeling can improve
+boundary quality and cross-domain robustness.
+Disclosure of Interests. The authors have no competing interests to declare that are
+relevant to the content of this article.
+References
+1. Bernal, J., Sánchez, F.J., Fernández-Esparrach, G., Gil, D., Rodríguez, C., Vilariño,
+F.: WM-DOVA maps for accurate polyp highlighting in colonoscopy: Validation vs.
+saliency maps from physicians. Computerized Medical Imaging and Graphics 43,
+99–111 (2015)
+2. Chen, J., Mei, J., Li, X., Lu, Y., Yu, Q., Wei, Q., Luo, X., Xie, Y., Adeli, E., Wang,
+Y., Lungren, M.P., Zhang, S., Xing, L., Lu, L., Yuille, A., Zhou, Y.: TransUNet:
+Rethinking the U-Net architecture design for medical image segmentation through
+
+
+CSG-Mamba for Endoscopic Polyp Segmentation
+13
+the lens of transformers. Medical Image Analysis 97, 103280 (2024). https://doi.
+org/10.1016/j.media.2024.103280
+3. Chen, L.C., Zhu, Y., Papandreou, G., Schroff, F., Adam, H.: Encoder-decoder with
+atrous separable convolution for semantic image segmentation. In: Proceedings
+of the European Conference on Computer Vision. pp. 801–818 (2018). https:
+//doi.org/10.1007/978-3-030-01234-2_49
+4. Fan, D.P., Ji, G.P., Zhou, T., Chen, G., Fu, H., Shen, J., Shao, L.: PraNet: Parallel
+reverse attention network for polyp segmentation. In: Martel, A.L., Abolmaesumi,
+P., Stoyanov, D., Mateus, D., Zuluaga, M.A., Zhou, S.K., Racoceanu, D., Joskowicz,
+L. (eds.) Medical Image Computing and Computer Assisted Intervention – MICCAI
+2020. Lecture Notes in Computer Science, vol. 12266, pp. 263–273. Springer, Cham
+(2020). https://doi.org/10.1007/978-3-030-59725-2_26
+5. Gu, A., Dao, T.: Mamba: Linear-time sequence modeling with selective state spaces.
+In: First Conference on Language Modeling (2024)
+6. Gu, A., Goel, K., Ré, C.: Efficiently modeling long sequences with structured state
+spaces. In: International Conference on Learning Representations (2022)
+7. He, K., Zhang, X., Ren, S., Sun, J.: Deep residual learning for image recognition. In:
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition.
+pp. 770–778 (2016)
+8. Isensee, F., Jaeger, P.F., Kohl, S.A.A., Petersen, J., Maier-Hein, K.H.: nnU-Net:
+A self-configuring method for deep learning-based biomedical image segmentation.
+Nature Methods 18, 203–211 (2021)
+9. Jha, D., Smedsrud, P.H., Riegler, M.A., Halvorsen, P., de Lange, T., Johansen, D.,
+Johansen, H.D.: Kvasir-SEG: A segmented polyp dataset. In: Ro, Y.M., Cheng,
+W.H., Kim, J., Chu, W.T., Cui, P., Choi, J.W., Hu, M.C., De Neve, W. (eds.)
+MultiMedia Modeling. Lecture Notes in Computer Science, vol. 11962, pp. 451–462.
+Springer, Cham (2020). https://doi.org/10.1007/978-3-030-37734-2_37
+10. Lee, C.Y., Xie, S., Gallagher, P., Zhang, Z., Tu, Z.: Deeply-supervised nets. In:
+Proceedings of the Eighteenth International Conference on Artificial Intelligence
+and Statistics. Proceedings of Machine Learning Research, vol. 38, pp. 562–570
+(2015)
+11. Liu, Y., Tian, Y., Zhao, Y., Yu, H., Xie, L., Wang, Y., Ye, Q., Jiao, J., Liu,
+Y.: VMamba: Visual state space model. In: Advances in Neural Information Pro-
+cessing Systems. vol. 37, pp. 103031–103063 (2024). https://doi.org/10.52202/
+079017-3273
+12. Liu, Z., Mao, H., Wu, C.Y., Feichtenhofer, C., Darrell, T., Xie, S.: A ConvNet for
+the 2020s. In: Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition. pp. 11976–11986 (2022)
+13. Long, J., Shelhamer, E., Darrell, T.: Fully convolutional networks for semantic
+segmentation. In: Proceedings of the IEEE Conference on Computer Vision and
+Pattern Recognition. pp. 3431–3440 (2015). https://doi.org/10.1109/CVPR.2015.
+7298965
+14. Loshchilov, I., Hutter, F.: SGDR: Stochastic gradient descent with warm restarts.
+In: International Conference on Learning Representations (2017)
+15. Loshchilov, I., Hutter, F.: Decoupled weight decay regularization. In: International
+Conference on Learning Representations (2019)
+16. Ma, J., Li, F., Wang, B.: U-Mamba: Enhancing long-range dependency for biomed-
+ical image segmentation (2024). https://doi.org/10.48550/arXiv.2401.04722,
+arXiv preprint arXiv:2401.04722
+17. Maier-Hein, L., Reinke, A., Godau, P., et al.: Metrics reloaded: Recommendations
+for image analysis validation. Nature Methods 21, 195–212 (2024)
+
+
+14
+Y. Wang et al.
+18. Ronneberger, O., Fischer, P., Brox, T.: U-Net: Convolutional networks for biomedical
+image segmentation. In: Navab, N., Hornegger, J., Wells, W.M., Frangi, A.F. (eds.)
+Medical Image Computing and Computer-Assisted Intervention – MICCAI 2015.
+Lecture Notes in Computer Science, vol. 9351, pp. 234–241. Springer, Cham (2015).
+https://doi.org/10.1007/978-3-319-24574-4_28
+19. Ruan, J., Li, J., Xiang, S.: VM-UNet: Vision Mamba UNet for medical image
+segmentation. ACM Transactions on Multimedia Computing, Communications, and
+Applications p. Article 3767748 (2025). https://doi.org/10.1145/3767748
+20. Schlemper, J., Oktay, O., Schaap, M., Heinrich, M., Kainz, B., Glocker, B., Rueckert,
+D.: Attention gated networks: Learning to leverage salient regions in medical images.
+Medical Image Analysis 53, 197–207 (2019)
+21. Taha, A.A., Hanbury, A.: Metrics for evaluating 3D medical image segmentation:
+Analysis, selection, and tool. BMC Medical Imaging 15, 29 (2015)
+22. Tajbakhsh, N., Gurudu, S.R., Liang, J.: Automated polyp detection in colonoscopy
+videos using shape and context information. IEEE Transactions on Medical Imaging
+35(2), 630–644 (2016)
+23. Wang, W., Xie, E., Li, X., Fan, D.P., Song, K., Liang, D., Lu, T., Luo, P., Shao, L.:
+Pyramid vision transformer: A versatile backbone for dense prediction without con-
+volutions. In: Proceedings of the IEEE/CVF International Conference on Computer
+Vision. pp. 568–578 (2021). https://doi.org/10.1109/ICCV48922.2021.00061
+24. Woo, S., Park, J., Lee, J.Y., Kweon, I.S.: CBAM: Convolutional block attention
+module. In: Ferrari, V., Hebert, M., Sminchisescu, C., Weiss, Y. (eds.) Computer
+Vision – ECCV 2018. Lecture Notes in Computer Science, vol. 11211, pp. 3–19.
+Springer, Cham (2018). https://doi.org/10.1007/978-3-030-01234-2_1
+25. Xing, Z., Ye, T., Yang, Y., Liu, G., Zhu, L.: SegMamba: Long-range sequential
+modeling Mamba for 3D medical image segmentation. In: Medical Image Computing
+and Computer Assisted Intervention – MICCAI 2024. Lecture Notes in Computer
+Science, vol. 15008, pp. 578–588. Springer, Cham (2024). https://doi.org/10.
+1007/978-3-031-72111-3_54
+26. Zhang, M., Yu, Y., Jin, S., Gu, L., Ling, T., Tao, X.: VM-UNET-V2: Rethinking
+vision Mamba UNet for medical image segmentation. In: Peng, W., Cai, Z., Skums,
+P. (eds.) Bioinformatics Research and Applications. Lecture Notes in Bioinformatics,
+vol. 14954, pp. 335–346. Springer, Singapore (2024). https://doi.org/10.1007/
+978-981-97-5128-0_27
+27. Zhang, Z., Liu, Q., Wang, Y.: Road extraction by deep residual U-Net. IEEE
+Geoscience and Remote Sensing Letters 15(5), 749–753 (2018)
+28. Zhou, Z., Rahman Siddiquee, M.M., Tajbakhsh, N., Liang, J.: UNet++: A nested
+U-Net architecture for medical image segmentation. In: Stoyanov, D., Taylor, Z.,
+Carneiro, G., Syeda-Mahmood, T., Martel, A., Maier-Hein, L., Tavares, J.M.R.S.,
+Bradley, A., Papa, J.P., Belagiannis, V., Nascimento, J.C., Lu, Z., Conjeti, S.,
+Moradi, M., Greenspan, H., Madabhushi, A. (eds.) Deep Learning in Medical
+Image Analysis and Multimodal Learning for Clinical Decision Support. Lecture
+Notes in Computer Science, vol. 11045, pp. 3–11. Springer, Cham (2018). https:
+//doi.org/10.1007/978-3-030-00889-5_1
+29. Zhu, L., Liao, B., Zhang, Q., Wang, X., Liu, W., Wang, X.: Vision Mamba: Efficient
+visual representation learning with bidirectional state space model. In: Proceedings
+of the 41st International Conference on Machine Learning. Proceedings of Machine
+Learning Research, vol. 235, pp. 62429–62442 (2024)

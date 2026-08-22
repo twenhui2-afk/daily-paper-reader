@@ -1,0 +1,1310 @@
+An end-to-end differentiable transient vapor-compression
+framework for automated machine sizing and unified optimal
+control
+Sam Yang*1,2
+1Center for Advanced Power Systems, Florida State University, Tallahassee, FL, USA
+2College of Computing, Georgia Institute of Technology, Atlanta, GA, USA
+August 21, 2026
+Abstract
+Accelerating the electrification of thermal energy requires vapor-compression heat pumps capable of
+dynamic, grid-responsive operation. However, equipment engineering remains fragmented across static
+rating-point selection, stiff multi-phase transient simulation, and gradient-based optimal control. Here, we
+present an end-to-end differentiable, finite-volume vapor-compression framework implemented natively
+in JAX that automates machine sizing directly from stated thermal duties and unifies dynamic simulation
+with predictive control under a single compiled residual ˙y = f (t,y,u). Thermodynamic evaluations bypass
+runtime root-finding via bilinear (p,h) manifolds pre-flashed from Helmholtz equations of state, enabling
+analytical forward-mode automatic differentiation. Mass conservation across multi-phase coils is strictly
+preserved by incorporating both (∂ρ/∂p)h and (∂ρ/∂h)p partial derivatives into the dynamic pressure
+differential equation. The sizer directly inverts compressor displacement, electronic expansion valve area,
+and heat-exchanger tube counts via four-point cycle synthesis and ε-NTU matching using the identical
+polytropic compressor map. Crucially, the compiled physics kernel is shared symmetrically between
+L-stable TR-BDF2 stiff integration and implicit-Euler Model Predictive Control (MPC), eliminating plant-
+controller surrogate mismatch. Validated against open-access experimental benchmarks without parameter
+fitting, the framework predicts cooling capacity with 7.37% MAPE across 16 mini-split operational runs
+and bounds on-period cooling error within 1.19%–1.62% on utility-scale Hardware-in-the-Loop traces.
+This work provides an open-source, differentiable foundation for automated machine synthesis, dynamic
+grid orchestration, and gradient-based hardware-control co-design.
+Keywords: HVAC; vapor-compression systems; finite-volume method; automated sizing; differentiable
+physics; automatic differentiation; model-predictive control.
+1
+Introduction
+Electrification of thermal energy demands agile, grid-interactive heat pumps capable of rapid load shifting,
+frequency regulation, and autonomous operational optimization [1]. Building thermal loads account for over
+*Correspondence: smyng@gatech.edu. Sam Yang is currently affiliated with NextEra Energy.
+1
+arXiv:2608.19552v1  [eess.SY]  20 Aug 2026
+
+
+one-third of global primary energy consumption and nearly 40% of energy-related carbon dioxide emissions.
+Addressing these demands requires resolving two persistent structural disconnects across the engineering
+lifecycle: a sizing-to-simulation disconnect, where static rating-point selections are manually transcribed into
+dynamic simulation models, and a simulation-to-control disconnect, where high-fidelity non-linear models are
+abandoned in favor of heuristic or mismatched linear surrogates due to non-differentiable equation-of-state
+lookups.
+Dynamic vapor-compression modeling has historically evolved into moving-boundary (MB) and finite-
+volume (FV) formulations [1,2]. Rasmussen reviewed the moving-boundary and lumped formulations that
+dominate control work [1]. Bendapudi et al. compared moving-boundary and finite-volume formulations on
+centrifugal chiller transients [2], and Qiao et al. subsequently formulated a finite-volume flash-tank vapor-
+injection heat pump [3]. Building simulation engines such as EnergyPlus [4] and the Modelica Buildings
+library [5] place equipment models in zone and fluid networks, while rating solvers such as CYCLE_D-
+HX [6] size steady-state cycles from component models. Our previous work treated constructal heat exchanger
+allocation and dynamic response-based thermodynamic optimization [7,8]; however, existing formulations
+do not generate an end-to-end differentiable, executable residual whose compressor map directly drives the
+hardware sizer.
+Two fundamental computational bottlenecks follow from this state of the art. First, machine geometry is
+traditionally transcribed from static catalog points or constructal sketches into simulation models rather than
+being synthesized directly from load profiles and boundary conditions. Second, thermodynamic evaluations [9]
+are conventionally executed as external, non-differentiable calls, preventing exact gradient propagation for
+modern optimal control [10] and forcing integration and predictive control to operate on separate, inconsistent
+representations.
+This paper resolves both challenges by formulating an end-to-end differentiable finite-volume plant
+governed by a single compiled residual ˙y = f (t,y,u). High-accuracy Helmholtz property evaluations are
+pre-flashed onto discrete (p,h) manifolds during model construction [9], allowing the resulting differentiable
+interpolant to be integrated via L-stable TR-BDF2 [11] and reused directly for gradient-based Model Predictive
+Control (MPC). The automated sizing engine inverts displacement Vdisp, expansion valve maximum area Amax,
+and heat-exchanger tube counts directly from a stated thermal duty using the identical polytropic compressor
+map. Linear and nonlinear MPC reuse f through implicit-Euler time steps without unrolling multi-stage
+integration graphs, while the baseline operational traces demonstrate robust setpoint tracking under a PID
+cascade. Table 1 contextualizes this contribution against existing modeling and design paradigms.
+The mathematical model and thermodynamic closures are detailed in Section 2, the automated sizing
+engine in Section 3, and the numerical integrator and control architectures in Section 4. Section 5 presents
+the baseline R32 design example, systematic sizing cases, closed-loop dynamic experiments, and unfitted
+algebraic validations against experimental datasets. Physical assumptions, numerical limitations, and future
+research frontiers are delineated in Section 6.
+2
+Mathematical model
+2.1
+Scope
+The plant is a single-stage, subcritical, two-phase air-source heat pump or air conditioner. Any Helmholtz
+fluid available to the property library can be used; a duty that would require transcritical condensation is
+2
+
+
+Table 1. Scope of prior formulations relative to this sizer-plus-residual. The entries describe what was published, not
+a ranking of fidelity.
+Work
+Coil / cycle
+Sizing
+Residual reuse
+Rasmussen review [1]
+MB / lumped survey
+control-oriented review
+control-oriented models
+Bendapudi et al. [2]
+MB vs FV chiller
+transcribed geometry
+simulation
+Qiao et al. [3]
+FV vapor injection
+transcribed geometry
+simulation
+CYCLE_D-HX [6]
+steady cycle
+component/cycle design
+steady cycle design
+EnergyPlus / Model-
+ica [4,5]
+building + equipment
+catalog / parameter
+building/network simulation
+Yang et al. [7,8]
+constructal / response opt.
+allocation, not hardware
+invert
+cycle optimization
+This paper
+FV, acoustic equilibrium
+duty →Vdisp, Aeev, tubes
+TR-BDF2 and
+implicit-Euler MPC
+rejected. The residual includes one-dimensional finite-volume evaporator and condenser coils, a clearance
+or cited AHRI 540 compressor, an isenthalpic EEV, indoor/outdoor coil remap, a lumped zone, optional
+humidity and frost, and PID, hysteresis, bang-bang, linear MPC, and nonlinear MPC. It does not include
+automatic defrost schedules, ducts, multi-zone buildings, transcritical CO2, flash tanks, economizers, oil, or
+piping inertia. Units are SI (Pa, K, J/kg, kg/s, W, m).
+2.2
+State and inputs
+Each coil has one pressure—there is no frictional coil drop—and a distributed enthalpy and wall-temperature
+field. The dry default mesh is ne = nc = 6, so the state has 27 entries. Humidity ratio Wz and outdoor frost
+mass mfr are appended only when those flags are set and a relative humidity is supplied. The dry state and
+input are
+y =
+
+pe, he, T w,e, pc, hc, T w,c, Tz
+
+∈R27,
+(1)
+u =
+
+N, ueev, φi, φo, Tout, Qgain
+
+.
+(2)
+Optional extras are
+
+Wgain, defrost, RHout
+
+. If moisture gain is omitted, it is zero, not an invented infiltration.
+N is compressor electrical frequency (Hz), ueev ∈[0,1] is EEV opening, φi and φo are indoor and outdoor fan
+fractions, Tout is outdoor dry-bulb, and Qgain is exogenous heat into the zone (W).
+2.3
+Refrigerant properties
+A Helmholtz equation of state supplies saturation states (p,q) and single-phase states (h, p) [9]. At con-
+struction, a log-p, linear-h grid (48×72) is flashed to 0.92 pcrit. Each node stores T, ρ, x, µ, k, and cp; the
+saturation columns store bubble and dew temperatures and the saturated enthalpies and densities. Runtime
+evaluation is bilinear interpolation. Superheat uses dew temperature and subcooling uses bubble temperature.
+Quality and Zivi void fraction [12] close two-phase density,
+x = h−hf
+hg −hf
+,
+α =
+"
+1+ 1−x
+x
+ρg
+ρf
+2/3#−1
+,
+ρ = αρg +(1−α)ρf .
+(3)
+3
+
+
+The interpolant slopes (∂ρ/∂p)h and (∂ρ/∂h)p enter the pressure ODE. The residual evaluates the interpolant
+rather than a live Helmholtz call.
+2.4
+Finite-volume coils
+The coils follow the method of lines used by Rasmussen, Bendapudi, and Qiao [1–3]: one pressure per coil,
+upwind enthalpy, and a linear internal mass-flow profile. Mass and energy on a channel are
+∂ρ
+∂t + ∂(ρv)
+∂z
+= 0,
+∂(ρh)
+∂t
++ ∂(ρvh)
+∂z
+= ∂p
+∂t + P
+Aq′′.
+(4)
+Cell i is well-mixed with upwind inlet enthalpy hup
+i . Internal mass flow is interpolated between the port flows
+(EEV and compressor),
+˙m(ξ) = ˙min(1−ξ)+ ˙mout ξ,
+ξ ∈[0,1].
+(5)
+Evaporator ports run EEV to suction; condenser ports run discharge to EEV. Cell energy is
+ρiVi
+dhi
+dt = ˙min
+i (hup
+i −hi)+Qi +Vi
+dp
+dt .
+(6)
+Coil inventory includes a header volume Vh at mean cell density,
+M = ∑
+i
+ρiVi +Vh⟨ρ⟩,
+dρ =
+∂ρ
+∂p
+
+hdp+
+∂ρ
+∂h
+
+pdh.
+(7)
+Differentiating M and substituting the advective-plus-heat part of (6),
+˙hrhs
+i
+= ˙min
+i (hup
+i −hi)+Qi
+ρiVi
+,
+(8)
+gives the pressure ODE in the residual (uniform cells; header terms use mean cell slopes),
+dp
+dt =
+( ˙min −˙mout)−∑iVi(∂ρi/∂h)p˙hrhs
+i
+−Vh⟨(∂ρ/∂h)p˙hrhs⟩
+∑iVi(∂ρi/∂p)h +Vh⟨(∂ρ/∂p)h⟩+∑iViρ−1
+i
+(∂ρi/∂h)p +Vh⟨ρ−1(∂ρ/∂h)p⟩.
+(9)
+Enthalpy rates are then dhi/dt = ˙hrhs
+i
++ρ−1
+i
+dp/dt. Both density partials are kept; dropping the h term drifts
+charge. The discrete mass balance is consistent with p(t) on the mesh. A moving-boundary coil is not used.
+Internal geometry is
+V = ntubes π
+4 D2L,
+Ar = ntubes πDL,
+Aa = Ar ·fin.
+(10)
+2.5
+Compressor
+The default map is clearance volumetric efficiency plus a polytropic estimate of the isentropic enthalpy rise
+(Π = pd/ps):
+ηv = 1−C
+ Π1/γ −1
+
+,
+Neff = N σ
+ 1.5(N −4)
+
+,
+˙m = ηv ρsVdisp Neff,
+(11)
+∆his =
+γ
+γ −1
+ps
+ρs
+ Π(γ−1)/γ −1
+
+,
+hd = hs +∆his/ηis,
+W = ˙m(hd −hs).
+(12)
+4
+
+
+The factor σ is a logistic sigmoid that shuts the machine off smoothly near zero speed. Π is clipped to
+[1.01,12], ηv to [0.25,0.97], and ηis to [0.20,0.95]. The polytropic exponent γ is cp/cv at the design suction
+state and is then held. Defaults are C = 0.075 and ηis = 0.70. The residual does not invert entropy.
+If a cited AHRI 540 file is supplied [13], mass flow and power are given by the ten-coefficient polynomial
+in dew-point temperatures Ts and Td (◦C),
+X = C1 +C2Ts +C3Td +C4T 2
+s +C5TsTd +C6T 2
+d +C7T 3
+s +C8T 2
+s Td +C9TsT 2
+d +C10T 3
+d ,
+(13)
+with hermetic close hd = hs +W/ ˙m. No default polynomial is invented.
+2.6
+Expansion valve
+The EEV is isenthalpic (heev = hc,out) with orifice flow
+˙m = CdAmaxu
+p
+2ρ ∆p+,
+∆p+ = 1
+2
+
+∆p+
+p
+∆p2 +ε2
+
+,
+(14)
+where ∆p = pin −pout and ε = 20kPa. The C1 soft-plus keeps the Jacobian defined when the pressure
+difference vanishes. Default Cd = 0.70.
+2.7
+Heat transfer
+Single-phase refrigerant Nusselt number is Dittus–Boelter [14],
+Nu = 0.023Re0.8 Prn,
+n = 0.4 (evaporator), 0.3 (condenser),
+(15)
+with Re = |G|D/µ clipped to [300,106] and Pr clipped to [0.4,8]. Inside the dome a Shah-type multiplier
+F(x, pr) is applied to that single-phase coefficient; this is not the full Shah (1979) correlation [15]. With
+xs = clip(x,10−3,1−10−3), pr = p/pcrit, and
+Xtt =
+ (1−xs)/xs
+0.9p0.15
+r
+,
+(16)
+the evaporating and condensing factors are
+Fe = 1+1.8X−0.7
+tt
++8xs(1−xs),
+Fc = (1−xs)0.8 +3.8x0.76
+s
+(1−xs)0.04p−0.38
+r
+.
+(17)
+Two-phase HTC is hsp max(F,1). Air is quasi-steady. Series conductance is
+1
+UA =
+1
+hrAr
++
+1
+haAa
+.
+(18)
+Design air-side HTC is the Zhukauskas bank fit Nu = 0.27Re0.63 Pr0.36 [16]. Fan fraction scales ha and ˙ma.
+Air is marched cell-wise against the refrigerant temperature through the series UA of (18): heat from air to cell
+i is qi = UAi(Tair,i −Tref,i) and Tair,i+1 = Tair,i −qi/( ˙macp,a). That equilibrium Q is the heat to the refrigerant.
+A slaved wall ODE is integrated for frost and diagnostics; Tw does not enter the air-to-refrigerant energy
+5
+
+
+close,
+T ss
+w = Tref +Q/(hrAr),
+˙Tw = (T ss
+w −Tw)/τ,
+τ = max
+ Cw/(n·400), 2s
+
+.
+(19)
+The floor on τ is there so the wall equation remains integrable; it is not a capacity derate. Qair is heat from air
+to the coil. Useful zone heat is
+Qzone =
+(
+−∑Qair,c
+heating (indoor = condenser),
+−∑(Qair,e +Qlat,e)
+cooling (indoor = evaporator).
+(20)
+Dry plants have Qlat = 0. The diagnostic COP is Qzone/W in heating and |Qzone|/W in cooling. That ratio is
+not a catalog rating: ηis is constant, and air-side Qzone does not necessarily equal the refrigerant condenser
+duty at part load.
+2.8
+Zone
+Zone capacitance is dry-air ρaircpV at the design setpoint (default V = 50m3), so Cz ≈60.6kJK−1 at 20◦C.
+Furniture and walls are not included. The energy balance is
+Cz ˙Tz = Qzone +Qgain +UA(Tout −Tz).
+(21)
+When a weather CSV is treated as the complete load, UA = 0, so the record is not counted twice. Otherwise,
+envelope UA is Qload/|Tz −Tout| at the design point.
+2.9
+Humidity and frost
+Both flags stay off unless RHout is supplied and, if the plant is moist, an initial zone humidity. Leaving-coil
+humidity is saturation at refrigerant T when that T is below the local dew point. Latent coil heat and zone
+humidity are
+Qlat = ˙ma(Win −Wout)hfg,
+ρV ˙Wz = ˙ma,i(Wcoil,out −Wz)+Wgain.
+(22)
+Frost (which requires a moist plant) grows on the outdoor coil when Tw < 273.15K. The humidity sink is the
+wet-coil march (leaving humidity is saturation at refrigerant T),
+˙mfr = ˙ma,o max
+ Win −Wout,0
+
+,
+δ = mfr/(ρfrA).
+(23)
+Hayashi density and Yonko–Sepsy conductivity [17] (Ts is wall temperature in ◦C, used as the frost-surface
+proxy; ρ in kg/m3) are
+ρfr = 650exp(0.277Ts),
+kfr = 0.001202ρ0.963
+fr
+.
+(24)
+An ice-property alternative uses IAPWS ice Ih at 0◦C (ρ = 916.7kgm−3, k = 2.22Wm−1K−1) [18]. Extra
+resistance δ/k sits in series with ha. Melt occurs only if a defrost input is set and the defrost water rate is
+positive. The examples in Section 5 are dry.
+2.10
+Operating mode
+In heating, outdoor air sees the evaporator and indoor air sees the condenser. Cooling swaps the pair. A
+reversing-valve step remaps the state—the coils keep their inventory—and resamples cell profiles if ne̸ = nc.
+6
+
+
+A scheduled mode signal (1 = heat, 0 = cool) may operate the valve; without it, load sign, a deadband, and a
+minimum dwell are used. The controller flips action and clears windup.
+3
+Automated sizing
+The sizer takes a refrigerant, a thermal duty Qload, and the two air temperatures. Evaporating and condensing
+temperatures are
+Te = Tair,e −∆Te,
+Tc = Tair,c +∆Tc,
+(25)
+with defaults ∆Te = 10K and ∆Tc = 12K. The four-point cycle is dew at pe plus 6K superheat; discharge
+enthalpy from (12), matching the residual; bubble at pc minus 4K subcooling; and isenthalpic expansion
+h4 = h3 at pe. Saturation states, suction (p,T) properties, and the liquid line are still taken from the Helmholtz
+equation of state [9]. An optional Helmholtz isentropic close h2 = h1 +(h2s −h1)/ηis is available. It is not
+the default, because it would size a different compressor than (12).
+Useful duty sets mass flow: condenser heat in heating, evaporator heat in cooling. Displacement at
+Ndes = 50Hz and EEV area at udes = 0.40 are
+Vdisp =
+˙mdes
+ηvρ1Ndes
+,
+Amax =
+˙mdes
+Cdudes
+p
+2ρ3(pc −pe)
+.
+(26)
+Tube counts are iterated until ε = 1 −e−NTU with Cmin on the air stream equals the cycle duty. Air flow
+follows Q = ε ˙macp∆T. Wall capacitance is ρcucp,cuAtw. Charge is Zivi or flashed density on the design
+enthalpy profile, times internal volume.
+On the default ne = nc = 6 mesh the sizer then scales Vdisp and Aeev so a short implicit-Euler settle of the
+residual, with zone temperature held, delivers Qload at Ndes. The factor on the R32 example below is 1.123.
+The step lines the algebraic inversion up with the finite-volume coils; it is not fitted to laboratory data. The
+algebraic comparisons in Section 5.4 omit it, as do coarse meshes (ne < 6).
+When the only load information is a time series,
+Qcool = max(Qgain,0),
+Qheat = max(−Qgain,0).
+(27)
+Design outdoor temperature is the ambient at that peak hour, not the record extreme. A reversible unit takes
+the harder compressor, EEV, and coils. Off-design capacity re-closes Te and Tc on a Tout grid so ˙m∆h equals
+the ε-NTU coil rate of the geometry already chosen. The balance point solves Qcap(T)−Qload(T) = 0.
+The sizer rejects the design if any hard gate fails: pc ≤0.90 pcrit, discharge temperature ≤115◦C, Π ≤7.5,
+superheat in [4,10]K, and subcooling ≥0K.
+7
+
+
+4
+Time integration and control
+4.1
+TR-BDF2
+TR-BDF2 [11] uses γ = 2−
+√
+2. From yn at time t, a trapezoidal stage of length γh is followed by a BDF2
+completion to t +h,
+yn+γ −yn = 1
+2γh
+ f (t,yn)+ f (t +γh,yn+γ)
+
+,
+yn+1 = ayn+γ +byn +ch f (t +h,yn+1),
+(28)
+with weights
+a =
+1
+γ(2−γ),
+b = −(1−γ)2
+γ(2−γ),
+c = 1−γ
+2−γ .
+(29)
+Each implicit stage is damped Newton iteration with forward-mode automatic differentiation of that stage
+residual. An embedded trapezoidal estimate rejects and cuts the step. A stalled step at ∆tmin = 5ms is
+accepted as implicit Euler, so time still advances. Default tolerances are rtol = 10−3 and atol = 10−5, with
+∆t ∈[5ms,8s]. States are projected onto the property table after each accepted step. Runtime (p,h) fields are
+interpolated independently, so reconstructed (T,x,ρ) do not necessarily coincide with a single Helmholtz
+flash of the same state.
+4.2
+Quasi-steady reduction
+When tfinal ≥1h, the default reduction warms up the full DAE for 180s, then advances only the slow states (Tz
+and, optionally, Wz and mfr) while holding refrigerant (p,h,Tw). On one-hour runs, the refrigerant is relaxed
+by implicit Euler—slow states held—at each 30s record step, and also when |∆N| ≥0.5Hz or |∆ueev| ≥0.02,
+so capacity can follow the controller. Multi-day runs relax less often. Absolute time is passed to u(t).
+4.3
+Controllers
+The inner loop is a superheat EEV: low superheat closes the valve, and a speed feedforward plus a slow
+PID trim is rate-limited. The outer loop in the examples is ISA PID, with derivative on measurement and
+back-calculation anti-windup. Integral dt is clamped to 5s so a coarse quasi-steady hold does not wind up.
+Load feedforward is
+Qneed =
+(
+UA(Tout −Tsp)+Qgain
+cooling,
+UA(Tsp −Tout)−Qgain
+heating,
+Nff = Ndes clip(Qneed/Qref,0,1.4),
+(30)
+N = sat
+
+Nff +kpe+
+Z
+kiedt −kd ˙Tz
+
+,
+e = Tsp −Tz.
+(31)
+Gains scale with Nmax/70 and change sign in cooling. Hysteresis uses a deadband and minimum on/off times;
+bang-bang uses a deadband without timers.
+Linear MPC linearizes f at the current (y,u) by automatic differentiation and steps with implicit Euler,
+A = (I −∆t ∂f /∂y)−1,
+yk+1 = Ayk +Buk +c,
+(32)
+with decision variables (N,ueev). B and c come from the same Jacobian. Nonlinear MPC shoots the same
+residual with implicit Euler and takes the gradient of the multi-step cost. Both share f with the plant and do
+8
+
+
+Figure 1. Heating map of the sized R32 plant. (a) Capacity and envelope load versus outdoor temperature; the dotted
+line is the interpolated balance point. (b) Heating COP of the algebraic close. The box lists the sized hardware. Source:
+output/design.json.
+not unroll TR-BDF2; hour-scale quasi-steady reduction is turned off when either controller is selected. The
+traces below use the PID cascade. A 90 s full-DAE comparison of PID with linear MPC is in the appendix.
+5
+Results
+5.1
+Design example
+Figure 1 is the off-design heating map of an R32 unit sized for 5.5kW at 0◦C outdoor and 20◦C indoors.
+The hardware is Vdisp = 25.9cm3/rev, Aeev = 1.20mm2, indoor/outdoor tube counts 67/63, envelope UA =
+275.0WK−1, and a design-profile charge of 1.371kg. The plant-match scale is 1.123. Capacity crosses the
+envelope load at −1.28 ◦C; the design-point algebraic margin Qcap/Qload is 1.24.
+5.2
+Automated sizing case studies
+Table 2 reports 9 algebraic inversions (the same protocol as Section 5.4). Cooling C1 uses ISO 5151 T1
+dry-bulb temperatures (27◦C indoor / 35◦C outdoor) [19]. C2 uses AHRI 210/240 cooling-A dry-bulb
+temperatures (26.7◦C indoor / 35◦C outdoor) [20]; the indoor wet-bulb of that standard is not an input to
+f . Heating H47 and H17 use the AHRI heating-H1 and H3 outdoor dry-bulbs (8.3◦C and −8.3◦C) with
+21◦C indoors [20]. C3, Hx, and R1 use the 6.2kW cooling and 5.5kW heating example duties. Hx is that
+heating duty without the plant-match scale of Figure 1, so Vdisp = 23.0cm3 rather than 25.9cm3. R2 is a 3-ton
+reversible unit at cooling-A and heating-H1. R3 infers both duties from the example reverse CSV. Reverse
+hardware takes the larger of the two single-mode compressors and coil counts.
+The last column is algebraic Qcap/Qload at the case temperatures, not a catalog rating. Single-mode rows
+sit at 1.00 because the sizer inverts to the stated duty; that ratio lies below the ANSI/ACCA Manual S cooling
+ceiling of 1.15 and heating ceiling of 1.40 [21] and below the ASHRAE 90.1 Appendix G baseline oversize
+9
+
+
+factors of 1.15 (cooling) and 1.25 (heating), which are a modeling rule for the baseline building rather than a
+field selection requirement [22,23]. On reverse rows the merged compressor raises the easier mode: cooling
+ratios are 1.35, 1.31, and 1.28, which exceed 1.15; heating ratios remain below 1.40. H17 does not produce a
+size: the default discharge gate rejects 5.5kW of R32 at the H3 dry-bulb because T_disch=118.0◦C vs max
+115◦C. None of these rows is an AHRI, ACCA, or ASHRAE 90.1 certification.
+Table 2. Algebraic sizing cases. Duty in kW. Temperatures are indoor/outdoor dry-bulb (◦C); reverse rows list heating
+then cooling. Vdisp in cm3/rev, Aeev in mm2, tubes indoor/outdoor. The last column is Qcap/Qload at those temperatures
+(heat / cool on reverse rows).
+ID
+Mode
+Fluid
+Duty
+Tz/Tout
+Conditions
+Vdisp
+Aeev
+Tubes
+Qcap/Q
+C1
+cooling
+R410A
+3.50
+27.0 / 35.0
+ISO 5151 T1
+9.3
+1.42
+53/63
+1.00
+C2
+cooling
+R410A
+10.55
+26.7 / 35.0
+AHRI 210/240 A
+28.3
+4.28
+80/100
+1.00
+C3
+cooling
+R410A
+6.20
+24.0 / 35.0
+example
+18.2
+2.45
+66/82
+1.00
+Hx
+heating
+R32
+5.50
+20.0 / 0.0
+example
+23.0
+1.07
+67/63
+1.00
+H47
+heating
+R410A
+5.50
+21.1 / 8.3
+AHRI 210/240 H1
+19.2
+1.69
+75/67
+1.00
+H17
+heating
+R32
+5.50
+21.1 / -8.3
+AHRI 210/240 H3 (gate)
+—
+—
+—
+rejected
+R1
+reverse
+R32
+5.50 / 6.20
+20.0/0.0; 24.0/35.0
+example, both duties
+23.0
+1.67
+67/69
+1.09 / 1.35
+R2
+reverse
+R410A
+10.55 / 10.55
+21.1/8.3; 26.7/35.0
+AHRI A + H1
+36.9
+4.28
+102/100
+1.08 / 1.31
+R3
+reverse
+R32
+4.00 / 5.00
+20.0/0.0; 24.0/32.0
+inferred from example CSV
+16.8
+1.39
+61/64
+1.11 / 1.28
+5.3
+Closed-loop numerical experiments
+Figure 2 shows three closed-loop runs under the one-hour quasi-steady reduction of Section 4. All three use
+ISA PID and a superheat EEV on the sized plants; none is compared with a laboratory time series.
+The R32 heating case starts 5K below a 20◦C setpoint with 0◦C outdoor air. After 60 min the zone is at
+Tz = 20.12◦C (absolute error 0.12K), the compressor is at 18.97Hz, and superheat is 7.11K. Instantaneous
+Qz/W = 9.83 is the residual diagnostic (20). The second run is a reversible R32 plant on a cool-then-heat
+weather sequence. The reversing valve switches at 30.0 min; over 60 min the refrigerant inventory spans
+3.345% of its mean. The third is an R410A cooling plant on a weather sequence. After 60 min, Tz = 23.53◦C
+and Qz/W = 6.75.
+5.4
+Nameplate-class algebraic comparisons
+Nothing in the sizer is fitted to the datasets below. Each prediction is a steady close of Te and Tc so that ˙m∆h
+matches the ε-NTU coil rate of already-sized geometry, with displacement matching to the residual turned
+off. The scores are algebraic, not integrations of f against 1 Hz traces. Ramírez run means come from the
+published workbook, and the table entries are generated macros.
+Ramírez et al. mini-split. Hermes Ramírez et al. published identification runs of a 3.5kW R410A inverter
+mini-split [24]. The model is sized at ISO 5151 T1 (27◦C indoor / 35◦C outdoor) [19] and evaluated at each
+run’s mean indoor and outdoor air temperatures. Table 3 and Figure 3(a) use all 16 runs. Capacity MAPE is
+7.37% (largest |∆Q| 19.23%). Compressor electrical power, recorded in the source as current ×120V without
+a power factor, has MAPE 19.34% (largest |∆W| 84.77%). COP MAPE is 18.14% (largest |∆COP| 56.29%).
+The appendix lists every run and, separately, a subset of n = 9 with 0.70 ≤Welec/Wenthalpy ≤1.30. The n = 16
+table remains the primary score.
+10
+
+
+Figure 2. Closed-loop traces on the sized plants (3×3). (a) R32 heating, PID, 0◦C outdoor, 20◦C setpoint, 60 min:
+zone temperature, coil pressures, and superheat. Dotted lines mark the setpoint and the 6K superheat target. Terminal
+Tz = 20.12◦C; Qz/W = 9.83 is the residual diagnostic (20). (b) Reversible R32 plant on a cool-then-heat weather
+sequence: zone temperature, pressures, and charge. Mode crosses 0.5 at 30.0 min. Charge spans 3.345% of its mean
+over 60 min. (c) R410A cooling on a weather sequence (60 min): temperatures (including Tout), compressor speed, and
+EEV opening. Terminal Tz = 23.53◦C; Qz/W = 6.75. Source: output/*.npz.
+NREL residential HIL. Ramaraj and Sparn released 1 Hz traces of a 3-ton single-speed air-source heat pump
+(SEER 16, HSPF 9.5) tested in the NREL Systems Performance Laboratory [25]. The catalog record does
+not name the refrigerant; the comparison assumes R410A. Only on-period means are scored (outdoor-unit
+power > 800W and indoor power < 4kW). Thermostat cycling is not scored. Predicted compressor shaft
+power excludes fans and auxiliary heat, so the COP columns are not comparable. Table 4 and Figure 3(b) list
+4 conditions. Cooling capacity errors are −1.62% at 35◦C and −1.19% at 23.9◦C. Heating errors are 19.56%
+at 7.2◦C and −11.89% at −15◦C. Shaft-versus-outdoor-unit power and an independent air-side Q estimate
+are in the appendix. The traces are from a residential laboratory HIL facility.
+Lee et al. compressor map. Lee et al. published AHRI 540 polynomials [13,26]. The coefficients used here
+are Table 5 (“New Generated Map”). Equation (13) is evaluated at the Table 4 cooling (Te,Tc) setpoints on
+those same coefficients (9 points). The largest relative differences between two independent evaluations, JAX
+versus NumPy, are < 10−16 in power and < 10−16 in mass flow. Table 6 system capacities are not scored:
+the corresponding Te and Tc are not tabulated. The check is an implementation test, not a comparison with
+11
+
+
+Table 3. Ramírez nameplate comparison. Unfitted algebraic Q, W, and COP against run means [24]. Means are
+arithmetic averages over 16 runs. MAPE is the mean of absolute percentage errors.
+Metric
+Capacity Q (W)
+Power W (W)
+COP (—)
+Mean measured
+3743.2
+403.0
+9.65
+Mean predicted
+3751.5
+453.6
+8.31
+MAPE (%)
+7.37
+19.34
+18.14
+Max |error| (%)
+19.23
+84.77
+56.29
+Table 4. NREL on-period means [25] versus a 3-ton R410A nameplate sizer. The refrigerant is assumed. Tout is the
+on-period mean outdoor temperature.
+Case
+Tout (◦C)
+Meas. Q (kW)
+Pred. Q (kW)
+Error Q (%)
+Meas. COP
+Pred. COP
+Cooling (35◦C)
+35.0
+9.37
+9.21
+-1.62
+3.69
+4.14
+Cooling (1.67◦C)
+23.9
+10.05
+9.93
+-1.19
+5.09
+6.20
+Heating (7.2◦C)
+6.9
+8.50
+10.17
+19.56
+4.14
+5.13
+Heating (−15◦C)
+-15.0
+5.92
+5.22
+-11.89
+2.94
+3.35
+measured ˙m or W.
+6
+Discussion
+The residual is a first-principles plant with named closures, not a fitted digital twin. On the Ramírez set the
+algebraic capacity MAPE is 7.37% and the largest absolute capacity error is 19.23%. Electrical-power and
+COP MAPE are larger (19.34% and 18.14%), in part because the source records I ×120V without a power
+factor. Heating errors on the NREL set are large and are reported in Table 4. Those discrepancies are what an
+unfitted nameplate sizer produces when the cabinet geometry and refrigerant are not identified in the public
+record. The reverse rows of Table 2 show a separate, internal limit: taking the larger compressor pushes
+cooling Qcap/Qload above the Manual S cooling ceiling.
+The closed-loop traces show that the sized plant, the integrator, and the PID cascade share one residual.
+Instantaneous Qz/W at part load is a diagnostic of (20) and (12); it is not an AHRI or EN seasonal rating [13].
+Seasonal ratings are computed only when the user supplies a time series, and the bin hours are then the dwell
+times of that file. MPC is implemented on the same residual with a different discretization and does not
+appear in Figures 1 to 3; the 90 s full-DAE comparison in the appendix is a numerical demonstration.
+The formulation assumes acoustic equilibrium, subcritical two-phase flow, thermodynamic-equilibrium
+slip, oil-free refrigerant, a single lumped zone, and—unless humidity is supplied—dry air. Frost, when it is
+turned on, is a lumped mass with Hayashi and Yonko–Sepsy closures without automatic defrost schedule.
+7
+Conclusions
+A finite-volume vapor-compression plant can be written as one residual from the mass and energy balances (4)–
+(9), closed with Zivi density, a polytropic compressor, an orifice EEV, and Shah-type coil heat transfer, and
+sized from a stated duty with that same compressor map. A stiff integrator advances the residual. Implicit-
+Euler MPC can reuse it without a second plant model; the main figures use PID, and a 90 s linear-MPC run
+12
+
+
+Figure 3. Algebraic nameplate comparisons. (a) Predicted versus measured cooling capacity for 16 Ramírez et al.
+runs [24]. Dashed lines are ±10% guides. (b) NREL HIL on-period capacity [25] versus the 3-ton R410A sizer. Labels
+are (Qpred −Qmeas)/Qmeas.
+is confined to the appendix. What is claimed quantitatively is the design-map hardware, the sizing cases in
+Table 2, the PID traces, and the unfitted algebraic errors in Section 5.4.
+Materials and methods
+Python 3.12+, JAX, NumPy, CoolProp, and Matplotlib versions are those of the repository lockfile [27].
+CoolProp is the Helmholtz property source [9]; JAX provides the residual, automatic differentiation, and
+compiled integration [10]. Design examples use R32, 5.5kW, Tout = 0◦C, and Tz = 20◦C.
+Data availability
+The experimental files are those of Ramírez et al. [24], Ramaraj and Sparn [25], and Lee et al. [26].
+Code availability
+The implementation is available under an MIT License [27].
+Author contributions
+Sam Yang designed the study, wrote the software, performed the calculations, and wrote the manuscript.
+13
+
+
+Generative-AI disclosure
+An LLM was used to draft and revise manuscript text. Equations and numerical claims were checked against
+regenerated outputs by the author. No generative tool selected, altered, or invented numerical results. The
+author takes responsibility for the manuscript.
+Competing interests
+The author declares no competing interests.
+Acknowledgments
+The author thanks the developers of CoolProp and JAX [9,10].
+Disclaimer
+The views expressed are those of the author and not those of the Center for Advanced Power Systems, Florida
+State University, or the Georgia Institute of Technology.
+References
+[1] B. P. Rasmussen, “Dynamic modeling for vapor compression systems—Part I: Literature
+review,” HVAC&R Research, vol. 18, no. 5, pp. 934–955, 2012. [Online]. Available: https:
+//doi.org/10.1080/10789669.2011.582916
+[2] S. Bendapudi, J. E. Braun, and E. A. Groll, “A comparison of moving-boundary and finite-volume
+formulations for transients in centrifugal chillers,” International Journal of Refrigeration, vol. 31, no. 8,
+pp. 1437–1452, 2008. [Online]. Available: https://doi.org/10.1016/j.ijrefrig.2008.03.006
+[3] H. Qiao, V. Aute, and R. Radermacher, “Transient modeling of a flash tank vapor injection heat pump
+system – Part I: Model development,” International Journal of Refrigeration, vol. 49, pp. 169–182,
+2015. [Online]. Available: https://doi.org/10.1016/j.ijrefrig.2014.06.019
+[4] D. B. Crawley, L. K. Lawrie, F. C. Winkelmann, W. F. Buhl, Y. J. Huang, C. O. Pedersen, R. K. Strand,
+R. J. Liesen, D. E. Fisher, M. J. Witte, and J. Glazer, “EnergyPlus: creating a new-generation building
+energy simulation program,” Energy and Buildings, vol. 33, no. 4, pp. 319–331, 2001. [Online].
+Available: https://doi.org/10.1016/S0378-7788(00)00114-6
+[5] M. Wetter, W. Zuo, T. S. Nouidui, and X. Pang, “Modelica Buildings library,” Journal
+of Building Performance Simulation, vol. 7, no. 4, pp. 253–270, 2014. [Online]. Available:
+https://doi.org/10.1080/19401493.2013.765506
+[6] P. A. Domanski, J. S. Brown, and R. Brignoli, “CYCLE_D-HX: NIST vapor compression cycle
+model accounting for refrigerant thermodynamic and transport properties,” National Institute of
+14
+
+
+Standards and Technology, Gaithersburg, MD, Tech. Rep. NIST TN 2134, 2021. [Online]. Available:
+https://doi.org/10.6028/NIST.TN.2134
+[7] S. Yang, J. C. Ordóñez, and J. V. C. Vargas, “Constructal vapor compression refrigeration (VCR)
+systems design,” International Journal of Heat and Mass Transfer, vol. 115, pp. 754–768, 2017.
+[Online]. Available: https://doi.org/10.1016/j.ijheatmasstransfer.2017.07.079
+[8] S. Yang and J. C. Ordóñez, “Integrative thermodynamic optimization of a vapor compression
+refrigeration system based on dynamic system responses,” Applied Thermal Engineering, vol. 135, pp.
+493–503, 2018. [Online]. Available: https://doi.org/10.1016/j.applthermaleng.2018.02.088
+[9] I. H. Bell, J. Wronski, S. Quoilin, and V. Lemort, “Pure and pseudo-pure fluid thermophysical
+property evaluation and the open-source thermophysical property library CoolProp,” Industrial
+& Engineering Chemistry Research, vol. 53, no. 6, pp. 2498–2508, 2014. [Online]. Available:
+https://doi.org/10.1021/ie4033999
+[10] J. Bradbury, R. Frostig, P. Hawkins, M. J. Johnson, C. Leary, D. Maclaurin, G. Necula, A. Paszke, J. Van-
+derPlas, S. Wanderman-Milne, and Q. Zhang, “JAX: composable transformations of Python+NumPy
+programs,” https://github.com/jax-ml/jax, 2018, repository moved from https://github.com/google/jax.
+[11] M. E. Hosea and L. F. Shampine, “Analysis and implementation of TR-BDF2,” Applied
+Numerical Mathematics, vol. 20, no. 1–2, pp. 21–37, 1996. [Online]. Available: https:
+//doi.org/10.1016/0168-9274(95)00115-8
+[12] S. M. Zivi, “Estimation of steady-state steam void-fraction by means of the principle of minimum
+entropy production,” Journal of Heat Transfer, vol. 86, no. 2, pp. 247–251, 1964. [Online]. Available:
+https://doi.org/10.1115/1.3687113
+[13] Air-Conditioning, Heating, and Refrigeration Institute, “AHRI standard 540: Performance rating of
+positive displacement refrigerant compressors and compressor units,” AHRI, Arlington, VA, Tech. Rep.,
+2020.
+[14] F. W. Dittus and L. M. K. Boelter, “Heat transfer in automobile radiators of the tubular type,” University
+of California Publications in Engineering, vol. 2, no. 13, pp. 443–461, 1930, reprinted in International
+Communications in Heat and Mass Transfer, vol. 12, no. 1, pp. 3–22, 1985.
+[15] M. M. Shah, “A general correlation for heat transfer during film condensation inside pipes,”
+International Journal of Heat and Mass Transfer, vol. 22, no. 4, pp. 547–556, 1979. [Online]. Available:
+https://doi.org/10.1016/0017-9310(79)90058-9
+[16] A. Žukauskas, “Heat transfer from tubes in crossflow,” in Advances in Heat Transfer, J. P. Hartnett and
+T. F. Irvine, Jr., Eds.
+New York: Academic Press, 1972, vol. 8, pp. 93–160. [Online]. Available:
+https://doi.org/10.1016/S0065-2717(08)70038-8
+[17] Y. Hayashi, A. Aoki, S. Adachi, and K. Hori, “Study of frost properties correlating with frost
+formation types,” Journal of Heat Transfer, vol. 99, no. 2, pp. 239–245, 1977. [Online]. Available:
+https://doi.org/10.1115/1.3450675
+[18] International Association for the Properties of Water and Steam, “Revised release on the equation of
+state 2006 for H2O ice Ih,” IAPWS, Tech. Rep. R10-06(2009), 2009.
+15
+
+
+[19] International Organization for Standardization, “Non-ducted air conditioners and heat pumps — testing
+and rating for performance,” ISO, Geneva, Tech. Rep. ISO 5151:2017, 2017.
+[20] Air-Conditioning, Heating, and Refrigeration Institute, “AHRI standard 210/240-2023: Performance
+rating of unitary air-conditioning and air-source heat pump equipment,” AHRI, Arlington, VA, Tech.
+Rep., 2023. [Online]. Available: https://www.ahrinet.org
+[21] Air Conditioning Contractors of America, “ANSI/ACCA 3 Manual S–2014: Residential equipment
+selection,” ACCA, Arlington, VA, Tech. Rep., 2014, second edition.
+[22] ASHRAE, “ANSI/ASHRAE/IES standard 90.1-2016: Energy standard for buildings except low-rise
+residential buildings,” ASHRAE, Atlanta, GA, Tech. Rep., 2016.
+[23] ——, “Interpretation IC 90.1-2016-14 of ANSI/ASHRAE/IES standard 90.1-2016,” ASHRAE,
+Atlanta, GA, Tech. Rep., Jan. 2021, approved 21 January 2021. Restates that Appendix G
+baseline coil capacities are oversized by 15% for cooling and 25% for heating. [Online]. Avail-
+able: https://www.ashrae.org/file%20library/technical%20resources/standards%20and%20guidelines/
+standards%20intepretations/ic-90.1-2016-14.pdf
+[24] H. Ramírez, J. Jiménez-Cabas, and A. Bula, “Experimental data for an air-conditioning
+system identification,” Data in Brief, vol. 25, p. 104316, 2019. [Online]. Available: https:
+//doi.org/10.1016/j.dib.2019.104316
+[25] S. Ramaraj and B. Sparn, “BENEFIT with Northeastern University: HVAC Hardware-in-the-Loop
+Experimental Testing of a Heat Pump and Air Conditioner,” NREL Data Catalog, Golden, CO: National
+Renewable Energy Laboratory, 2024, dataCite publisher record; catalog files are also served from
+data.nlr.gov. [Online]. Available: https://doi.org/10.7799/2440214
+[26] C.-Y. Lee, T. Cao, Y. Hwang, R. Radermacher, and S. Shaffer, “Development of accurate and widely
+applicable compressor performance maps,” IOP Conference Series: Materials Science and Engineering,
+vol. 1180, no. 1, p. 012041, 2021, 12th International Conference on Compressors and their Systems.
+[Online]. Available: https://doi.org/10.1088/1757-899X/1180/1/012041
+[27] S. Yang, “hvac_designer: a differentiable transient vapor-compression plant,” https://github.com/
+smyng91/hvac_designer, 2026, MIT License.
+16
+
+
+A
+Supplemental material
+The tables below give the per-run algebraic scores and the NREL air-side and power reconciliation used in
+the main text. None of these entries is an integration of ˙y = f against a 1 Hz laboratory trace.
+A.1
+Ramírez per-run algebraic scores
+Table 5 lists all 16 runs. The MAPE in the main text is the mean over every row. A subset of n = 9 runs
+satisfies 0.70 ≤Welec/Wenthalpy ≤1.30; on that subset the capacity, power, and COP MAPE are 5.92%, 6.59%,
+and 12.11%. Those numbers are reported for transparency. They do not replace the n = 16 scores.
+Table 5. Per-run Ramírez algebraic comparison. Welec is I ×120V. Wh is ˙m(h2 −h1). Pressures are bar.
+Run
+Tout
+Tin
+Qmeas
+Qpred
+∆Q%
+Welec
+Wh
+We/Wh
+pe,m
+pe,p
+1
+21.5
+28.2
+3742
+4032
+7.8
+480
+507
+0.95
+6.7
+13.1
+2
+22.5
+28.2
+3802
+4009
+5.5
+472
+539
+0.88
+7.2
+13.1
+3
+21.6
+21.7
+3737
+3390
+-9.3
+402
+580
+0.69
+6.5
+11.2
+4
+22.9
+23.3
+3491
+3510
+0.5
+435
+572
+0.76
+6.4
+11.7
+5
+21.5
+27.9
+3730
+4004
+7.3
+441
+554
+0.80
+6.8
+13.0
+6
+21.6
+23.2
+3642
+3536
+-2.9
+421
+588
+0.72
+6.3
+11.6
+7
+21.4
+23.4
+3604
+3558
+-1.3
+326
+517
+0.63
+6.6
+11.7
+8
+21.0
+28.1
+3591
+4043
+12.6
+355
+525
+0.68
+6.6
+13.0
+9
+22.4
+28.3
+3694
+4019
+8.8
+443
+519
+0.85
+6.9
+13.1
+10
+21.5
+27.9
+3663
+4009
+9.4
+447
+538
+0.83
+7.0
+13.0
+11
+21.5
+22.8
+4329
+3496
+-19.2
+252
+500
+0.50
+7.6
+11.5
+12
+22.0
+22.6
+3725
+3467
+-6.9
+421
+602
+0.70
+6.3
+11.5
+13
+22.6
+27.9
+3832
+3970
+3.6
+466
+563
+0.83
+6.9
+13.0
+14
+22.4
+22.5
+3719
+3443
+-7.4
+435
+598
+0.73
+6.4
+11.4
+15
+20.9
+22.7
+3823
+3507
+-8.3
+284
+487
+0.58
+7.0
+11.5
+16
+21.2
+28.1
+3769
+4032
+7.0
+368
+556
+0.66
+6.5
+13.0
+A.2
+NREL capacity, air-side Q, and shaft versus outdoor-unit power
+Table 6 reports published on-period |Q|, an independent CFM·∆T estimate Qair, outdoor-unit electrical W,
+and predicted shaft W. Scoring in the main text uses the published Q, not Qair.
+Table 6. NREL on-period reconciliation. Capacities and powers in kW. ∆Qair is (Qair −Q)/Q. ∆W is shaft versus
+outdoor-unit power.
+Case
+Tout
+Q
+Qair
+∆Qair%
+Wout
+Wshaft
+∆W%
+cooling
+35.0
+9.37
+10.52
+12.3
+2.54
+2.23
+-12.3
+cooling
+23.9
+10.05
+11.28
+12.3
+1.97
+1.60
+-19.0
+heating
+6.9
+8.50
+9.55
+12.3
+2.03
+1.98
+-2.6
+heating
+-15.0
+5.92
+6.65
+12.3
+2.01
+1.56
+-22.6
+A.3
+Algebraic sizing-case close
+Table 7 lists Qcap, COP, and Qcap/Qload for every heating or cooling close behind Table 2. H17 has no row of
+hardware: the discharge gate failed (T_disch=118.0◦C vs max 115◦C). Reverse cooling ratios above 1.15 are
+the max-compressor merge, not a fitted oversize.
+17
+
+
+Table 7. Per-mode algebraic close for the sizing cases. Capacities in kW. Vdisp in cm3/rev.
+Row
+Fluid
+Qduty
+Tz
+Tout
+Qcap
+COP
+Qcap/Q
+Vdisp
+C1 cool
+R410A
+3.50
+27.0
+35.0
+3.50
+4.86
+1.00
+9.3
+C2 cool
+R410A
+10.55
+26.7
+35.0
+10.53
+4.76
+1.00
+28.3
+C3 cool
+R410A
+6.20
+24.0
+35.0
+6.20
+4.30
+1.00
+18.2
+Hx heat
+R32
+5.50
+20.0
+0.0
+5.50
+4.29
+1.00
+23.0
+H47 heat
+R410A
+5.50
+21.1
+8.3
+5.50
+5.12
+1.00
+19.2
+H17 rejected
+R32
+5.50
+—
+—
+—
+—
+—
+—
+R1 heat
+R32
+5.50
+20.0
+0.0
+6.01
+4.65
+1.09
+23.0
+R1 cool
+R32
+6.20
+24.0
+35.0
+8.35
+4.06
+1.35
+23.0
+R2 heat
+R410A
+10.55
+21.1
+8.3
+11.39
+5.46
+1.08
+36.9
+R2 cool
+R410A
+10.55
+26.7
+35.0
+13.81
+4.57
+1.31
+36.9
+R3 heat
+R32
+4.00
+20.0
+0.0
+4.43
+4.78
+1.11
+16.8
+R3 cool
+R32
+5.00
+24.0
+32.0
+6.38
+4.72
+1.28
+16.8
+A.4
+Lee map implementation check
+Equation (13) was evaluated at the 9 Table 4 cooling setpoints of Lee et al. using their Table 5 coefficients.
+The largest relative differences between the JAX and NumPy evaluations are < 10−16 in power and < 10−16 in
+mass flow. The check confirms that the two implementations agree; it does not compare either implementation
+with measured compressor ˙m or W.
+A.5
+Short full-DAE PID versus linear MPC
+The same R32 heating plant was integrated for 90 s without the hour-scale quasi-steady reduction. Linear
+MPC steps f with implicit Euler rather than TR-BDF2. At the end of the window, the PID zone is 17.30 ◦C
+(2.70K from the 20◦C setpoint) and the linear-MPC zone is 19.34 ◦C (0.66K). The comparison is a numerical
+demonstration on the residual. Figure 4 shows the linear-MPC heating trace from that 90 s run.
+18
+
+
+Figure 4. 90 s full-DAE linear MPC heating run on the sized R32 plant. Implicit Euler on f ; not a laboratory twin.
+19
