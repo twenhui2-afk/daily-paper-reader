@@ -1,0 +1,1222 @@
+Title: CQELS-TrieGS Report: Snapshot-Consistent Constant-Delay Enumeration for Streaming Graph Queries
+
+URL Source: https://arxiv.org/pdf/2608.15927v1
+
+Published Time: Tue, 18 Aug 2026 01:23:14 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# CQELS-TrieGS Report: Snapshot-Consistent Constant-Delay Enumeration for Streaming Graph Queries 
+
+# Danh Le-Phuoc Technical University Berlin 
+
+# ABSTRACT 
+
+Continuous graph-query engines must process edge updates while making current query results available to concurrent consumers. Existing dynamic constant-delay enumeration methods provide strong per-answer delay guarantees, but are commonly formulated as a maintenance-then-enumeration process. Conversely, multicore graph-stream engines em-phasize update throughput and match discovery without a query-level snapshot guarantee for concurrent full-result enumeration. We present TrieGS , a shared-memory engine that main-tains a query-specific CDE state over a streaming graph. Logically, TrieGS uses the classical free-connex witness-subtree enumerator; dynamically, it maintains multiplicity payloads using exact signed deltas; physically, RDF terms are dictionary-encoded and the required access structures are realized as versioned LFNT relations. The new sys-tems problem is not relation-level snapshotting alone: an enumeration job must observe one consistent state across all interdependent base relations, projections, views, and indexes. TrieGS therefore publishes an atomic root vector only after an update epoch has fully propagated. Enumer-ation threads pin one published root vector and traverse immutable versions while later updates continue. For fixed full acyclic conjunctive graph queries under multi-set semantics, we prove that every enumeration job observes a graph state corresponding to one published logical time and enumerates its nonzero answer–multiplicity pairs with 
+
+OQ(1) delay. Projected free-connex queries are supported by explicitly maintaining a count-aware answer relation; its output-size-dependent update and space costs are included in the bounds. Sliding windows are reduced to arrivals and expiration deletions. Practical extensions, including SWAG aggregate summaries, compressed access structures, filters, aggregation, multi-query sharing, and bounded-width cyclic bags, use the same substrate but have separate or parame-terized guarantees. 
+
+PVLDB Reference Format: 
+
+Danh Le-Phuoc. CQELS-TrieGS Report: Snapshot-Consistent 
+
+This work is licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License. To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-nd/4.0/. For any use beyond those covered by this license, obtain permission by emailing info@vldb.org. Copyright is held by the owner/author(s). Publication rights licensed to the VLDB Endowment. 
+
+Proceedings of the VLDB Endowment, Vol. XX, No. XXX ISSN 2150-8097. DOI: XX.XX/XXX.XX 
+
+Constant-Delay Enumeration for Streaming Graph Queries. PVLDB ,XX(XXX): xxxx-yyyy, 2027. DOI: XX.XX/XXX.XX 
+
+# 1. INTRODUCTION 
+
+Graph streams arise when social interactions, communica-tion events, mobility records, or knowledge-graph assertions arrive continuously. Systems such as GraphFlow, TurboFlux, and later continuous subgraph matching engines maintain matches as the graph changes [12, 14, 31]. Their performance is highly workload dependent: a common-framework study found that candidate search, index maintenance, and up-date selectivity dominate in different regimes, and no single method wins universally [32]. A complementary line of work studies dynamic query eval-uation through constant-delay enumeration (CDE). For suit-able conjunctive-query classes, a maintained representation can produce the first answer and each subsequent answer with delay independent of the data size [3, 4, 9]. Dynamic Yannakakis and CROWN show how compact views or join-free change propagation can maintain such representations under updates [9, 35]. These results establish the query-theoretic foundation of this paper.claim acyclic CDE itself as new. 
+
+# Running example. Figure 1 introduces the example used throughout the report. The query reports a message v, its creator x, a replied-to message z, the creator y of z, and a user w who liked z. At t0, two active reply events with distinct event identifiers fall inside the same window and represent the assertion hasReply (tweet1 , tweet2 ) twice, but no matching likedBy event exists. Inserting likedBy (tweet2 , Mia )at t1 therefore creates one distinct answer (Max , Eva , tweet1 , tweet2 , Mia )with multiplicity two. At t2, one reply event expires from the active window, reducing that multiplicity from two to one. The systems problem considered here begins when main-tenance and enumeration run on different shared-memory threads. In Figure 1, the update at t2 may modify the re-ply branch, its parental projection, the root view, and the answer index while E1 is still traversing the result for t1.Independently snapshotting these relations can yield a frac-tured state—for example, the root after t2 together with a child and answer index from t1. Such a combination belongs to no graph snapshot. 1arXiv:2608.15927v1 [cs.DB] 16 Aug 2026 (a) Query instance at t0
+
+tweet1 Max tweet2 Eva Mia hasCreator hasReply ×2 hasCreator likedBy 
+
+0 → 1 at t1
+
+t0: no answer t1: one weighted answer, count 2 
+
+(b) Stream and snapshot evolution 
+
+t0 t1 t2
+
+initial count 0 + likedBy 
+
+count 2 
+
+− hasReply 
+
+count 1 Updater build Lt1
+
+publish St1
+
+build Lt2
+
+publish St2
+
+Enumerator E1
+
+pins St1 and keeps count 2 while t2 is built and published 
+
+Figure 1: Paper-wide running example in multigraph mode. The insertion at t1 creates one weighted answer with multiplicity two. Enumerator E1 pins the published state St1 , so it continues to observe count two while update workers construct and publish the state for t2.
+
+# Why shared-memory scale-up? Microarchitectural stud-ies indicate that general-purpose stream-processing engines can leave substantial single-node performance headroom. In a controlled queue experiment, Zeuch et al. [41] report approx-imately 3 GB/s for the tested Java queue and up to 7 GB/s for the strongest tested lock-free C++ queues on a machine with 28 GB/s measured memory bandwidth; they identify queue-mediated operator communication, synchronization, and data representation as potential scale-up bottlenecks [42]. These measurements do not imply that LFNT is faster, but they motivate testing whether a query-specialized representa-tion reduces synchronization, allocation, and data movement. CROWN demonstrates complementary distributed paral-lelism: it reports approximately linear speedup below 16 workers, followed by diminishing gains as HyperCube scaling becomes sublinear and framework overhead dominates the shortened useful work [35]. 
+
+# Why enumerate a stable full result? A representative use case is periodic auditing or export of all currently match-ing graph patterns. Such a scan may take longer than one update interval, while pausing ingestion is unacceptable. A delta stream alone can serve this workload only if the con-sumer maintains and versions a second complete answer state. TrieGS instead lets the auditor pin one published query snap-shot while later updates continue; Section 7 measures when this service is preferable to downstream delta consumption or aggregate-only SWAG summaries rather than assuming it is universally superior. 
+
+TrieGS addresses this problem by combining standard CDE representations with a query-level publication proto-col. Logically, a fixed query is compiled into a free-connex decomposition and a witness-subtree enumerator of the kind used in classical Yannakakis/CDE proofs. Dynamically, tu-ples carry multiplicity payloads and updates maintain the corresponding factorized views using exact signed deltas, as in factorized IVM. Physically, RDF terms and properties are first encoded as stable integer identifiers, and each main-tained view and access index is implemented by a versioned 
+
+LFNT relation over those integer keys. After every logical update epoch has propagated through all dependent views and indexes, TrieGS atomically publishes 
+
+RootVec t = ⟨t, r tR1 , . . . , r tRm ⟩,
+
+where the roots cover the whole compiled access represen-tation. An enumerator loads this vector once, pins it, and reads only versions reachable from it. Later updates can then proceed without changing the enumerator’s logical state. 
+
+# Proof architecture. We separate the proof into five layers so that each part matches an established technique. First, a classical free-connex CDE argument constructs an abstract preprocessed state with constant-delay cursor enumeration over a witness subtree. Second, a multiset maintenance ar-gument treats local tuples as N-payloads, uses signed deltas internally, and proves that each epoch restores the view invari-ant. Third, an access-structure accounting layer states which primary, secondary, and tertiary indexes are maintained and which space–delay point the core theorem chooses. Fourth, dictionary-coded LFNT and root-vector refinement prove that a published physical snapshot represents one abstract CDE state. Fifth, morselized scheduling is proved only as a refinement of the serial epoch semantics; it is not part of the query-class theorem. 
+
+# Theorem core and system scope. Our strongest no-output-materialization result is for fixed full acyclic conjunctive graph queries under multiset semantics, where every query variable is distinguished. This class includes full-match paths, stars, trees, combs, and neighborhood patterns. For pro-jected free-connex queries, the current construction explicitly materializes a count-aware answer relation; its output-size-dependent update and space costs are part of the guarantee. We do not claim a compact duplicate-free weighted iterator for arbitrary projection. Filters, aggregate payloads, SWAG summaries, multi-query sharing, compressed access struc-tures, and cyclic bag modules are practical extensions with separate or parameterized guarantees. 
+
+# Positioning. TrieGS is neither a new one-shot parallel join nor a general-purpose lock-free graph store. Parallel and worst-case-optimal join systems optimize a fresh query exe-cution [15, 36]; TrieGS maintains persistent query-specific state and overlaps view maintenance with snapshot enumer-ation. CROWN is the closest query-processing predecessor: it gives join-free change propagation, full-result and delta CDE, and a Flink DataStream implementation. TrieGS 
+
+instead studies a shared-memory state in which an updater 2and a long-running enumerator access versioned relations concurrently; the root-vector protocol is the consistency boundary that CROWN does not need to define in its op-erator execution model. We therefore evaluate a CQELS CROWN-style reimplementation and refer to it as a faithful CROWN baseline only after it passes the validation gate in Section 7. 
+
+# Evaluation questions. The paper tests four core questions. First, does root-vector publication prevent fractured query snapshots under skewed updates, deletions, windows, self-joins, and long readers? Second, does LFNT improve the rel-evant latency–memory–freshness frontier over simpler integer-key and object-key versioned maps? Third, is concurrent full-result enumeration a real workload need, or can a delta-only or SWAG aggregate consumer provide equivalent application behavior at lower cost? Fourth, does mixed update/enumera-tion execution scale with physical cores while preserving the same tail-latency, freshness, and memory targets? Section 7 turns these into pre-registered experiments and rejection criteria rather than using raw throughput as a proxy for all four. 
+
+# Contributions. This report makes the following contribu-tions. 1. We propose time-indexed streaming-graph and multiset query semantics, including a precise enumeration contract, dictionary-encoding refinement, and a reduction of sliding windows to insertion and expiration updates. 2. We present an abstract CDE layer based on free-connex decompositions, witness-subtree enumeration, and local fetch-first/fetch-next access structures, making the constant-delay part of the proof standard and implementation-independent. 3. We propose a dynamic multiset maintenance layer with count-aware payloads, exact delta-view support enumera-tion, and OQ(At) affected-state update cost. Projected free-connex queries use an explicit Ans Q relation. 4. We make the access-structure cost explicit: core TrieGS 
+
+chooses the fully indexed constant-delay point, while com-pressed space–delay variants, integer-layout choices, and SWAG aggregate summaries are separated from the main theorem. 5. We identify exactly what is inherited from C-trie/cache-trie work and add the missing query-level mechanism: im-mutable multiplicity payloads, epoch-ordered root-vector publication, and snapshot-safe reclamation. 6. We define an evaluation methodology and a CQELS-based implementation plan that compare LFNT with a CROWN-style baseline subject to an explicit valida-tion gate, object-key and integer-key versioned indexes, SWAG aggregate baselines, and delta-only maintenance while reporting tail latency, staleness, retained memory, reclamation debt, and marginal cost per query in addition to throughput. 
+
+# 2. SEMIRING STREAM SEMANTICS 
+
+This section fixes the logical semantics that the later CDE, maintenance, and snapshot-refinement layers implement. We use the counting semiring ( N, +, ·, 0, 1) for published query states and signed integers only for transient maintenance deltas. 
+
+2.1 Labeled Multigraphs and Logical Time 
+
+Definition 2.1 (Labeled multigraph). Let L be a finite set of edge labels. A labeled multigraph is G = ( N, E, ρ, λ E ),where N is a finite node set, E is a finite edge set, ρ : E →
+
+N × N maps an edge to its endpoints, and λE : E → L maps an edge to its label. 
+
+For ℓ ∈ L and a, b ∈ N , the multiplicity of the assertion 
+
+ℓ(a, b ) is 
+
+mult G(ℓ(a, b )) = |{ e ∈ E | ρ(e) = ( a, b ), λ E (e) = ℓ}| .
+
+Thus parallel edges are represented by nonnegative integer multiplicities. Equivalently, each base relation is a finite-support map 
+
+RG : Dom( R) → N.
+
+Let T be a totally ordered set of logical times. A graph update stream is 
+
+U = ⟨(t1, U t1 ), (t2, U t2 ), . . . ⟩, t1 ≺ t2 ≺ · · · ,
+
+where Ut is a finite batch of updates. Each update is (σ, ℓ (a, b )) with σ ∈ { +1 , −1}. Let Gt denote the graph after all batches through t have been applied. We assume valid deletions, or equivalently reject deletions that would make an assertion count negative. For any maintained relation R, its signed delta at time t is 
+
+δtR(¯ a) = mult R,G t (¯ a) − mult R,G pred (t) (¯ a).
+
+Stored published multiplicities are in N, while internal deltas are in Z.
+
+# Event time and processing time. The logical time used by the proof orders published query states. It may be an event-time watermark or a processing-time epoch. Event-time systems must not publish t until their lateness policy guarantees that the state for t will not be modified retroac-tively. 
+
+2.2 Conjunctive Queries as Counting Maps 
+
+A conjunctive graph query has the form 
+
+Q : q(¯ x) ← α1, . . . , α k ,
+
+where every αi is a labeled edge atom and every distinguished variable in ¯ x appears in the body. A valuation θ maps variables to graph nodes and fixes constants. At logical time t, the weight of a valuation is 
+
+ωt(θ) = 
+
+> k
+
+Y
+
+> i=1
+
+mult Gt (θ(αi)) .
+
+For a head tuple ¯ a, the answer multiplicity is 
+
+μQt (¯ a) = X
+
+> θ:θ(¯ x)=¯ a
+
+ωt(θ). (1) Hence joins multiply multiplicities, while projection or marginal-ization sums over witnesses. Bag semantics and multiset semantics are used interchangeably. 3Running example continued. At t1 in Figure 1, the dis-played tuple has one node valuation, but that valuation has weight 1 · 2 · 1 · 1 = 2 .
+
+The factor two is the active multiplicity of hasReply (tweet1 , tweet2 ). When one reply event expires at t2, the same valuation has weight 1 · 1 · 1 · 1 = 1. This example is intentionally in multigraph mode: it makes visible why a base delta of one may induce a larger derived delta. 
+
+# Enumeration contract. Internally, TrieGS enumerates the support of the answer together with exact counts: each pair (¯ a, μ Qt (¯ a)) with positive multiplicity is emitted once. Delay is measured between consecutive tuple–multiplicity pairs. An application can expand a pair of multiplicity d into d rows when required. 
+
+# RDF/SPARQL-compatible mode. SPARQL solution map-pings use multiset semantics, but an RDF graph is a set of triples. Let ct(τ ) be the number of active stream events repre-senting triple τ . In RDF-compatible mode, query evaluation uses Boolean support 1[ct(τ ) > 0], while the window man-ager retains ct(τ ) for correct expiration. Multigraph mode instead uses ct(τ ) as the base weight. The core theorem cor-responds to the positive basic-graph-pattern fragment under simple entailment; full SPARQL operators require separate semantics. 
+
+2.3 Dictionary Encoding 
+
+RDF systems usually evaluate over dictionary identifiers rather than over RDF term objects. TrieGS follows this convention in the physical layer. Let 
+
+ι : N ∪ L → N
+
+be an injective dictionary for all terms and labels reachable from a published snapshot. A base assertion ℓ(a, b ) is repre-sented by the integer tuple ( ι(ℓ), ι (a), ι (b)); compiled views and indexes use fixed relation or view identifiers together with integer values for the variables in their chosen order. 
+
+Lemma 2.2 (Dictionary refinement). Replacing ev-ery term and label in the active graph, query constants, view keys, and answer bindings by its dictionary identifier pre-serves equality, joins, projections, multiplicities, and answer weights. 
+
+Proof. Conjunctive graph queries use equality of labels, constants, and shared variables. Since ι is injective, two terms are equal iff their identifiers are equal. Therefore the set of valuations, their joined atoms, and every projection witness class are unchanged by encoding. Payload arithmetic is performed on the same multiplicities, so Equation 1 is preserved. The theorem needs only injectivity. Hardware locality requires more: the assigned identifiers may or may not corre-late with join access patterns. The implementation therefore treats stable integer encoding as the correctness layer and evaluates packed layouts, local dense remapping, and prefix ownership as physical optimizations. Identifier reuse is unsafe while a published snapshot can still reference the old term; the first implementation should use monotonic or epoch-safe identifiers. 
+
+2.4 Sliding Windows 
+
+For window width W , let GWt contain exactly the edge events whose event timestamps lie in ( t−W, t ]. The window manager translates an event ( id , ℓ (a, b ), τ ) into an insertion at τ and an expiration deletion at τ + W . Multiple identical events retain distinct identifiers so that one expiration decrements the assertion count rather than removing all copies. The transition at t2 in Figure 1 is exactly such an expiration. The core theorem applies to GWt because window movement is reduced to ordinary multiset updates. 
+
+2.5 Acyclicity, Free-Connexity, and Cost Convention 
+
+The query hypergraph HQ has one vertex per variable and one hyperedge Vars (αi) per atom. A conjunctive query is acyclic if HQ has a join tree. It is free-connex if adding one hyperedge containing all distinguished variables preserves acyclicity [3]. Every full acyclic query is free-connex because the added head hyperedge contains all body hyperedges. Projected free-connex queries are treated separately because they require witness grouping. The query Q and its compiled plan are fixed. We write 
+
+OQ(·) when the hidden constant may depend on the atoms, variables, views, projections, indexes, access-structure arity, and join-tree height of Q, but never on graph size, stream length, materialized-state size, or output cardinality. Let 
+
+Tdict denote the cost of an exact relation-index dictionary operation, and Tfetch the cost of one local extension-iterator step. The cache-trie assumptions give Tdict = OQ(1) for basic exact-key operations; the fully indexed TrieGS access contract supplies Tfetch = OQ(1). Without these assumptions, the update and delay bounds inherit the selected backend’s 
+
+Tdict and Tfetch .
+
+2.6 Published Snapshot Semantics 
+
+Let Lt be the abstract logical view state after all effects of epoch t have completed, let Ct be the compiled access representation of that view state, and let St be a physical versioned snapshot that realizes Ct. An enumeration job e
+
+is snapshot-consistent if there exists a published time τ (e)such that every relation and index read by e belongs to 
+
+Sτ (e) and therefore represents Cτ (e) and Lτ (e). The job then enumerates Q(Gτ (e)). It need not observe the newest wall-clock update, but it must never mix epochs. 
+
+# 3. ABSTRACT CDE STATE AND VIEW INVARIANT 
+
+This section defines the abstract state that TrieGS main-tains. The first part follows the classical free-connex CDE proof: a decomposition gives a connected witness subtree, local interface iterators support fetch-first/fetch-next, and a cursor enumerator outputs answers with constant delay. The second part adds counting payloads and view equations that dynamic maintenance will preserve. Concurrency and LFNT appear only after this abstract state is fixed. 
+
+3.1 Witness-Subtree CDE State 
+
+Let Q be a fixed acyclic conjunctive query, and let TQ be a rooted join or generalized hypertree decomposition of width one. Each node u has a bag χ(u) and is assigned one or more guard atoms whose variables are contained in χ(u). For every variable, the nodes whose bags contain that variable form a connected subtree. 4For a projected free-connex query, the decomposition is chosen after adding the head hyperedge. A connected witness subtree UQ ⊆ TQ covers all distinguished variables. For a full acyclic query, every variable is distinguished and the whole rooted tree can be used as the witness subtree. The abstract CDE state contains, for each witness node u, a semijoin-reduced local relation Cu and an access structure by the parent interface 
+
+Iu = χ(u) ∩ χ(parent (u)) .
+
+For the root, Iu = ∅.
+
+Definition 3.1 (Local access contract). For each witness node u, the access structure supports 
+
+fetchFirst u(¯b) for the first tuple in Cu matching interface binding ¯b, 
+
+fetchNext u(¯b, ¯c) for the next such tuple after ¯c. 
+
+Both operations skip dead tuples, return each compatible tuple once, and cost OQ(1) in the fully indexed core construction. 
+
+The abstract enumerator stores one cursor per witness node. It initializes the root cursor with fetchFirst , recursively initializes child cursors from their parent-interface bindings, emits a tuple when all witness cursors are valid, and ad-vances the last cursor that still has a next value, resetting its descendants. This is the standard constant-delay cursor argument for free-connex acyclic CQs. 
+
+Theorem 3.2 (Abstract CDE enumeration). For a fixed full acyclic query, a semijoin-reduced witness-subtree state with local access structures satisfying the contract above enumerates the support of Q(G) with OQ(1) delay after pre-processing. For a projected free-connex query, the same state-ment holds when the access state is a duplicate-free support representation of the projected head tuples. 
+
+Proof Proof sketch. Semijoin reduction removes ev-ery local tuple that cannot be extended to a full homomor-phism. The witness subtree covers the distinguished variables and the running-intersection property ensures that a top-down cursor assignment is consistent on shared variables. Every output corresponds to exactly one tuple choice at each witness node, and the cursor discipline visits each such choice once. The number of witness nodes and local fetch operations between two outputs depends only on the fixed query, giving OQ(1) delay. 
+
+3.2 Counting Payloads and View Recurrence 
+
+TrieGS maintains a counting version of the abstract CDE state. For every node u, Vu(χ(u)) stores the multiset payload of the subquery rooted at u. If c is a child of u, its interface with the parent is 
+
+Ic,u = χ(c) ∩ χ(u).
+
+The parental projection stores a witness count, not only a Boolean semijoin flag: 
+
+μPc→u 
+
+> t
+
+(¯b) = X 
+
+> ¯a:¯ a|Ic,u =¯b
+
+μVc 
+
+> t
+
+(¯ a). (2) The viability predicate is derived as μPc→u 
+
+> t
+
+(¯b) > 0. Retaining the count is necessary for bag semantics and deletions: a change from three witnesses to two does not invalidate a branch, whereas a change from one to zero does. A general normalized view rule has the form 
+
+V (¯ x) ← B1(¯ y1), . . . , B k (¯ yk ).
+
+Its exact logical multiplicity is 
+
+μVt (¯ a) = X
+
+> θ:θ(¯ x)=¯ ak
+
+Y
+
+> j=1
+
+μBj 
+
+> t
+
+(θ(¯ yj )) . (3) This is the counting-semiring payload version of the abstract local CDE state. 
+
+# Guard-normal compiled rules. The compiler represents every maintained acyclic rule in the equivalent form 
+
+r : V ( ¯X) ← G( ¯X), P 1( ¯I1), . . . , P m( ¯Im), ¯Ii ⊆ ¯X, (4) where G is the guard containing all head variables and every 
+
+Pi is a count-aware projection whose eliminated variables have already been summed. If several local atoms are needed to cover ¯X, their local product is materialized as G. Equa-tion 3 then reduces for a grounded head tuple ¯ a to 
+
+μVt (¯ a) = μGt (¯ a)
+
+> m
+
+Y
+
+> i=1
+
+μPi 
+
+> t
+
+(¯ a|¯Ii ). (5) This form makes the dynamic affected-binding construction in Section 4 explicit rather than treating it as an oracle. For each interface ¯Ii, the plan contains an update/access path 
+
+IG, ¯Ii (¯b) = {¯a | μGt (¯ a) > 0, ¯a|¯Ii = ¯b}. (6) In the access-structure terminology used below, exact pay-load lookup is a primary index, top-down enumeration uses secondary indexes, and Equation 6 is also the tertiary/up-date index that finds parent bindings affected by a changed projection. 
+
+3.3 Generalized Multiset Assertions 
+
+Definition 3.3 (Generalized multiset assertion). 
+
+For a base relation, view, projection, answer relation, or aux-iliary index R(¯ x), a generalized multiset assertion (Gma) is 
+
+R(¯ a) = d, where d ∈ N is the tuple multiplicity. 
+
+Missing Gmas have multiplicity zero. The logical oper-ations getM (R(¯ a)) and setM (R(¯ a), d ) read and write this value. Zero-valued physical tombstones may remain until reclamation, but logical iterators skip them. 
+
+3.4 Running Example 
+
+The running query is Listing 1: Running full acyclic query. 
+
+SELECT ?x ?y ?v ?z ?w WHERE { ?v :hasCreator ?x . ?z :hasCreator ?y . ?v :hasReply ?z . ?z :likedBy ?w . }
+
+5A normalized program is 
+
+Hp(v) ← hasCreator v (v, x ),Lp(z) ← likedBy (z, w ),V1(v, z ) ← hasReply (v, z ), H p(v),V p 
+
+> 1
+
+(z) ← V1(v, z ),V2(z, y ) ← hasCreator z (z, y ), L p(z),V p 
+
+> 2
+
+(z) ← V2(z, y ),V0(z) ← V p 
+
+> 1
+
+(z), V p 
+
+> 2
+
+(z).
+
+The two occurrences hasCreator v and hasCreator z are logical aliases of the same base label. Thus the running example already contains a self-join. A base update is fanned out to both aliases with one epoch identifier, and publication waits until both copies, their projections, and all dependent views have processed that epoch (Section 6). Figure 2 grounds this program on the values from Figure 1. Before t1, the right branch is not viable because Lp(tweet2 ) = 0. After the insertion, 
+
+V p 
+
+> 1
+
+(tweet2 ) = 2 ,V p 
+
+> 2
+
+(tweet2 ) = 1 ,V0(tweet2 ) = 2 · 1 = 2 .
+
+The same figure also previews the dynamic-maintenance rule: the input delta is +1, but the exact root delta is +2 because the unchanged reply branch contributes two witnesses. The root view identifies viable values of z. A factorized full-query enumerator descends through V1, V2, and the base relations to recover ( x, y, v, z, w ). In this concrete instance there is one distinct full assignment, so its weight equals the displayed root count two. In general, the root count must not be interpreted as one flat answer multiplicity unless the compiled answer representation guarantees that correspon-dence. 
+
+# Projected queries. A projected query such as Q′(x, y, w )requires a separate free-connex check. For projected free-connex queries, the current implementation maintains an explicit count-aware answer relation Ans Q; it does not claim that a compact factorized representation automatically pro-vides duplicate-free weighted enumeration. If projection destroys free-connexity, the query is outside the core result. 
+
+3.5 Answer Relation and View Invariant 
+
+Let RQ be the finite set of relations and indexes maintained for Q. For a projected free-connex query, the formal con-struction includes a count-aware answer relation 
+
+Ans Q(¯ x)whose tuple multiplicity is exactly μQt (¯ a) from Equation 1. It is maintained as the final projection/count view of the compiled program. Scanning its support emits each distinct head tuple once with its exact multiplicity. Its output-size-dependent update and space costs are included in the affected-state and materialized-state bounds. For full queries, where every query variable is distinguished, the implementation instead uses a factorized generator: no existential witnesses must be grouped into the same head tuple, and one trie path represents one node valuation with its accumulated multiplicity. 
+
+Definition 3.4 (View invariant). At published time 
+
+t, the view invariant holds if, for every R ∈ R Q and tuple ¯a,
+
+getM t(R(¯ a)) = μRt (¯ a),
+
+where the right-hand side is the sum-product value defined by the logical query, projection, view, answer, or index semantics over Gt.
+
+The rest of the proof has one purpose: show that update propagation moves a correct state Lpred (t) to a correct state 
+
+Lt, that the compiled access representation Ct supports the required local fetch operations, and that concurrent enumerators observe exactly one physical realization St of that state. 
+
+3.6 Existence of a Guard-Normal Plan 
+
+Lemma 3.5 (Guard normalization for full acyclic queries). 
+
+Every full acyclic conjunctive query admits a rooted materialized-view program whose maintained rules have the guard-normal form of Equation 4. Repeated relation atoms use distinct logical aliases. 
+
+Proof. Acyclicity gives a join tree whose nodes are the body atoms. Root the tree at an arbitrary atom. For a node with atom Rv ( ¯Xv ), define the subquery view Vv ( ¯Xv ) using 
+
+Rv as its guard. For every child c, project the child view onto the separator ¯Ic,v = ¯Xc ∩ ¯Xv and use that count-aware projection as a factor of Vv . The running-intersection prop-erty ensures that the child subquery shares variables with the remaining query only through this separator. Thus all eliminated child variables are summed in the projection, each projection interface is contained in the guard variables, and the grounded node value is the product in Equation 5. Ap-plying this construction bottom-up gives guard-normal rules for every node. Since the query is full, traversing the rooted views recovers every query variable without a projected head aggregation. Aliasing repeated atoms preserves the join tree and the argument. For projected free-connex queries, the body-node construc-tion still applies, but the current implementation materializes the final count-aware answer projection as stated in Corol-lary 5.6. 
+
+# 4. DYNAMIC MULTISET MAINTENANCE AND ENUMERATION 
+
+The previous section defined the abstract CDE state. This section explains how TrieGS maintains its counting payloads under insertions, deletions, batches, and window expirations. Conceptually, a base update induces a delta view tree: a changed leaf is joined with unchanged sibling views and pro-jected toward the root. TrieGS does not need to materialize every delta view. Instead, tertiary access indexes enumerate exactly the parent bindings in the delta-view support; for each such binding, SetExact recomputes the new payload and propagates the signed difference. 
+
+4.1 Serializable Update Epochs 
+
+For the core proof, epochs are published in logical-time order. Work inside one epoch may execute in parallel, but its effect must be equivalent to some deterministic sequential order. This requirement is particularly important for self-joins and batches, where one base relation may occur several times in the same query. 6(a) Populated logical views for z = tweet2 
+
+V0(z)0 → 2
+
+V p 
+
+> 1
+
+(z)2
+
+V p 
+
+> 2
+
+(z)0 → 1
+
+V1(v, z )2
+
+V2(z, y )0 → 1
+
+hasReply = 2 
+
+Hp(v) = 1 
+
+hasCreator = 1 
+
+Lp(z) : 0 → 1
+
+V p 
+
+> 1
+
+(tweet2 ) = 2, V p 
+
+> 2
+
+(tweet2 ) = 1, hence V0(tweet2 ) = 2 · 1 = 2. 
+
+(b) Exact delta propagation at t1
+
+likedBy(tweet2,Mia) 
+
+0 → 1, δ = +1 
+
+Lp(tweet2 )0 → 1, δ = +1 
+
+V2(tweet2 , Eva )0 → 1, δ = +1 
+
+V p 
+
+> 2
+
+(tweet2 )0 → 1, δ = +1 
+
+V0(tweet2 )0 → 2, δ = +2 Why δ = +2? The unchanged reply branch contributes two compatible witnesses. 
+
+Figure 2: Counting view state and exact delta propagation for the running example. Dashed nodes are parental projections. Values in green change at t1. The affected-binding indexes enumerate the support of the corresponding delta view; each affected Gma is recomputed and propagated as its own difference from the old value. 
+
+Assumption 4.1 (Serializable epochs). The concur-rent execution of update epoch t is equivalent to applying all updates in Ut and all induced Gma changes in a determin-istic sequential order. Epoch t is published only after every induced change has completed. 
+
+4.2 Delta-View Support and Affected Bindings 
+
+A changed base or derived Gma may affect projections and parent views. The compiler uses the guard-normal rule and interface indexes from Equations 4–6 to derive the affected head bindings directly. 
+
+# Exact derived updates. For a Gma R(¯ a) whose exact new value is dnew , the logical operation SetExact reads dold =
+
+getM (R(¯ a)), computes δ = dnew −dold , and does nothing when 
+
+δ = 0. Otherwise it installs dnew in the working version and enqueues ( R(¯ a), δ ) for every dependent projection and view. This operation is the only way a derived Gma propagates upward. 
+
+# Affected-binding construction. Consider a guard-normal rule 
+
+r : V ( ¯X) ← G( ¯X), P 1( ¯I1), . . . , P m( ¯Im).
+
+The construction is evaluated in the current working version after the changed factor has received its new value. If the guard changes at binding ¯ c, then 
+
+Affected r (G(¯ c)) = 
+
+(
+
+{¯c}, if Q 
+
+> i
+
+μ(Pi(¯ c|¯Ii )) > 0,
+
+∅, otherwise. If projection Pj changes at interface binding ¯ c, then 
+
+Affected r (Pj (¯ c)) = {¯a ∈ IG, ¯Ij (¯ c) | μ(Pi(¯ a|¯Ii )) > 0 for all i̸ = j}.
+
+(7) Thus a projection change probes the guard by its interface and filters only by unchanged sibling viability. Logical aliases distinguish repeated atoms in a self-join, so the construction is applied once per affected alias. 
+
+Lemma 4.2 (Delta-view support). Let one factor of a grounded guard-normal rule change by a nonzero signed delta while the remaining factors are fixed. The construction above returns exactly the head bindings whose value under Equation 5 changes; equivalently, it enumerates the support of the corresponding local delta view. 
+
+Proof. First suppose the guard changes at ¯ c. A grounded head binding uses the changed guard factor iff it is exactly ¯c. Its product changes iff every projection factor is positive; otherwise the product is zero both before and after the guard update. The guard case therefore returns precisely the changed head tuple, or none. Now suppose Pj (¯ c) changes. A grounded head binding ¯ a
+
+uses this factor iff ¯ a|¯Ij = ¯ c. By Equation 6, the tertiary index returns exactly such bindings having a positive guard factor. For any returned binding, the remaining filter requires every unchanged sibling factor to be positive. The product of the unchanged factors is therefore positive, so multiplying it by a nonzero change in Pj (¯ c) changes the value of V (¯ a); this proves soundness. Conversely, if V (¯ a) changes, it must use the changed factor, so ¯ a|¯Ij = ¯ c, and all unchanged factors must be positive; otherwise its product remains zero. The guard index and sibling filter therefore return ¯ a, proving completeness. 74.3 Epoch Processing Algorithm 1 Process one logical update epoch 1: procedure ProcessEpoch (Ut, t )2: create a working version from the latest published state 3: for all base updates ( σ, A (¯ a)) ∈ Ut in epoch order 
+
+do 
+
+4: SetExact (A(¯ a), getM (A(¯ a)) + σ, t )5: while the epoch work queue is nonempty do 
+
+6: pop a changed Gma A(¯ a) with signed delta δA
+
+7: for all projection rules P (¯ y) ← A(¯ x) do 
+
+8: θ ← CreateMap (¯ x, ¯a)9: b ← θ(¯ y)10: SetExact (P (b), getM (P (b)) + δA, t )11: for all parent rules r containing A in their body 
+
+do 
+
+12: for all θ ∈ Affected r (A(¯ a)) do 
+
+13: d ← EvaluateRule r (θ)14: SetExact (head r (θ), d, t )15: mark epoch t complete The key difference from forwarding an input edge delta is the parent-rule loop: a derived view propagates its own exact difference dnew − dold . Under bag semantics, an insertion of one base edge can change a parent count by more than one because it joins with several witnesses. 
+
+# Running example continued. Panel (b) of Figure 2 is the concrete execution of Algorithm 1 at t1. The insertion first changes Lp(tweet2 ) and the right branch by +1. Equation 7 uses the z-index of the guard to find the one root binding 
+
+z = tweet2 . Re-evaluating the root multiplies that new right-branch count by the two reply witnesses on the left, so SetExact installs V0(tweet2 ) = 2 and propagates a root delta of +2. At t2, expiration of one reply event executes the symmetric trace: 
+
+hasReply (tweet1 , tweet2 ) : 2 → 1,V1(tweet1 , tweet2 ) : 2 → 1,V p 
+
+> 1
+
+(tweet2 ) : 2 → 1,V0(tweet2 ) : 2 → 1.
+
+Thus window expiration needs no special query rule; it is an exact negative base update followed by the same propagation mechanism. 
+
+Lemma 4.3 (Update correctness). If the view invari-ant holds at pred (t), then after Algorithm 1 completes, it holds at t.
+
+Proof. Base Gmas are updated exactly according to Ut.Equation 2 is linear, so a child delta contributes the same signed delta to its grounded parental projection. For every derived rule, Lemma 4.2 proves that the parent-rule loop visits every and only grounded head binding whose product can change. Each visited binding is re-evaluated from the current working version using Equation 5, and SetExact 
+
+propagates its exact difference from the old value. Induction from leaves to the root establishes the invariant for every maintained relation. Serializable epoch execution ensures that parallel scheduling has the same final state as the logical sequence used by the proof. 
+
+Theorem 4.4 (Dynamic multiset maintenance). For fixed Q, every completed epoch t restores the counting view invariant and costs OQ(At) relation operations, where At
+
+counts the affected Gmas, projection updates, and compatible extensions touched by Algorithm 1. 
+
+Proof. Correctness is Lemma 4.3. The number of rela-tion operations is proportional, up to constants depending only on the compiled query, to the Gmas and indexed com-patible extensions enumerated by the affected work. This quantity is At by definition. The result is not a constant-update theorem. A single edge may have many compatible witnesses, and At can be large. 
+
+4.4 Enumeration over a Maintained State 
+
+Algorithm 2 reads one fixed query snapshot St. For a full query, a factorized generator implements the abstract witness-subtree cursor from Theorem 3.2. For a projected free-connex query, the current construction instead scans the explicitly materialized Ans Q(¯ x) relation, whose support contains each distinct head tuple once and whose payload contains the exact multiset count. Zero-count Gmas are skipped. 
+
+Assumption 4.5 (Indexed extension access). Every primary, secondary, and tertiary access path selected by the compiler implements its advertised lookup or compatible-extension iterator without duplicates and with OQ(1) local delay in the fully indexed core configuration. 
+
+Algorithm 2 Enumerate one published query snapshot 1: procedure Enumerate (Q)2: rv ← AcquirePublishedRootVector 
+
+3: Pin (rv )4: S ← SnapshotFromRootVector (rv )5: for all (¯ a, d ) produced by the answer iterator over S
+
+do 
+
+6: yield (¯ a, d )7: Unpin (rv )For the running example at t1, Algorithm 2 emits 
+
+ (Max , Eva , tweet1 , tweet2 , Mia ), 2
+
+once. It does not materialize two identical output rows internally. An application requiring expanded bag output can repeat the tuple twice at its interface boundary. 
+
+Lemma 4.6 (Enumeration correctness over a logical snapsho 
+
+If snapshot St represents a state satisfying the view invariant, then the full-query generator emits exactly the nonzero pairs 
+
+(¯ a, μ Qt (¯ a)) . Scanning an explicit projected answer relation has the same property for the projected head. 
+
+Proof. For a full query, every variable is distinguished. The witness-subtree cursor therefore assigns every query vari-able, and the connectedness condition makes shared-variable assignments consistent. Local access structures enumerate every compatible extension exactly once. Products of Gma counts give the valuation weight from Equation 1; because there are no existential variables to group, the generator emits the valuation once with that weight. For a projected 8query, the view invariant states directly that every nonzero 
+
+Ans Q(¯ a) payload equals μQt (¯ a), so scanning its support gives the required weighted pairs. 
+
+Lemma 4.7 (Logical constant delay). Under Assump-tion 4.5, a fixed full acyclic query has OQ(1) delay per emitted pair. An explicit projected answer relation also has OQ(1) 
+
+scan delay. 
+
+Proof. The number of witness-subtree cursors, child in-terfaces, and index probes is bounded by the fixed compiled query. Semijoin/count viability prevents traversal into dead subtrees. Therefore the work before the first output and be-tween consecutive outputs is a fixed number of local iterator steps and probes. For an explicit answer relation, the iterator advances directly between nonzero support entries. 
+
+# 5. ACCESS STRUCTURES, LFNT, AND SNAPSHOT PUBLICATION 
+
+The previous sections defined an abstract CDE state Lt
+
+and a dynamic maintenance algorithm that restores it after each epoch. This section separates two further layers. First, TrieGS compiles Lt into an access representation Ct with primary, secondary, and tertiary indexes over dictionary identifiers. Second, LFNT and the root-vector protocol provide a physical snapshot St that realizes Ct for concurrent readers. 
+
+5.1 Access-Structure Accounting 
+
+For a fixed query and fixed access pattern, an access rep-resentation stores the relations and indexes needed by the local CDE fetch operations. We distinguish: 
+
+Primary indexes lookup the exact payload of a view or projection tuple; 
+
+Secondary indexes enumerate compatible extensions dur-ing top-down snapshot enumeration; 
+
+Tertiary indexes enumerate parent bindings affected by a changed guard or projection during bottom-up maintenance. The core TrieGS theorem chooses the fully indexed constant-delay point of this design space. This is not the only possible point: compressed representations of conjunctive-query re-sults can trade space for larger access delay [6]. We keep such compressed variants outside the theorem and account for the fully indexed state explicitly. Let Mt be the support size of the maintained logical views and projections, It the support and overhead of the access indexes, and Rt the old physical versions retained by active readers. The snapshot-state space is reported as 
+
+St = OQ(Mt + It + Rt),
+
+where the constant hides fixed query arities and index mul-tiplicity. This is a state-accounting identity rather than a claim that Mt or It is linear in the input for all workloads. 
+
+Proposition 5.1 (Access-structure contract). Let 
+
+Ct be a lossless access representation of the logical state Lt
+
+for a fixed query Q. If every local primary, secondary, and tertiary access selected by the compiled plan has delay at most δQ, then enumeration over Ct emits the same weighted answer pairs as Lt with delay OQ(δQ). In the fully indexed core configuration, δQ = OQ(1) .
+
+Proof. Losslessness ensures that every abstract local re-lation and payload needed by Theorem 3.2 and Lemma 4.6 is represented in Ct. The abstract enumerator performs only a fixed number of local accesses between outputs. Replacing each abstract access by an operation of delay δQ gives delay 
+
+OQ(δQ) and preserves the emitted payloads. 
+
+5.2 Dictionary-Coded LFNT Keys 
+
+By Lemma 2.2, RDF terms and labels may be replaced by sta-ble dictionary identifiers without changing query semantics. Therefore the hot physical representation is integer-centric. For a relation R(a1, . . . , a k ) and fixed attribute order π, its wordified key is 
+
+Wrd R,π (R(a1, . . . , a k )) = ( id (R), ι (aπ(1) ), . . . , ι (aπ(k))) .
+
+The map is injective, so a Gma operation is a dictionary operation on the underlying trie. Different access orders are represented by a fixed set of primary, secondary, and tertiary LFNT indexes chosen at query compilation. Ahigh-performance implementation should store these keys as primitive fixed-arity integer tuples, not as boxed RDF terms or comparator-heavy object arrays. 
+
+# Running example continued. For the view assertion V1(tweet1 , tweet2 ) = 2, the natural attribute order produces 
+
+Wrd (V1(tweet1 , tweet2 )) = ( id (V1), ι (tweet1 ), ι (tweet2 )) .
+
+A secondary index may use the order ( id (V1), ι (tweet2 ), ι (tweet1 )) so that enumeration starting from the root binding z =
+
+tweet2 can find compatible v values directly. Figure 3 sepa-rates this logical wordification from the copy-on-write ver-sioning mechanism: only the changed path is replaced, while unaffected subtries and the older payload remain reachable from a pinned snapshot. 
+
+5.3 Relation-Level Guarantees from C-trie 
+
+TrieGS uses the C-trie/cache-trie results only at the level of one maintained relation or access index. The C-trie proof supplies linearizable and lock-free exact-key dictionary oper-ations and non-blocking snapshots; the cache-trie analysis supplies expected or amortized constant-time basic dictio-nary operations under its hashing assumptions [26, 24]. The removing and compaction result supplies the relation-level mechanism for deleting zero-payload keys without leaving unbounded dead structure [25]. These results do not have di-rect connections to free-connex enumeration, affected-binding completeness, secondary/tertiary extension delay, or query-level snapshot consistency. 
+
+Lemma 5.2 (Relation-level LFNT refinement). Assume each LFNT index satisfies the underlying C-trie/cache-trie contracts and wordification is injective. Then exact-key lookup, insertion, deletion, and payload replacement on one abstract index refine linearizable LFNT dictionary opera-tions with cost Tdict . Under the cache-trie assumptions, 
+
+Tdict = OQ(1) . A relation snapshot exposes one immutable logical version of that index. 
+
+Proof. Lemma 2.2 and wordification preserve the equal-ity classes of RDF terms and view tuples. Therefore each abstract Gma maps to one physical integer key. The underly-ing C-trie/cache-trie theorems apply to exact operations on that key. Snapshot immutability is relation-local: it freezes one index root, not an entire query state. 9(a) Logical Gma and access orders 
+
+V1(tweet1 , tweet2 ) = 2 update order: [ V1 | tweet1 | tweet2 ] → 2enumeration order: [ V1 | tweet2 | tweet1 ] → 2
+
+(b) Copy-on-write path replacement 
+
+rt1 
+
+> V1
+
+rt2
+
+> V1
+
+old path node replacement path node shared unaffected subtree old payload count 2 new payload count 1 Only nodes on the changed path are replaced; unaffected subtries remain shared. The t1 path and payload stay immutable until all readers unpin t1.
+
+Figure 3: Logical-to-physical LFNT mapping for the running example. A fixed query requires only a fixed number of word components, but this does not imply a one-memory-access or one-CAS lookup. In the copy-on-write realization, nodes on the changed path are replaced while unaffected subtries remain shared; the old path and multiplicity payload remain visible to pinned snapshots. The duplicate-free delay guarantee for compatible-extension scans is a separate TrieGS access-path obligation stated in Assumption 4.5. In the notation of Section 2, cache-trie results justify Tdict = OQ(1) for exact-key operations, while TrieGS’s compiled secondary and tertiary indexes must also provide Tfetch = OQ(1) in the fully indexed configuration. Hence update work costs 
+
+OQ
+
+ At · (Tdict + Tfetch ),
+
+and enumeration delay is OQ(Tfetch ); the main theorem in-stantiates both local costs as OQ(1). 
+
+5.4 Memory-Hierarchy Trade-off 
+
+The word “cache” in Cache-Trie denotes an auxiliary pointer array that shortcuts logical trie traversal; its expected oper-ation bound is not a claim that every access hits a hardware cache. A pointer-based versioned LFNT can incur dependent pointer dereferences, capacity and TLB misses, and a larger working set when old versions remain pinned. The logical 
+
+OQ(1) bounds in this paper count dictionary and iterator steps, not cache misses, stalled cycles, coherence traffic, or remote NUMA accesses. Dictionary encoding reduces object overhead but does not by itself guarantee hardware locality. Arrival-order identi-fiers may be poorly correlated with join access patterns. The implementation therefore separates generic integer keys from layout-aware optimizations such as arity-specialized primi-tive keys, packed child arrays, packed leaf blocks, local dense remapping, and NUMA-prefix ownership. Each optimization must improve the measured latency–memory–freshness fron-tier against integer-key MVCC and persistent-map baselines. LFNT makes a different systems trade-off. Published nodes and payloads are immutable, so a reader does not contend on or invalidate cache lines that update workers are modifying for a later epoch. This can reduce reader–writer lock handoffs, ownership transfers, and coherence stalls even when the persistent layout causes more capacity misses than a flat mutable map. Query factorization, minimal index selection, prefix sharing, and packed leaf blocks may reduce or amortize the maintained working set, but no theorem guarantees that LFNT has better physical locality. Purely functional graph structures similarly require compressed layouts to make lightweight snapshots practical, while parallel trie joins remain sensitive to skew and index contention [7, 37]. We therefore treat locality as a falsifiable architectural hypothesis. The implementation requirements are stated in Section 6, and Section 7 compares capacity, coherence, TLB, allocation, and NUMA costs against MVCC, persistent-map, and lock-based alternatives. LFNT is not retained as the principal mechanism if those costs fail to buy a better latency–memory–freshness frontier. 
+
+5.5 Versioned Payloads 
+
+A snapshot must freeze multiplicities as well as trie topology. Therefore an update never overwrites a payload reachable from a published root. It either copies the changed payload-/path or installs an epoch-versioned payload selected by the snapshot time. 
+
+Lemma 5.3 (Payload snapshot safety). An enumer-ator reading a published relation root observes the multiplicity values of that relation version even if later epochs update the same logical Gmas. 
+
+Proof. With copy-on-write, later values are reachable only from later roots. With a version chain, the pinned snapshot time selects the earlier visible value. In both cases, later writes cannot change the payload observed through an already published root. 
+
+5.6 Atomic Root-Vector Publication 
+
+Let RQ = {R1, . . . , R m} be the relations and indexes in the compiled plan. A completed physical snapshot is represented by 
+
+RootVec t = ⟨t, r tR1 , . . . , r tRm ⟩.
+
+An atomic pointer PublishedRootVec refers to the latest com-pleted vector. Update workers construct a working version 10 for epoch t; the publisher installs RootVec t with release se-mantics only after Algorithm 1 finishes. Constructing the vector may touch |R Q| roots, but this is OQ(1) because the query is fixed; the visibility point is one atomic pointer update. An enumerator performs one acquire load of the pointer and uses only roots from the loaded vector. Figure 4 makes the distinction between relation-level and query-level snapshots concrete. Enumerator E1 acquires 
+
+RootVec t1 and observes the answer count two. Update work-ers may then construct and publish RootVec t2 , whose reply and answer counts are one, without changing any node reach-able from the older pinned vector. The enumerator never assembles a snapshot by reading several current roots inde-pendently. 
+
+Lemma 5.4 (No fractured snapshots). An enumer-ation job that loads RootVec t observes every maintained rela-tion and index from the same completed physical snapshot St,which represents the same access state Ct and logical view state Lt.
+
+Proof. Each component root denotes a relation-level ver-sion. The vector is assembled only after all work for t has completed and is published by one atomic pointer update. The enumerator reads that pointer once. Lemma 5.3 pre-vents later epochs from changing reachable payloads. Hence all reads belong to St, and by construction St realizes Ct for the completed logical state Lt.
+
+# Linearization points. Atomic publication of RootVec t is the visibility point of update epoch t. The enumerator’s atomic load of PublishedRootVec is its snapshot linearization point. If an update is not yet published, the job legitimately enumerates an older state rather than waiting for the update. 
+
+5.7 Progress and Reclamation 
+
+Individual LFNT updates inherit lock-free progress from the selected concurrent trie. The complete maintenance pipeline may include queues and an ordered epoch publication barrier, so we do not claim that an entire epoch is wait-free. Enumeration is non-blocking with respect to maintenance: after loading a vector, it traverses immutable versions without locking update paths. Relation-level compaction can remove zero-payload keys, but query-level reclamation is stricter. Old roots and pay-loads are reclaimed only after no active enumerator can reach them. Epoch-based reclamation, hazard pointers, or refer-ence counting are all compatible with the proof. Slow readers can therefore create reclamation debt; this is an explicit cost, not hidden by the asymptotic delay theorem. 
+
+5.8 Main Result 
+
+Theorem 5.5 (Snapshot-consistent TrieGS guarantee). 
+
+Let Q be a fixed full acyclic conjunctive graph query evaluated under multiset semantics over a totally ordered update stream. Under serializable epoch execution, the relation-level LFNT and indexed-traversal contracts, snapshot-preserving payloads, atomic root-vector publication, and safe reclamation, every enumeration job e observes a snapshot for some published time τ (e) and emits every nonzero pair  ¯a, μ Qτ (e)(¯ a) exactly once with OQ(1) delay. Later update epochs may proceed concurrently without modifying the pinned snapshot. 
+
+Proof. Theorem 3.2 gives the abstract constant-delay support enumerator for the fixed decomposition. Theorem 4.4 restores the counting view invariant at every completed epoch. Proposition 5.1 and Assumption 4.5 realize the required local accesses with OQ(1) delay in the fully indexed configuration. Lemma 5.2 instantiates each exact-key relation operation with the imported C-trie/cache-trie guarantees. Lemma 5.4 shows that an enumerator observes one completed physical snapshot of this access state. Lemma 4.6 gives weighted-answer correctness, and Lemma 4.7 gives the delay bound. Enumeration does not acquire locks on mutable update paths, so later maintenance can continue; safe reclamation retains old versions until the job unpins them. 
+
+Corollary 5.6 (Projected free-connex queries). 
+
+Let Q be a fixed projected free-connex acyclic query for which 
+
+TrieGS materializes the count-aware relation Ans Q. Every enumeration job has the same snapshot-consistency guarantee and scans the nonzero answer pairs with OQ(1) delay. The update and space bounds additionally include the changed and stored tuples of Ans Q.
+
+Proof. The update proof treats Ans Q as the final count-aware projection. The view invariant therefore gives each projected tuple its exact multiset count. Root-vector publica-tion snapshots the answer relation with the remaining plan, and its support index advances directly between nonzero tuples. 
+
+Corollary 5.7 (Sliding-window queries). For either construction above over active window state GWt , the corre-sponding conclusion holds after replacing Gt by GWt .
+
+Proof. The window manager reduces arrivals and expi-rations to multiset insertions and deletions. No other proof obligation changes. 
+
+# Arithmetic model. The operation bounds assume counts fit in a machine word. Arbitrary-precision multiplicities add a cost depending on their bit length. Silent integer overflow violates the semantic theorem. 
+
+# 6. IMPLEMENTATION AND PRACTI-CAL EXTENSIONS 
+
+6.1 Execution Architecture 
+
+The runtime has four roles. Update workers process af-fected Gmas in a work queue; a publisher installs completed root vectors in logical-time order; enumeration workers pin published vectors; and a reclaimer frees versions no longer reachable by any reader. Work stealing may balance inde-pendent update branches, following the general principle of fine-grained multicore scheduling used in parallel query engines [15]. Scheduling is an implementation choice rather than part of the CDE theorem. For self-joins or replicated access orders, each base update carries one epoch identifier to all logical aliases. In the running example, a hasCreator update is routed to both 
+
+hasCreator v and hasCreator z . Publication waits until every alias, projection, secondary index, and dependent view has processed that epoch. Later epochs may be prepared in a pipeline, but cannot be published before their dependencies. 
+
+# Claim boundaries. The implementation separates four lev-els of claims. 1. Epoch-versioned root publication is the theorem mecha-nism. Update workers construct later versions without 11 PublishedRootVec 
+
+## one atomic pointer 
+
+## RootVec t1
+
+## published, pinned 
+
+## RootVec t2
+
+## published later load by E1 atomic publish 
+
+## V1@t1
+
+## count 2 
+
+## V2@t1
+
+## count 1 
+
+## Ans @t1
+
+## count 2 
+
+## V1@t2
+
+## count 1 
+
+## V2@t2
+
+## count 1 
+
+## Ans @t2
+
+## count 1 Enumerator E1 traverses only t1 roots and emits the weighted answer with count 2 Update workers build and publish t2
+
+## without modifying nodes visible from t1
+
+## The enumerator never assembles a snapshot by independently reading live relation roots; the vector is the query-level consistency boundary. 
+
+Figure 4: Query-level snapshot publication for the running example. A root vector groups all relation and index roots for one completed logical time. Enumerator E1 remains on t1 while update workers publish t2; this prevents a mixture such as V1@t2,
+
+V2@t1, and Ans @t2.modifying nodes reachable from a published state. Once epoch t completes, the publisher installs one immutable root vector with a single atomic release store; no hardware transaction is required. 2. Dictionary-coded access indexes are a semantic-preserving physical refinement. RDF terms and relation symbols are mapped to stable integer identifiers, so hot paths use primitive fixed-arity keys. The theorem assumes only injectivity; locality-aware identifier assignment is an eval-uated optimization. 3. Packed LFNT indexes are a physical design. A fixed query gives query-bounded logical key depth, while the selected cache-trie implementation supplies its expected or amortized exact-key operation bounds. This does not imply one-memory-access or one-CAS traversal, and cache or NUMA locality is evaluated rather than assumed. 4. Shared-prefix maintenance is an optional extension. Ex-actly equivalent canonical subplans may share one main-tained view, eliminating duplicate logical maintenance. Any reduction in cache misses, branch mispredictions, coherence traffic, or remote-memory accesses is an empiri-cal hypothesis tested against unshared and non-coalesced alternatives. 
+
+6.2 Morselized Epoch Scheduling 
+
+TrieGS adapts the scheduling principle of morsel-driven par-allelism [15] to dynamic maintenance. A morsel-driven ana-lytical engine schedules small fragments of a one-shot query pipeline; TrieGS instead schedules affected maintenance frag-ments inside one update epoch. The semantic boundary is not a pipeline breaker, but root-vector publication. 
+
+# Maintenance morsels. For epoch t, the runtime decom-poses propagation into small tasks tagged with an epoch, a relation or rule, and a high-level LFNT prefix. We use four morsel types. 1. Base morsels apply a batch of base Gma updates for one relation and prefix. 2. Projection morsels update count-aware parental projec-tions for changed child Gmas. 3. Rule morsels evaluate affected bindings for one guard-normal rule and one guard or interface prefix. 4. Answer morsels update an explicit Ans Q relation or expose a factorized full-query answer generator. In the running example, the insertion of likedBy (tweet2 , Mia )creates a base morsel for the likedBy prefix, a projection morsel for Lp(tweet2 ), a rule morsel for V2(tweet2 , Eva ), a projection morsel for V p 
+
+> 2
+
+(tweet2 ), and finally a rule morsel for V0(tweet2 ). 
+
+# Scheduler invariants. The scheduler may reorder and par-allelize morsels inside an epoch only when the following invariants hold. 
+
+Epoch isolation. Every morsel writes only to the working version for its logical time t.
+
+Dependency closure. A morsel that changes a Gma en-queues every dependent projection and rule morsel required by the compiled view-dependency graph. 
+
+Exact final value. Conflicting writes to the same derived Gma are serialized or combined so that the value installed before publication equals the deterministic ProcessEpoch 
+
+result. 
+
+Publication barrier. RootVec t is published only after the outstanding-morsel count for epoch t reaches zero and all writes to the working version are visible. 
+
+Snapshot immutability. No morsel modifies a node or payload reachable from any previously published root vector. 12 Lemma 6.1 (Morselized epoch refinement). If the morsel scheduler satisfies the invariants above, then a morselized execution of epoch t publishes the same logical state Lt as Algorithm 1. 
+
+Proof. Every input update is represented by a base morsel. By dependency closure, every changed Gma sched-ules the projection and rule work that Algorithm 1 would enqueue. By exact-final-value serialization or combination, each derived Gma installed before publication is the deter-ministic value computed by SetExact . Since publication waits until all morsels complete, no dependent change is omit-ted from RootVec t. Snapshot immutability confines all writes to the working version. Thus the published state refines the serializable epoch semantics used in Lemma 4.3. 
+
+# NUMA-aware prefix ownership. On the Intel NUMA platform, high-level integer LFNT prefixes may be assigned owner sockets and allocated by first touch. Workers first consume morsels for local prefixes; remote stealing is allowed only when local queues fall below a threshold or when im-balance would otherwise delay the publication barrier. This policy is evaluated against serial, global-FIFO, ordinary work-stealing, prefix-coalesced, and adaptive schedulers; it is not a correctness requirement. 
+
+6.3 CQELS SWAG Integration 
+
+CQELS already contains SWAG-style sliding-window aggre-gation operators for aggregate summaries over FIFO win-dows [33, 34]. TrieGS connects to this layer in two distinct ways. 
+
+# Base-window delta source. For the core query semantics, the window is over base graph events. CQELS windowing determines which events enter and leave the active window, and TrieGS receives those changes as ordinary insertion and expiration epochs. The core sliding-window corollary therefore remains a statement about Q(GWt ), not a statement about aggregate summaries. 
+
+# Answer-delta aggregate consumer. For aggregate contin-uous queries, TrieGS can emit exact signed answer deltas (¯ a, δμ Qt (¯ a)) from the maintained answer representation. A SWAG ag-gregate adapter maps each answer delta to a group key and aggregate contribution over integer dictionary IDs. If the aggregate result must be enumerated with the same snapshot as the answers, its aggregate roots are included in RootVec t;otherwise SWAG is a downstream consumer with its own lag and consistency contract. 
+
+Proposition 6.2 (SWAG aggregate extension). Let 
+
+γ be an aggregate whose state can be updated from weighted answer deltas. If TrieGS emits the exact signed delta of 
+
+Ans Q for every published epoch and the SWAG aggregate state applies all deltas through epoch t, then the aggregate state equals applying γ to the declared answer multiset or answer-event window at t.
+
+Proof. The TrieGS answer-delta stream is exact by the view invariant and SetExact : every answer payload change is represented by its signed difference. Applying a delta-compatible aggregate update to every signed answer contri-bution therefore produces the same aggregate as recomputing the aggregate from the target answer multiset. The times-tamp or root-vector inclusion decides which snapshot the aggregate corresponds to. For COUNT and SUM , signed deltas update the aggregate directly; AVG maintains weighted sum and count. For MIN 
+
+and MAX , deleting the current extremum requires additional support structures unless the declared semantics is a FIFO answer-event window. This is an aggregate-extension obliga-tion, not part of Theorem 5.5. 
+
+6.4 Dictionary-Coded Physical Design 
+
+The logical LFNT does not require one Java object per trie word. The backend should use dictionary IDs from Section 2.3 and avoid the object-key layout used by the correctness prototype. Relation IDs, view IDs, predicate IDs, variable values, and SWAG group keys are represented as primitive integers. Binary base edges and low-arity views should use arity-specialized primitive keys; larger views use packed primitive arrays or leaf blocks. Packed LFNT nodes store child labels and child references in compact arrays or bitmap/dense-node formats instead of comparator-driven object maps. Several nearby leaf Gmas may share one contiguous block containing integer suffixes and long multiplicity payloads. Packing amortizes a fetched cache line across several keys and reduces object-header, comparator, TLB, and garbage-collection overhead. The root vector is likewise represented as an indexed root array on the hot path rather than a hash map lookup per relation. All indexes required by propagation and enumeration are selected at compile time and constructed before publica-tion. An enumerator never lazily builds an index, installs a shortcut, updates access statistics, or otherwise writes into a published node. Mutable task counters, pin counts, metrics, and reclamation metadata are kept outside immutable query nodes to avoid false sharing with reader data. 
+
+6.5 Space Optimizations 
+
+# Parental-projection packing. A projection Gma can point to the factorized child extension set that justifies its witness count rather than duplicating all child keys. The count remains an independent logical payload so deletions are correct. 
+
+# Guard-child packing. When a view and its selected guard have the same key variables, their trie paths can share pre-fixes. This reduces key and node duplication but does not merge their logical multiplicities. 
+
+# Index packing. Several attribute orders may share common trie prefixes. The optimizer selects a minimal set of physical indexes that covers update propagation and enumeration requirements. Every packed layout must preserve the same logical scanIndex interface assumed by the proof. 
+
+# Fractional products. For a grounded product view with many body factors, the implementation may retain the prod-uct of nonzero factors and a zero-factor count. This permits a factor update without re-reading all siblings. The opti-mization is valid only when division is exact or when the old factor is retained; transitions through zero must update the zero count explicitly. 13 6.6 Multi-Query Sharing 
+
+Queries are first compiled independently into canonical log-ical subplans. Exactly equivalent subplans may share one maintained view and its indexes, with reference counts con-trolling reclamation. This exact-sharing layer is the formal baseline. Frequent-pattern mining, such as GSpan-style dis-covery of approximately reusable subpatterns [38], is optional and must account for different projections, filters, access orders, and output requirements. Classical multi-query opti-mization motivates the sharing objective [29, 28, 19]. 
+
+6.7 Features Outside the Core Theorem 
+
+# Filters and constants. Label, type, equality, and indexed value predicates remain within the theorem when each check has OQ(1) cost. More general predicates add their evaluation cost to the delay. 
+
+# Aggregation. COUNT sums multiplicities; SUM weights values by multiplicity; AVG retains weighted sum and count; MIN 
+
+and MAX require support structures for deletions; and COUNT DISTINCT counts values with positive support. These opera-tors use the snapshot protocol but require aggregate-specific maintenance proofs. SWAG integration supplies the CQELS-native implementation path for aggregate summaries, but it does not replace the full weighted answer iterator. 
+
+# Cyclic queries. A bounded-width cyclic subquery may be encapsulated as a materialized bag whose interface joins an acyclic skeleton. Specialized triangle maintenance, factorized IVM, or a WCOJ evaluator can implement the bag [13, 20, 36]. The total cost is the bag maintenance cost plus the TrieGS skeleton cost; Theorem 5.5 does not imply a constant-delay or update bound for an arbitrary bag. 
+
+# SPARQL and paths. The positive basic-graph-pattern frag-ment maps naturally to conjunctive-query bag semantics. 
+
+OPTIONAL , MINUS , correlated NOT EXISTS , ordering, arbitrary property paths, and entailment regimes require distinct se-mantics. Streaming regular path queries are therefore an extension rather than a consequence of the core theorem [22, 23]. 
+
+6.8 Durability Boundary 
+
+A linearizable in-memory root vector is not a durable check-point. Exactly-once recovery must atomically bind a pub-lished vector to the committed input offset or watermark and to the sliding-window expiration queue. The current theo-rem covers in-memory concurrency; Section 7 includes failure injection to determine the engineering cost of extending the protocol to crash-consistent operation. 
+
+# 7. EVALUATION 
+
+This section reports a first-round evaluation of the current TrieGS/CQELS artifact. The current data support four main observations. First, the implementation now passes meaningful semantic gates, including randomized update streams, publication snapshots, and configured TrieGS/Flink parity. Second, the workload is no longer a static or binary-join smoke test: it includes 11 SNB-shaped sliding-window query templates and post/comment temporal joins. Third, the current relation-backend matrix is negative for LFNT performance: simpler sequential and MVCC-object backends dominate the configured prototype series. Fourth, CPU placement is a first-order scaling variable on the NUMA host: Table 1: UMA scaling summary over 11 SNB-shaped queries.               
+
+> Workers Geomean ops/s Speedup 11,932.32 1.00x 23,163.32 1.64x 45,240.92 2.71x 86,333.32 3.28x 16 6,199.97 3.21x 24 6,218.92 3.22x
+
+CPU-node affinity improves every SNB-shaped query, even though memory binding was not available. 
+
+7.1 Experiment Steup 
+
+We setup two multicore environments: Uniform Memory Access (UMA) and Non-uniform memory access (NUMA) The CQELS/Flink runs were executed on a UMA host ( Apple M2 Ultra with 24 physical/logical cores, macOS 15.3.2 ARM64, 196GB RAM and OpenJDK 24). The SNB-backed profiles use the SF0.1 Turtle dataset. The NUMA-node analysis uses a configuration of a server with 4 NUMA Intel CPUs with 112 cores, 2TB RAM. 
+
+7.2 Correctness Tests 
+
+TrieGS maintains weighted answers through base relations, projections, derived views, and published root vectors. Athroughput result is meaningless if any one of those layers loses multiplicity information or exposes a fractured state. The first evaluation question is therefore semantic: does the implementation agree with an oracle and with an independent streaming execution path on the configured workloads? The randomized semantic gate uses 100 fixed seeds and 10,000 epochs per seed. The SNB publication gate accepts 3,056 SNB Turtle edges, publishes 13 epochs and 13 snap-shots, and reports zero impossible snapshots. These numbers exercise the two central proof obligations: update epochs must restore the view invariant, and readers must observe one published state rather than a mixture of relation roots. On the normalized workload, the Flink DataStream base-line produces the same 1,528 final answers, the same total multiplicity, and identical answer checksums. 
+
+7.3 UMA Scaling: Parallelism Exists, But Saturates Early 
+
+The UMA scaling profile runs the 11 SNB-shaped query templates at eventCount=760 , with worker counts 1, 2, 4, 8, 16, and 24. Geometric mean throughput improves through 8 workers, then plateaus at the 16 performance-core and 24 all-core points. The best current geometric-mean speedup is 3.28x at 8 workers. 
+
+# Insight. It shows that the current worker model can ex-tract useful parallelism, but that the parallel granularity or backend path saturates before the 16-core target. This points to likely bottlenecks: publication barriers, shared queues, limited per-epoch affected work, allocation pressure, or relation-backend overhead. The UMA result is therefore a guide for the NUMA affinity and profiling experiments, not a completed multicore claim. 
+
+# Engine-path morsel scaling. The UMA numbers above measure the SNB harness, which parallelizes a fixed set of sliding windows with a parallelStream ; their plateau is a task-count ceiling of the harness rather than a property of 14 the engine’s intra-epoch morsel parallelism. To measure the engine path directly we added a steady-state benchmark that drives the incremental maintenance operator over one advancing window—a FIFO residency of node-disjoint edge blocks, replayed periodically so per-slide work is stationary and bounded—applying each slide through the maintenance morsel pool so the parallel width is the morsel count, far above the core count. The first measurement on this path showed no multicore speedup: per-epoch cost was dominated by sequential O(state) snapshot bookkeeping (copying the base graph state and rebuilding every counting view each epoch), and the workload was allocation-bound—profiling attributed the bulk of a slide’s allocation to a per-comparison 
+
+TreeSet inside the answer-binding comparator and to a 
+
+Binding object materialized for every enumerated tuple. We then rebuilt the per-epoch maintenance to be O(∆) end to end and to represent all hot-path state columnarly. The rewrite proceeded as a sequence of individually measured, oracle-gated steps: dictionary-encoded, dense-integer colum-nar counting views and candidate indices, so an enumerated tuple is a tuple of int s and a Binding is materialized only at the API boundary; an allocation-free binding comparator; a slot-indexed integer valuation in the enumeration inner loop; a sharded delta accumulator whose per-worker partials are combined shard-parallel, eliminating the single-threaded final reduction of the tree-structured combiner; derivation of each epoch’s changed edges by one batch scan rather than per-edge index probes; a mutable occurrence-count ledger that replaces the per-epoch persistent base-state copy (the copy existed only to carry a base-count snapshot that no hot-path consumer reads); and overlapping the signed answer-delta decode with the parallel view merges. Each step is gated by a differential oracle against brute-force enumeration over both multigraph and set semantics and by a parallel-equals-sequential parity test. Together these raise single-thread throughput several-fold over the already order-of-magnitude-improved O(∆) baseline and lift the intra-epoch multicore speedup on the steady-state engine benchmark from the roughly 1 .3× of the view-parallel-only version to about 1 .9× at eight workers (measured on a 24-core host; the speedup is stable across join fan-out). Two effects compound: the columnar rewrite removes the per-tuple allocation and per-comparison string work that had left the parallel section garbage-collector bound, and the ledger both eliminates the largest remaining sequential phase and, by cutting roughly 140k node allocations per slide, relieves shared-allocator pressure on the parallel sections—so cheapening a sequential phase also improves parallel scaling. The ≈ 1.9× figure is where the thin-query story ends, not where the scaling story ends. Section 7.4 decomposes where the remaining time goes, shows that the intra-epoch ceiling is a property of the plan’s compute density rather than of the engine, and reports the negative results and ceiling probes that pin the residual bound to structural parallel width. Section 7.5 then shows that the pre-registered ≥ 8× target is met at inter-query granularity, against a work-matched Flink baseline. The root-vector publication protocol remains the reusable systems contribution. 
+
+7.4 Scaling Anatomy of the Maintenance Operator 
+
+The engine-path benchmark (Section 7.3) left the thin 3-atom path at ≈ 1.9× on eight workers. Two questions remain: is that ceiling a property of the operator or of the Table 2: Intra-query morsel scaling by plan shape (steady state, one query, speedup vs. one worker; t=1 in slides/s).                        
+
+> Shape t=1 t=8 t=16 t=24
+> Spider4x2 (branching 3) 22.5 4.76x 7.53x 5.97x
+> Star5 (branching 6) 29.7 5.02x 7.82x 7.60x
+> Path5-prefix (neg. control) 104.3 1.28x 1.29x 1.25x Thin 3-atom path (Sec. 7.3) —≈1.9x ——
+
+workload, and was the serial fraction actually engineered out before blaming memory bandwidth? This subsection answers both with a plan-shape sweep and a phase-level Amdahl decomposition [2]. 
+
+# Speedup tracks compute per resident byte. Table 2 sweeps morsel parallelism (one query, one shared state, a worker pool) across plan shapes of increasing enumeration density. The compute-dense shapes — a 4-armed spider with branch-ing 3 and a 5-way star with branching 6 — reach 7 .5–7 .8×
+
+at 16 workers, the performance-core budget of the host. The negative control, a 5-atom path with prefix projection whose per-seed enumeration is shallow, stays at 1 .3× at every worker count; the thin 3-atom path of the steady-state benchmark measures ≈ 1.9×. The mechanism: per-seed enumeration work grows multiplicatively with join branching, while resi-dent state — and with it the serial per-epoch cost of sealing indexes and merging views — grows only linearly. Dense plans therefore decouple parallel compute from serial book-keeping; thin paths never do, because each morsel touches barely more bytes than the seal itself must. Intra-query speedup is a function of compute per resident byte, not a global constant of the engine — and the spread from 1 .3×
+
+to 7 .8× across shapes confirms the mechanism rather than a cherry-picked workload. Flink has no counterpart for Table 2: a single continuous query of this kind is one key in a keyed stream (or a non-keyed window), so its job shape is structurally parallelism-1 per query regardless of the cluster’s parallelism setting. Intra-query morsel parallelism is an architectural differentiator, not a tuning difference. 
+
+# The serial fraction was engineered down step by step. 
+
+The 1 .9× thin-path figure is the end of a measured lad-der, not a first attempt. Starting from the O(∆) indexed operator, five individually oracle-gated steps moved the eight-worker/one-worker ratio: columnar views and indices, 1 .26 ×;a sharded delta combiner replacing the single-threaded tree reduction, 1 .40 ×; single-scan derivation of each epoch’s changed candidates, 1 .53 ×; a mutable occurrence-count ledger replacing the per-epoch persistent base-state copy, 1.77 ×; and overlapping the answer decode with the parallel view merges, 1 .88 ×. Absolute throughput moved more than the ratio: at eight workers the thin fan-out-8 configuration went from 26.6 to 183 slides/s (+588%), and even single-threaded from 18 to 98 slides/s (+444%); per-slide allocation fell from 41–45 MB to 23–27 MB ( −44%). 
+
+# Phase decomposition at the end of the ladder. At eight workers the fan-out-8 slide takes 5.46 ms wall: validation (0.33 ms) and index advancement (1.11 ms) are serial but now jointly a quarter of the slide; delta computation (1.55 ms) speeds up 2 .1× on eight workers and the view merge plus de-code (2.25 ms) 2 .37 ×. These four numbers reproduce the ob-served end-to-end ratio (1 .44 + 1 .55 ·2.1 + 2 .25 ·2.37 ≈ 10 .0 ms 15 at one worker, 10 .0/5.46 = 1 .84 ×), an internal-consistency check on the decomposition. The ceiling is therefore no longer Amdahl’s law over an unexamined serial tail: the serial phases are small, and the bound is the ≈ 2×-on-eight-workers scaling of the two parallel phases, whose per-morsel work on a thin plan is essentially a memory traversal. 
+
+# Negative results: the ceiling was pushed, not assumed. 
+
+Four further parallelization attempts were built, oracle-gated, and measured net-negative at the per-epoch delta sizes of this workload: hash-partitioning the largest counting view; range-partitioning the columnar index seal (built byte-identical to the serial seal and gated before measurement); batching the base-state application; and contiguous-block morsel striping, which improves cache locality but regresses throughput be-cause it sacrifices the load balance of round-robin assignment across atom-positioned morsels. In each case fork and coordi-nation overhead exceeded the gain. We report these alongside the positive ladder deliberately: the memory-bandwidth at-tribution for the residual ceiling is credible precisely because the alternative explanations — residual serial work, poor layout, unlucky partitioning — were each implemented and refuted rather than argued away. 
+
+# A structural-width ceiling, and how we know. The nega-tive results above left memory bandwidth as the most credible residual explanation. Three further probes replace it with a sharper one: the binding constraint is structural paral-lel width , not bandwidth. First, two allocation-reduction slices — reusing per-slide scratch buffers and parallelizing index advancement — cut per-slide allocation from 20.1 to 14.1 MB ( −30%) on a refreshed fan-out-8 baseline and lift single-thread throughput by +9 .9%, yet move no speedup ratio in the useful direction: both thread counts gain, and the eight-worker/one-worker ratio in fact slips from 1 .86 ×
+
+to 1 .72 × because the single-thread side gains more. The methodological corollary is blunt: absolute-cost cuts, how-ever large, cannot chase a strong-scaling target — a broadly uniform improvement leaves the ratio where it was. Second, we attacked the remaining serial structure on the enumeration’s output side directly: a flat per-worker append-log for enumerated deltas with a views ×shards par-allel aggregation. The implementation was completed and oracle-gated correct — and measured net-negative , −5% at eight workers, because each aggregation shard must rescan every worker’s log for its keys and that per-shard rescan redundancy exceeds what lock-free insertion saves. It was reverted. As with the earlier negative results, at microsecond task grain the coordination is the workload. Third, and decisively, a compute-density invariance probe: raising join fan-out from 8 (64 completions per edge) to 16 (256 per edge) quadruples enumeration density per delta, yet both configurations plateau at ≈ 1.64 × by four workers and stay flat through 16 — identical curves at 4 × different density. A delta-size or bandwidth explanation predicts the curves separate; they do not. Nor is DRAM the binding resource: the streaming seal-merge phase of the same opera-tor scales 3 .5×. What remains is structural: a fine-grained slide decomposes into a small fixed number of independently updatable structures — three counting views, three rela-tions, one output view — and no scheduler can extract more parallelism than that width supplies. The honest conclu-sion is that no tractable change lifts fine-grained per-slide maintenance past ≈ 1.64 × on this path. The one identified lever is partitioning the output view itself, so aggregation width scales with data rather than with plan structure; that requires a chunked copy-on-write columnar redesign whose merge-only cousin already measured net-negative above, and we leave it as future work (Section 7.12). 
+
+# A second operator hits the same ceiling. The width ceil-ing is not specific to counting-view maintenance. The SWAG Tier-2 batch-recompute operator — a different intra-query parallelization, splitting one aggregate recomputation across a ForkJoinPool , oracle-checked against a closed form and an independent F-IVM baseline — plateaus at ≈ 3.4× (small state) to ≈ 2.5× (large state) on the UMA and barely beats a no-split sequential baseline at n=10 6 (1 .27 ×). On the 4-socket Intel host it reaches ≈ 4.4× within one memory-local socket but is slower across sockets than on 14 local cores (0 .7 vs. 0 .9 at n=10 6): the single shared pooled computation pays remote-memory cost past one NUMA node. A second, independently-oracle-checked operator therefore reaches the same low intra-query ceiling, and adds a locality corollary — intra-operator parallelism is bounded not just by structural width but by the single memory domain it can profitably use. 
+
+# Insight. Speedup ratios are a misleading engineering target. Two of the columnar steps lowered the eight-worker/one-worker ratio while raising absolute throughput at both thread counts: they cheapened the phases that scale, which shrinks the parallel fraction — Amdahl’s speedup metric punishes exactly the optimizations that make the parallel section fast. The ledger step did the opposite and is the more interesting datum: replacing the persistent base-state copy removed a serial phase and improved the scaling of the untouched parallel phases, lifting eight-worker throughput by more than one-worker throughput. The mechanism is that the garbage collector is a shared resource: the copy allocated ∼140,000 nodes per slide, and its allocation and collection pressure was paid disproportionately by the phases running on eight threads. Cheapening a sequential phase improved parallel scaling. Neither effect is visible in a speedup ratio alone; we therefore report absolute throughput at fixed thread counts as the primary metric and treat ratios as diagnostics. 
+
+7.5 Multi-Query Scaling and a Work-Matched Flink Baseline 
+
+The engine-path study bounds what parallelism can do inside 
+
+one epoch of one thin query. The classic streaming-engine scalability claim, however, lives at a different granularity: many continuous queries sharing one host. This subsection measures that regime with a fixed-work strong-scaling proto-col — 24 independent, namespaced query lanes, partitioned across T driver threads by ownership, identical total work at every T — and pairs it with a work-matched Apache Flink 1.18.1 baseline on the same host (24 cores, 16 per-formance + 8 efficiency; local streaming MiniCluster, heap state backend, object reuse on, no checkpointing). Both systems consume the same slide schedules from a single workload generator, and lanes map to Flink subtasks with the same ownership quantization as the TrieGS driver round-robin (balanced key assignment; natural key hashing over 24 keys is skewed and would handicap Flink). The Flink operator (variant A) is a textbook incremental multi-way join in a KeyedProcessFunction — per-relation multiset adjacency indexes in keyed state, O(∆) work per slide — i.e. 16 work-model-matched to TrieGS and written as a competent Flink user would write it, since Flink ships no incremental multi-way join. An idiomatic variant B (native sliding event-time windows, full recompute per fire) is implemented and parity-gated as a bracket; it is strictly slower per slide by construction. Every number sits behind a semantics gate: the Flink job’s per-slide signed answer-delta multisets are asserted equal to the brute-force oracle at parallelism 1 and 2, and within each sweep the per-mix answer checksum is bit-identical across every parallelism level — a work-identity control that rules out the parallel configurations silently doing different work. Table 3 reports the headline numbers; the mixes are 24 thin 3-atom path lanes ( Path3 ), 24 compute-dense 4-armed spider lanes ( Spider4x2 ), and a heterogeneous third-third-third mix ( Mix3 : 8 path + 8 spider + 8 five-atom star lanes). Because the host is heterogeneous (efficiency cores measure 
+
+≈ 0.55 × a performance core on this workload), the relevant ideal is ≈ 20 .4×, not 24 ×; we report efficiency against that figure. Three observations. First, on homogeneous mixes the two systems scale near-identically : on the thin path, TrieGS reaches 16 .3× and Flink 15 .4× at T =24 (80% and 75% of the heterogeneous ideal), with the curves tracking within a few percent at every intermediate point, including the same dip at T =16 (ownership quantization, below). On the compute-dense spider Flink is in fact slightly steeper (19 .8× vs. 17 .7×)because its far higher per-slide cost amortizes framework overhead. TrieGS’s inter-query scaling is framework-grade; nothing in the engine’s shared infrastructure impedes it. Second, the absolute gap is large and parallelism-independent :TrieGS is 5 .8–6 .2× faster on the thin path and ∼29–32 ×
+
+faster on the compute-dense spider at every thread count, under a work-equivalent operator and identical schedules. Since the scaling curves match, the gap is per-slide engine cost — columnar O(∆) maintenance with no serialization or mailbox machinery — not a parallelization artifact. Third, on the heterogeneous Mix3 the systems diverge in scaling, not just in level : Flink plateaus at 7 .6× from 
+
+T =8 onward while TrieGS continues to 13 .1× at T =24. This is the one qualitative difference in the sweep, and it has a precise mechanism. 
+
+# A slowest-class gating law for mixed workloads. In both systems the unit of parallelism in this regime is the lane: a lane’s slides are sequentially dependent, so no scheduler can split one lane across threads. For a mix of query classes 
+
+c with nc lanes of per-slide cost wc, fixed-work speedup is therefore bounded by 
+
+S(T ) ≤
+
+P 
+
+> c
+
+nc wc
+
+max driver 
+
+P 
+
+> ℓ∈owned
+
+wℓ
+
+,
+
+and for T ≥ nmax : S∞ =
+
+P 
+
+> c
+
+nc wc
+
+wmax 
+
+,
+
+where wmax is the per-slide cost of the most expensive class and nmax its lane count: once every expensive lane has a thread to itself, the wall clock is one such lane running alone, and additional threads only idle. The ceiling is a property of the cost ratio between query classes , not of thread count. Both systems obey this law; they hit it at very different points because their class-cost ratios differ. From the solo per-lane rates, TrieGS’s per-slide costs are wpath ≈ 3.4 ms, 
+
+wstar ≈ 28 ms, wspider ≈ 37 ms, giving a predicted Mix3 
+
+ceiling of ≈ 14 .7×; measured: 13 .1× at T =24 (and 14 .0×
+
+in an independent longer-measurement run), i.e. TrieGS at 24 threads is already pressed against its own gating ceiling. For Flink the spider costs ≈ 1,206 ms per slide against 21 ms for the path — the same ∼30 × engine gap visible in the homogeneous sweeps — so the spider term dominates the sum and the predicted ceiling collapses to ≈ 8 × (1 + ϵ) with 
+
+ϵ ≈ 0.05–0 .1; measured: a flat 7 .57–7 .68 × from T =8 through 
+
+T =24. Flink hits the identical wall ∼4× earlier in thread count for one reason only: its per-slide cost on the expensive class is ∼30 × higher, which moves the mix’s cost mass onto 8 unsplittable lanes. The interference control confirms the mechanism directly: inside Mix3 at T =24, every lane — path, spider, and star alike — advances at the same rate, which is 0 .90 × the spider’s 
+
+solo rate and only 0 .08 × the path’s. The mix does not average its classes; it is dragged to its slowest one. 
+
+# Ownership quantization and heterogeneous cores. Two second-order effects recur across every sweep and are worth naming because either could be misread as an engine defect. First, at T =16 both systems dip below their scaling trend on every mix (e.g. Path3 : TrieGS 10 .5×, Flink 10 .6×): 24 lanes over 16 threads leaves eight threads owning two lanes each, so the ideal at that point is 12 ×, not 16 × — both systems sit at ≈ 0.88 of the quantized ideal, and the dip’s presence in both systems at the same point is itself evidence that the harnesses impose identical ownership structure. The spider mix’s T =16 point is additionally run-sensitive (11 .2×
+
+vs. 6 .6× across two committed runs of different measurement lengths), consistent with quantization amplifying scheduling and GC noise; we accordingly do not interpret T =16 levels, only the T =24 endpoints and the curve shapes. Second, the efficiency cores help throughput-oriented multi-query work (every mix improves from T =16 to T =24) but hurt 
+
+compute-dense intra-query work: the spider’s morsel speedup regresses from 7 .53 × at 16 workers to 5 .97 × at 24, because a morsel barrier waits for its slowest worker and an efficiency core is ≈ 0.55 × a performance core on this code. Straggler-sensitive phases should not be scheduled onto heterogeneous cores naively; this is a concrete input to the adaptive morsel-scheduling direction in Section 9. 
+
+# Measurement discipline. Two protocol details materially affected validity. First, the checksum work-identity control (bit-identical per-mix answer checksums across all parallelism levels, asserted within every sweep) is what licenses reading the curves as strong scaling at all. Second, warmup account-ing is not a formality on a JIT runtime: an early version of the sweep protocol re-paid JIT compilation inside measured execution, roughly doubling per-configuration execute time and inflating a full sweep severalfold while contaminating early measurement periods; the committed protocol runs explicit warmup periods excluded from timing. We flag this because scaling studies on JVM-based engines that do not state their warmup protocol are difficult to interpret. 
+
+# Insight. Mixed-workload scaling numbers are not compa-rable across systems without the gating-law decomposition: a plateau at T =8 can indicate either a scheduler defect or — as here — a per-class cost ratio that quantizes away the remaining threads. The law also reads forward as a design statement: the way to raise a mixed workload’s ceiling is 17 Table 3: Multi-query strong scaling, TrieGS vs. work-matched Flink (24 lanes, fixed work, aggregate slides/s; speedup vs. each system’s own T =1; heterogeneous ideal ≈20.4x on this 16P+8E host). Last row: intra-query morsel parallelism, which has no Flink counterpart (one continuous query is one key, hence structurally parallelism-1).                                    
+
+> Mix System T=1 T=24 Speedup Abs. gap
+> Path3 TrieGS 270.8 4,426.5 16.35x 5.8–6.2x Flink 46.8 718.0 15.36x
+> Spider4x2 TrieGS 26.6 471.2 17.70x 29–32x Flink 0.83 16.4 19.84x
+> Mix3 TrieGS 43.9 574.2 13.08x 17–30x Flink 2.57 19.4 7.57x †
+> Intra-query ( Star5 , morsels) 29.7 7.82x at t=16 no counterpart
+> †
+
+Plateau from T =8 (7.68x): slowest-class gating, see below. not more threads but either (i) cheaper expensive classes — exactly what the columnar maintenance operator buys, moving the ceiling from ≈ 8× to ≈ 14 .7× on the same mix — or (ii) intra-query parallelism that breaks the lane atomicity assumption, which TrieGS’s morsel path provides for compute-dense plans (Section 7.4) and Flink’s per-key operator model structurally cannot. 
+
+7.6 Fair Hybrid Scheduling: Reclaiming Gating-Induced Idleness 
+
+The gating law leaves a specific resource on the table. On the heterogeneous mix at C=24, the fair pure-inter configuration runs at CPU utilization 0.59: once every expensive lane owns a thread, the remaining threads can only idle, because a lane’s slides are sequentially dependent. The natural design response is a hybrid: keep the cheap lanes on inline driver threads, and pool the expensive lanes — each served by a lightweight feeder thread that submits its slides’ morsels into one shared work-stealing pool — so the threads the gating law would idle instead execute morsels of the pooled lanes. The core budget is static, Dinline + W ≤ C, where Dinline is the inline driver count and W the pool worker count. This subsection measures whether that bridge between the two parallelism granularities pays, under a fairness protocol strict enough that the answer means something. 
+
+# Fairness methodology. A hybrid-vs-pure comparison is only as strong as its pure baseline, and the obvious base-line is a strawman. Round-robin lane assignment (lane in-dex modulo driver count) ignores lane costs; on this mix at 
+
+C=16 it reaches 8 .13 × where a cost-aware longest-processing-time (LPT) assignment reaches 13 .61 × — the naive baseline gives up ∼40% before the hybrid is even started, and any lane-granular scaling study that round-robins heterogeneous lanes is comparing against a strawman. All pure-inter base-lines below therefore use LPT. Threads are role-split into inline drivers, feeders, and pool workers, with the static budget Dinline + W ≤ C and feeders exempt as coordina-tion overhead; the exemption is then audited by a measured CPU-budget gate: total process CPU time must satisfy CPU total ≤ 1.05 · wall · C (ThreadMXBean ), which is hardware-enforced at C=24 on this 24-core host. Every reported point passes the gate ( budgetRespected ), and the feeders account for under 2% of total CPU, so the hybrid’s gain is not hidden extra parallelism. 
+
+# Result: +9 .6% over a fair baseline at equal core budget. 
+
+All numbers are medians of three fresh-JVM repetitions on Table 4: Fair hybrid scheduling on the heterogeneous 24-lane mix (speedup vs. T =1; medians of 3 fresh-JVM repe-titions; every point passes the measured CPU-budget gate CPU total ≤ 1.05 · wall · C).                            
+
+> Configuration CSpeedup CPU util. Fair pure-inter (LPT) 24 13.07x 0.59 Fair pure-inter (LPT) 16 13.61x 0.89 Strawman pure-inter (round-robin) 16 8.13x 0.53 Hybrid, spiders-only, fan-out 2 24 14.33x 0.87 Hybrid, spiders-only, fan-out 4 24 14.16x 0.88 Hybrid falsification control 83.88x 0.59 Homogeneous-spider control, hybrid 24 12.6x —Homogeneous-spider control, pure 24 18.1x —
+
+the heterogeneous 24-lane mix of Section 7.5. The fair pure-inter LPT baseline at C=24 reaches 13 .07 × at utilization 0.59. The best hybrid pools only the eight spider lanes behind eight feeders, with Dinline =9 inline drivers owning the sixteen cheap lanes, W =15 pool workers, and per-slide morsel fan-out 2: 14 .33 × at utilization 0.87, i.e. +9 .6% over the fair baseline at an identical core budget. The fan-out-4 variant medians 14 .16 × with a single-repetition maximum of 15 .15 ×: the ≥ 15 × stretch target is touched once but is not robust across repetitions, and we do not claim it. Table 4 summarizes the key configurations and controls. 
+
+# Mechanism: idle-capacity reclaim, not gate movement. 
+
+The hybrid does not meaningfully accelerate the expensive class: the pooled spider lanes’ per-slide wall drops only from 42.7 to 38.8 ms ( −9%), and the star lanes — now sharing nine inline drivers instead of owning more — rise from 31.8 to 35.3 ms. The gating ceiling itself therefore barely moves; the entire win is utilization, 0.59 to 0.87. This is exactly what the structural-width ceiling of Section 7.4 predicts: a pooled lane’s morsels run at width-law efficiency, ≈ 1.3–1 .6×
+
+effective at fine-grained delta sizes, so pooling cannot move the gate — it can only fill the idle cores with that modestly-parallel work. The reclaimed throughput is packing, not acceleration. 
+
+# Controls. Three controls license the +9 .6% as real rather than artifact. First, a falsification control at C=8: with no gating-induced idleness to reclaim (the core budget is scarcer than the expensive-lane count), the same hybrid collapses to 3 .88 × against a pure-inter 7 .66 ×, with the spider wall inflating to 141 ms — the win is regime-specific, as the mechanism requires. Second, a homogeneous control of 24 identical spider lanes, where utilization is already high and the gating law leaves nothing idle: pure inter-query 18 wins decisively, 18 .1× against the hybrid’s 12 .6×, isolating the pool’s coordination overhead. Third, a naive adaptive controller that water-filled workers by static cost shares chose 
+
+Dinline =1 , W =23 and collapsed to 2 .55 ×; it was replaced by a measured calibrate-and-select controller that briefly runs the candidate configurations and picks by observed throughput, which recovers the pure-inter configuration when C ≥ lane count and the hybrid when C < lane count. Adaptivity here must be measured, not modeled. 
+
+# Latency under open-loop arrival. Fixed-work strong scal-ing measures capacity; a scheduler is also judged by tail latency under arrival, and the two objectives need not agree. An open-loop companion study drives the same 24 lanes with scheduled arrivals (every lane one slide per period P , per-lane FIFO, latency measured as completion minus scheduled arrival; 200 arrivals per lane, two fresh-JVM repetitions) at two load points, ≈ 70% and ≈ 93% of the measured C=24 ca-pacity. At moderate load, pure-inter wins the tail everywhere — dedicated per-lane threads add no scheduling layers, and at 70% utilization there is little queueing to absorb. Near saturation the ordering inverts decisively: the pure-inter spider thread runs at ≈ 0.83 utilization and its per-lane queue tail explodes to a p99 of 148–180 ms across the two repetitions, while the spiders-only hybrid holds the spider p99 at 62–68 ms — 2 .2–2 .9× lower — and the aggregate p99 at 59–61 ms against 77–142 ms, at slightly higher achieved throughput. The mechanism is again not acceleration: the pooled spider’s mean service time is unchanged ( ≈ 37 ms, as the width law requires when eight simultaneous arrivals share fifteen workers). The pool buys statistical multiplexing 
+
+— burst capacity shared across the pooled lanes, so a slow slide no longer serializes behind its own lane’s dedicated thread. Notably, the configuration this study was designed to vindicate is instead refuted: deep pooling (all sixteen expensive lanes behind one 23-worker pool), whose halved per-slide wall under fixed work (42.7 to 24.9 ms) motivated the frontier hypothesis, is dominated at both load points — that service-time win was an artifact of round-robin pacing and does not survive simultaneous open-loop arrivals, which congest the shared pool (its spider service time rises to 42– 43 ms). The capacity winner and the tail-latency winner near saturation are the same configuration, and the crossover with pure-inter is load-dependent ( ≈ 70% utilization on this mix) — which extends the calibrate-and-select controller’s remit naturally from a throughput objective to a latency SLO. 
+
+# Insight. The results compose into a third law, the idle-capacity reclaim law : hybrid pooling pays if and only if the gating law leaves utilization below one, and its gain is bounded by the width law, because the reclaimed cores run the pooled lane’s morsels at ≈ 1.3–1 .6× effective parallelism. The reclaimable band — between the gating ceiling ( ≈ 14 .7×
+
+on this mix, Section 7.5) and the heterogeneous hardware ideal ( ≈ 20 .4×) — is therefore only partially recoverable by any scheduler that cannot break lane atomicity more efficiently than the structural width permits. A second, independent finding falls out of the fair baseline itself: fair pure-inter peaks at C=16 (13 .61 ×), above its C=24 level (13 .07 ×) — on this host the efficiency cores are a net negative for pure inter-query execution of this mix, a placement effect consistent with the straggler sensitivity of Section 7.5. 
+
+7.7 NUMA-Node Affinity: Placement Is a First-Order Effect 
+
+The NUMA host exposes 112 logical CPUs, 4 sockets, 14 cores per socket, 2 threads per core, and 4 NUMA nodes. Each node exposes 28 logical CPUs. The sweep contains 660 JMH measurements: 5 placements, 12 worker counts, and 11 SNB-shaped sliding-window query benchmarks. The default scheduler placement peaks at 8 workers with a geomean of 1,399 ops/s. CPU-node affinity changes the curve: throughput jumps between 4 and 8 work-ers and then remains nearly flat across larger worker counts. The best run is node 2 at 16 workers with a geomean of 3,564 ops/s. This is 2.55x over the best default placement and 5.71x over the default one-worker baseline. The four CPU-node best results are very consistent: mean 3,552 ops/s, standard deviation 11 ops/s, and coefficient of variation about 0.3%. The effect is not localized to one fa-vored socket. Every query improves under CPU-node affinity; the per-query improvement range is 2.33x to 2.81x over the best default placement for the same query. 
+
+# Insight. The NUMA result is the clearest systems insight in the current evaluation: placement can dominate algorithmic tuning at this stage. Default scheduling leaves substantial throughput on the table, while pinning workers to a CPU node makes performance both higher and more stable. This supports the TrieGS’s morselized scheduling direction, espe-cially prefix ownership and explicit placement. 
+
+7.8 Homogeneous-Core Replication: The Three Laws Off UMA 
+
+Every scaling number above comes from one 24-core UMA node with a 16-performance/8-efficiency split, and two of the three laws could in principle be silicon artifacts: the structural-width ceiling (Section 7.4) could reflect the UMA’s memory system, and the fair-hybrid finding that pure inter-query peaks at C=16 rather than C=24 (Section 7.6) is ex-plicitly attributed to the efficiency cores. We therefore repli-cated the single-query, multi-query, and hybrid experiments on the NUMA host of Section 7.7 — 4 sockets × 14 cores ×
+
+2 threads, all homogeneous — pinned to one NUMA node (28 logical CPUs) with numactl --cpunodebind --membind 
+
+(true memory-local placement; the container here carries 
+
+CAP SYS NICE , unlike Section 7.7), and to the whole machine. 
+
+# The structural-width law is hardware-independent. Single-query per-slide maintenance on 28 homogeneous cores plateaus almost immediately: at fan-out 8 it reaches 1 .14 × (peak at four workers, then flat), and at fan-out 16 1 .39 × (peak at eight, then flat) — if anything a lower ceiling than the Intel-NUMA’s ≈ 1.6×, on faster scaling silicon. The compute-density invariance reproduces exactly (4 × denser joins, same curve), as does the per-slide allocation ( gc.alloc.rate.norm 
+
+14 .06 / 54 .4 MB at fan-out 8 / 16, identical to the Apple’s UMA — the maintenance is deterministic). A memory-bandwidth or delta-size explanation predicts the two archi-tectures separate; they do not. The ceiling is structural parallel width, confirmed on a second, homogeneous memory system. 
+
+# The C=16 anomaly was the efficiency cores. Multi-query 
+
+Mix3 strong scaling on the homogeneous node is monotone —1.86 /3.27 /5.34 /8.04 /9.67 × at 1 /2/4/7/14 /28 drivers — with 19 Table 5: Intel CPU-node affinity summary. Throughput is geomean ops/s over the 11 SNB-shaped sliding-window queries.                   
+
+> Placement Best workers Best geomean ops/s Vs. default best Default scheduler placement 81,399 1.00x CPU-node 0 32 3,558 2.54x CPU-node 1 16 3,548 2.54x CPU-node 2 16 3,564 2.55x CPU-node 3 64 3,539 2.53x
+
+Table 6: Intel CPU-affinity effect.        
+
+> Quantity Result Default best 1,399 ops/s at 8 workers Best pinned run 3,564 ops/s at 16 workers on node 2 Speedup over default best 2.55x Speedup over default 1 worker 5.71x Per-query improvement range 2.33x–2.81x CPU-node best-result CV about 0.3%
+
+none of the Apple’s UMA’s peak-at-C=16, dip-at-C=24 sig-nature. That non-monotonicity was therefore a placement artifact of the 16P+8E split, exactly as Section 7.6 conjec-tured, not an engine or gating effect. Across all four sockets the whole machine reaches 28 .8× at 56 drivers, rolling off to 25 .9× at 112 (SMT plus cross-socket traffic); the gating and framework-grade-scaling stories of Section 7.5 hold on homogeneous cores. 
+
+# The reclaim law holds, but the pooling set is cost-ra-tio-dependent. The idle-capacity reclaim reproduces in kind but not in magnitude, and the difference is instructive. The single fair-hybrid point (pool the spiders, Dinline =10, W =18) lifts utilization 0 .55 →0.83 but throughput only +0 .4% (9 .96 ×
+
+vs. 9 .92 ×), because on this host the star class costs 108 ms per slide against the spider’s 135 ms — nearly flat, versus the UMA’s 29 vs. 42. Pooling only spiders then starves the stars left on the inline drivers (star wall 108 →144 ms), cancelling the gain. The same effect is sharper under open-loop arrival (load points auto-calibrated to the node’s measured ≈ 182 slides/s capacity): at ≈ 70% load pure inter-query wins the tail (aggregate p99 196 ms vs. 211/213), but near satura-tion ( ≈ 93%) pure inter-query saturates and its spider p99 explodes to 1451 ms, while pooling both expensive classes (deep pooling) keeps every class bounded (aggregate p99 258 ms) and the spiders-only hybrid sits in between (797 ms) precisely because it leaves the stars inline. So the reclaim law is architecture-independent, but the set of lanes worth pooling tracks the class-cost spread: spiders-only when one class dominates (Apple Silicon, spider-and-star when the expensive classes are comparable (Intel). This is a direct argument for the measured calibrate-and-select controller of Section 7.6 over any fixed pooling heuristic. 
+
+# Insight. The replication does what a second architecture should: it promotes the structural-width ceiling from an Apple’s UMA observation to a hardware-independent prop-erty, explains away the one non-monotone anomaly in the UMA data as an efficiency-core placement effect, and stress-tests the reclaim law into a sharper, cost-ratio-aware form. The two laws that are properties of the workload (gating, width) transfer unchanged; the one that is a property of the scheduler (reclaim) transfers in mechanism and generalizes in policy. 
+
+7.9 Operator Generality and the Hardware Envelope 
+
+The three laws were established on the streaming mainte-nance operator. Do they describe that operator, or streaming operators in general? We test two more operator classes — a worst-case-optimal (WCOJ) triangle join and a full-RDFS RETE reasoner — under the same instrument as the multi-query study: N independent single-threaded instances on N threads, aggregate throughput, efficiency E(N ) = 
+
+T (N )/(N T (1)). The new ingredient is a spin control : apure-ALU benchmark ( Blackhole.consumeCPU ) co-run at every thread count, so the hardware envelope can be divided out, ˆE(N ) = Eop /E spin . Without it, “the join scales to 23 ×”and “the ALU scales to 86 ×” at the same 112 threads are not comparable; with it, both become a fraction of what the silicon delivers. We run on the Apple UMA (16P+8E, single memory domain) and the homogeneous 4-socket Intel NUMA host, where the spin control is essential because the raw curves span P/E, cross-socket, and SMT segments. 
+
+# Operator scaling is memory-bound, not compute-bound. 
+
+The spin control scales near-ideally — 19 .7× at 24 threads on the Apple (97% of the ≈ 20 .4× heterogeneous ideal), and 46 × at 56 and 85 .8× at 112 on Intel. The operators do not come close. At full width the WCOJ join reaches ˆE = 0 .55 (M2, 24T) and 0 .41–0 .27 (Intel, 56–112T); the rea-soner reaches ˆE = 0 .48 (M2) and collapses to 0 .15 at 112T on Intel. Independent operator instances share no algorithmic state — they are embarrassingly parallel by construction — so the shortfall is entirely the memory system: at scale these operators are bandwidth- and allocation-bound, and the spin divisor makes that quantitative rather than asserted. This is the same finding the intra-query anatomy reached for one operator (Section 7.4), now shown to be a property of the operator class , not of TrieGS maintenance. 
+
+# Reasoning hits the memory wall before the join. The two operators are not bounded equally, and the ordering is consistent and mechanistic. In a single memory-local domain — the Apple M2 up to a few threads, and Intel’s memory-bound Region A (14 cores, --membind ) — the rea-soner actually scales better than the join ( ˆE = 0 .86 vs. 0 .73 at 14 Intel cores), because its per-arrival work amortizes frame-work overhead. But as memory domains and contention grow it saturates first: on the M2’s 16P+8E part its normalized efficiency falls below the join’s beyond eight threads (0 .48 vs. 0.55 at 24), and on Intel it peaks at 28 threads — two sockets — at 14 .8× and then declines (13 .4× at 42, 12 .6× at 112), while the join keeps climbing to 19 × at 56 and 23 × at 112. The reasoner’s larger per-arrival working set and materialized inference make it the first to pay cross-socket remote-memory cost; the join is the more hardware-bound operator. The law is general (both are memory-bound); the constant that matters is the operator’s bytes-touched-per-unit-work. 20 Table 7: Multi-core windowed streaming reasoning (LUBM(1) ×LUBM L , M2 16P+8E). Windowed reasoning tracks the pure-ALU spin envelope through the 16 perfor-mance cores; the unbounded reasoner of Section 7.9 reached only ˆE = 0 .48 at 24 threads.                                
+
+> Threads Aggregate kev/s Speedup E(N)Spin E(N)117.4 1.00x 1.00 1.00 234.5 1.98x 0.99 0.96 470.0 4.02x 1.01 0.94 8142.2 8.17x 1.02 0.94 16 286.4 16.45x 1.03 0.93 24 316.1 18.16x 0.76 0.82
+
+7.10 Windowing Restores Reasoning Scalability 
+
+The previous section measured the reasoner unbounded : a full-RDFS RETE network whose working memory grows without limit, which is the worst case for a bandwidth-bound operator and the reason it saturates first. But streaming reasoning is not unbounded — it runs over a window . If the memory wall is set by working-set size, bounding the window should move it. We test this on a real reasoning workload rather than a synthetic TBox: LUBM(1) (103,104 triples from the Lehigh UBA generator) under the real VLog [5] 
+
+LUBM L rule set (170 recursive Datalog rules), replayed as a windowed event stream (5 s window, so the per-stream working set holds ≈5,000 facts) through the native RETE path. Because a single stream cannot be hash-partitioned across cores without breaking cross-entity joins (e.g. RP 6( X) : 
+
+−RP 2( X), RP 19( X, X 1), RP 14( X1) joins on X and X1), we run N independent windowed streams on N threads — the multi-tenant capacity question — under the same aggregate-throughput, spin-normalized instrument. A soundness check anchors correctness: on an unbounded window the windowed stream and a batch pass converge to the identical 121 ,512-fact closure. 
+
+# The window is what restores scaling. Windowed reason-ing scales near-linearly to 16 .45 × across the 16 performance cores, with efficiency E(N ) ≈ 1.0 that meets or exceeds the pure-ALU spin control at every point through 16 threads (Ta-ble 7); normalized against the spin envelope this is ˆE ≈ 1.0— the operator runs at what the silicon delivers. The same engine and rule engine, measured unbounded in Section 7.9, reached only ˆE = 0 .48 at 24 threads and was the first op-erator to hit the wall. The sole difference is the window: bounding it caps each stream’s working set at a few thousand facts, small enough to stay cache-resident, which removes the bandwidth pressure that throttled the unbounded reasoner. The 16 → 24 dip ( E from 1.03 to 0.76) is not a memory wall but the M2’s eight slower efficiency cores joining — the spin control dips in lockstep (0.93 to 0.82). Aggregate single-node capacity reaches ≈286 k windowed-reasoning events/s on the performance cores. 
+
+# Bounded latency, and a capacity that is a first-class number. Per-event windowed maintenance is cheap and sta-ble — p50 = 50 μs, p99 = 78 μs, p99 /p 50 = 1 .6× — an order of magnitude below the insert-only accumulation the window replaces (488 μs / 1.74 ms), again because the working set is bounded rather than growing. Replaying the measured service times against a fixed offered-arrival schedule through a single-server queue (the open-loop model of Section 7.6) yields a textbook saturation curve: end-to-end latency is flat and sub-100 μs to ≈16 k events/s, lifts through a knee at 16– 19 k, and past a single core’s capacity of ≈17–19 k events/s the queue diverges. This is the result a batch reasoner (LT-G/VLog) cannot report at all — a latency distribution and a sustainable throughput, not one materialization wall-clock. The finding sharpens Section 7.9’s closing constant: the rea-soner’s bytes-touched-per-unit-work is set by the window, not fixed by the operator, and windowing — the defining feature of stream processing — is the mechanism that holds it small. This is the reasoning analogue of TrieGS’s bounded incremental maintenance. 
+
+# Partitioning one stream compounds the effect — super-linearly. The scaling above runs N independent streams; the harder question is whether one stream’s reasoning work-load can be shared across cores. It cannot be naively hash-partitioned: six of the 170 rules join across entities and one is a recursive transitive closure, so object-side facts are needed on foreign partitions. We partition by subject hash and repli-cate exactly the facts a static rule analysis proves necessary: the base support closure of every foreign body atom, pruned by a data cover-check (on LUBM(1): five rdf:type classes plus subOrganizationOf — 1,881 facts, replication fraction 
+
+f = 1 .82%, versus 18 .9% for the unpruned sound closure). Replication bounds the ideal speedup by an Amdahl-on-data law, S(N ) = 1 /((1 − f )/N + f ): 12 .6× at N =16 for the pruned set, 4 .2× for the sound set. Measured, with a parity oracle certifying at every width that the deduplicated deriva-tion set is identical to a single unpartitioned instance: the sound set lands on its law (3 .97 × at 16) and the measured broadcast fan-out matches 1 + f (N − 1) to three decimals — but the pruned set reaches 31 .7× at N =16 (588 k events/s from an 18.5 k baseline), superlinear and 2 .5× above its own law’s ceiling. The law is not wrong; its constant-cost premise is. Partitioning divides the window state along with the ar-rivals: each worker’s window holds ≈ 5,000 /N facts, join cost falls with working-set size, and per-event service drops from 50 μs to 13 .8 μs at N =16. The measured curve is arrival-division ( ≤ 12 .6×) compounded with service-cheapening (≈ 3.6×). One partitioned stream thereby out-throughputs the sixteen independent streams of Table 7 on the same silicon (588 k vs. 286 k events/s): independent streams each carry the full window; partitions carry ≈300 facts each. The plateau at N =24 (31 .8×) is the single dispatcher thread saturating at ≈ 1.7 μs/event, not the operators. The gen-eral lesson joins the two laws of this section: the window bounds the working set, and partitioning divides it — for state-superlinear operators like reasoning joins, that division is worth more than the cores it costs. 
+
+7.11 What the Results Mean for TrieGS 
+
+# Root-vector publication is ahead of LFNT performance. 
+
+The correctness and parity results support the semantic ar-chitecture. The relation-backend matrix does not yet support LFNT as a performance contribution. 
+
+# The workload story is now credible. The evaluation now includes nontrivial sliding-window dynamic joins and tem-poral joins. This makes the evaluation more realistic than relation microbenchmarks, but final generality still requires RiverBench and larger workload sweeps. 
+
+# Placement is part of the algorithmic story. The Intel CPU-node result shows that multicore behavior is not only 21 about worker count. Worker placement changes the geomean by more than the difference between many algorithmic vari-ants in the current prototype. The final system should therefore expose placement-aware scheduling as an evaluated design choice. 
+
+# The scalability claim lives at inter-query granularity. 
+
+The engine-path study caps fine-grained intra-epoch par-allelism at ≈ 1.6–1 .9× and, with the width-law probes of Section 7.4, explains why; the multi-query study shows the same engine scaling at 13 .1–17 .7× on 24 threads across three mixes, matching a work-equivalent Flink baseline’s curve shape while exceeding its absolute throughput by 5 .8× to 
+
+∼32 ×. The pre-registered ≥ 8× target is met by increasing the processing workload — more queries, or denser plans (7 .5–7 .8× intra-query at 16 workers) — which is the honest form of the classic streaming-engine scalability claim, and the slowest-class gating law bounds what any lane-parallel system can do on heterogeneous mixes. 
+
+# Three laws compose into one ceiling. The scaling re-sults reduce to three named, separately measured laws. The 
+
+slowest-class gating law bounds lane-parallel scaling of a mixed workload by the cost ratio between query classes (Section 7.5); the structural width law caps fine-grained intra-query parallelism at the small fixed number of independently updatable structures, regardless of delta size or compute den-sity (Section 7.4); and the idle-capacity reclaim law states that hybrid pooling converts gating-induced idleness into throughput, with a gain bounded by the width law (Sec-tion 7.6). Composed, they bound what any scheduler can achieve on a mixed workload: the ceiling is min(hardware ideal ,
+
+gating ceiling + reclaimable idleness), where the reclaimable term is discounted by the width-law efficiency of the pooled lanes. On this host and mix the terms are ≈ 20 .4×, ≈ 14 .7×,and a measured reclaim to 14 .33 ×. The first two laws are workload-structural rather than engine-specific — Flink mea-surably obeys the gating law, and its per-key operator model makes the width law moot by forcing parallelism 1 per query — so TrieGS’s advantage is level (per-slide cost, the 5 .8–32 ×
+
+absolute gap) plus the scheduler freedom (morsels, hybrid pooling) to buy a real but bounded slice of the remaining idleness. 
+
+7.12 Remaining Gaps 
+
+The current implementations provide a strong first-round evaluation but the following gaps remain. 
+
+• Run RiverBench workloads to test RDF burstiness, dupli-cate assertions, watermarks, and stream-window behavior beyond SNB-shaped local data. 
+
+• Extend the Flink matrix beyond the committed single-node keyed comparison (Section 7.5): distributed and durable-state (RocksDB + checkpointing) configurations matched against a persistent TrieGS backend, a Flink SQL/Table-API formulation to bound the comparison from the usability side, repeated process runs, and resource accounting. 
+
+• Complete true memory-bound NUMA experiments if mem-ory binding can be enabled; otherwise keep the claim at CPU-affinity level. 
+
+• Collect JFR, allocation, GC, perf, cache-miss, branch-miss, and remote memory counters. 
+
+• Add memory-lifetime metrics: retained bytes, copied nodes/bytes, active versions, retired nodes, and pinned-snapshot reten-tion. 
+
+• Complete the SWAG aggregate matrix and clarify where aggregate summaries replace full enumeration. 
+
+• Distribute the lanes: the inter-query design shards trivially (lanes share no state and driver partitioning is already an ownership function), so a multi-node run tests only the ingest and publication fabric, not the operator. 
+
+• Break the structural width law. The shard-parallel delta-extraction attack listed in earlier drafts has since been implemented, oracle-gated, measured net-negative, and reverted (Section 7.4); the one identified remaining lever is partitioning the output view via a chunked copy-on-write columnar redesign so aggregation width scales with data rather than plan structure 
+
+• Add core-type-aware morsel scheduling: the spider’s 7 .53 ×→5.97 × regression from 16 to 24 workers is a straggler effect at morsel barriers on efficiency cores, directly testable against Table 2. 
+
+• Fold the measured capacity–latency frontier into the narra-tive: the open-loop study (200 arrivals per lane, 70%/93% load points, two repetitions) finds that near saturation the fair capacity winner is also the tail-latency winner — the pooled spider class’s p99 falls from 148–180 ms (pure-inter, whose dedicated-thread queue tail explodes at ≈0.83 utilization) to 62–68 ms under spiders-only pooling, with unchanged pooled service time ( ≈37 ms): the win is statis-tical multiplexing across the pooled lanes, exactly as the width law requires. The deep-pooling configuration whose halved fixed-work wall motivated the frontier hypothesis is dominated at both load points — its service-time win was a pacing artifact that does not survive simultaneous open-loop arrivals — and pure-inter’s dedicated threads win the tail below ≈70% utilization. The load-dependent crossover is reported in Section 7.6; what remains is replicating it beyond one host. In summary, the current implemetations establish correctness-first progress, expose a useful negative backend result, demon-strate that the dynamic workload suite is now nontrivial, and identify CPU affinity as a major multicore factor. The final paper should preserve these insights while reserving final performance claims for the completed protocol. 
+
+# 8. RELATED WORK 
+
+8.1 Dynamic Constant-Delay Enumeration 
+
+Acyclic query evaluation originates with Yannakakis’s algo-rithm [40], and free-connexity characterizes an important tractable region for constant-delay enumeration [3]. Dynamic Yannakakis builds compact representations for free-connex acyclic queries under updates [9, 10]; General Dynamic Yannakakis extends the framework to richer joins [11]. For the more restrictive q-hierarchical class, constant update time and constant-delay enumeration are possible under the corresponding dynamic model [4]. TrieGS does not en-large these query classes. Its core theorem is deliberately restricted to full acyclic queries, with projected free-connex queries supported through an explicit answer view. 22 CROWN develops change propagation without joins and supports constant-delay enumeration of both full results and deltas [35]. It is the closest query-processing predecessor and the primary algorithmic reference in our evaluation. CROWN’s contribution is a join-free propagation plan that avoids large intermediate views; its prototype maps plans to Flink DataStream operators. TrieGS addresses a different concurrency boundary: several versioned relations live in one shared-memory process, a long-running enumerator pins a completed state, and update workers concurrently construct the next state. The atomic root vector is the protocol that prevents fractured reads across those relations. Our CQELS baseline is therefore labeled CROWN-style until it passes plan, full-result, delta-result, and qualitative trend validation against the published construction. 
+
+8.2 Incremental View Maintenance 
+
+DBToaster materializes higher-order deltas, while F-IVM combines incremental maintenance with factorized represen-tations [1, 20, 21]. Specialized heavy/light methods maintain cyclic patterns such as triangles [13]. These techniques are complementary candidates for cyclic bag modules. Their payload and maintenance view of query evaluation motivates our use of multiplicity payloads, exact signed deltas, and primary/secondary/tertiary index roles. 
+
+8.3 Compressed Query-Result Representations 
+
+Deep and Koutris study compressed representations of conjunctive-query results under adorned access patterns, explicitly trad-ing representation space against access delay and total answer time [6]. This model is a useful lens for TrieGS’s maintained access structures. The core TrieGS theorem chooses the fully indexed constant-delay point of the design space, while a com-pressed TrieGS variant could trade memory for larger local access delay. Their setting is static and primarily concerns compressed access to query outputs; TrieGS focuses on main-taining multiset query state under streaming updates and publishing versioned snapshots for concurrent enumeration. 
+
+8.4 Sliding-Window Aggregation 
+
+SWAG-style algorithms maintain aggregate summaries over sliding windows for associative operators, including non-invertible aggregates, without scanning the whole window on every change [33]. Later work extends the model to out-of-order and bulk window changes [34]. CQELS already contains SWAG aggregate operators, and TrieGS treats them as complementary. SWAG is appropriate for aggregate-only outputs or as a downstream consumer of exact TrieGS answer deltas. It does not provide the full weighted answer-support representation or query-level root-vector snapshot required by Theorem 5.5. 
+
+8.5 Continuous Subgraph Matching 
+
+GraphFlow, TurboFlux, SymBi, CaLiG, TC-Match, and RapidFlow use multiway search, candidate structures, or dy-namic indexes to discover matches in evolving graphs [12, 14, 18, 39, 17, 31]. A common-framework study reports that in-dex maintenance dominates some workloads, constant-delay approaches can pay high index-update cost, and no method wins uniformly [32]. TrieGS differs by maintaining a CDE representation with a precise snapshot-consistency contract. The common framework remains a useful secondary baseline only when matching, duplicate, and update semantics agree. 
+
+8.6 Parallel Joins and Stream-Processing Hardware 
+
+Morsel-driven parallelism schedules small input fragments to worker threads that execute query pipelines until pipeline breakers while favoring NUMA-local input and operator state [15]. TrieGS borrows this scheduling principle but applies it to a different unit of work: affected Gmas, guard-prefix scans, projection updates, and view-maintenance tasks inside one dynamic update epoch. The additional constraint is semantic rather than only load balancing: a scheduler must preserve the view invariant and may publish a root vector only after every dependency in the epoch has completed. Thus morselized maintenance scheduling is complementary to, not a replacement for, the root-vector snapshot protocol. Worst-case-optimal and free-join techniques avoid harmful intermediate results in multiway joins [36, 16]. HoneyComb shows that parallel WCOJ must address skew, index con-tention, and redundant work rather than merely partitioning the top variable [37]. These systems optimize one-shot or delta join computation. TrieGS instead maintains long-lived views and uses parallelism for propagation, publication, and concurrent snapshot traversal. WCOJ remains a natural cyclic-bag implementation and recomputation baseline. Hypertree-decomposition theory offers a parallel-evaluation story of its own: bounded-width evaluation is LOGCFL-complete and hence highly parallelizable in principle; DB-SHUNT contracts any join tree in a logarithmic number of parallel shunt steps regardless of tree shape; and GYM runs generalized Yannakakis on BSP, costing plans by com-munication volume and synchronization rounds [8]. Our measurements position TrieGS on this map in three ways. First, the guard-normal plan is itself a hypertree-shaped ob-ject (guards as covering hyperedges, interface projections as 
+
+χ-labels, separators as join-tree connectors), so the structural width law of Section 7.4 acquires a theoretical name: a per-update delta traverses one width-k path of the decomposition, and the observed ≈1.64 × intra-query ceiling is that bounded fan-out made visible — parallelizing the sibling semijoins of a width-≤3 path cannot pay at tens-of-microseconds service times. Second, the PRAM-style results count steps where our spin-normalized instrument counts bytes: shunt contraction trades logarithmic depth for O(r2) intermediates, which is the wrong direction in the bandwidth-bound regime every unbounded operator measurement exhibits (Section 7.9); the profitable moves we measured — windowing and stream par-titioning (Section 7.10) — instead shrink r, the base of the decomposition’s rk intermediate bound, per worker. Tree contraction remains a candidate for the one place a full-tree evaluation survives in a streaming engine, batch recomputa-tion at window close, gated by whether its intermediates stay memory-domain-resident. Third, the replication law of our partitioned-stream design is GYM’s communication-versus-parallelism trade-off specialized to streams, and choosing the partition variable that minimizes the replicated fraction f
+
+is a fractional-cover problem over the same decomposition — the natural path from the hand-derived broadcast set of Section 7.10 to a decomposition-driven partitioning planner. Zeuch et al. analyze how data representation, queue-mediated operator communication, synchronization, code generation, and windowing affect single-node stream-processing efficiency [42]. Their results motivate our hardware-counter and queueing analysis, but they do not establish that LFNT has better cache or NUMA behavior. TrieGS therefore com-pares the same logical plan across object-key and integer-key 23 LFNT, MVCC, persistent-map, and lock-based backends before attributing any improvement to its physical represen-tation. 
+
+8.7 Concurrent Tries, Persistent Trees, and Snap-shots 
+
+C-tries provide concurrent dictionary operations and efficient non-blocking snapshots; cache-tries add an auxiliary cache and analyze constant-time exact-key operations under their hashing assumptions [26, 24]. The cache-trie compaction work supplies relation-level removal and compaction mech-anisms [25]. LFNT instantiates these ideas for dictionary-coded Gma keys and multiplicity payloads. The imported results are intentionally relation-local: they do not prove secondary/tertiary query-access delay, dynamic CDE main-tenance, or cross-relation snapshot consistency. Root-vector publication and the view invariant provide that lifting argu-ment. Purely functional structures provide another point in the design space. Aspen uses compressed functional trees so readers can acquire lightweight immutable graph snapshots while writers publish later roots, but must manage the space and locality costs of persistence [7]. Our persistent-map baseline and reclamation experiments test the analogous trade-off for query-specific materialized state rather than the base graph alone. 
+
+8.8 Streaming RDF and Graph Workloads 
+
+LDBC SNB Interactive v2 combines graph queries with concurrent updates and deep deletions, making it suitable for testing turnstile maintenance and realistic social-graph schemas [27]. RiverBench provides curated RDF streams and metadata for reproducible streaming experiments [30]. We use these sources alongside controlled synthetic streams be-cause no one workload independently controls affected-state size, answer support, duplicate frequency, skew, dictionary locality, and reader lifetime. 
+
+8.9 Multi-Query Optimization 
+
+Materialized-view selection and shared computation have a long history [29, 28, 19]. TrieGS first shares exactly equivalent canonical subplans; frequent pattern mining is an optional optimizer on top. The evaluation measures marginal cost per query, because a shared view is valuable only when its saved logical maintenance exceeds its additional indexes and coordination. Reductions in cache misses, branch mispredictions, coherence traffic, or NUMA accesses are measured rather than inferred from sharing. 
+
+# 9. LIMITATIONS AND FUTURE WORK 
+
+# Query scope. The no-output-materialization theorem cov-ers fixed full acyclic positive conjunctive queries. It does not establish the same guarantee for arbitrary projection, cycles, negation, aggregation, recursion, injective subgraph matching, or full SPARQL. Extension modules must state their own semantics and costs. 
+
+# Projected weighted answers. For projected free-connex queries, the present construction explicitly materializes the count-aware answer relation Ans Q. Corollary 5.6 therefore gives snapshot correctness and constant scan delay, but its up-date and space costs include the materialized output support. We do not claim a compact factorized projected iterator with duplicate-free weighted output. A future construction would need separate proofs of one-path-per-head-tuple uniqueness and count factorization. 
+
+# Update complexity. Constant delay does not imply con-stant update time. One edge update may touch a large af-fected state At, and lower-level lock freedom cannot eliminate that semantic work. The update theorem is affected-state sensitive. 
+
+# Access-structure space. The core theorem chooses the fully indexed constant-delay point. It does not prove that maintained view state Mt, index state It, or retained version state Rt are linear in the input for every workload. Com-pressed access representations that trade memory for larger local delay are possible future variants, but they are outside the current theorem. 
+
+# Dictionary encoding and layout. Injective dictionary IDs preserve RDF equality and therefore query semantics, but they do not guarantee hardware locality. Arrival-order iden-tifiers may be poorly correlated with join access patterns, and locality-aware remapping must respect pinned snapshots and avoid unsafe ID reuse. Any claim that integer-coded or packed LFNT improves cache, TLB, or NUMA behavior must be supported by the layout and backend ablations in Sections 7 and 7.12. 
+
+# Cost model. The OQ(1) statements use the expected cache-trie hashing model and amortize structural resize work as specified in Section 2. They are not deterministic worst-case bounds. Counts are also assumed to fit in a machine word unless arbitrary-precision cost is reported separately. 
+
+# Hardware locality. The cache-trie cost model does not bound hardware-cache or TLB misses. A pointer-based versioned LFNT can enlarge the working set, increase de-pendent loads, retain old pages, and suffer remote NUMA access. Conversely, immutable published versions can reduce reader–writer cache-line invalidation and coherence traffic. Neither effect follows from the logical theorem. Hardware locality claims therefore require the JFR/perf and NUMA experiments still listed as final-protocol gaps in Section 7.12. 
+
+# SWAG aggregate semantics. CQELS SWAG state is an aggregate summary, not a full answer-support representa-tion. COUNT, SUM, and AVG can consume signed answer deltas directly, but MIN and MAX under arbitrary answer retractions need additional support structures unless the declared semantics is a FIFO answer-event window. SWAG integration is therefore an aggregate extension and does not change Theorem 5.5. 
+
+# Morselized scheduling. Morselized epoch scheduling re-fines the serializable maintenance semantics only when the scheduler satisfies epoch isolation, dependency closure, exact-final value, publication-barrier, and snapshot-immutability invariants. It does not change the query class or the correct-ness theorem. If prefix coalescing, NUMA-prefix ownership, or adaptive worker allocation fail to improve the COST or latency–memory–freshness frontier, the reusable contribution remains root-vector publication rather than the scheduler. A direct engine-path measurement (Section 7.3) first found no multicore speedup because per-epoch cost was dominated by sequential O(state) snapshot bookkeeping and by per-tuple allocation; rebuilding the maintenance to be O(∆) 24 and columnar end to end—dense-integer columnar views and indices, a sharded delta accumulator, single-scan change derivation, a mutable occurrence-count ledger in place of the persistent base-state copy, and overlapping the answer decode with the view merges—removes that wall and yields a genuine intra-epoch speedup of ≈ 1.9× at eight workers together with a several-fold single-thread gain. The residual ceiling is now the structural parallel width of the maintained state — the small fixed number of independently updat-able views and relations — established by compute-density invariance and a net-negative enumeration-parallelization attempt (Section 7.4); the two parallel phases (enumeration and view merge) each scale about 2 × on eight workers once the sequential phases are small, and the pre-registered ≥ 8×
+
+target is not reached inside one epoch. We verified this bound is structural rather than layout or serial overhead: four attempts to parallelize the residual work (partitioning the largest view, range-partitioning the index seal, batching the base-state application, and block-striping the enumera-tion) were each measured net-negative at the per-epoch delta sizes here, and improving cache locality by contiguous-block striping regresses throughput by sacrificing load balance. The intra-epoch ceiling is shape-dependent, not universal: compute-dense plans reach 7 .5–7 .8× at the 16 performance cores (Section 7.4), the pre-registered ≥ 8× target is met at inter-query granularity (Section 7.5), and a fair hybrid scheduler reclaims a further +9 .6% of gating-induced idleness at equal core budget, bounded by the same width law (Sec-tion 7.6). The columnar snapshots that enable the allocation-lean maintenance also give up cross-epoch structural sharing: a slow reader pinning an epoch now retains full columnar view copies rather than shared trie structure, so the version-retention cost discussed below is higher per pinned epoch than in the pointer-sharing design. 
+
+# Baseline scope. The Flink comparison is one node, heap state backend, object reuse on, no checkpointing, no network exchange: it measures “engine-embedded lanes vs. frame-work keyed streams on one host,” and says nothing about distributed, checkpointed, or RocksDB-backed Flink deploy-ments, whose per-slide costs and failure guarantees differ in kind. The incremental operator (variant A) is hand-written on Flink’s runtime because Flink ships no incremental multi-way join; it is bracketed from below by the idiomatic variant B (native sliding windows, full recompute), but a Flink SQL or Table-API formulation was not measured. Inversely, TrieGS lanes pay no serialization or mailbox costs; the absolute gaps include that structural advantage by design. 
+
+# Hardware and workload-model scope. All scaling results in Sections 7.4, 7.5, and 7.6 come from one 24-core host with heterogeneous cores (16P+8E); efficiency-core throughput (≈ 0.55 × P) both lowers the achievable ideal to ≈ 20 .4×
+
+and confounds worker-count effects with core-type effects, and the Intel/NUMA replication of these specific sweeps is pending. The workload model is fixed slide schedules (fixed work per configuration), which measures capacity, not latency under open-loop arrival; a system can look identical on fixed-work strong scaling and differ under bursty arrival with queueing — the deep-pooling configuration that halves the expensive lane’s per-slide wall at a 12% throughput cost (Section 7.12) is exactly such a case. The slowest-class gating law of Section 7.5 also binds TrieGS: on mixes with a higher class-cost spread than the measured one, TrieGS’s own ceiling drops accordingly unless intra-query morsels can split the expensive lanes, which currently pays off only for compute-dense plans; hybrid pooling reclaims the gating law’s idle threads (+9 .6% at equal core budget) but is itself bounded by the structural width law (Section 7.6). 
+
+# Freshness. An enumerator sees the vector published when it starts, not necessarily the newest wall-clock state when it finishes. Applications that require latest-state linearizability may need shorter enumerations, cancellation, or a different consistency contract. 
+
+# Version-retention cost. A slow reader pins old roots and can delay reclamation. The asymptotic delay guarantee does not bound retained memory. This risk is measured directly in the evaluation. 
+
+# Architectural necessity. The logical theorem needs ver-sioned indexes and atomic query-state publication, but not necessarily LFNT. The first-round local matrix in Section 7 does not support an LFNT performance claim: simpler se-quential and MVCC-object backends dominate the config-ured prototype series. LFNT remains an empirical design hypothesis until integer-coded, packed, and NUMA-aware variants outperform simpler alternatives on the relevant latency–memory–freshness frontier. 
+
+# Durability. The current correctness proof is in-memory. Crash consistency, exactly-once replay, persistent expira-tion queues, and atomic checkpointing of stream offsets with root vectors require an additional protocol and validation. 
+
+# Workload validity. The value of concurrent full enumera-tion depends on applications that need stable result traversal while updates continue. Delta-only consumers or aggregate-only SWAG consumers may be more economical for many workloads. The paper must demonstrate, not assume, the target regime. 
+
+# Evaluation maturity. Section 7 now reports first-round local measurements: semantic oracle checks, publication snapshots, bounded Flink parity, relation-backend ablation, Apple M2 scaling, an engine-path morsel-scaling study (an 
+
+O(∆), columnar maintenance rebuild that turns an initial no-speedup result into an ≈ 1.9× intra-epoch multicore speedup with a several-fold single-thread gain, bounded thereafter by structural parallel width), a plan-shape anatomy show-ing intra-query speedup tracks compute per resident byte (1 .3× to 7 .8× across shapes), a 24-lane multi-query strong-scaling study against a work-matched, parity-gated Flink baseline (13 .1–17 .7× at 24 threads; 5 .8–32 × absolute ad-vantage), and a CPU-budget-gated fair hybrid-scheduling study (+9 .6% over an LPT pure-inter baseline at equal core budget). Warmup accounting matters on a JIT runtime: the committed sweep protocol runs explicit warmup periods excluded from timing, after an early protocol that re-paid JIT compilation inside measured execution inflated sweeps severalfold. 
+
+# 10. CONCLUSION 
+
+TrieGS studies the boundary between dynamic constant-delay enumeration and shared-memory concurrent execu-tion. The revised proof separates the classical CDE part from the systems part. A free-connex witness-subtree ar-gument gives the abstract constant-delay enumerator; a 25 multiset view-maintenance argument restores counting pay-loads after each update epoch; an access-structure layer makes the space–delay choice explicit; and dictionary-coded LFNT/root-vector refinement turns that abstract state into a physical snapshot safe for concurrent readers. For fixed full acyclic conjunctive queries under multiset semantics, the proof chain is now 
+
+Gt → Lt → Ct → St → Q(Gt),
+
+where Lt is the maintained logical view state, Ct is the fully indexed access representation over stable dictionary identifiers, and St is the published versioned root-vector snapshot. Projected free-connex queries are supported by an explicit count-aware answer view and therefore include its materialization costs. Morselized scheduling, SWAG aggre-gate summaries, packed integer layouts, and locality-aware dictionary policies are refinements or extensions, not new query-class theorems. The practical claim remains conditional. LFNT is valuable only if it improves the latency–memory–freshness frontier over simpler object-key and integer-key versioned indexes, and concurrent full enumeration is important only where delta consumption or aggregate-only SWAG summaries are not adequate substitutes. The CQELS-based evaluation protocol therefore treats correctness, CROWN and backend comparisons, dictionary-layout attribution, workload need, multicore scaling, reclamation cost, SWAG aggregation, and multi-query economics as separate falsifiable questions. 
+
+# ACKNOWLEDGMENT 
+
+This project was supported by the Deutsche Forschungs-gemeinschaft, German Research Foundation under grant number 453130567 (COSMO). 
+
+# 11. REFERENCES 
+
+[1] Y. Ahmad, O. Kennedy, C. Koch, and M. Nikolic. Dbtoaster: Higher-order delta processing for dynamic, frequently fresh views. Proc. VLDB Endow. ,5(10):968–979, 2012. [2] G. M. Amdahl. Validity of the single processor approach to achieving large scale computing capabilities. In Proceedings of the April 18-20, 1967, spring joint computer conference , AFIPS ’67 (Spring), pages 483–485, New York, NY, USA, 1967. ACM. [3] G. Bagan, A. Durand, and E. Grandjean. On acyclic conjunctive queries and constant delay enumeration. In 
+
+International Workshop on Computer Science Logic ,pages 208–222. Springer, 2007. [4] C. Berkholz, J. Keppeler, and N. Schweikardt. Answering conjunctive queries under updates. In 
+
+proceedings of the 36th ACM SIGMOD-SIGACT-SIGAI symposium on Principles of database systems , pages 303–318, 2017. [5] D. Carral, I. Dragoste, L. Gonz´ alez, C. J. H. Jacobs, M. Kr¨ otzsch, and J. Urbani. Vlog: A rule engine for knowledge graphs. In C. Ghidini, O. Hartig, M. Maleshkova, V. Sv´ atek, I. F. Cruz, A. Hogan, J. Song, M. Lefran¸ cois, and F. Gandon, editors, The Semantic Web - ISWC 2019 - 18th International Semantic Web Conference, Auckland, New Zealand, October 26-30, 2019, Proceedings, Part II , volume 11779 of Lecture Notes in Computer Science , pages 19–35. Springer, 2019. [6] S. Deep and P. Koutris. Compressed representations of conjunctive query results. In Proceedings of the 37th ACM SIGMOD-SIGACT-SIGAI Symposium on Principles of Database Systems , PODS ’18, pages 307–322. Association for Computing Machinery, 2018. [7] L. Dhulipala, J. Shun, and G. E. Blelloch. Low-latency graph streaming using compressed purely-functional trees. CoRR , abs/1904.08380, 2019. [8] G. Gottlob, G. Greco, N. Leone, and F. Scarcello. Hypertree decompositions: Questions and answers. In T. Milo and W. Tan, editors, Proceedings of the 35th ACM SIGMOD-SIGACT-SIGAI Symposium on Principles of Database Systems, PODS 2016, San Francisco, CA, USA, June 26 - July 01, 2016 , pages 57–74. ACM, 2016. [9] M. Idris, M. Ugarte, and S. Vansummeren. The dynamic yannakakis algorithm: Compact and efficient query processing under updates. In S. Salihoglu, W. Zhou, R. Chirkova, J. Yang, and D. Suciu, editors, 
+
+Proceedings of the 2017 ACM International Conference on Management of Data, SIGMOD Conference 2017, Chicago, IL, USA, May 14-19, 2017 , pages 1259–1274. ACM, 2017. [10] M. Idris, M. Ugarte, S. Vansummeren, H. Voigt, and W. Lehner. Efficient query processing for dynamically changing datasets. ACM SIGMOD Record , 48(1):33–40, 2019. [11] M. Idris, M. Ugarte, S. Vansummeren, H. Voigt, and W. Lehner. General dynamic yannakakis: conjunctive queries with theta joins under updates. VLDB J. ,29(2-3):619–653, 2020. [12] C. Kankanamge, S. Sahu, A. Mhedhbi, J. Chen, and S. Salihoglu. Graphflow: An active graph database. In S. Salihoglu, W. Zhou, R. Chirkova, J. Yang, and D. Suciu, editors, Proceedings of the 2017 ACM International Conference on Management of Data, SIGMOD Conference 2017, Chicago, IL, USA, May 14-19, 2017 , pages 1695–1698. ACM, 2017. [13] A. Kara, H. Q. Ngo, M. Nikolic, D. Olteanu, and H. Zhang. Maintaining triangle queries under updates. 
+
+ACM Trans. Database Syst. , 45(3):11:1–11:46, 2020. [14] K. Kim, I. Seo, W. Han, J. Lee, S. Hong, H. Chafi, H. Shin, and G. Jeong. Turboflux: A fast continuous subgraph matching system for streaming graph data. In G. Das, C. M. Jermaine, and P. A. Bernstein, editors, 
+
+Proceedings of the 2018 International Conference on Management of Data, SIGMOD Conference 2018, Houston, TX, USA, June 10-15, 2018 , pages 411–426. ACM, 2018. [15] V. Leis, P. A. Boncz, A. Kemper, and T. Neumann. Morsel-driven parallelism: a numa-aware query evaluation framework for the many-core age. In C. E. Dyreson, F. Li, and M. T. ¨Ozsu, editors, International Conference on Management of Data, SIGMOD 2014, Snowbird, UT, USA, June 22-27, 2014 , pages 743–754. ACM, 2014. [16] A. Mhedhbi, C. Kankanamge, and S. Salihoglu. Optimizing one-time and continuous subgraph queries using worst-case optimal joins. ACM Trans. Database Syst. , 46(2):6:1–6:45, 2021. 26 [17] S. Min, J. Jang, K. Park, D. Giammarresi, G. F. Italiano, and W. Han. Time-constrained continuous subgraph matching using temporal information for filtering and backtracking. In ICDE , pages 3257–3269. IEEE, 2024. [18] S. Min, S. G. Park, K. Park, D. Giammarresi, G. F. Italiano, and W. Han. Symmetric continuous subgraph matching with bidirectional dynamic programming. 
+
+Proc. VLDB Endow. , 14(8):1298–1310, 2021. [19] H. Mistry, P. Roy, S. Sudarshan, and K. Ramamritham. Materialized view selection and maintenance using multi-query optimization. In ACM SIGMOD Record ,volume 30, pages 307–318. ACM, 2001. [20] M. Nikolic and D. Olteanu. Incremental view maintenance with triple lock factorization benefits. In 
+
+Proceedings of the 2018 International Conference on Management of Data , pages 365–380, 2018. [21] M. Nikolic, H. Zhang, A. Kara, and D. Olteanu. F-ivm: learning over fast-evolving relational data. In 
+
+Proceedings of the 2020 ACM SIGMOD International Conference on Management of Data , pages 2773–2776, 2020. [22] A. Pacaci, A. Bonifati, and M. T. ¨Ozsu. Regular path query evaluation on streaming graphs. In Proceedings of the 2020 ACM SIGMOD International Conference on Management of Data , SIGMOD ’20, page 1415–1430, New York, NY, USA, 2020. Association for Computing Machinery. [23] A. Pacaci, A. Bonifati, and M. T. ¨Ozsu. Evaluating complex queries on streaming graphs. In 38th IEEE International Conference on Data Engineering, ICDE 2022, Kuala Lumpur, Malaysia, May 9-12, 2022 , pages 272–285. IEEE, 2022. [24] A. Prokopec. Cache-tries: concurrent lock-free hash tries with constant-time operations. In A. Krall and T. R. Gross, editors, Proceedings of the 23rd ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming, PPoPP 2018, Vienna, Austria, February 24-28, 2018 , pages 137–151. ACM, 2018. [25] A. Prokopec. Efficient lock-free removing and compaction for the cache-trie data structure. In M. Aldinucci, L. Padovani, and M. Torquati, editors, 
+
+Euro-Par 2018: Parallel Processing - 24th International Conference on Parallel and Distributed Computing, Turin, Italy, August 27-31, 2018, Proceedings , volume 11014 of Lecture Notes in Computer Science , pages 575–589. Springer, 2018. [26] A. Prokopec, N. G. Bronson, P. Bagwell, and M. Odersky. Concurrent tries with efficient non-blocking snapshots. In J. Ramanujam and P. Sadayappan, editors, Proceedings of the 17th ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming, PPOPP 2012, New Orleans, LA, USA, February 25-29, 2012 , pages 151–160. ACM, 2012. [27] D. P¨ uroja, J. Waudby, P. Boncz, and G. Sz´ arnyas. The LDBC social network benchmark interactive workload v2: A transactional graph query benchmark with deep delete operations. CoRR , abs/2307.04820, 2023. [28] P. Roy, S. Seshadri, S. Sudarshan, and S. Bhobe. Efficient and extensible algorithms for multi query optimization. In Proceedings of the 2000 ACM SIGMOD international conference on Management of data , pages 249–260, 2000. [29] T. K. Sellis. Multiple-query optimization. ACM Transactions on Database Systems (TODS) ,13(1):23–52, 1988. [30] P. Sowi´ nski, M. Ganzha, and M. Paprzycki. RiverBench: An open RDF streaming benchmark suite. 
+
+CoRR , abs/2305.06226, 2023. [31] S. Sun, X. Sun, B. He, and Q. Luo. Rapidflow: An efficient approach to continuous subgraph matching. 
+
+Proc. VLDB Endow. , 15(11):2415–2427, 2022. [32] X. Sun, S. Sun, Q. Luo, and B. He. An in-depth study of continuous subgraph matching. Proc. VLDB Endow. ,15(7):1403–1416, 2022. [33] K. Tangwongsan, M. Hirzel, and S. Schneider. In-order sliding-window aggregation in worst-case constant time. 
+
+CoRR , abs/2009.13768, 2020. [34] K. Tangwongsan, M. Hirzel, and S. Schneider. Out-of-order sliding-window aggregation with efficient bulk evictions and insertions. CoRR , abs/2307.11210, 2023. [35] Q. Wang, X. Hu, B. Dai, and K. Yi. Change propagation without joins. Proc. VLDB Endow. ,16(5):1046–1058, 2023. [36] Y. R. Wang, M. Willsey, and D. Suciu. Free join: Unifying worst-case optimal and traditional joins. Proc. ACM Manag. Data , 1(2):150:1–150:23, 2023. [37] J. Wu and D. Suciu. HoneyComb: A parallel worst-case optimal join on multicores. CoRR ,abs/2502.06715, 2025. [38] X. Yan and J. Han. gspan: Graph-based substructure pattern mining. In Proceedings of the 2002 IEEE International Conference on Data Mining (ICDM 2002), 9-12 December 2002, Maebashi City, Japan ,pages 721–724. IEEE Computer Society, 2002. [39] R. Yang, Z. Zhang, W. Zheng, and J. X. Yu. Fast continuous subgraph matching over streaming graphs via backtracking reduction. Proc. ACM Manag. Data ,1(1):15:1–15:26, 2023. [40] M. Yannakakis. Algorithms for acyclic database schemes. In VLDB , volume 81, pages 82–94, 1981. [41] S. Zeuch, S. Breß, T. Rabl, B. D. Monte, J. Karimov, C. Lutz, M. Renz, J. Traub, and V. Markl. Analyzing efficient stream processing on modern hardware. Proc. VLDB Endow. , 12(5):516–530, 2019. [42] S. Zeuch, B. Del Monte, J. Karimov, C. Lutz, M. Renz, J. Traub, S. Breß, T. Rabl, and V. Markl. Analyzing efficient stream processing on modern hardware. 
+
+Proceedings of the VLDB Endowment , 12(5):516–530, 2019. 27
