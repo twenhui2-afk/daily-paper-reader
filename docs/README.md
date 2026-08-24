@@ -6,58 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-23
-- 运行时间：2026-08-24 03:05:40 UTC+8
+- 最新运行日期：2026-08-24
+- 运行时间：2026-08-25 03:29:06 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《Towards discrete convex analysis over classical root systems》（8.3/10）
-- 速读：《CQELS-TrieGS Report: Snapshot-Consistent Constant-Delay Enumeration for Streaming Graph Queries》（7.9/10）, 《The second pole of Witten zeta functions and exact evaluations in types F4 and D5》（7.9/10）, 《Counting Lattice Points in Minkowski Sums of Cross Polytopes》（7.8/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《On the Greedoid Tutte Polynomial for simple rooted graphs》（8.6/10）, 《SR-TL1: A Square-Root TL1-Norm Framework for Robust SMV DoA Estimation under Highly-Coherent Dictionaries》（8.5/10）
+- 速读：《Zero-dimensional multi-physics-constrained parameter design and optimization for advanced quasi-isodynamic stellarators》（8.2/10）, 《Thin-Shell implies small-ball deviation via Gaussian tilts》（7.6/10）, 《Lattice vertex algebras of type ADE over fields of prime characteristic and their representations》（7.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/23/README](/202608/23/README)
+- 详情：[/202608/24/README](/202608/24/README)
 
 ### 精读区论文标签
-1. [Towards discrete convex analysis over classical root systems](/202608/23/2608.16090v1-towards-discrete-convex-analysis-over-classical-root-systems)  
-   标签：评分：8.3/10
+1. [On the Greedoid Tutte Polynomial for simple rooted graphs](/202608/24/2608.20843v1-on-the-greedoid-tutte-polynomial-for-simple-rooted-graphs)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
+2. [SR-TL1: A Square-Root TL1-Norm Framework for Robust SMV DoA Estimation under Highly-Coherent Dictionaries](/202608/24/2608.20943v1-sr-tl1-a-square-root-tl1-norm-framework-for-robust-smv-doa-estimation-under-highly-coherent-dictionaries)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+3. [Root cause analysis via difference graph discovery from linear time-series data](/202608/24/2608.21117v1-root-cause-analysis-via-difference-graph-discovery-from-linear-time-series-data)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+4. [Bethe-root configurations and spectral degeneracy in the open XXZ chain with degenerate boundaries](/202608/24/2608.20815v1-bethe-root-configurations-and-spectral-degeneracy-in-the-open-xxz-chain-with-degenerate-boundaries)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+5. [Beyond Fault Localization: A Trajectory-Level Study of LLM Agents for Microservice Root Cause Analysis](/202608/24/2608.21310v1-beyond-fault-localization-a-trajectory-level-study-of-llm-agents-for-microservice-root-cause-analysis)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+6. [Unified Branch-and-Bound Search for the Steiner Traveling Salesman Problem on Graphs of Convex Sets](/202608/24/2608.21319v1-unified-branch-and-bound-search-for-the-steiner-traveling-salesman-problem-on-graphs-of-convex-sets)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [CQELS-TrieGS Report: Snapshot-Consistent Constant-Delay Enumeration for Streaming Graph Queries](/202608/23/2608.15927v1-cqels-triegs-report-snapshot-consistent-constant-delay-enumeration-for-streaming-graph-queries)  
-   标签：评分：7.9/10
+1. [Zero-dimensional multi-physics-constrained parameter design and optimization for advanced quasi-isodynamic stellarators](/202608/24/2608.20652v1-zero-dimensional-multi-physics-constrained-parameter-design-and-optimization-for-advanced-quasi-isodynamic-stellarators)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-2. [The second pole of Witten zeta functions and exact evaluations in types F4 and D5](/202608/23/2608.16363v1-the-second-pole-of-witten-zeta-functions-and-exact-evaluations-in-types-f4-and-d5)  
-   标签：评分：7.9/10
+2. [Thin-Shell implies small-ball deviation via Gaussian tilts](/202608/24/2608.20816v1-thin-shell-implies-small-ball-deviation-via-gaussian-tilts)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-3. [Counting Lattice Points in Minkowski Sums of Cross Polytopes](/202608/23/2608.16037v1-counting-lattice-points-in-minkowski-sums-of-cross-polytopes)  
-   标签：评分：7.8/10
+3. [Lattice vertex algebras of type ADE over fields of prime characteristic and their representations](/202608/24/2608.20706v1-lattice-vertex-algebras-of-type-ade-over-fields-of-prime-characteristic-and-their-representations)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-4. [Half a qubit: an algebraic fractionalization](/202608/23/2608.16183v1-half-a-qubit-an-algebraic-fractionalization)  
-   标签：评分：7.8/10
+4. [Some knots with no SU(2)-abelian surgeries](/202608/24/2608.20551v1-some-knots-with-no-su2-abelian-surgeries)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-5. [Atiyah's Minkowski Space Conjecture Fails for Every $n\ge3$](/202608/23/2608.16693v1-atiyahs-minkowski-space-conjecture-fails-for-every-nge3)  
-   标签：评分：7.8/10
+5. [Polylogarithmic Chabauty--Kim loci over number fields](/202608/24/2608.20615v1-polylogarithmic-chabauty--kim-loci-over-number-fields)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-6. [Implicit, Yet Impactful: Understanding Hidden Dependencies in Java Projects](/202608/23/2608.16262v1-implicit-yet-impactful-understanding-hidden-dependencies-in-java-projects)  
-   标签：评分：7.7/10
+6. [Channel Modeling of Single Wire Earth Return Networks for Narrowband Power Line Communication and Sensing: A Field-Validated High-Frequency Digital Twin](/202608/24/2608.20728v1-channel-modeling-of-single-wire-earth-return-networks-for-narrowband-power-line-communication-and-sensing-a-field-validated-high-frequency-digital-twin)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-7. [MINT: Min-Selection Preference Distillation for Balanced Multi-Objective Alignment](/202608/23/2608.14828v1-mint-min-selection-preference-distillation-for-balanced-multi-objective-alignment)  
+7. [Mannheim--Kazanas Black Holes: Horizons, Temperatures and Thermodynamics](/202608/24/2608.21118v1-mannheim--kazanas-black-holes-horizons-temperatures-and-thermodynamics)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+8. [Across-Design Uncertainty in Short Pricing Panels: Evidence from Simulated Price Trajectories](/202608/24/2608.21334v1-across-design-uncertainty-in-short-pricing-panels-evidence-from-simulated-price-trajectories)  
+   标签：评分：7.3/10
+   evidence：检索回退候选
+9. [A cube-root phase transition in tree-child networks and the enumeration threshold for galled networks](/202608/24/2608.20860v1-a-cube-root-phase-transition-in-tree-child-networks-and-the-enumeration-threshold-for-galled-networks)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Unitary Yang--Baxter Operators: Towards a Classification](/202608/23/2608.16865v1-unitary-yang--baxter-operators-towards-a-classification)  
-   标签：评分：6.2/10
+10. [Flow Matching Meets 3D Curvilinear Structure Segmentation in Medical Imaging](/202608/24/2608.19965v1-flow-matching-meets-3d-curvilinear-structure-segmentation-in-medical-imaging)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-9. [Exceptional points of the Schwarzschild spectrum under local potential perturbation: The Princess and the Pea](/202608/23/2608.16283v1-exceptional-points-of-the-schwarzschild-spectrum-under-local-potential-perturbation-the-princess-and-the-pea)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-10. [Threshold cascades of interacting diffusions on unimodular random trees: a conditional branching-process universality theorem, the annealed pressure, and the dimension of the failed boundary](/202608/23/2608.15987v1-threshold-cascades-of-interacting-diffusions-on-unimodular-random-trees-a-conditional-branching-process-universality-theorem-the-annealed-pressure-and-the-dimension-of-the-failed-boundary)  
-   标签：评分：6.1/10
-   evidence：检索回退候选
-11. [Revisiting Classifier-Free Guidance Methods in Latent Diffusion Models](/202608/23/2608.16786v1-revisiting-classifier-free-guidance-methods-in-latent-diffusion-models)  
-   标签：评分：6.1/10
+11. [Dual Co-Train: Cross-Dataset Ultrasound Tongue Segmentation Under Extreme Data Scarcity](/202608/24/2608.17983v1-dual-co-train-cross-dataset-ultrasound-tongue-segmentation-under-extreme-data-scarcity)  
+   标签：评分：6.8/10
    evidence：检索回退候选
 
 
