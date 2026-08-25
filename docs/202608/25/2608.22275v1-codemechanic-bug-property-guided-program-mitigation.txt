@@ -1,0 +1,401 @@
+Title: CodeMechanic: Bug-Property-Guided Program Mitigation
+
+URL Source: https://arxiv.org/pdf/2608.22275v1
+
+Published Time: Tue, 25 Aug 2026 01:01:12 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# CodeMechanic: Bug-Property-Guided Program Mitigation 
+
+Han Zheng 1 han.zheng@epfl.ch 
+
+Rafaila Galanopoulou 1 rafaila.galanopoulou@epfl.ch 
+
+Ilia Shumailov 2 ilia.shumailov@gmail.com 
+
+Tianqi Fan 3 tqfan@google.com 
+
+Aiden Hall 3 aidenhall@google.com 
+
+Dominik Maier 3 dmnk@google.com 
+
+Mathias Payer 1 mathias.payer@nebelwelt.net 
+
+> 1
+
+EPFL 2Meta 3Google 
+
+## Abstract 
+
+Automated testing discovers vulnerabilities faster than developers can investigate and repair them, leaving an interval in which known memory corruptions remain exploitable. End-to-end LLM repair agents can shorten this interval, but they synthesize open-ended code changes and commonly validate them only by replaying a proof of concept (PoC). This weak oracle accepts patches that silence the observed crash by changing unrelated behavior, making unintended deployment risky. We present CodeMechanic , a bug-property-guided system for generating constrained mit-igations for spatial memory corruption. Instead of asking an LLM to generate a permanent repair, CodeMechanic reconstructs the violated memory-safety property from the crash, validates the dereferenced pointer and its buffer range, and inserts a local fail-stop guard before the dangerous access. The guard terminates execution when the boundary check fails. The resulting mitigation deliberately trades availability for security: it can convert potential remote code execution into controlled termination while developers investigate the root cause and prepare a permanent repair. CodeMechanic combines a two-dimensional static and dynamic context extractor with in-prompt debugging knowledge and stepwise val-idation to limit the effect of LLM errors. On 101 real-world ARVO bugs, the first attempt of CodeMechanic produces 47.6% more plausible patches (i.e., patches that pass PoC-replay validation) than the best baseline while using 91% fewer tokens. Manual audit further shows that CodeMechanic produces 3.4 ×–4.3 × more patches semantically equivalent to developer-written repairs. 
+
+## 1 Introduction 
+
+Modern software systems add functionalities and thereby increase complexity (Dullien, 2018). However, this growing complexity exceeds human comprehension limits, developers often misinterpret abstractions and struggle to reason across diverse interfaces, ultimately leading to the emergence of software vulner-abilities (Chrome, 2025). On Bugcrowd, a third-party bug bounty platform, hundreds of thousands of vulnerabilities were reported and acknowledged by vendors (bugcrowd, 2025), in addition to those identified and addressed internally. These vulnerabilities are not theoretical (Chrome, 2025). In contrast, they can be, and have been, exploited by skilled attackers (Silvanovich, 2026; Marczak et al., 2023; Times, 2022). 1arXiv:2608.22275v1 [cs.SE] 23 Aug 2026 Proactively discovering and remediating vulnerabilities before they are weaponized is therefore essential to ensuring user safety. Over the past decade, fuzzers and static analyzers have discovered an astonishing amount of vulnerabil-ities (Zalewski, 2013; Fioraldi et al., 2020; libfuzzer, 2023; GitHub, 2024). However, this rapid growth introduced a new challenge: the volume of bugs now exceeds the capacity of developers to triage and re-solve them (Keromytis, 2022). For example, the Linux kernel currently has around 1,500 unresolved bugs reported by syzbot (Google, 2024). Among these, memory corruption issues are the most exploited by at-tackers in real-world scenarios (Stone, 2022). This growing backlog highlights the urgent need for Automated Vulnerability Repair (AVR) techniques to reduce manual effort and help developers keep pace, especially with memory corruption vulnerabilities. It also motivates rapid mitigations that reduce exposure while a permanent repair is developed. The rapid advancement of Large Language Models (LLMs) (Comanici et al., 2025; OpenAI, 2025; Liu et al., 2024) has created new opportunities for automated program repair. A growing number of AVR agents ask an LLM to localize a defect and generate a permanent repair (Tufano et al., 2019; Chen et al., 2019; Feng et al., 2020; Huang et al., 2025; Xia & Zhang, 2022; 2024; Zhang et al., 2024; Huang et al., 2023; Yu et al., 2025). For real-world vulnerabilities, however, an unrestricted LLM-generated repair is risky: the LLM can modify arbitrary code, while the available oracle often checks only that one PoC no longer crashes. An incorrect patch may therefore pass validation while silently corrupting functionality or introducing a new vulnerability. This mismatch makes open-ended patches difficult to deploy without a human in the loop. Despite its improvement, several key challenges limit their broader applicability: 
+
+(C1) Unbounded effects of LLM-generated patches. LLMs are probabilistic and can generate arbi-trary “plausible” patches. With only a PoC-based oracle, deleting a code path, corrupting a fuzz driver, and repairing the underlying bug may all appear successful. For unattended mitigation, the patch space must instead bound the possible side effects and make failure behavior predictable. 
+
+(C2) Insufficient context for reconstructing a memory-safety property. The crash site alone rarely contains the pointer, object base, and object end needed to state the violated memory-safety condition. Without both code and runtime context, the LLM may hallucinate a boundary or overfit to the observed execution. 
+
+(C3) Dependence on expert debugging knowledge. Recovering the relevant pointer and object bounds requires deliberate use of code search, macro resolution, GDB, and sanitizer metadata. Without guidance, an LLM may invoke these tools repeatedly or misinterpret their errors. To address these challenges, we propose the following solutions: 
+
+(S1) Bug-Property-Guided Mitigation . We constrain the output to a local guard derived from the spatial memory-safety property. The LLM identifies the dereferenced pointer and its valid buffer range, and 
+
+CodeMechanic inserts a check such as if (!valid_pointer(p)) exit(0); immediately before the dangerous access. This is intentionally a temporary mitigation rather than a permanent repair. If the inferred condition is violated, the guard terminates execution before the memory corruption can be exploited. Restricting the patch format and location also prevents the LLM from freely modifying unrelated program logic. We call this constrained, temporary code change a mitigation patch . When the distinction from a permanent repair is clear, we use patch as shorthand. 
+
+(S2) Two-Dimensional Context Provision . To overcome the challenge of insufficient bug context, we provide the LLM with a dual perspective: a code view and a data view. In the code view, we supply macro definitions and representative examples of variable usage within the program, helping the LLM situate the bug in its broader contexts. In the data view, we expose the LLM to a live debugger session paused at the crash site. This includes collected variable values and types, along with Sanitizer metadata (Google, 2016), which enable the LLM to better comprehend the memory layout and underlying defect condition. 
+
+(S3) Embedding Human Debugging Knowledge . Finally, to address the dependence on expert tool usage, we incorporate human debugging strategies directly into the prompts. These embedded guidelines offer a structured workflow for error handling. For example, prompts regarding global-buffer-overflow bugs 2require the LLM to validate the buffer name provided in the ASan log. Similarly, when encountering a symbol undefined error, the prompt instructs the LLM to call find_macro_definition in order to resolve the missing symbol. We implemented our prototype, CodeMechanic , and evaluated it against the state-of-the-art AVR agents, 
+
+PatchAgent and San2Patch , on real-world vulnerabilities. The results show that CodeMechanic gen-erates 47.6% more plausible patches than the best competitor, while spending only 9% of the tokens. With the default five-attempt setup, CodeMechanic achieves 13.3% more plausible patches compared to the best competitor, with only 10% of the cost. Through manual auditing of the plausible patches, we found that 
+
+CodeMechanic produces 240% and 325% more semantically equivalent patches (functionally identical to the developer-written repairs) compared to PatchAgent and San2Patch respectively. This result indi-cates that constraining the patch can also be a strategy when developers repair the bugs. Our contributions are: • We formulate bug-property-guided mitigation as a constrained alternative to open-ended LLM repair for spatial memory corruption. • We introduce Bug-Property-Guided Mitigation , supported by Two-Dimensional Context Extractor 
+
+and In-Prompt Human Knowledge , to recover and validate a violated boundary property before generating a local guard. • We implement and evaluate CodeMechanic against two state-of-the-art AVR agents, measuring plausible-patch count, cost, semantic equivalence, and failure modes. • We will release CodeMechanic to support open science upon acceptance. 
+
+## 2 Background 
+
+2.1 Exploitable Memory Corruption Bugs 
+
+Despite over three decades of academic and industry efforts (One, 1996), memory corruption remains one of the most critical classes of software vulnerabilities. For instance, in Chromium, over 70% of high-severity security issues are linked to memory safety bugs (Team, 2025a). These vulnerabilities are widespread and are actively exploited by skilled attackers, posing significant risks to end users. Broad mitigations such as control-flow integrity, hardened memory allocators, and sandboxing (Team, 2025b; Wahbe et al., 1993; Carlini et al., 2015) increase the cost of exploitation, but skilled attackers continue to bypass them (Micky, 2025a;b; trendmicro, 2025). A permanent repair remains the desired endpoint after a vulnerability is reported. However, producing and validating that repair takes time. A targeted local guard derived from the crash can block the known dangerous access while developers prepare a permanent repair. Over the past decade, the success of automated bug-finding techniques has led to the discovery of a massive number of security issues (Zalewski, 2013; Fioraldi et al., 2020; libfuzzer, 2023; google, 2023b). Unfortu-nately, the number of discovered bugs with potential security impact is growing faster than developers can address them (Keromytis, 2022). For example, in the Linux kernel alone, over 1,500 discovered bugs re-main unfixed (Google, 2024), and more than 20% of reported bugs remain unresolved even one year after their initial report (Nogikh, 2023). This situation calls for both AVR techniques that assist developers and constrained mitigations that provide immediate protection. 
+
+2.2 Automated Vulnerability Repair and Mitigation 
+
+LLMs have significantly improved automated repair techniques (Tufano et al., 2019; Chen et al., 2019; Feng et al., 2020; Huang et al., 2025; Xia & Zhang, 2022; 2024), leading to several LLM-based AVR agents (Zhang et al., 2024; Kim et al., 2025; Yu et al., 2025). These agents typically begin with a PoC and a reproducible environment, use execution traces or sanitizer reports to localize the bug, and ask the LLM to generate a permanent repair. This end-to-end objective leaves the output space open. Limited context or reasoning (Qi 3Patch Control Repairing Context Debugging Knowledge Localization Format Code View Data View Constraint Repairing (Zhang et al., 2022; Gao et al., 2021) Manual Constraint ∗ ✗ ✓ -Sanitizer-based agents (Yu et al., 2025; Kim et al., 2025) Any Any ✓ ✗ ✗     
+
+> CodeMechanic CrashSite Constraint ✓✓✓
+
+Table 1: Comparision between CodeMechanic and AVR tools. *: based on patch template and may not compile.                                          
+
+> 1---a / libavc / fuzzer / svc_dec_fuzzer . cpp
+> 2+++ b / libavc / fuzzer / svc_dec_fuzzer . cpp
+> 3@@ -304 ,7 +304 ,7 @@ void Codec :: allocFrame ()
+> 4for ( UWORD32 i=0; i<num_bufs ; i ++)
+> 5{
+> 6-mOutBufHandle . u4_min_out_buf_size [ i ] =sizes [ i ];
+> 7+sizes [ i ] =( mWidth /2) *( mHeight /2) ;
+> 8mOutBufHandle . pu1_bufs [ i ] =( UWORD8 *) iv_aligned_malloc ( NULL , 16 , sizes [ i ]) ;
+> 9}
+
+Figure 1: A “plausible” patch generated by an AVR agent (Yu et al., 2025). It prevents the observed failure by changing the fuzz driver rather than the vulnerable library. et al., 2015) can therefore produce a patch that passes PoC replay by modifying unrelated functionality. Without a comprehensive functional oracle, such a patch still requires human review before deployment. Constraint-based repair techniques reduce this freedom by enforcing structured constraints and collecting variables through fuzzing or concolic execution (Zhang et al., 2022; Shariffdeen et al., 2021; Gao et al., 2021). However, these approaches assume an explicit bug location, which is often unavailable in practice, and rely on dynamic traces without source-level comprehension. Their templates may also fail to compile when the selected expressions do not fit the local program context. 
+
+CodeMechanic occupies the space between open-ended LLM repair and template-only constraint repair, as summarized in Table 1. It uses an LLM to recover source-level expressions, but restricts the output to a boundary guard at the crash site. Two-Dimensional Context Extractor combines code and data context, while In-Prompt Human Knowledge guides tool use and error handling. Bug-Property-Guided Mitigation 
+
+then validates the intermediate boundary property and emits a temporary mitigation. The objective is rapid mitigation with bounded side effects, not automatic generation of a permanent repair. While this pattern can in principle extend to a bug class with a reliable runtime oracle, this work focuses on spatial memory corruptions, for which a pointer and object range expose a concrete violation condition. We exclude temporal memory bugs because comparable object-liveness oracles are rarely available in production environments. 
+
+## 3 Motivation and Problem Definition 
+
+We now define the gap addressed by CodeMechanic . The goal is not to generate a permanent repair. Given a reproducible crash, CodeMechanic instead constructs a narrow guard that prevents the observed unsafe memory access with predictable termination. 
+
+3.1 Motivation 
+
+Current agents often optimize for passing validation rather than preserving the program’s intended logic (Nong et al., 2025). When validation consists of replaying one PoC, an arbitrary functionality change can be indistinguishable from a permanent repair. 41 4975: int htmlParseDocument ( htmlParserCtxtPtr ctxt ) {                          
+
+> 2// ...
+> 35068: if ( CUR == 0) // <= Crash Site
+> 45069: htmlAutoCloseOnEnd ( ctxt ) ;
+> 5// ...
+> 65088: }// To this line , CUR do not show up
+
+Figure 2: The crash-site snippet does not expose the pointer bounds needed to construct a mitigation. 
+
+Challenge 1: Unbounded patch effects (C1). Current AVR agents do not constrain the format or location of generated patches. Existing benchmarks also lack comprehensive functionality tests, allowing irrelevant or incorrect changes to pass validation as “plausible.” For example, Figure 1 illustrates vulnerability OSS-VUL-65057, where a heap-buffer-overflow occurs in decoder/ih264d_format_conv.c . State-of-the-art AVR agent (Yu et al., 2025) incorrectly identifies the root cause in the fuzz driver and changes its buffer allocation behavior. The PoC no longer exposes the original failure, but the vulnerable library remains unchanged. Such “plausible but incorrect” outputs show why an automatic response should be constrained by a security property rather than entrusted with arbitrary program semantics. 
+
+Challenge 2: Insufficient context for property reconstruction (C2). LLMs require sufficient code and runtime context to reconstruct the violated boundary. For memory corruption vulnerabilities, the model should be provided with either static code snippets and runtime data that include expressions buffer ,
+
+> buffer_end
+
+, and pointer . Without this context, the LLM may hallucinate a boundary or overfit the observed crash. Figure 2 illustrates this issue. Here, a global buffer overflow occurs because CUR is a macro that expands to the dereferenced pointer ctxt->input->cur . And this pointer should fall within the bounds of [ctxt ->input->begin, ctxt->input->end) . However, if an AVR agent simplify dumps the code snippet around the crash site, even if it includes 100 lines of code, the necessary contextual information ( i.e., ctxt->input->begin 
+
+and ctxt->input->end expressions) remains absent. Consequently, the LLM lacks enough context to construct a guard from the local snippet alone. 
+
+Challenge 3: Missing human debugging knowledge (C3). Even when AVR agents provide both dynamic and static analysis tools, LLMs do not inherently possess the knowledge of how to invoke these tools effectively to reason about the root cause of a bug. Instead, they often resort to repetitive tool usage without making meaningful progress. For example, in Figure 2, the agent is equipped with tools such as print_local_vars() , print_var_value() , and find_macro_def() . However, the LLM repeatedly invokes  
+
+> print_local_vars()
+
+despite receiving identical results each time. Furthermore, when attempting to inspect the value of CUR using print_var_value() , the LLM encounters a symbol not found error but fails to infer that CUR 
+
+is a macro. Consequently, it does not proceed to call find_macro_def() to retrieve the actual definition. This illustrates why the mitigation pipeline must encode debugging expertise: the LLM needs guidance to select the appropriate tools, interpret errors, and recover a boundary that can be checked independently. To address these challenges, CodeMechanic uses an explicit spatial memory-safety property to restrict the patch space through Bug-Property-Guided Mitigation (Section 4.3). Two-Dimensional Context Extractor 
+
+(Section 4.1) recovers the static and dynamic expressions needed to instantiate that property, while In-Prompt Human Knowledge (Section 4.2) guides tool use and error recovery. Together, these components analyze a concrete crash and produce a local mitigation whose behavior is easier to validate than an unrestricted LLM-generated repair. 
+
+3.2 Bug Property Abstraction 
+
+To formalize the mitigation contract of CodeMechanic , we first recap the relevant property of spatial memory corruption and then define the condition enforced by the generated guard. 
+
+Bug Properties. Memory safety requires that every pointer dereference remains within the bounds of a valid, live object (Payer, 2021). A violation of this property constitutes memory corruption: exceeding object bounds causes spatial memory corruption, while referencing a deallocated object causes temporal memory corruption. CodeMechanic focuses exclusively on spatial memory corruption, as temporal errors lack stable 5Results 
+
+> Please call tools follow the workflows: First inspect variables in code snippet If not work, then inspect local variables In the worst case, try view code around If you get an error in tool `debug_tool_1`, you should call `code_tool_1`...
+
+② In-Prompt Human Knowledge 
+
+> You’re an C/C++ developer working on a bug fix, your task is … Here are the available tools for you: code_tool_1(): tool description 1 debug_tool_1(): tool description 2 validation_tool(): ...
+
+① Two-Dimension Context Extractor 
+
+> file1.c file1.h libxml2
+> file2.c file2.h libxslt
+
+Code View Context Data View Context 
+
+> You’re an C/C++ developer working on a bug fix, Please write a fix using these three variables: Pointer: {ptr} Buffer: {buf} Buffer End: {buf_end} The Code Snippet is: {snippet}
+
+Large Language Model 
+
+Patch Validator 
+
+Plausible Patch 
+
+Analyze Report 
+
+③ Bug Property Guided Repairing System Output 
+
+Analyze Key Variables 
+
+Analyze Variables Variables Find Macro Definition Code Expression Print Value Value Validate Patch Patch Plausible Key Variables LLM 
+
+Agent Tools 
+
+Agent Components 
+
+Key Contributions Patch Generation Figure 3: CodeMechanic ’s design. Two-Dimensional Context Extractor leverages both code view contexts and data view contexts. detection oracles in practice. Verifying object liveness typically requires smart pointer APIs (cppreference, 2025) or sanitizer debugging interfaces (Google, 2016), neither of which are commonly available in open-source projects. 
+
+Bug Model. We model spatial memory bugs with the following boundary violation condition: (ptr < buf _begin || ptr + sizeof (∗ptr ) > buf _end ) (1) where buf_begin and buf_end denote the start and end addresses (exclusive) of a valid memory buffer. A bug occurs when a pointer ptr violates this condition and is subsequently dereferenced. 
+
+Mitigation Contract. The generated guard is inserted before the pointer dereference and enforces Equa-tion 1. If the condition is violated, it terminates execution before memory is corrupted. This response deliberately converts the dangerous execution into a denial of service. It does not claim to provide a com-plete permanent repair. Synthesizing the guard requires a minimal set of key variables : the dereferenced 
+
+pointer and the buffer range defined by its base and end addresses. CodeMechanic retrieves these ex-pressions together with their type, size, and aliasing information and uses them to construct a targeted mitigation. 
+
+## 4 Design of CodeMechanic 
+
+We present the design of CodeMechanic in Figure 3. Two-Dimensional Context Extractor provides the LLM with code and data views, and In-Prompt Human Knowledge guides tool calls and error handling. These components recover candidate expressions for the pointer and object range. Bug-Property-Guided Mitigation 
+
+validates these intermediate results and uses them to instantiate the restricted guard. This decomposition keeps the LLM responsible for source-level inference while using explicit oracles to check the bug property on which the mitigation depends. 64.1 Two-Dimensional Context Extractor 
+
+To recover the expressions required by the mitigation contract, CodeMechanic introduces a two-dimensional context extractor that integrates code-view and data-view information. 
+
+Code View Context. In the code view, we provide three tools to help the LLM extract relevant diagnostic context from the codebase. The code exploration tool allows the LLM to inspect code beyond the immediate crash site, improving its understanding of the broader context. The macro resolution clarifies symbols that may obscure the root cause of a crash. It resolves macro symbols to their underlying expansions using a simple language server, enabling the LLM to reason about actual variables and operations. For example, in Figure 2, macro resolution locates the definition of CUR and expands it to *ctxt->input->cur , revealing that the dereference involves a pointer. The buffer inference tool addresses the challenge that buffer boundaries relevant to a crash may be defined far from the crash site or even in separate components. It applies a heuristic based on the pointer expression’s operands: specifically, it strips the trailing member access or index, and uses the remaining prefix as a pattern to search for related buffer references across the codebase, allowing the LLM to infer key variables needed for the boundary guard. For example, in Figure 2, buffer inference strips the trailing field access from ctxt ->input->cur and searches for ctxt->input , surfacing references such as ctxt->input->base and ctxt->input->end 
+
+as potential buffer boundaries. 
+
+Data View Context. In the data view, we provide three tools to collect and validate runtime context. The pointer and buffer validation (with ASan metadata) tool leverages ASan metadata to deterministically verify pointer values and buffer ranges, rather than relying solely on the LLM’s reasoning. It cross-checks actual pointer values against sanitizer-reported error addresses, and validates buffer ranges against memory layout metadata, ensuring that reported buffers lie within valid bounds. For example, an ASan report of 
+
+global-buffer-overflow on address 0x0000071da0a8 provides both the fault address for pointer validation and a region descriptor such as 8-byte region [ 0x6020000bc410 , 0x6020000bc418 )] for range validation. The pointer and buffer validation (without ASan metadata) tool handles stack-based buffer overflows, where ASan does not expose precise bounds metadata. It records the faulting address, resumes the crashing frame in GDB to measure the pointer’s declared span, and scans local variables and arguments to identify which buffer range contains the faulting address. If no exact buffer-range match is found, it falls back to the candidate whose end lies closest to the fault address, ensuring reliable handling even without precise ASan metadata. The pointer type analysis tool addresses the subtlety that a pointer may be within bounds yet its dereference still causes an overflow, depending on the pointed-to type. It supplies type information alongside raw pointer expressions, enabling the LLM to correctly reason about the number of bytes accessed during a dereference. For example, a pointer ptr of type size_t * positioned at the end of a buffer will access 8 bytes upon dereference, silently overflowing the buffer even though ptr itself appears in-bounds. 
+
+4.2 In-Prompt Human Knowledge 
+
+Even with rich context, LLMs may struggle to use them effectively without domain knowledge, e.g., calling tools in an ineffective order or misinterpreting error messages. To address this, CodeMechanic embeds human debugging knowledge into the prompt via few-shot prompting (Touvron et al., 2023). 
+
+Tool Call Ordering. To guide the LLM, we encode a high-level debugging workflow into the prompt that mirrors how developers investigate crashes. For global buffer overflows, the LLM is instructed to start from the buffer symbol reported in the ASan log, compute its size, and derive the buffer’s end address for range validation. For heap buffer overflows, where ASan logs do not provide a symbol name, the LLM is guided to first apply buffer inference to locate candidate buffer references, print their addresses for validation, and fall back to scanning local variables and function arguments. 7Tool Error Tolerance. Tools may return errors with unexpected inputs, and without guidance the LLM may misinterpret these and repeat failing calls. To address this, we embed explicit error-handling instructions in the prompt. For example, in Figure 2, printing the address of CUR returns a “Symbol not found” error since CUR is a macro unavailable in the data view. LLM is instructed to invoke the macro resolution tool instead, avoiding repetitive and ineffective tool calls. 
+
+4.3 Bug-Property-Guided Mitigation 
+
+Using the extracted context and validated key variables , CodeMechanic performs Bug-Property-Guided Mitigation . The LLM first instantiates the boundary condition in Equation 1. A second step inserts this condition immediately before the crash site and selects termination as the response. The output space is therefore limited to adding a local guard rather than rewriting arbitrary program logic. We split this workflow into two agents. The first constructs the boundary constraint from validated expres-sions. The second adapts the guard to the local C or C++ context and corrects compilation errors. Neither agent is asked to generate a permanent repair. 
+
+Error-Message Driven Patch Correction. Even when all variables are correctly identified, generating a compilable patch remains challenging due to compiler-specific restrictions across C and C++ projects. For example, some compiler configurations disallow direct casting from char * to void * , and some buffer expressions are constant pointers that cannot be directly manipulated, causing an otherwise correct patch to fail compilation. To address this, CodeMechanic extracts the relevant portion of the compilation error message using regex patterns and provides it to the LLM alongside the failed patch, enabling targeted correction rather than blind regeneration. 
+
+On-Demand Repetition. Since the two agents are responsible for distinct concerns, constraint generation and compilable guard insertion, we categorize patch validation failures accordingly to avoid unnecessary repetition. Compilation failures are attributed to the patch-insertion agent, so only the second step is repeated. Crashes that persist after applying the patch indicate an incorrect boundary condition from the first agent, requiring the full workflow to be rerun. In our evaluation, 89% of errors are compilation failures, so full reruns are rare. 
+
+## 5 Implementation 
+
+We implement CodeMechanic in approximately 5,500 lines of Python code. The current implementation accepts a reproduction environment and a PoC file that crash the program as input, and outputs both the results of key variable analysis and a candidate patch. CodeMechanic is designed to scale to diverse platforms. The current implementation leverages the ARVO format as input (Mei et al., 2024). 
+
+Step-By-Step Validation. CodeMechanic validates each intermediate output before proceeding. The Context Extractor first resolves ptr , then infers buffer_begin and buffer_end from the validated pointer. Only after these expressions pass their checks does CodeMechanic generate and insert the guard. If a step fails, 
+
+CodeMechanic retries that step or halts when no progress is made. This design avoids building later LLM reasoning on rejected intermediate results and reduces the risk of a plausible patch that is nevertheless an invalid mitigation. 
+
+Debugging-Friendly Binary Preparation. CodeMechanic relies on precise debugging information such as pointer types and memory addresses. Since the ARVO benchmark (Mei et al., 2024) and OSS-Fuzz (google, 2023b) enables aggressive compiler optimizations by default, i.e., stripping debugging symbols, 
+
+CodeMechanic intercepts the compilation process by replacing the compiler invocation with a custom Clang wrapper that enables full debugging information ( i.e., -O0 -g ). 
+
+Environment-Independent Debugger Support. CodeMechanic wraps GDB (Project, 2025a) to pro-vide consistent debugging support across environments. Since bug reproduction environments span Ubuntu 16.04 with Clang 5.0.0 to Ubuntu 22.04 with Clang 15.0.0, the associated DWARF debug formats range from version 3 to 5. To ensure compatibility, CodeMechanic builds GDB 12.1 (Project, 2025b) from source, the minimum version supporting all DWARF formats used in our evaluation. 8Out-of-Box Mitigation Generation. Prior systems typically co-locate the mitigation agent and the bug reproduction environment within the same container, complicating resource scheduling and leading to redundant dependency installations. CodeMechanic instead runs the mitigation framework on the host machine and interfaces with the reproduction environment via Docker, cleanly decoupling mitigation logic from bug reproduction and improving deployment flexibility. 
+
+## 6 Evaluation 
+
+6.1 Setup 
+
+Hardware Environment. All evaluations are conducted on a Desktop with Intel i7-13700 (24 threads, 5.20 GHz), 64GB memory and 2TB SSD storage. 
+
+Large Language Model. We employed Gemini-2.5-flash (June 2025) as the default LLM for all AVR agents (Comanici et al., 2025). Alternative models, including Gemini-2.5-pro and Gemini-2.5-flash-lite, were tested but frequently failed due to internal errors ( e.g., “No generation chunks” and “internal server error” messages). Consequently, Gemini-2.5-flash was selected for all experiments. 
+
+Baseline AVR. We compare CodeMechanic against state-of-the-art AVR agents PatchAgent (Yu et al., 2025) and San2Patch (Kim et al., 2025). We exclude the agents whose source code is not available at the time of writing (Zhang et al., 2024; Liu et al., 2025). We also exclude constraint-based repairing tools (Zhang et al., 2022; Shariffdeen et al., 2021; Gao et al., 2021) as they follow a distinct system input: the accurate fault location, while CodeMechanic work without these results. 
+
+Benchmark. We utilize the ARVO (Mei et al., 2024) benchmark, comprised of over 5,000 real-world vul-nerabilities found by OSS-Fuzz. Specifically, we choose 101 bugs following the recommended practice (Zhang et al., 2024), specifically, the following three criteria: 1. Reproducibility : The bug must be reliable reproduced within 15 minutes 1.2. Bug Type : The bug represents a spatial memory corruption. 3. Environment Compatibility : The bug is compatible with PatchAgent and San2Patch ’s en-vironment 2.
+
+Metric. For comparability with prior AVR studies, we retain the plausible patch metric (Yu et al., 2025; Zhang et al., 2024): a patch is plausible if replaying the PoC no longer produces the sanitizer-reported error. In our framing, this is evidence of mitigation for the observed execution, not proof of a correct permanent repair or a generally safe mitigation. Because ARVO lacks comprehensive functional tests, we separately audit the plausible patches in Section 6.5. 
+
+Attempts, Repetition, and Validation. For each agent, we evaluate two variants: AgentN ame 1,which runs a single attempt per trial, and AgentN ame 5, which runs five attempts per trial (following San2Patch (Kim et al., 2025)). For AgentN ame 1, we run five independent trials and report the average to reduce the impact of randomness. In all settings, each attempt is allowed at most three patch validation calls (Yu et al., 2025). 
+
+6.2 RQ1: How efficiently does CodeMechanic generate plausible patches? 
+
+Figure 4 compares the number of plausible patches and their token cost across agents. 
+
+Comparative Plausible-Patch Count . We compare CodeMechanic with other agents on the ARVO bench-mark, as shown in Figure 4. Overall, CodeMechanic demonstrates superior performance under limited          
+
+> 1We change optimization from -O1 to -O0 -g for fully symbolized binary, the modified compilation process encountered ASan errors.
+> 2PatchAgent and San2Patch do not support bugs that relies on Ubuntu 18 or before, as they run a docker inside docker container. CodeMechanic supports all those bugs.
+
+9CodeMechanic CodeMechanic PatchAgent PatchAgent San2Patch San2Patch 
+
+> 010 20 30 40 50 Plausible Patches (#bugs) 020 40 60 80 100 Token Price (USD)
+
+Figure 4: Number of plausible patches and total token cost for agents on all 101 bugs. CodeMechanic 1,
+
+PatchAgent 1 and San2Patch 1 are repeated for five times. stands for the cost (lower is better) while means the number of plausible patches (higher is better). numbers of attempts. In a single run, CodeMechanic achieves an average of 37.2 plausible patches across five runs, which is nearly three times that of PatchAgent 1 and 47.6% higher than San2Patch 1. When con-figured with more attempts, CodeMechanic maintains the leading performance, outperforming PatchA-gent and San2Patch by 41.7% and 13.3%, respectively. 
+
+Cost Efficiency. CodeMechanic also demonstrates strong cost efficiency. Under the single-attempt con-figuration, CodeMechanic 1 incurs a total cost of $2.75 to process all 101 bugs, compared to $2.40 for 
+
+PatchAgent 1 and $21.3 for San2Patch 1. Although San2Patch 1 produces nearly twice as many plau-sible patches as PatchAgent 1, it does so at nearly ten times the cost. In contrast, CodeMechanic 1
+
+achieves a more favorable trade-off: at only 13% of the cost of San2Patch 1, it generates 47.6% more plausible patches. Under the full five-attempt configuration, CodeMechanic costs $9.90 and produces 51 plausible patches, whereas San2Patch costs $106.39, 9.7 × more, while producing 10% fewer plausible patches. PatchAgent remains the most economical option at $7.92, but produces the fewest plausible patches. By spending only $2 more than PatchAgent , CodeMechanic produces 15 additional plausible patches. This cost efficiency is useful for rapidly generating a provisional mitigation. RQ4 separately audits its safety and semantic equivalence. 
+
+Plausible Patches per Attempt . To further evaluate the benefit of multiple attempts, we examine the cumu-lative number of plausible patches across attempts, as shown in Figure 5. CodeMechanic demonstrates consistently higher efficiency: its first attempt alone outperforms PatchAgent across all five attempts, highlighting the effectiveness of each individual patch generation attempt. Beyond fixed configurations, 
+
+CodeMechanic supports adjustable attempt counts, allowing users to trade cost for performance by in-creasing the number of attempts beyond the five-attempt setting evaluated here. 
+
+Overlap Analysis. We also explore the overlap of plausible patches generated by three agents. Overall, different agents produce plausible patches for distinct bugs. Together, the agents produce plausible patches for 81 distinct bugs, but only 8 bugs receive plausible patches from every agent. This complementarity supports a two-stage workflow. The first stage uses CodeMechanic to obtain a constrained mitigation. The second passes cases without a candidate patch to an open-ended repair agent. Relative to CodeMechanic 
+
+alone, this combination produces plausible patches for 41% more bugs at an additional cost of $0.93. 
+
+Takeaway: CodeMechanic 1 generates 47.6% more plausible patches than the second-best agent at approximately 10% of its cost. 10 0 1 2 3 4 5010 20 30 40 50 PatchAgent CodeMechanic San2Patch 
+
+> Number of attempts Plausible Fixes
+
+Figure 5: Total number of plausible patches generated at the n-th attempt. The grey dot lines stands for the plausible patches achieved at the first and fifth CodeMechanic attempt. Agent CodeMechanic PatchAgent San2Patch Total Bugs fast full fast full fast full Bug Type Stack 1.4 2 1.8 5 2 4 8Heap 27.2 40 9.8 25 18.8 35 81 Global 8.6 9 1.4 6 4.4 6 12 Total 37.2 51 13 36 25.2 45 101 Table 2: Average plausible patches generated by PatchAgent , San2Patch and CodeMechanic . fast means one attempt and full means five attempts. 
+
+6.3 RQ2: What types of bugs does CodeMechanic mitigate? 
+
+We further examine the mitigation performance broken down by vulnerability category, as summarized in Table 2. Stack-based buffer overflows remain the most challenging category for CodeMechanic . Among the eight stack-based cases, CodeMechanic produces at most two plausible patches, whereas PatchAgent and 
+
+San2Patch produce five and four, respectively. Notably, across multiple attempts, PatchAgent and 
+
+San2Patch tend to mitigate different stack bugs, while CodeMechanic consistently addresses the same ones, suggesting that CodeMechanic exhibits more deterministic behavior compared to the higher stochas-ticity of the other agents. Heap-based buffer overflows favor CodeMechanic . CodeMechanic 1 markedly outperforms 
+
+PatchAgent 1 and San2Patch 1 in the single-attempt setting, and CodeMechanic maintains this ad-vantage with approximately 60% and 14% more plausible patches than PatchAgent and San2Patch ,respectively. Global buffer overflows highlight the stability of CodeMechanic . CodeMechanic 1 and CodeMechanic 
+
+produce nearly identical results, 8.6 and 9 plausible patches, indicating robust and consistent performance 11 Total Bugs 101 Pointer Analysis Failed 23 Find Pointer 78 Buffer Analysis Failed 33 Find All Variables 45 Patch Not Compiling 5Patch Compiles 40 Patch Not Mitigating Bug 3Patch Plausible 37 Figure 6: Pipeline stage at which CodeMechanic 1 fails to generate a candidate patch. PatchAgent and 
+
+San2Patch do not follow our workflow, thus cannot be analyzed. on this class. In contrast, PatchAgent 1 produces only 1.4 plausible patches on average, improving to 6 with multiple attempts, while San2Patch 1 averages 4.4 plausible patches and San2Patch produces 6. 
+
+Takeaway: CodeMechanic achieves the most stable performance across heap and global buffer over-flows, while stack-based bugs remain challenging. 
+
+6.4 RQ3: At which stage does mitigation generation fail? 
+
+We further investigate the stage at which CodeMechanic fails in Figure 6. 
+
+CodeMechanic starts with its Context Extractor. It analyzes the pointer that violates the memory safety and infers the corresponding buffer range. In this phase, CodeMechanic finds the pointers for most of the bugs, and only fails for 23 out of 101 bugs. Buffer analyses are more challenging, even with the buffer usage oracles and debugging tools, around 42% of buffer analyses failed. The prime reason is that buffer definitions usually occur in a different part of the program, far away from the place where pointer is dereferenced. After identifying all key variables , the patch generation becomes simpler. Given the 45 bugs for which Code-Mechanic finds all key variables , 37 plausible patches are generated. Thus, when the Context Extractor recovers all required expressions, the LLM generates a plausible mitigation for 82% of cases within three attempts. Most remaining failures are compilation failures rather than failures to instantiate the boundary condition. 
+
+Takeaway: Context extraction remains challenging for spatial memory corruption. Given all key variables , CodeMechanic generates a plausible mitigation in more than 82% of cases. 
+
+6.5 RQ4: How many "plausible" patches are "correct"? 
+
+We manually audit all plausible patches along two dimensions: whether they provide a functionally acceptable mitigation for the reported access, and whether they match the broader behavior of the developer-written repair. We classify a patch as Semantically Equivalent (SE) if it is functionally identical to the developer-written repair, or SE with Redundant Checks (SERC) if it adds harmless safety checks. Correct Boundary (CB) patches mitigate the reported access but do not address other issues handled by the developer-written repair. CB with Silent Error (CBSE) patches prevent the access but may silently misprocess malformed 12 Status Inexplict Assumption Awarenes Mitigate Different Bugs Functionally Correct Mitigate Current Bug Semantically Equivalent (SE) ✓ ✓ ✓ ✓                
+
+> SE w/ Redundant Checks (SERC) ✗✓✓✓
+> Correct Boundary (CB) ✗✗✓✓
+> CB w/ Silent Error (CBSE) ✗✗∗✓
+> Incorrect Patch (IP) ✗✗✗✓
+
+Table 3: Manual analysis status. *: only guarantee functional correctness with expected input. CodeMechanic PatchAgent San2Patch 
+
+> 010 20 30 40 50
+
+611 17 17 514 413 137628 
+
+> Semantic Equivilent Correct Incorrect Semantic Equivilent Correct Incorrect
+> SE SERC CB CBSE NC
+
+Figure 7: Manual audit results of ’plausible’ patches generated by CodeMechanic , PatchAgent and 
+
+San2Patch . SE denotes Semantically Equivalent, SERC denotes SE with redundant checks, CB denotes Correct Boundary, CBSE denotes CB with Silent Error, and NC denotes Not Correct, corresponding to IP in Table 3. inputs. Finally, Incorrect Patches (IP) pass PoC-replay validation but break intended functionality. In aggregate results, “semantically equivalent” includes SE and SERC, while “correct” includes all non-IP categories. Figure 7 presents the audit results. Of the 51 plausible patches from CodeMechanic , 34 are non-IP mitigations and 17 are semantically equivalent to the developer-written repair, comprising 6 SE and 11 SERC patches. PatchAgent produces 23 non-IP patches, including 5 SE patches, while San2Patch 
+
+produces 17 non-IP patches, including 1 SE and 3 SERC patches. Thus, passing PoC-replay validation alone substantially overestimates both mitigation safety and equivalence to the developer-written repair. The agents also fail differently. CodeMechanic consistently places a boundary guard immediately before the dangerous access and terminates when the guard is violated. This converts the detected memory cor-ruption into an explicit availability failure. In contrast, PatchAgent and San2Patch sometimes silently discard or truncate malformed input, producing four and six CBSE patches, respectively. Their open-ended patches can also modify locations unrelated to the vulnerable access. The local guard of CodeMechanic 
+
+limits that freedom, although an incorrectly inferred boundary can still terminate valid executions, as ex-amined in RQ5. 13 1 // OSS - VUL -64110: Finer - Grained Control                                                                    
+
+> 2struct gre1_header :gre_basic_header {
+> 3uint16_t payloadLength ;
+> 4uint16_t callID ;
+> 5};
+> 6// ASan boundary is [ gh_p , gh_p +sizeof ( gre1_header ) )
+> 7// CodeMechanic boundary is [ p_len , p_len +sizeof ( uint16_t ) )
+> 8char * p_len =& gh_p - > payloadLength ;
+> 910 // OSS - VUL -42244: Over - Restricted Boundaries
+> 11 // ASan boundary is [s , s+s_len )
+> 12 // CodeMechanic boundary is [s , s+i ] , i<s_len
+> 13 if (& s [ i ] <s|| & s [ i ] >= ( char *) s +i ) {
+> 14 exit (0) ;
+> 15 }
+
+Figure 8: CodeMechanic failure 1: Over-Restricted Boundaries.                          
+
+> 1// OSS - VUL -63463 Fix
+> 2// CodeMechanic use constant address instead of variable
+> 3if (& dat - > chain [ dat - > byte ] <dat - > chain ||
+> 4( char *) 0 x61d00000d1f0 >( char *) dat - > chain +dat - > size ) {
+> 5exit (0) ;
+> 6}
+
+Figure 9: CodeMechanic failure 2: Hardcoded Variables. 
+
+Takeaway: Passing PoC-replay validation does not imply a safe mitigation or a permanent repair. 
+
+CodeMechanic produces 34 non-IP mitigations, including 17 that are semantically equivalent to developer-written repairs. 
+
+6.6 RQ5: Why do plausible patches generated by CodeMechanic break functionality? 
+
+We further analyze plausible patches that break program functionality. Two primary failures were identified: 
+
+Over-Restricted Boundaries. CodeMechanic currently accepts a generated boundary when it is a subset of the ASan-detected allocation. For example, in Figure 8, ASan reports the allocation [gh_p, gh_p + sizeof(gre1_header)) , while CodeMechanic selects the smaller range [&gh_p->payloadLength, &gh_p-> payloadLength + sizeof(uint16_t)) . A legitimate subobject may require such a finer-grained range. However, the same acceptance rule can admit a nonexistent range such as [s, s + i) . The resulting guard triggers too often, converting valid executions into denial of service. This over-restrictive guard can cause denial of service, but it still prevents the guarded memory corruption while developers investigate and prepare a permanent repair. 
+
+Hardcoded Variables. CodeMechanic integrates runtime debugging information to infer actual bound-aries. However, it may unintentionally incorporate concrete runtime values during this process. Specifically, Figure 9 demonstrates a case where the analysis identifies the symbolic boundary [dat->chain, dat->chain + dat->size) , but the generated condition also embeds an absolute address from the observed execution. Although CodeMechanic explicitly instructs the LLM to avoid using absolute values, the model occasion-ally produces patches containing absolute addresses or runtime-specific size values. Such a guard may pass PoC-replay validation but fail on another execution, leaving the bug exploitable. These failures expose two different deployment tradeoffs. Matching only the complete ASan allocation would reject valid subobject bounds, while rejecting every constant would also reject legitimate expressions such 14 as sizeof(buf) . A guard that embeds constants requires human review because it may not work for other inputs. 
+
+Takeaway: Invalid patches primarily arise from over-restricted ranges, which trade availability for security, or runtime-specific constants, which may leave the bug exploitable and therefore require human review. 
+
+## 7 Related Works 
+
+Bug Discovery. A prerequisite for AVR is the ability to identify bugs. Over the past decades, numer-ous bug-finding techniques have been developed, including static analysis (GitHub, 2024; Yamaguchi et al., 2014; 2013) and greybox fuzzing (Zalewski, 2013; Fioraldi et al., 2020; libfuzzer, 2023). Greybox fuzzing, in particular, has gained prominence as it minimizes the need for human expertise while automating bug discovery. As a result, it has been extensively studied in both academia (Böhme et al., 2016; Zheng et al., 2023; 2025; She et al., 2022) and industry (google, 2023a). When combined with sanitizers (Serebryany et al., 2012), modern fuzzing infrastructures such as ClusterFuzz (google, 2023a) automatically generate bug reports containing minimized bug-inducing inputs and reproducible environments, including PoC and auto-mated build scripts. These reproducible environments facilitate developer analysis and manual repair, while also providing strong foundations for bug-property-guided mitigation. To align with real-world practices, 
+
+CodeMechanic adopts bug reports and their corresponding environments from OSS-Fuzz (google, 2023b), one of the most widely deployed industrial fuzzing platforms. 
+
+LLM-Based Automated Vulnerability Repair. PatchAgent and San2Patch (Yu et al., 2025; Kim et al., 2025) use sanitizer logs for localization and root-cause analysis, while VulDebugger (Liu et al., 2025) incorporates dynamic debugging. These systems pursue unrestricted LLM-generated repairs intended to match developer-written repairs and therefore leave substantial freedom to the LLM. Their final oracle is commonly whether the patched program still crashes on the PoC. CodeMechanic takes a different approach. It uses ASan’s debugging API (Google, 2016) to check intermediate boundary expressions and limits generation to a local guard. This restriction does not attempt a complete repair. In exchange, it provides a more predictable temporary mitigation. 
+
+## 8 Threats to Validity 
+
+Our results measure bug-property-guided mitigation on a selected benchmark and do not establish that every generated patch is safe for automatic production deployment. We discuss the main limitations below. 
+
+8.1 Internal Threats. 
+
+Limited Validation. CodeMechanic validates buffer boundaries using sanitizer metadata, which confirms that a buffer range is the nearest valid region to the pointer but does not guarantee it is the intended 
+
+buffer. For example, a pointer intending to access [addr1, addr1+0x100) but positioned at &addr1[0x1FF] could be misclassified as belonging to an adjacent buffer [addr1+0x200, addr1+0x300) . In practice, however, most memory corruptions involve small overflows of only a few bytes, and we configure ASan with a conservative 2048-byte redzone to further reduce such misclassifications. 
+
+Overfitting the Training Set. Since LLMs are trained on public code repositories, their training data may include previously disclosed vulnerabilities and patches, risking overfitting. To mitigate this, CodeMe-chanic decomposes patch generation into three independent steps ( pointer and buffer analysis, constraint generation, and patch insertion) without exposing any project- or program-specific information. In particu-lar, the constraint generation step provides only variable names and constraint requirements, substantially limiting the LLM’s exposure to identifiable context. 15 8.2 External Threats. 
+
+Limited Bug Categories. CodeMechanic is currently focused on spatial memory corruptions, motivated by their security severity and prevalence: 25 out of 31 in-the-wild zero-day exploits in 2025 were memory corruptions (Zero, 2025), and 65.8% of ASan errors in the OSS-Fuzz benchmark are buffer overflows (Mei et al., 2024). While CodeMechanic could in principle be extended to temporal memory corruptions, this is currently hindered by the lack of reliable detection oracles, such as determining whether a buffer has been freed. 
+
+Defensive Termination. The current patch policy intentionally terminates execution when a boundary violation is detected. For exploitable memory corruptions, this mitigation strategy trades availability for security by converting a potential remote code execution into a denial of service. Such termination behavior is also used in production security practice, where intentional termination is preferred to continued execution in a compromised state (Chrome, 2025). The generated patch therefore provides an immediate safeguard while giving maintainers more time to investigate the root cause and develop an application-specific repair. 
+
+Target-Specific Human Debugging Knowledge. CodeMechanic embeds high-level debugging knowl-edge into the prompt to guide tool invocation and error handling, with a single prompt designed per bug type. To limit overfitting, we use abstract instructions rather than program-specific guidance, and develop prompts using only ten bugs per category. Evaluation results suggest this knowledge transfers well to the broader benchmark of 101 bugs. 
+
+PoC-Based Mitigation Oracle. The widely used plausible metric (Yu et al., 2025; Zhang et al., 2024) establishes only that the sanitizer-reported error disappears when the PoC is replayed. It does not prove that the mitigation blocks other exploit inputs or that valid behavior is preserved. Unit tests used by recent systems (Yu et al., 2025; Kim et al., 2025) may also miss the modified region. For example, the functionality-breaking change in Figure 1 can pass tests that do not exercise the fuzz driver. We therefore audit all plausible patches in Section 6.5. 
+
+## 9 Conclusion 
+
+We present CodeMechanic , a bug-property-guided system for constrained mitigation of spatial memory corruption. Rather than asking an LLM to generate a permanent repair, CodeMechanic reconstructs a boundary property, validates its key expressions, and inserts a local guard before the dangerous access. This design intentionally trades availability for security, providing a temporary mitigation while developers prepare a permanent repair. On 101 ARVO bugs, CodeMechanic generates more plausible patches at substantially lower cost than PatchAgent and San2Patch , and it produces 240% and 325% more se-mantically equivalent patches, respectively. We release the prototype to support open science and further research. 
+
+Broader Impact Statement 
+
+Our research does not involve the discovery of new vulnerabilities. Instead, this work proposes a mitigation-generation framework that reduces the period during which a disclosed vulnerability remains exploitable, thereby supporting defensive techniques that strengthen software security. 
+
+## References 
+
+Marcel Böhme, Van-Thuan Pham, and Abhik Roychoudhury. Coverage-based greybox fuzzing as markov chain. In Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security ,pp. 1032–1043, 2016. bugcrowd. Inside the platform vulnerability trends report. https://mysecuritymarketplace.com/ wp-content/uploads/2024/07/Inside-the-Platform-Vulnerability-Trends-Report.pdf , 2025. 16 Nicholas Carlini, Antonio Barresi, Mathias Payer, David Wagner, and Thomas R Gross. {Control-Flow }
+
+bending: On the effectiveness of {Control-Flow } integrity. In 24th USENIX Security Symposium (USENIX Security 15) , pp. 161–176, 2015. Zimin Chen, Steve Kommrusch, Michele Tufano, Louis-Noël Pouchet, Denys Poshyvanyk, and Martin Mon-perrus. Sequencer: Sequence-to-sequence learning for end-to-end program repair. IEEE Transactions on Software Engineering , 47(9):1943–1959, 2019. Chrome. Chrome security checklist. https://chromium.googlesource.com/chromium/src/+/main/docs/ security/checklist.md , 2025. Gheorghe Comanici, Eric Bieber, Mike Schaekermann, Ice Pasupat, Noveen Sachdeva, Inderjit Dhillon, Marcel Blistein, Ori Ram, Dan Zhang, Evan Rosen, et al. Gemini 2.5: Pushing the frontier with ad-vanced reasoning, multimodality, long context, and next generation agentic capabilities. arXiv preprint arXiv:2507.06261 , 2025. cppreference. std weak ptr. https://en.cppreference.com/w/cpp/memory/weak_ptr.html , 2025. Thomas Dullien. Security, moore’s law, and the anomaly of cheap complexity. In presentation at Conference on Cyber Conflict, May , 2018. Zhangyin Feng, Daya Guo, Duyu Tang, Nan Duan, Xiaocheng Feng, Ming Gong, Linjun Shou, Bing Qin, Ting Liu, Daxin Jiang, et al. Codebert: A pre-trained model for programming and natural languages. 
+
+arXiv preprint arXiv:2002.08155 , 2020. Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. Afl++ combining incremental steps of fuzzing research. In Proceedings of the 14th USENIX Conference on Offensive Technologies , pp. 10–10, 2020. Xiang Gao, Bo Wang, Gregory J Duck, Ruyi Ji, Yingfei Xiong, and Abhik Roychoudhury. Beyond tests: Program vulnerability repair via crash constraint extraction. ACM Transactions on Software Engineering and Methodology (TOSEM) , 30(2):1–27, 2021. GitHub. Codeql: the libraries and queries that power security researchers around the world. https: //codeql.github.com/ , 2024. Google. Addresssanitizeranddebugger. https://github.com/google/sanitizers/wiki/ AddressSanitizerAndDebugger , 2016. google. Clusterfuzz. https://google.github.io/clusterfuzz/ , 2023a. google. ossfuzz. https://google.github.io/ossfuzz/ , 2023b. Google. syzbot. https://syzkaller.appspot.com/upstream , 2024. Kai Huang, Xiangxin Meng, Jian Zhang, Yang Liu, Wenjie Wang, Shuhao Li, and Yuqing Zhang. An empirical study on fine-tuning large language models of code for automated program repair. In 2023 38th IEEE/ACM International Conference on Automated Software Engineering (ASE) , pp. 1162–1174. IEEE, 2023. Kai Huang, Jian Zhang, Xiangxin Meng, and Yang Liu. Template-guided program repair in the era of large language models. ICSE, 2025. Angelos Keromytis. Recommendations from the workshop on open-source software security ini-tiative. https://bpb-us-e1.wpmucdn.com/sites.gatech.edu/dist/a/2878/files/2022/10/ OSSI-Final-Report.pdf , 2022. Youngjoon Kim, Sunguk Shin, Hyoungshick Kim, and Jiwon Yoon. Logs in, patches out: Automated vul-nerability repair via {Tree-of-Thought }{ LLM } analysis. In 34th USENIX Security Symposium (USENIX Security 25) , pp. 4401–4419, 2025. 17 libfuzzer. libfuzzer. https://llvm.org/docs/LibFuzzer.html , 2023. Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng, Chenyu Zhang, Chong Ruan, et al. Deepseek-v3 technical report. arXiv preprint arXiv:2412.19437 , 2024. Zhengyao Liu, Yunlong Ma, Jingxuan Xu, Junchen Ai, Xiang Gao, Hailong Sun, and Abhik Roychoudhury. Agent that debugs: Dynamic state-guided vulnerability repair. arXiv preprint arXiv:2504.07634 , 2025. Bill Marczak, John Scott-Railton, Bahr Abdul Razzak, Noura Aljizawi, Siena Anstis, Kristin Berdan, and Ron Deibert. Nso group imessage zero-click exploit captured in the wild. https://citizenlab.ca/ research/forcedentry-nso-group-imessage-zero-click-exploit-captured-in-the-wild/ , 2023. Xiang Mei, Pulkit Singh Singaria, Jordi Del Castillo, Haoran Xi, Tiffany Bao, Ruoyu Wang, Yan Shoshi-taishvili, Adam Doupé, Hammond Pearce, Brendan Dolan-Gavitt, et al. Arvo: Atlas of reproducible vulnerabilities for open source software. arXiv preprint arXiv:2408.02153 , 2024. Micky. ipcz bug can allow renderer duplicate browser process handle to escape sandbox. crbug.com/ 412578726 , 2025a. Micky. Miracleptr bypass due to ptrcount overflow. crbug.com/340122160 , 2025b. Aleksandr Nogikh. Syzbot: 7 years of continuous kernel fuzzing. https://lpc.events/event/ 17/contributions/1521/attachments/1272/2698/LPC23_Syzbot_years_of_continuous_kernel_ fuzzing.pdf , 2023. Yu Nong, Haoran Yang, Long Cheng, Hongxin Hu, and Haipeng Cai. {APPATCH }: Automated adaptive prompting large language models for {Real-World } software vulnerability patching. In 34th USENIX Security Symposium (USENIX Security 25) , pp. 4481–4500, 2025. Aleph One. Hacking the stack for fun and profit. Phrack Magazine , 1996. OpenAI. Chatgpt. https://chatgpt.com/ , 2025. Mathias Payer. Software Security: Principles, Policies, and Protection . HexHive Books, 0.37 edition, July 2021. URL http://nebelwelt.net/SS3P/ .The GNU Project. Gdb: The gnu project debugger. https://sourceware.org/gdb/ , 2025a. The GNU Project. Gdb 12 dwarf-5 support. https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options. html/ , 2025b. Zichao Qi, Fan Long, Sara Achour, and Martin Rinard. An analysis of patch plausibility and correctness for generate-and-validate patch generation systems. In Proceedings of the 2015 international symposium on software testing and analysis , pp. 24–36, 2015. Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitriy Vyukov. {AddressSanitizer }:A fast address sanity checker. In 2012 USENIX annual technical conference (USENIX ATC 12) , pp. 309–318, 2012. Ridwan Shariffdeen, Yannic Noller, Lars Grunske, and Abhik Roychoudhury. Concolic program repair. In 
+
+Proceedings of the 42nd ACM SIGPLAN International Conference on Programming Language Design and Implementation , pp. 390–405, 2021. Dongdong She, Abhishek Shah, and Suman Jana. Effective seed scheduling for fuzzing with graph centrality analysis. In 2022 IEEE Symposium on Security and Privacy (SP) , pp. 2194–2211. IEEE, 2022. Natalie Silvanovich. A 0-click exploit chain for the pixel 9 part 1: Decoding dolby. https://projectzero. google/2026/01/pixel-0-click-part-1.html , 2026. 18 Maddie Stone. The more you know, the more you know you don’t know - a year in review of 0-days used in-the-wild in 2021, 2022. URL https://googleprojectzero.blogspot.com/2022/04/ the-more-you-know-more-you-know-you.html .Chromium Security Team. Memory safety in chromium, 2025a. URL https://www.chromium.org/Home/ chromium-security/memory-safety/ .LLVM Team. Scudohardenedallocator, 2025b. URL https://llvm.org/docs/ScudoHardenedAllocator. html .New York Times. Read the intellexa pitch on its spyware tool. https://www.nytimes.com/interactive/ 2022/12/08/us/politics/intellexa-commercial-proposal.html , 2022. Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971 , 2023. trendmicro. Pwn2own berlin 2025: Day three results. https://www.zerodayinitiative.com/blog/2025/ 5/17/pwn2own-berlin-2025-day-three-results , 2025. Michele Tufano, Cody Watson, Gabriele Bavota, Massimiliano Di Penta, Martin White, and Denys Poshy-vanyk. An empirical study on learning bug-fixing patches in the wild via neural machine translation. ACM Transactions on Software Engineering and Methodology (TOSEM) , 28(4):1–29, 2019. Robert Wahbe, Steven Lucco, Thomas E Anderson, and Susan L Graham. Efficient software-based fault isolation. In Proceedings of the fourteenth ACM symposium on Operating systems principles , pp. 203–216, 1993. Chunqiu Steven Xia and Lingming Zhang. Less training, more repairing please: revisiting automated program repair via zero-shot learning. In Proceedings of the 30th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering , pp. 959–971, 2022. Chunqiu Steven Xia and Lingming Zhang. Automated program repair via conversation: Fixing 162 out of 337 bugs for $0.42 each using chatgpt. In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis , pp. 819–831, 2024. Fabian Yamaguchi, Christian Wressnegger, Hugo Gascon, and Konrad Rieck. Chucky: Exposing missing checks in source code for vulnerability discovery. In Proceedings of the 2013 ACM SIGSAC conference on Computer & communications security , pp. 499–510, 2013. Fabian Yamaguchi, Nico Golde, Daniel Arp, and Konrad Rieck. Modeling and discovering vulnerabilities with code property graphs. In 2014 IEEE symposium on security and privacy , pp. 590–604. IEEE, 2014. Zheng Yu, Ziyi Guo, Yuhang Wu, Jiahao Yu, Meng Xu, Dongliang Mu, Yan Chen, and Xinyu Xing. Patcha-gent: A practical program repair agent mimicking human expertise. 2025. Michal Zalewski. american fuzzy lop. https://lcamtuf.coredump.cx/afl/ , 2013. Google Project Zero. 0-days in-the-wild. https://googleprojectzero.github.io/0days-in-the-wild/ ,2025. Yuntong Zhang, Xiang Gao, Gregory J Duck, and Abhik Roychoudhury. Program vulnerability repair via inductive inference. In Proceedings of the 31st ACM SIGSOFT International Symposium on Software Testing and Analysis , pp. 691–702, 2022. Yuntong Zhang, Jiawei Wang, Dominic Berzin, Martin Mirchev, Dongge Liu, Abhishek Arya, Oliver Chang, and Abhik Roychoudhury. Fixing security vulnerabilities with ai in oss-fuzz. arXiv preprint arXiv:2411.03346 , 2024. 19 Han Zheng, Jiayuan Zhang, Yuhang Huang, Zezhong Ren, He Wang, Chunjie Cao, Yuqing Zhang, Flavio Toffalini, and Mathias Payer. {FISHFUZZ }: Catch deeper bugs by throwing larger nets. In 32nd USENIX Security Symposium (USENIX Security 23) , pp. 1343–1360, 2023. Han Zheng, Flavio Toffalini, Marcel Böhme, and Mathias Payer. Mendelfuzz: The return of the deterministic stage. Proceedings of the ACM on Software Engineering , 2(FSE):44–64, 2025. 20
