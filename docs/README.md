@@ -6,70 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-28
-- 运行时间：2026-08-28 11:36:36 UTC+8
+- 最新运行日期：2026-08-29
+- 运行时间：2026-08-29 09:53:32 UTC+8
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：5
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
-- 精读：《FU-Mamba: A Frequency-Enhanced Dynamic Scanning Framework for Oralscan Image Segmentation》（8.6/10）, 《TraceBench: Controlled Evaluation of LLM Agents for Time-Series Root-Cause Attribution》（8.5/10）
-- 速读：《Double/Debiased Machine Learning for Functional-Form-Robust Spatial Autoregression》（7.9/10）, 《One-Dimensional Divergence-Type Jacobi Operators Driven by The Doubling Map》（7.8/10）, 《One-Dimensional Divergence-Type Jacobi Operators drvien by doubling map》（7.8/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Coverage Planning for Robotic Tooth Preparation in Densely Constrained Environments》（8.5/10）, 《SR-TL1: A Square-Root TL1-Norm Framework for Robust SMV DoA Estimation under Highly-Coherent Dictionaries》（8.2/10）
+- 速读：《Cyclically Colored Triangulations: Enumeration and Connectedness of Reconfiguration Graphs》（7.9/10）, 《ARGUS: MCP-Grounded Root Cause Analysis for Kubernetes Incidents》（7.9/10）, 《Electromagnetic Radiation from a Neutralized Polarized Sphere with Two Conserved Currents for One Charge History》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/28/README](/202608/28/README)
+- 详情：[/202608/29/README](/202608/29/README)
 
 ### 精读区论文标签
-1. [FU-Mamba: A Frequency-Enhanced Dynamic Scanning Framework for Oralscan Image Segmentation](/202608/28/2608.26607v1-fu-mamba-a-frequency-enhanced-dynamic-scanning-framework-for-oralscan-image-segmentation)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [TraceBench: Controlled Evaluation of LLM Agents for Time-Series Root-Cause Attribution](/202608/28/2608.27182v1-tracebench-controlled-evaluation-of-llm-agents-for-time-series-root-cause-attribution)  
+1. [Coverage Planning for Robotic Tooth Preparation in Densely Constrained Environments](/202608/29/2608.24155v1-coverage-planning-for-robotic-tooth-preparation-in-densely-constrained-environments)  
    标签：评分：8.5/10
    evidence：检索回退候选
-3. [FaulT-Bench: Towards Benchmarking Network Troubleshooting LLM Agents under Unreliable User Tickets](/202608/28/2608.27021v1-fault-bench-towards-benchmarking-network-troubleshooting-llm-agents-under-unreliable-user-tickets)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-4. [Geometric Invariant Theory of Peterson Varieties](/202608/28/2608.26695v1-geometric-invariant-theory-of-peterson-varieties)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-5. [Quantum-Inspired Computational Fluid Dynamics for Transient Turbulent Compressible Flows](/202608/28/2608.26995v1-quantum-inspired-computational-fluid-dynamics-for-transient-turbulent-compressible-flows)  
+2. [SR-TL1: A Square-Root TL1-Norm Framework for Robust SMV DoA Estimation under Highly-Coherent Dictionaries](/202608/29/2608.20943v2-sr-tl1-a-square-root-tl1-norm-framework-for-robust-smv-doa-estimation-under-highly-coherent-dictionaries)  
    标签：评分：8.2/10
+   evidence：检索回退候选
+3. [Noncommutative Cluster Varieties and Moduli Spaces of Local Systems](/202608/29/2608.27284v1-noncommutative-cluster-varieties-and-moduli-spaces-of-local-systems)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Double/Debiased Machine Learning for Functional-Form-Robust Spatial Autoregression](/202608/28/2608.22706v1-doubledebiased-machine-learning-for-functional-form-robust-spatial-autoregression)  
+1. [Cyclically Colored Triangulations: Enumeration and Connectedness of Reconfiguration Graphs](/202608/29/2608.26006v1-cyclically-colored-triangulations-enumeration-and-connectedness-of-reconfiguration-graphs)  
    标签：评分：7.9/10
    evidence：检索回退候选
-2. [One-Dimensional Divergence-Type Jacobi Operators Driven by The Doubling Map](/202608/28/2608.22626v2-one-dimensional-divergence-type-jacobi-operators-driven-by-the-doubling-map)  
+2. [ARGUS: MCP-Grounded Root Cause Analysis for Kubernetes Incidents](/202608/29/2608.23084v1-argus-mcp-grounded-root-cause-analysis-for-kubernetes-incidents)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+3. [Electromagnetic Radiation from a Neutralized Polarized Sphere with Two Conserved Currents for One Charge History](/202608/29/2608.24171v1-electromagnetic-radiation-from-a-neutralized-polarized-sphere-with-two-conserved-currents-for-one-charge-history)  
    标签：评分：7.8/10
    evidence：检索回退候选
-3. [One-Dimensional Divergence-Type Jacobi Operators drvien by doubling map](/202608/28/2608.22626v1-one-dimensional-divergence-type-jacobi-operators-drvien-by-doubling-map)  
+4. [Directed walks shape a universal square-root law of entropy production rate in nonreciprocal systems](/202608/29/2608.25030v1-directed-walks-shape-a-universal-square-root-law-of-entropy-production-rate-in-nonreciprocal-systems)  
    标签：评分：7.8/10
    evidence：检索回退候选
-4. [General Symmetry-Based Potential Energy Surface Grid Reduction in Normal Coordinates](/202608/28/2608.22650v1-general-symmetry-based-potential-energy-surface-grid-reduction-in-normal-coordinates)  
+5. [A non-abelian large sieve and Artin's primitive root conjecture](/202608/29/2608.21573v1-a-non-abelian-large-sieve-and-artins-primitive-root-conjecture)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+6. [Asymptotic consensus and flocking under decaying persistent excitation on rooted digraphs](/202608/29/2608.27263v1-asymptotic-consensus-and-flocking-under-decaying-persistent-excitation-on-rooted-digraphs)  
    标签：评分：7.6/10
    evidence：检索回退候选
-5. [Vision-Language Models for Occupational Physical Exposure Assessment: Estimating External Hand Forces in Manual Material Handling Tasks from RGB Video](/202608/28/2608.22586v1-vision-language-models-for-occupational-physical-exposure-assessment-estimating-external-hand-forces-in-manual-material-handling-tasks-from-rgb-video)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-6. [Transcendence of Tonelli--Shanks Power Modulo Infinitely Large Primes](/202608/28/2608.24932v1-transcendence-of-tonelli--shanks-power-modulo-infinitely-large-primes)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-7. [Comparative Assessment of Frequency Scans using EMT and RMS Models](/202608/28/2608.26851v1-comparative-assessment-of-frequency-scans-using-emt-and-rms-models)  
+7. [Collapsing Fifty Dilogarithm Arguments to Five Terms over $\mathbb{Q}\bigl(u,\sqrt{4-3u^{2}}\bigr)$](/202608/29/2608.23792v1-collapsing-fifty-dilogarithm-arguments-to-five-terms-over-mathbbqbiglusqrt4-3u2bigr)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [How far can symmetry help? Phase transitions and symmetry selection in sparse functional data analysis](/202608/28/2608.27055v1-how-far-can-symmetry-help-phase-transitions-and-symmetry-selection-in-sparse-functional-data-analysis)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-9. [Quadratic Complexity of Voronoi Diagrams in $\mathbb{R}^3$ for Lines in a Single Ruling of a Regulus](/202608/28/2608.27114v1-quadratic-complexity-of-voronoi-diagrams-in-mathbbr3-for-lines-in-a-single-ruling-of-a-regulus)  
+8. [On the Index of Borel Subalgebras of Lie Superalgebras](/202608/29/2608.24972v1-on-the-index-of-borel-subalgebras-of-lie-superalgebras)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [On the Instance Optimality of Bidirectional Dijkstra's Algorithm](/202608/28/2608.26952v1-on-the-instance-optimality-of-bidirectional-dijkstras-algorithm)  
+9. [On Split Forms of Fusion Categories](/202608/29/2608.23743v1-on-split-forms-of-fusion-categories)  
    标签：评分：6.8/10
    evidence：检索回退候选
-11. [Self-Reflective Multi-modal Reasoning for Short-Video Fake News Detection](/202608/28/2608.26787v1-self-reflective-multi-modal-reasoning-for-short-video-fake-news-detection)  
-   标签：评分：6.8/10
+10. [The Capacity of Entanglement and Holographic Entropies at Finite Resources](/202608/29/2608.26377v1-the-capacity-of-entanglement-and-holographic-entropies-at-finite-resources)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+11. [SILK: Closing the Time-of-Check-to-Time-of-Use Gap in RoT-Protected AI Systems](/202608/29/2608.26402v1-silk-closing-the-time-of-check-to-time-of-use-gap-in-rot-protected-ai-systems)  
+   标签：评分：6.3/10
    evidence：检索回退候选
 
 
