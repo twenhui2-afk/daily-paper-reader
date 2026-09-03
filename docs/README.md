@@ -6,64 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-02
-- 运行时间：2026-09-03 06:50:15 UTC+8
+- 最新运行日期：2026-09-03
+- 运行时间：2026-09-04 05:56:07 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Kac's Walk on Rotation Matrices Mixes in $\boldsymbol{Θ(n^2)}$ Steps: A Proof Discovered with AI》（8.5/10）, 《When Do Larger Batches Help Scale LLM Reinforcement Learning?》（8.2/10）
-- 速读：《Exact dynamics and the spin wall for large-spin particles in Schwarzschild spacetime》（7.9/10）, 《Spin-spin effects from non-relativistic limit of Dirac-Pauli-Maxwell Lagrangian》（7.9/10）, 《Adaptive Multi-Branching for Shallow Decision Tree Induction》（7.8/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《InteractBench: Benchmarking LLMs on Competitive Programming under Unrevealed Information》（7.6/10）, 《A Comprehensive Study of Native Code Bugs in Python Applications》（7.5/10）, 《Poisson actions of noncompact locally compact sofic groups have completely positive entropy》（7.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/02/README](/202609/02/README)
+- 详情：[/202609/03/README](/202609/03/README)
 
 ### 精读区论文标签
-1. [Kac's Walk on Rotation Matrices Mixes in $\boldsymbol{Θ(n^2)}$ Steps: A Proof Discovered with AI](/202609/02/2608.29403v2-kacs-walk-on-rotation-matrices-mixes-in-boldsymboln2-steps-a-proof-discovered-with-ai)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [When Do Larger Batches Help Scale LLM Reinforcement Learning?](/202609/02/2608.29296v1-when-do-larger-batches-help-scale-llm-reinforcement-learning)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [Quantum Natural Gradient on Quotient Spaces](/202609/02/2608.29350v1-quantum-natural-gradient-on-quotient-spaces)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Exact dynamics and the spin wall for large-spin particles in Schwarzschild spacetime](/202609/02/2608.29115v1-exact-dynamics-and-the-spin-wall-for-large-spin-particles-in-schwarzschild-spacetime)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-2. [Spin-spin effects from non-relativistic limit of Dirac-Pauli-Maxwell Lagrangian](/202609/02/2608.28904v1-spin-spin-effects-from-non-relativistic-limit-of-dirac-pauli-maxwell-lagrangian)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-3. [Adaptive Multi-Branching for Shallow Decision Tree Induction](/202609/02/2608.29262v1-adaptive-multi-branching-for-shallow-decision-tree-induction)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-4. [Target-Aware State-Adaptive $p$-Dirichlet Graph Neural Regression for Non-Invasive Body-Composition Estimation](/202609/02/2608.29496v1-target-aware-state-adaptive-p-dirichlet-graph-neural-regression-for-non-invasive-body-composition-estimation)  
+1. [InteractBench: Benchmarking LLMs on Competitive Programming under Unrevealed Information](/202609/03/2608.29632v1-interactbench-benchmarking-llms-on-competitive-programming-under-unrevealed-information)  
    标签：评分：7.6/10
    evidence：检索回退候选
-5. [Bloch-regulator Principal Parts of Cyclotomic Iwasawa Pseudomeasures](/202609/02/2608.29587v1-bloch-regulator-principal-parts-of-cyclotomic-iwasawa-pseudomeasures)  
+2. [A Comprehensive Study of Native Code Bugs in Python Applications](/202609/03/2608.29851v1-a-comprehensive-study-of-native-code-bugs-in-python-applications)  
    标签：评分：7.5/10
    evidence：检索回退候选
-6. [Hallucination Mitigation for Large Vision-Language Models via Implicit Feature Stabilization](/202609/02/2608.29924v1-hallucination-mitigation-for-large-vision-language-models-via-implicit-feature-stabilization)  
+3. [Poisson actions of noncompact locally compact sofic groups have completely positive entropy](/202609/03/2608.29599v1-poisson-actions-of-noncompact-locally-compact-sofic-groups-have-completely-positive-entropy)  
    标签：评分：7.5/10
    evidence：检索回退候选
-7. [MedSegBenchmarker: A Raw-Count-First Framework for Controlled 2D Medical Image Segmentation Benchmarks](/202609/02/2608.29677v1-medsegbenchmarker-a-raw-count-first-framework-for-controlled-2d-medical-image-segmentation-benchmarks)  
-   标签：评分：6.9/10
+4. [Carrollian Wave Equations for Arbitrary Spin: Anyons and the Exotic Particle on the Noncommutative Plane](/202609/03/2608.29931v1-carrollian-wave-equations-for-arbitrary-spin-anyons-and-the-exotic-particle-on-the-noncommutative-plane)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-8. [Expert-like Bone Ultrasound Segmentation through Expert-in-the-loop Mask-conditioned Progressive Learning](/202609/02/2609.00473v1-expert-like-bone-ultrasound-segmentation-through-expert-in-the-loop-mask-conditioned-progressive-learning)  
+5. [The Convergence Rate of Stochastic Tracking with Application to Optimal Execution](/202609/03/2608.29468v1-the-convergence-rate-of-stochastic-tracking-with-application-to-optimal-execution)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+6. [Counterexamples to the site-percolation analogues of the Easo-Severo-Tassion cutset theorems](/202609/03/2608.29940v1-counterexamples-to-the-site-percolation-analogues-of-the-easo-severo-tassion-cutset-theorems)  
+   标签：评分：7.2/10
+   evidence：检索回退候选
+7. [InstEditSeg: Instruction-Driven Image Editing for Polyp and Skin Lesion Segmentation](/202609/03/2609.02004v1-insteditseg-instruction-driven-image-editing-for-polyp-and-skin-lesion-segmentation)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [UI-VISA: U-Net Initialized Vascular Image Segmentation Architecture](/202609/02/2609.01598v1-ui-visa-u-net-initialized-vascular-image-segmentation-architecture)  
-   标签：评分：6.8/10
+8. [SAUF-Net: Structure--Appearance Representation Learning with Uncertainty Feedback for Semi-Supervised Medical Image Segmentation](/202609/03/2609.02247v1-sauf-net-structure--appearance-representation-learning-with-uncertainty-feedback-for-semi-supervised-medical-image-segmentation)  
+   标签：评分：6.6/10
    evidence：检索回退候选
-10. [ImageCAS-X: a dataset and benchmark for coronary artery segmentation and centerline extraction in coronary CT angiography](/202609/02/2608.30404v1-imagecas-x-a-dataset-and-benchmark-for-coronary-artery-segmentation-and-centerline-extraction-in-coronary-ct-angiography)  
-   标签：评分：6.5/10
+9. [Bayesian-Optimized Superpixel-GrabCut for Traceable Optic Disc Segmentation](/202609/03/2608.29196v1-bayesian-optimized-superpixel-grabcut-for-traceable-optic-disc-segmentation)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-11. [Pretrained, Curriculum-Tuned, and Ensembled: A Tracer-Aware Interactive Segmentation Pipeline for AutoPET V](/202609/02/2608.30844v1-pretrained-curriculum-tuned-and-ensembled-a-tracer-aware-interactive-segmentation-pipeline-for-autopet-v)  
-   标签：评分：6.5/10
+10. [BS: Take the Hint - Interactive Multitracer PET/CT Lesion Segmentation with a Scribble-Conditioned ResEnc U-Net](/202609/03/2609.01554v1-bs-take-the-hint---interactive-multitracer-petct-lesion-segmentation-with-a-scribble-conditioned-resenc-u-net)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+11. [FTU-Seek: Foundation Model-Guided Hard-Negative Learning for Sparse Functional Tissue Unit Segmentation](/202609/03/2609.00704v1-ftu-seek-foundation-model-guided-hard-negative-learning-for-sparse-functional-tissue-unit-segmentation)  
+   标签：评分：6.3/10
    evidence：检索回退候选
 
 
