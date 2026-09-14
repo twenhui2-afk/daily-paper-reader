@@ -1,0 +1,724 @@
+Title: Compiling Linear Datalog to SQL for Program Analysis
+
+URL Source: https://arxiv.org/pdf/2609.06301v1
+
+Published Time: Wed, 09 Sep 2026 00:59:38 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Compiling Linear Datalog to SQL for Program Analysis 
+
+## Amir Shaikhha 
+
+amir.shaikhha@tu-darmstadt.de 
+
+TU Darmstadt, Hessian.ai, University of Edinburgh Germany, United Kingdom 
+
+## Anna Herlihy 
+
+anna.herlihy@epfl.ch 
+
+EPFL Switzerland 
+
+## Hung Ngo 
+
+hung.ngo@relational.ai 
+
+RelationalAI United States 
+
+## Abstract 
+
+Datalog is a declarative query language that has proven highly effective for expressing static program analyses. Al-though Datalog has deep roots in database theory, most recent advances have largely emerged from the program-ming languages and compiler communities, with systems such as Soufflé. In contrast, modern relational engines have made significant progress in optimizing recursive SQL. This paper revisits the connection between Datalog and relational databases, advocating recursive SQL as a backend for Datalog evaluation. We present a compilation frame-work that translates Datalog programs, particularly those in the Linear Datalog fragment, into equivalent recursive SQL queries. To bridge the gap between Datalog and SQL, the compiler routes every program through an intermediate language called Midlog. The compiler additionally recovers functional dependencies from the program and exposes them as schema keys, unlocking the engine’s standard query opti-mizations. This approach enables existing database engines to execute a broad class of program analyses, outperforming the Soufflé engine by up to an order of magnitude on the Umbra backend. Umbra achieves a geometric-mean speedup of 5.46 × at 8 threads, whereas DuckDB is competitive with Soufflé single-threaded and is slower at 8 threads (geometric-mean speedup of 0.68 ×). Furthermore, the generated SQL is portable; it runs on seven database systems without any en-gine modification. Our results highlight what the relational engines require to fully support Datalog for large-scale pro-gram analysis. 
+
+## 1 Introduction 
+
+Datalog is a declarative programming language popular in program analysis: many static analyses, such as points-to analysis, call-graph construction, and dataflow analysis, are fixed-point computations. A direct implementation of such analyses in a general-purpose language requires encoding how the fixed point is reached (worklists, dependency track-ing, iteration order). In Datalog, it is a set of recursive rules describing how to derive new facts from known facts, with a bottom-up engine computing the least fixed point. This combination of expressiveness and efficiency has made Dat-alog an attractive choice for program analysis tasks in both academia and industry [3, 4, 27, 31]. Despite its database-theory roots, most academic develop-ment of Datalog has happened outside the database commu-nity. State-of-the-art systems such as Soufflé [27] are stan-dalone compilers translating Datalog into optimized C++, bypassing relational engines entirely, even though Datalog is relational algebra extended with a fixed-point operator [2]. Relational engines (RDBMS) have meanwhile made sig-nificant progress in recursion support. The SQL:1999 stan-dard introduced recursive common table expressions (CTEs), which expose the entire recursive computation to the query optimizer, enabling global rewrites, indexing, cost-based op-timization, and parallel execution [26, 38]. These two lines of work have evolved in isolation. Datalog compilers extract performance through specialization, but cannot reuse the indexing, optimization, and parallelism of RDBMS. RDBMS support recursive queries, but lack Data-log’s concise abstractions and expressiveness. We target both axes, compiling Datalog into recursive SQL so that RDBMS serve as efficient Datalog backends without custom runtimes. In this paper, we propose DLSQL, a compiler that trans-lates Linear Datalog , a well-defined fragment of Datalog in which each recursive rule contains at most one recursive predicate in its body, into recursive SQL. Thanks to this restriction, recursion maps directly to SQL’s recursive CTEs. Even within Linear Datalog, a substantial mismatch with recursive SQL remains. Midlog is an intermediate language that bridges this gap and is designed around two fundamen-tal differences. First, despite the support for mutual recursion in SQL:1999, no engine we tested implements it (except for MariaDB); thus, unlike Datalog, SQL in practice does not support mutual recursion [20]. Second, SQL employs a fun-damentally different scoping discipline than Datalog. We make the following contributions: 
+
+• We identify Linear Datalog as an expressive subset of Dat-alog and express reduced kernels of five canonical static analyses, spanning call-graph construction, borrow check-ing, and points-to/escape/dataflow analysis (Section 3). 
+
+• We propose Midlog, an intermediate language that re-solves the two mismatches between Linear Datalog and recursive SQL: mutual recursion and scoping (Section 4). 
+
+• We present the DLSQL compiler pipeline, which routes every program through Midlog in four phases (Section 5). arXiv:2609.06301v1 [cs.DB] 5 Sep 2026 Amir Shaikhha, Anna Herlihy, and Hung Ngo 
+
+• We develop two optimizations: a multi-head elimination removing unnecessary mutual recursion, and a functional-dependency pass recovering schema keys from the input data, enabling the engine to optimize further (Section 6). 
+
+• We evaluate DLSQL on five static program-analysis work-loads across seven database engines and against four state-of-the-art Datalog systems: Soufflé, FlowLog, Logica, and RecStep. On Umbra, DLSQL achieves a geometric-mean speedup of 5.46 × over Soufflé at 8 threads, and up to 14.3 ×
+
+on individual benchmarks. On DuckDB, it reaches 0.96 ×
+
+single-threaded and 0.68 × at 8 threads. Furthermore, we study portability across engines, the impact of both opti-mizations, and scaling with input size (Section 7). 
+
+## 2 Background 
+
+This section covers the two languages that meet in this pa-per: Datalog as used by program-analysis frameworks, and recursive SQL as supported by modern RDBMS. Throughout, we treat the database engine as a black-box recursive-query evaluator: our compiler emits recursive CTEs in the SQL:1999 standard and relies on the engine’s own evaluation strategy. 
+
+2.1 Datalog 
+
+A Datalog program is a finite set of rules of the form 
+
+𝐻 (® 𝑡 ) :- 𝐿 1, . . . , 𝐿 𝑛 .
+
+where 𝐻 (® 𝑡 ) is the head atom and the 𝐿 𝑖 are body literals . An 
+
+atom applies a relation (or predicate ) to one or more terms ,each a variable or a constant. A literal is a positive atom 
+
+𝑅 (® 𝑡 ), a negated atom ¬𝑅 (® 𝑡 ), or a comparison 𝑡 𝜃 𝑡 ′ with 
+
+𝜃 ∈ { =, ≠, <, ≤, >, ≥} . Read declaratively, the rule states that 
+
+𝐻 holds for every assignment of variables under which all body literals hold. The comma denotes conjunction. A relation is either EDB (extensional) holding stored input facts, or IDB (intensional) derived by the rules. A program is evaluated bottom-up: starting from the EDB facts, the rules are applied repeatedly until no new fact can be added. Because predicates may depend on one another recur-sively, evaluation is ordered by the predicate dependency graph , which has a node per predicate and an edge 𝑅 → 𝐻 
+
+whenever 𝑅 occurs in the body of a rule defining 𝐻 . A 
+
+strongly connected component (SCC) of this graph is a maxi-mal set of predicates reachable from one another. Negation is permitted only in stratified form: a negated atom never refers to a predicate in its own SCC, so it lies in an earlier, fully evaluated SCC. The model of the entire stratified program is constructed by computing the least fixed point of each SCC individually, in a topological order of the SCC dependency graph, with the earlier SCCs held fixed. The resulting model is the program’s perfect model [2, 37]. Finally, a rule is safe when every variable in its head, in a negated atom, or in a comparison also appears in some positive body atom, guaranteeing that every derived fact is bound to constants and that the result is finite [2, 11].       
+
+> .decl edge(x: number ,y: number ).decl tc(x: number ,y: number ).input edge .output tc tc(x,y) :- edge(x,y). tc(x,z) :- tc(x,y), edge(y,z).
+> (a) Soufflé’s Datalog.
+> WITH RECURSIVE
+
+tc (x, y) AS ( 
+
+> SELECT
+
+x, y FROM edge  
+
+> UNION SELECT
+
+tc .x, edge .y  
+
+> FROM
+
+tc , edge  
+
+> WHERE
+
+tc .y = edge .x ) 
+
+> SELECT
+
+* FROM tc  
+
+> (b) Recursive SQL.
+
+Figure 1. Transitive closure in Datalog and SQL. Most Datalog systems extend this core with schema and I/O declarations. We adopt Soufflé’s surface syntax [27]: a relation is declared with .decl (named, typed columns), tied to a CSV file with .input , and exposed as a query result with 
+
+.output . Figure 1a shows transitive closure in this syntax. 
+
+2.2 Recursive Common Table Expressions 
+
+Recursive queries entered the SQL standard in SQL:1999 as 
+
+recursive common table expressions (CTEs) [13, 26], written  
+
+> WITH RECURSIVE
+
+𝑅 (® 𝑐 ) AS (𝑄 base UNION 𝑄 step ) SELECT . . . ,where 𝑄 base , the “base-case”, does not reference 𝑅 , and 𝑄 step ,the “recursive-case”, references 𝑅 . 𝑄 step can itself contain  
+
+> UNION
+
+branches, and depending on the engine, nested WITH 
+
+expressions. Iteration proceeds until a fixed point is reached. The standard imposes linear recursion and restricts where the recursive reference may occur: 𝑅 must appear at most once per UNION branch of 𝑄 step (including within its WITH 
+
+blocks). UNION provides set semantics over the iterations. The transitive-closure Datalog program shown earlier corresponds to the SQL query shown in Figure 1b. Note that SQL:1999 does define mutually recursive defini-tions [26]. However, of the SQL engines we evaluate, only MariaDB accepts them, so this constraint is implementation support rather than the standard itself. Behind this surface syntax, modern engines apply stan-dard bottom-up semi-naive execution: the base case seeds a working table, the recursive case re-runs against it, and the difference against the known tuples feeds the next round [5, 6]. From the query writer’s perspective this is invisible: a  
+
+> WITH RECURSIVE
+
+block expresses the desired least-fixed-point relation, and the engine evaluates it efficiently. This separation of concerns is what our compiler exploits. By emitting only plain WITH RECURSIVE blocks, DLSQL inherits whatever evaluation and optimization strategies the host en-gine provides. The same compiler output runs on DuckDB [38], Umbra [34], and Hyper [28], and, after an inlining pass, on MariaDB, MySQL, and SQLite (cf. Section 7.5). Compiling Linear Datalog to SQL for Program Analysis 
+
+> // R1: an allocation in a reachable method VarPointsTo(heap, var) :-AssignHeapAlloc(heap, var, method), Reachable(method). // R2: assignment copies the points-to set VarPointsTo(heap, to) :-Assign(from, to), VarPointsTo(heap, from). // R3: store to a static field StaticFieldPointsTo(heap, fld) :-VarPointsTo(heap, from), Reachable(method), StoreStaticField(from, fld, method). // R4: load from a static field VarPointsTo(heap, to) :-Reachable(method), LoadStaticField(fld, to, method), StaticFieldPointsTo(heap, fld).
+
+Figure 2. Four of varpointsto ’s ten rules; each has at most one positive recursive reference, so the program is linear. 
+
+## 3 Linear Datalog 
+
+3.1 Syntax 
+
+We define Linear Datalog as the fragment of Datalog in which every rule is linear : at most one body literal refers to a pred-icate in the same SCC as the head. Every recursive rule therefore has the shape 𝐻 (® 𝑡 ) :- 𝑅 (® 𝑠 ), 𝐶 1, . . . , 𝐶 𝑘 , where the recursive literal 𝑅 (® 𝑠 ) is positive and in the same SCC as 𝐻 ,and each 𝐶 𝑖 is an EDB, an IDB from an earlier SCC, or a comparison. Mutual recursion is allowed, since 𝑅 needs not to be equal to 𝐻 , but only belong to the same SCC. 
+
+Why linearity matters. Linearity is the recursion class that SQL:1999 admits: the recursive term may reference a recursive relation at most once [13]. Most relational engines implement a further-restricted form of it, i.e., no support for mutual recursion [20]. Within the fragment, the entire fixpoint of an analysis compiles to a single recursive query that runs on unmodified engines (cf. Section 7.5). Restricting to Linear Datalog thus captures the reduced analysis kernels of Section 3.2, while remaining portable; we return to what falls outside the fragment at the end of this section. Prior theory establishes the expressibility correspondence between linear Datalog and SQL:1999 recursion. Our contri-bution is a compiler that makes it run by accounting for two practical challenges. First, although the SQL:1999 standard allows mutual recursion, most RDBMS do not support it. Sec-ond, Datalog’s scoping discipline differs from SQL. Midlog’s two rewrites (Sections 5.3 and 6.1) close exactly these gaps. 
+
+3.2 Program Analyses Expressible in Linear Datalog 
+
+A variety of canonical static analyses can be expressed in Linear Datalog, sharing a common shape: the analysis state is a transitive-closure-like relation, propagated step by step through non-recursive context relations. We illustrate with five analyses, all used as benchmarks in Section 7, starting with points-to analysis. These five benchmarks are the recur-sive cores of real analyses rather than full-fledged analyses. We state below what each kernel drops relative to its source, and we cross-validate the output of every kernel against Soufflé on every engine, where it completes (cf. Section 7.1).                      
+
+> Java statement (in main )Extracted EDB fact
+> (1) Object x = new Object(); AssignHeapAlloc (ℎ1,x,main )(2) Object w = new Object(); AssignHeapAlloc (ℎ2,w,main )(3) Object y = x; Assign (x,y)(4) C.s = y; StoreStaticField (y,s,main )(5) Object z = C.s; LoadStaticField (s,z,main )
+
+Figure 3. A Java fragment and the EDB tuples that the front end extracts from each statement, one tuple per statement. 
+
+> // Entry methods are reachable. ReachableMethod(m) :- Entry(m). // Reachability propagates through discovered call edges. ReachableMethod(ce) :- CallEdge(_, ce). // Virtual calls: every impl in a subtype of the receiver. CallEdge(cs, ce) :- ReachableMethod(ca), VirtualCall(cs, ca, declType, name, desc), Subtype(concrete, declType), MethodImpl(concrete, name, desc, ce). // Statically-bound calls carry their callee directly. CallEdge(cs, ce) :- ReachableMethod(ca), DirectCall(cs, ca, ce).
+
+Figure 4. Class-hierarchy call-graph construction ( cgcha ). 
+
+Points-to analysis. Points-to analysis determines, for each variable, the set of heap objects it may refer to at runtime; the flagship Datalog benchmark is the VarPointsTo relation from Doop [9]. Here we use a reduced variant of Doop’s micro workload, which is already context-insensitive. In addition, our variant no longer computes reachable methods or the points-to information of instance fields and array indices inside the fixpoint. In the original Doop micro, their corresponding rules are non-linear because they match two IDBs in one body. Changing these to consume precomputed input relations makes their rules linear. Each rule propagates a heap object along an assignment, cast, field load, array load, or virtual-call resolution. The full VarPointsTo relation is defined by ten rules and is linear. Figure 2 shows four of the ten rules, taken directly from this Doop variant. The complete program appears in Figure 13. To illustrate, Figure 3 shows a Java fragment in which the object allocated on line 1 flows through the static field 
+
+C.s , forcing the analysis through the heap, together with the single EDB tuple extracted per statement; heap objects are labeled by allocation site ( ℎ1, ℎ 2), and the method main 
+
+is assumed reachable ( Reachable (main )). 
+
+Call-graph construction. Call-graph construction deter-mines which methods each call site may invoke. Figure 4 shows the rules, which resolve a virtual call by class-hierarchy analysis (CHA) to every implementation of the called method in the receiver’s declared type or a subtype of it (the non-recursive Subtype and MethodImpl relations), while statically-bound calls carry their target directly. ReachableMethod and 
+
+CallEdge are mutually recursive: a method is reachable when a reachable method calls it, and a call edge is created only at a reachable call site. Every rule contains at most one IDB in the SCC {ReachableMethod , CallEdge }, so each rule is linear. 
+
+Escape analysis. An object escapes its allocating method if it is reachable from a static field, returned, passed as an actual argument, or used as a virtual-call receiver. Alloca-tions that do not escape can then be stack-allocated rather Amir Shaikhha, Anna Herlihy, and Hung Ngo 
+
+than heap-allocated. Figure 11 in the appendix gives the core rules of the Soufflé escape benchmark: HeapReachable is a linear transitive closure over the heap graph, GlobalEscape 
+
+closes under it, MethodEscape collects the ways an allocation escapes (including reachability from another escaping allo-cation), and CapturedAllocation applies stratified negation against MethodEscape . Each recursive rule references its own SCC’s relation at most once, so the program is linear. 
+
+Dataflow analysis. A dataflow analysis propagates facts along a precomputed value-flow graph. Our csda benchmark performs null-value propagation over the context-sensitive value-flow graph of Graspan [51], whose context-sensitivity is baked into the node IDs by cloning function bodies per calling context, reducing the analysis to plain reachability. 
+
+NullNode starts from the directly-null edges and propagates along the non-recursive Edge relation, referencing itself once, so the recursion is linear: 
+
+> NullNode(x, y) :- NullEdge(x, y). NullNode(x, y) :- NullNode(x, w), Edge(w, y).
+
+Borrow checking. Borrow checking determines whether a program ever uses a value after it has been moved. Polo-nius [39] reformulates Rust’s borrow checker as a Datalog program. Figure 12 in the appendix shows the recursive core of the borrow benchmark: ancestor_path is a linear transi-tive closure of the EDB child_path relation; path_moved_at 
+
+and path_assigned_at propagate base EDB facts along an-cestor_path ; path_maybe_uninitialized_on_exit flows move information along cfg_edge with stratified negation against 
+
+path_assigned_at ; and a final non-recursive join reports each 
+
+move_error . Every recursive rule contains exactly one posi-tive recursive literal, so the program is linear. 
+
+What falls outside the fragment. Not every analysis fits Linear Datalog. A field-sensitive points-to analysis is rep-resentative: its instance-field store and load rules match two points-to facts in a single body, and Andersen-style inclusion-based points-to inherits the same non-linear clo-sure rules. Three routes exist beyond the fragment: engine-specific extensions of recursive SQL, at the price of portabil-ity; an external driver iterating non-recursive queries to a fixpoint, as RecStep [14] and Logica [17] do, at the price of hiding the fixpoint from the engine’s optimizer; and compile-time rewrites into the fragment, via non-linear-to-linear transformations [40] that are applicable to a limited class of non-linear programs. The first two routes forfeit the single-portable-query property that motivates our design. 
+
+## 4 The Midlog Intermediate Representation 
+
+Midlog is a rule-based intermediate language between Linear Datalog and recursive SQL. Like Datalog, a Midlog program is a set of rules, each defining one relation; unlike Datalog, a rule’s body is a single union of conjunctions , and a rule may nest other rules as lexically-scoped locals [44]. Midlog                                 
+
+> Rule ::= Def |MultiDef Def ::= Head :-Local ∗Body MultiDef ::= multi: Local ∗Branch +
+> Branch ::= Head :-Body Local ::= local Def Head ::= Name (Col ∗)
+> Body ::= Conj (union Conj )∗
+> Conj ::= Atom (,Atom )∗
+
+Figure 5. Midlog grammar. Atoms are identical to Datalog. absorbs two structural mismatches between Datalog and SQL. The first is mutual recursion: a Datalog program often defines several relations in terms of one another, forming a 
+
+recursive group or SCC of the predicate dependency graph. SQL:1999 defines mutually recursive query names within a WITH RECURSIVE block; however, of the engines we evaluate only MariaDB implements them (cf. Section 7.5), so a group cannot be portably emitted as several recursive CTEs side by side. Midlog resolves this by making one relation the re-cursive primary ; the remaining relations of the SCC become 
+
+companions , translated into non-recursive CTEs. The second is scoping: SQL’s WITH blocks are lexically scoped and may nest, whereas Datalog uses a flat global namespace; Midlog nests the companions as locals inside the primary’s rule, visible only to it. 
+
+4.1 Syntax 
+
+A Midlog program is a schema (inherited verbatim from the source program) plus a list of rules; Figure 5 shows the gram-mar. Atoms are as in Datalog: positive accesses 𝑅 (® 𝑡 ), negated accesses ¬𝑅 (® 𝑡 ), and comparisons 𝑡 𝜃 𝑡 ′. Two properties dis-tinguish Midlog from surface Datalog: 
+
+Pre-unioned bodies. Several Datalog rules with the same head merge into a single rule whose body is a union of con-junctions, one per original rule, mirroring the output SQL: one WITH entry per rule, one UNION branch per conjunction. 
+
+Lexically-scoped locals. Mutually-recursive predicates be-come a single recursive primary with the companions nested as locals, compiled into non-recursive inner WITH statements that wrap the primary’s recursive case. The MultiDef form (multi: ) packages the heads of an SCC as they leave the Datalog-to-Midlog phase; Midlog normalization (Section 5.3) then rewrites every MultiDef into a primary Def with locals. 
+
+4.2 Midlog Invariants 
+
+Every Midlog program satisfies structural invariants on which the SQL emitter and the unparser rely; each holds by con-struction, following from the grammar of Figure 5 or asserted as the compiler builds each program. (I1) Unique heads per scope. Head names are unique within a MultiDef ’s branch list and the top-level rule list, so each head names exactly one definition, rendered as one uniquely-named CTE. Compiling Linear Datalog to SQL for Program Analysis 
+
+(I2) Bodies unioned per head. All Datalog rules sharing a head merge into a single Body , one Conj per original rule, so every relation compiles to exactly one CTE. (I3) Canonical projection. Each conjunction is 𝛼 -renamed so the enclosing head’s declared column names appear directly as body variables; the emitter reads each SELECT ’s projection from the head alone. (I4) Schema-derived columns. A head’s columns come from the Datalog .decl declaration when present, else from the first defining rule’s head variables, so every emitted CTE has an explicit, stable column list ( WITH 𝑅 (𝑐 1, . . . )). 
+
+4.3 Normalized Midlog 
+
+Normalized Midlog retains the grammar of Figure 5, except every top-level rule is a single-head Def , each multi-member SCC is a primary Def with its companions as locals, and every Def is at most self-recursive. The invariants above continue to hold, and normalization additionally establishes: (I5) Lexically-scoped locals. A rule’s locals are visible inside its body and to each other, and may reference the enclos-ing head; a companion can thus sit inside the primary’s recursive case as an inner WITH .(I6) SCC hoisting. The chosen primary 𝑃 is a top-level Def 
+
+owning the group’s projections as locals; each projection referenced from outside the group, or output by the pro-gram, is additionally hoisted as a top-level sibling with the same head and body, reachable where the local copy is out of scope. Figure 6 shows the initial and normalized Midlog represen-tations of the CHA call-graph program of Figure 4. The next section describes the producing pipeline, and Section 6.1 an optimization that, for cgcha , lifts a natural primary and avoids the synthetic combined relation (Figure 7a). 
+
+Semantics. Midlog inherits the semantics of stratified Dat-alog (the fixed-point semantics of Section 2), and a Midlog program denotes the same model as the Datalog program it normalizes, with locals considered as ordinary (scoped) IDB definitions. The two rewrites that establish the normal form are equivalence-preserving under stated conditions: for the tagged rewrite (Section 5.3), the least fixpoint of the combined relation is the tag-disjoint union of the SCC’s rela-tions, with one tagged tuple per original tuple; the multi-head rewrite is sound under the conditions specified in Section 6.1. A mechanized proof of both equivalences is future work. 
+
+## 5 Compiling Linear Datalog to SQL 
+
+DLSQL lowers a Linear Datalog program to a single recursive SQL query in four phases: (i) normalization of the Datalog source, (ii) translation to Midlog, (iii) Midlog normalization, and (iv) translation to a typed SQL IR, which a final un-parser renders as an engine-portable query. The compiler implements no fixed-point strategy of its own: it emits one  
+
+> WITH RECURSIVE
+
+CTE per recursive group and lets the database engine perform iterative evaluation. Throughout this section, we use the cgcha program of Fig-ure 4 as a running example. Its two mutually recursive rela-tions, ReachableMethod and CallEdge , exercise every rewrite of the pipeline. Figure 6 shows the Midlog snapshots after the second and third phases, and Figure 7 the Midlog form after the multi-head optimization of Section 6.1, together with the recursive SQL produced from it. 
+
+5.1 Datalog Normalization 
+
+DLSQL accepts the full surface syntax of Soufflé-style Dat-alog (multi-head rules, body disjunctions, type aliases, re-peated head variables, and constants or arithmetic expres-sions inside atoms) and rewrites it into textbook Datalog: every rule a single-headed Horn clause, every head a tuple of distinct variables, every atom argument a variable [2]: 1. Disjunction split : a body with 𝐿 1; 𝐿 2 splits into two rules, repeated until disjunction-free. 2. Distinct head variables : 𝑅 (𝑥, 𝑥 ) becomes 𝑅 (𝑥, 𝑥 2) with 𝑥 2 =
+
+𝑥 added to the body. 3. Atom variable-only : arguments that are constants or arith-metic expressions are lifted out into fresh variables bound by equalities, e.g., 𝑅 (1, 𝑦 ) becomes 𝑅 (𝑣, 𝑦 ) with 𝑣 = 1. 4. Existential elimination : every _ wildcard is given a fresh, otherwise-unused name. 5. Dead-rule elimination : rules unreachable from .output 
+
+relations are removed by a backward reachability analysis. The result is a canonical DatalogProgram in the shape stated above, with every constant or expression exposed as a com-parison atom. This shape enables the uniform per-SCC con-struction of the next phase and the direct mapping to a 
+
+> SELECT
+
+–FROM –WHERE skeleton at the end of the pipeline. For the cgcha example of Figure 4, existential elimination rewrites the rule ReachableMethod (ce ) :- CallEdge (_, ce ) into 
+
+ReachableMethod (ce ) :- CallEdge (a1 , ce ), with a1 carrying through to Figure 6. 
+
+5.2 Datalog to Midlog 
+
+This phase translates the canonical program into Midlog with top-level rules in predicate dependency order, in two steps: an SCC analysis and a per-SCC construction. The transformation pass that turns each SCC into a single-head form is deferred to Midlog normalization (Section 5.3). 
+
+Step 1: SCC analysis and topological ordering. Tarjan’s linear-time algorithm [50] computes the SCCs of the pred-icate dependency graph (Section 2) in topological order, which becomes the order of Midlog rules and ultimately of CTEs, so each rule references only relations already defined and the heads of its own SCC. 
+
+Step 2: per-SCC construction. For each SCC, we build one top-level rule. A singleton SCC becomes a Def whose body is the union of all conjunctions defining its head (invariant Amir Shaikhha, Anna Herlihy, and Hung Ngo   
+
+> multi :ReachableMethod(m) :-Entry(m) union CallEdge(a1, m). CallEdge(cs, ce) :-ReachableMethod(ca), VirtualCall(cs, ca, declType, name, desc), Subtype(concrete, declType), MethodImpl(concrete, name, desc, ce)
+> union
+> ReachableMethod(ca), DirectCall(cs, ca, ce).
+
+(a) The initial Midlog form.       
+
+> ReachableMethod_CallEdge(tag, c1, c2) :-
+> local ReachableMethod(m) :- ReachableMethod_CallEdge(RM, m, c2).
+> local CallEdge(cs, ce) :- ReachableMethod_CallEdge(CE, cs, ce). Entry(c1), c2 = NULL , tag = RM union
+> CallEdge(a1, c1), c2 = NULL , tag = RM union
+> ReachableMethod(ca), VirtualCall(c1, ca, declType, name, desc), Subtype(concrete, declType), MethodImpl(concrete, name, desc, c2), tag = CE
+> union
+> ReachableMethod(ca), DirectCall(c1, ca, c2), tag = CE. ReachableMethod(m) :- ReachableMethod_CallEdge(RM, m, c2). CallEdge(cs, ce) :- ReachableMethod_CallEdge(CE, cs, ce).
+
+(b) Normalized Midlog form. The tag column distinguishes the two original branches. 
+
+Figure 6. Different Midlog representations of the CHA call-graph program (Figure 4). I2). A multi-member SCC becomes a transient MultiDef with one branch per relation, built the same way. Each conjunc-tion is canonicalized so the head’s declared columns appear positionally as body variables: for a head 𝑅 (𝑥 1, . . . , 𝑥 𝑘 ) with columns (𝑐 1, . . . , 𝑐 𝑘 ), every body occurrence of 𝑥 𝑖 is renamed to 𝑐 𝑖 (invariant I3), after 𝛼 -renaming colliding body variables; projection through the head is then implicit. Column names come from .decl when present, otherwise from the first defining rule’s head (invariant I4). For cgcha , SCC analysis groups the mutually-recursive 
+
+ReachableMethod and CallEdge into the multi-member SCC of Figure 6a. The per-SCC construction packages it as a 
+
+MultiDef with two branches, one per relation, each branch’s body the union of that relation’s two source rules. This phase establishes invariants I1–I4; multi-member SCCs remain as 
+
+MultiDef s, which the next phase eliminates. 
+
+5.3 Midlog Normalization 
+
+Midlog normalization eliminates every MultiDef , leaving each top-level rule a single-head Def . Single-head Def s pass through unchanged; only multi-member SCCs are touched. 
+
+Multi-head elimination. Consider a MultiDef rule with branches 𝐻 𝑖 ( ® 𝑐 𝑖 ) :- 𝐵 𝑖 , where each body is the union of con-junctions. We introduce a fresh synthetic predicate, named 
+
+𝐻 1_· · · _𝐻 𝑛 , concatenating the names 𝐻 𝑖 that carries an ex-tra tag column recording a tuple’s source branch, together with the column tuple ®𝑐 whose schema subsumes every 𝐻 𝑖 .Our implementation assumes that all columns of an SCC share the same type 𝜏 ; in all our benchmarks, 𝜏 =number . Thus, 
+
+®𝑐 = (𝑐 1, . . . , 𝑐 𝑎 ) with 𝑎 the largest arity; for example, 𝑅 (𝑥, 𝑦 )
+
+and 𝑆 (𝑧, 𝑢, 𝑣 ) yield 𝑅 _𝑆 (tag , 𝑐 1, 𝑐 2, 𝑐 3). The combined predi-cate becomes the primary Def of the recursive group; each original head is reintroduced as a local projection inside the primary and a hoisted top-level projection outside it: 
+
+𝐻 1_· · · _𝐻 𝑛 (tag , ®𝑐 ) :- 
+
+> local
+
+𝐻 1 ( ® 𝑐 1) :- 𝐻 1_· · · _𝐻 𝑛 (𝑇 1, ®𝑝 1).
+
+· · ·  
+
+> local
+
+𝐻 𝑛 ( ® 𝑐 𝑛 ) :- 𝐻 1_· · · _𝐻 𝑛 (𝑇 𝑛 , ®𝑝 𝑛 ).𝐵 1 [ ® 𝑞 1 = NULL , tag = 𝑇 1 ] union 
+
+· · · union 
+
+𝐵 𝑛 [ ® 𝑞 𝑛 = NULL , tag = 𝑇 𝑛 ].𝐻 1 ( ® 𝑐 1) :- 𝐻 1_· · · _𝐻 𝑛 (𝑇 1, ®𝑝 1).
+
+· · · 
+
+𝐻 𝑛 ( ® 𝑐 𝑛 ) :- 𝐻 1_· · · _𝐻 𝑛 (𝑇 𝑛 , ®𝑝 𝑛 ).
+
+The locals are visible only inside the primary’s body. Each local and hoisted projection reads the primary through ®𝑝 𝑖 :the tuple ®𝑐 with the slots assigned to 𝐻 𝑖 renamed to ®𝑐 𝑖 and the remaining slots ®𝑞 𝑖 bound to fresh variables. For 𝑅 above, the local body has the columns (𝑥, 𝑦, 𝑐 3). The combined-relation body unions the branch bodies, each with the equalities for  
+
+> NULL
+
+padding missing columns ®𝑞 𝑖 , and tag = 𝑇 𝑖 for distinct constants 𝑇 𝑖 . Every body literal that referenced some 𝐻 𝑗 of the SCC now resolves to the corresponding local. Thus, the entire group becomes a single self-recursion on 𝐻 1_· · · _𝐻 𝑛 .The trailing top-level projections expose each 𝐻 𝑖 to rules outside the SCC and to .output declarations (invariant I6). Applied to the cgcha SCC {ReachableMethod , CallEdge },this rewrite introduces the combined primary, tags its tuples 
+
+RM or CE , and reintroduces both relations as projection locals and hoisted siblings (Figure 6b). 
+
+The tagged relation. The combined primary has the schema 
+
+(tag : int , 𝑐 1: 𝜏, . . . , 𝑐 𝑎 : 𝜏 ); the 𝑗 -th column of 𝐻 𝑖 occupies 𝑐 𝑗 ,and a head with 𝑎 𝑖 < 𝑗 pads 𝑐 𝑗 with NULL through the equality 
+
+𝑐 𝑗 = NULL . If columns of an SCC have mixed types, the same construction applies per type, allocating for each type the largest number of columns of that type among the heads. Note that a head column bound only by an equality com-parison (e.g., 𝑐 2 = NULL and tag = RM in Figure 6b) remains projectable thanks to I3: the SQL emitter places the compared constant directly in the SELECT list (e.g., SELECT RM , 𝑐 1, NULL ). 
+
+Invariants established. This establishes invariants I5 and I6; every top-level rule is now a Def that is at most self-recursive. Section 6.1 revisits this rewrite as an optimization: Compiling Linear Datalog to SQL for Program Analysis 
+
+when a branch of a MultiDef has a base case along with further restrictions on the predicate dependency graph, the synthetic combined relation can be avoided, and that branch is lifted to primary directly. 
+
+Complexity. The Datalog-to-Midlog translation is linear in the size of the program: it runs Tarjan’s SCC algorithm on the predicate dependency graph and applies local per-SCC rewrites. Both rewrites preserve data complexity, since the tagged fixpoint contains exactly one tuple per tuple of the original relations. However, the tagged encoding carries constant-factor overheads (the tag column, NULL padding to the widest head, and a 𝑘 -way union per iteration) that peak on large SCCs of heterogeneous arities. Section 7.3 provides an ablation study by varying the number of IDBs. 
+
+5.4 Midlog to SQL 
+
+With the structural shape of the output already established, the translation to SQL is a near-mechanical walk. 
+
+Top-level rules to CTEs. Each top-level Def becomes one  
+
+> WITH
+
+entry, marked recursive iff its body or any of its (transi-tively nested) local’s bodies, references the rule’s own head. Thanks to Midlog normalization, no MultiDef survives, so every CTE is single-headed. 
+
+Base/step split for primary rules with locals. When a 
+
+Def has no locals, its body is emitted as the UNION of its con-junctions, with SELECT DISTINCT on each non-recursive branch to preserve Datalog’s set semantics (recursive CTEs already deduplicate at the UNION boundary). A Def with locals is par-titioned into base branches (no reference to the recursive head) and step branches. The former form one side of the outer UNION ; the latter are wrapped in an inner WITH defining each local as a non-recursive CTE. The emitted CTE for a primary 𝑃 with base branches 𝐵 , step branches 𝑆 , and locals Aux has the shape 
+
+𝑃 (® 𝑐 ) AS ( tr (𝐵 ) UNION WITH Aux tr (𝑆 ) ) .
+
+Here tr (·) is the SELECT translation described next; each 𝐴 ∈
+
+Aux is visible only inside 𝑃 ’s recursive step, while the hoisted top-level projections (Section 5.3) emit non-recursive outer CTEs referencing the primary. 
+
+Conjunction to SELECT . A Midlog conjunction is translated to one SQLSingleStmt (SELECT –FROM –WHERE ). The translator maintains an environment Γ : Var → SQLTerm mapping each Datalog variable to the column reference that first binds it. Every positive atom 𝑅 (® 𝑡 ) adds a fresh table alias 𝑡 𝑘 to the  
+
+> FROM
+
+clause, and its argument list is walked: 
+
+• if 𝑡 𝑖 is a fresh variable 𝑣 and 𝑣 ∉ Γ, bind Γ(𝑣 ) := 𝑡 𝑘 .𝑐 𝑖 where 
+
+𝑐 𝑖 is the corresponding declared column; 
+
+• if 𝑡 𝑖 is a variable 𝑣 ∈ Γ, emit the equality Γ(𝑣 ) = 𝑡 𝑘 .𝑐 𝑖 as an implicit join condition; 
+
+• if 𝑡 𝑖 is a constant or an arithmetic expression, emit the corresponding equality directly. Comparison atoms become WHERE predicates after substitut-ing Γ; an equality binding an unbound variable is recorded by aliasing in Γ rather than as a predicate, and a variable occurring only once (a former wildcard) binds in Γ but adds no join condition. A negated atom ¬𝑅 (® 𝑡 ) becomes a corre-lated NOT EXISTS subquery over a fresh alias of 𝑅 , with one equality per already-bound variable and one per constant. The SELECT clause is built last: by I3, each head column 𝑐 𝑖 is already bound in Γ, so it simply projects Γ(𝑐 𝑖 ) aliased to 𝑐 𝑖 .For cgcha , the base/step split shapes the recursive SQL directly: ReachableMethod ’s CTE unions a base branch over 
+
+Entry with a step branch carrying its companion CallEdge 
+
+as an inner non-recursive WITH (CallEdge is also hoisted as a top-level CTE); the virtual-call resolution over VirtualCall ,
+
+Subtype , and MethodImpl becomes implicit joins in the WHERE 
+
+clause, which the database engine optimizes like any non-recursive join query. Figure 7b shows the recursive SQL produced for cgcha with the multi-head optimization of Section 6.1, side by side with the Midlog form (Figure 7a) it is emitted from. 
+
+5.5 Final Statement and Output 
+
+After all top-level CTEs are emitted, the compiler emits a trailing SELECT * FROM the relation declared with .output .A separate companion file emits CREATE TABLE statements for each .input -declared EDB, with column types trans-lated from the Datalog schema. For cgcha , the .output re-lation is CallEdge , so the statement of Figure 7b closes with  
+
+> SELECT * FROM
+
+CallEdge , mirroring the .output directive car-ried through Midlog (Figure 7a), and the companion file creates its five EDB tables. The unparser renders the SQL IR in the target dialect. Iden-tifiers colliding with reserved keywords ( from , to , select ,. . . ) are quoted, and UNION lists with 𝑛 > 2 branches are ren-dered as nested binary unions. DuckDB, Umbra, and Hyper accept the generated code unmodified; Section 7.5 presents the dialect matrix for four further engines and the rewrites that close the gap. 
+
+## 6 Optimizations 
+
+The four-phase pipeline of Section 5 translates Linear Data-log programs into well-formed recursive SQL; two further passes optimize the result. The first avoids the synthetic combined relation that Midlog normalization introduces for multi-member SCCs; the second discovers functional depen-dencies over EDBs and exposes them as primary keys. 
+
+6.1 Multi-Head Optimization 
+
+The tag rewrite of Midlog normalization (Section 5.3) is uni-versal but pays a price: a tag column, tuples widened to ac-commodate every branch, and one recursive CTE unioning all branch bodies. When the SCC admits a natural primary, this overhead is avoidable. Amir Shaikhha, Anna Herlihy, and Hung Ngo     
+
+> ReachableMethod(m) :-
+> local CallEdge(cs, ce) :-ReachableMethod(ca), VirtualCall(cs, ca, declType, name, desc), Subtype(concrete, declType), MethodImpl(concrete, name, desc, ce)
+> union
+> ReachableMethod(ca), DirectCall(cs, ca, ce). Entry(m) union CallEdge(a1, m). CallEdge(cs, ce) :-ReachableMethod(ca), VirtualCall(cs, ca, declType, name, desc), Subtype(concrete, declType), MethodImpl(concrete, name, desc, ce)
+> union
+> ReachableMethod(ca), DirectCall(cs, ca, ce). .output CallEdge
+
+(a) The Midlog representation after the multi-head optimization.                                                                                              
+
+> WITH RECURSIVE ReachableMethod(m) AS ((SELECT t7.m AS mFROM Entry AS t7)
+> UNION
+> (WITH CallEdge(cs, ce) AS ((SELECT t2.cs AS cs, t4.callee AS ce
+> FROM ReachableMethod AS t1, VirtualCall AS t2, Subtype AS t3, MethodImpl AS t4
+> WHERE t1.m = t2.caller AND t2.declaredtype = t3.sup
+> AND t3.sub = t4.concretetype AND t2.simplename = t4.simplename AND t2.descr = t4.descr)
+> UNION
+> (SELECT t6.cs AS cs, t6.callee AS ce
+> FROM ReachableMethod AS t5, DirectCall AS t6 WHERE t5.m = t6.caller))
+> SELECT t8.ce AS mFROM CallEdge AS t8) ), CallEdge(cs, ce) AS ((SELECT t2.cs AS cs, t4.callee AS ce
+> FROM ReachableMethod AS t1, VirtualCall AS t2, Subtype AS t3, MethodImpl AS t4
+> WHERE t1.m = t2.caller AND t2.declaredtype = t3.sup
+> AND t3.sub = t4.concretetype AND t2.simplename = t4.simplename AND t2.descr = t4.descr)
+> UNION
+> (SELECT t6.cs AS cs, t6.callee AS ce
+> FROM ReachableMethod AS t5, DirectCall AS t6 WHERE t5.m = t6.caller))
+> SELECT *FROM CallEdge
+
+(b) The recursive SQL emitted from (a): ReachableMethod is the recursive CTE, CallEdge anon-recursive inner WITH and a hoisted top-level CTE. 
+
+Figure 7. The Midlog representation and the recursive SQL for cgcha with the multi-head optimization. No combined relation is introduced; instead, ReachableMethod is lifted to primary, with CallEdge nested as a local and hoisted as a top-level sibling. 
+
+Rewrite condition. The optimization is applicable to a 
+
+MultiDef when two conditions hold. First, exactly one branch 
+
+𝐻 𝑝 is self-recursive (references its own head) and has a base conjunction free of SCC literals. Second, 𝐻 𝑝 is a feedback vertex of the SCC’s predicate dependency graph: removing it leaves the remaining branches, the companions , acyclic. The pass lifts 𝐻 𝑝 to the top-level Def and attaches the com-panions as non-recursive locals in topological order. This re-moves the need for the tag column and the combined tagged relation. The companions that are exposed (referenced from a later SCC or declared as an output relation) are hoisted as top-level siblings (invariant I6). 
+
+Fallback. If no branch is self-recursive, any branch with a base conjunction may serve as primary, subject to the same feedback-vertex condition. When no candidate is a feedback vertex, the compiler falls back to the tag rewrite. 1
+
+For instance, in 𝐴 :- X ; 𝐴 :- 𝐴, Y ; 𝐴 :- 𝐵 ; 𝐵 :- 𝐶 ; 𝐶 :- 𝐵 ; 𝐶 :- 𝐴 ,removing the only self-recursive branch 𝐴 leaves 𝐵 and 𝐶 
+
+mutually recursive, so the pass falls back to the tag rewrite. For cgcha , the normalized Midlog (Figure 6b) fuses the SCC {ReachableMethod , CallEdge } into a tagged combined relation. The optimization instead selects ReachableMethod 
+
+as the primary and nests CallEdge as a local, hoisted as a top-level sibling (Figure 7a); the resulting SQL (Figure 7b) ranges over the original single-column ReachableMethod . This is the path taken on every benchmark; the tagged fallback remains for programs that fail the condition, and Section 7.3 measures its cost on all three backends. 
+
+> 1
+
+Note that a generalized version of the multi-head optimization is to find the minimum feedback vertex set, which is an NP-hard problem [15]. Our algorithm is linear and only finds a feedback vertex set of size one, whereas the generalized one can decrease the number of tagged IDBs. 
+
+Semantic Equivalence. Both normalized forms of Midlog preserve the source program’s semantics in the sense of Section 4. The tagged form is semantics-preserving on the entire fragment: its fixed point is the tag-disjoint union of the SCC’s relations, with one tagged tuple per original tuple. The optimized form is semantics-preserving exactly under the feedback-vertex condition: an acyclic companion graph makes every companion a non-recursive IDB over the pri-mary relation and the EDBs, whose topological evaluation reproduces the original SCC’s immediate-consequence step. 
+
+Local-IDB inlining. The normalized Midlog can introduce local IDBs. In particular, multi-head optimization nests each companion as a non-recursive WITH inside the recursive term (CallEdge in Figure 7b), a syntax that stricter engines reject. A further Midlog-to-Midlog pass inlines each local IDB’s rules into the recursive term, removing every nested WITH .Section 7.5 evaluates the portability this rewrite enables. 
+
+6.2 Functional-Dependency Discovery for EDBs 
+
+Much of a relational engine’s optimization power rests on functional dependencies and keys: they let the planner turn a join into a single-tuple index probe and pick the smaller build side. Soufflé’s .decl signatures declare no such constraints, so the engine treats every EDB table as an arbitrary relation. DLSQL recovers the missing constraints from the input data and passes them to the engine as schema-level keys. 
+
+Discovery. Before emitting the CREATE TABLE script of Sec-tion 5.5, the compiler runs an FD-discovery pass [25, 35] over the supplied EDB tuples, enumerating minimal non-trivial FDs and minimal candidate keys per relation. Discovery op-erates on the materialized input, so the FDs are exact for the supplied workload, not schema-level guarantees. The schema Compiling Linear Datalog to SQL for Program Analysis 
+
+script is regenerated per dataset; a stale key fails loudly at load time (the engine rejects the violating insertion), never silently at query time. 
+
+Hints emitted to the engine. For each EDB we emit a  
+
+> PRIMARY KEY
+
+declaration on the smallest discovered candidate key whose columns are all referenced from at least one re-cursive CTE; recursive CTEs that join against keyed EDB relations then gain index-supported probes on the join’s inner side, with no change to the generated query. 
+
+Enforcement semantics. The same schema script runs unmodified on every backend, yet the keys carry differ-ent semantics per engine. DuckDB and Umbra enforce the declared keys during data loading and honor them during recursive-CTE planning. Hyper accepts them only as ASSUMED 
+
+constraints, pure optimizer hints, but not checked by the en-gine [42]; there, the per-dataset regeneration above carries the correctness burden alone. 
+
+Cost. FD discovery is worst-case exponential in the number of attributes [25, 32, 35]. In our case, this is not problem-atic as our EDB arities are small; discovery is a one-time offline pass per dataset, and key construction happens dur-ing data loading. Section 7.3 shows where key construction can improve the performance. 
+
+## 7 Experimental Results 
+
+We evaluate DLSQL on five canonical program-analysis work-loads drawn from prior Datalog benchmarks, aiming to an-swer the following five questions: 
+
+• How does DLSQL compare end-to-end against Soufflé, FlowLog, Logica, and RecStep (cf. Section 7.2)? 
+
+• How much do the two optimizations of Section 6 con-tribute (cf. Section 7.3)? 
+
+• How does the engine’s “free” parallelism compare with Datalog systems’ hand-built parallelism, and what are the root causes when it falls behind (cf. Section 7.4)? 
+
+• How portable is the generated SQL across relational en-gines (cf. Section 7.5)? 
+
+• How does performance scale with input size and recursion depth (cf. Section 7.6)? 
+
+7.1 Experimental Setup 
+
+We compare DLSQL against Soufflé [27], the dominant Dat-alog engine using C++ code generation (compiled mode, 1.5–2 × faster than its interpreter [52]), and FlowLog [52], a recent Datalog compiler lowering to Differential Dataflow in Rust. We further compare against two relational-backend systems: Logica [17], compiling Datalog to SQL on DuckDB but driving the recursion from an external Python loop (we use its iterative mode), and RecStep [14], coupling a mod-ified QuickStep engine with an external semi-naive inter-preter. We could not compare with Flan [1], as it has no public artifact. DLSQL compiles each Linear Datalog pro-gram once to a single WITH RECURSIVE block, run on three RDBMS: DuckDB [38] (in-process, columnar), Umbra [34] (in-memory, JIT-compiling [33, 45]), and Hyper [28] (Umbra and Hyper are closed-source but binaries are freely avail-able). All systems run at pinned versions (DuckDB 1.5.5, Umbra umbradb/umbra:26.06 , Hyper 0.0.24457, Soufflé 2.4, FlowLog 1c3be66 , RecStep b7b41b7 with QuickStep-Datalog 
+
+ef3e350 , Logica 1.3.1415926535897). We set only the thread count, with all remaining settings being engine defaults. We run 5 timed repeats and report the median ±𝜎 (Tables 2 and 3, and error bars in Figures 8 and 10). Every configuration runs with a 15-minute timeout; configurations exceeding it are reported as DNF. We only measure the query execution time and exclude loading and compilation for every system (Soufflé: profiler-reported runtime minus per-relation loads; SQL engines: the query alone; Logica: the fixpoint loop alone, on pre-loaded connections). FlowLog’s self-reported timer includes EDB loading (up to 44%, escape at 8 threads); we subtract it using its own timestamps. RecStep’s reported time is similarly load-corrected using its interpreter’s times-tamps. We validate every completed configuration’s output cardinalities (not full tuple sets) against Soufflé. Compilation costs are one-time and excluded: Soufflé’s synthesized C++ takes 13.5–25.8 s per program, whereas DLSQL is source-to-source with no native-compilation step. Inputs follow the Soufflé fact-file convention (one CSV per EDB), loaded into tables whose schemas DLSQL emits. Each backend additionally has a +FD configuration whose  
+
+> CREATE TABLE
+
+schema declares the keys DLSQL discovers (Sec-tion 6.2), exactly what a hand-written SQL application would declare; the query is unchanged. All experiments run on one machine (Ubuntu 22.04, 10-core Intel Xeon Silver 4210 @ 2.2 GHz, 250 GB RAM). We mea-sure with threads=1 to isolate algorithmic cost and threads=8 to expose intra-query parallelism. Table 1 summarizes the five programs (a singleton pred-icate counts as its own SCC); they are the analyses of Sec-tion 3.2, with the three Java analyses running on facts from antlr [8], csda on a Linux-kernel value-flow graph [51], and borrow on the Polonius borrow-checker facts [39]. The inputs are considerably large; escape consumes the 42M-tuple VarPointsTo relation as an EDB, csda ’s Edge relation has roughly 43M tuples, and borrow ’s control-flow graph 
+
+cfg_edge has around 48K tuples. The real datasets fix one input per analysis. We comple-ment them with a synthetic benchmark varying size and depth: a two-rule linear transitive closure over chains (𝑊 , 𝐿 )
+
+(𝑊 disjoint chains of length 𝐿 ). As input, this benchmark has 𝑊 · 𝐿 edges, and produces 𝑊 (𝐿 +1) output tuples in 𝐿 
+
+semi-naive rounds. 
+
+7.2 End-to-End Results 
+
+Table 2 reports query evaluation times at 8 threads; the three DLSQL columns report the +FD configuration. Section 7.3 isolates the optimizations, and Section 7.4 the thread count. Amir Shaikhha, Anna Herlihy, and Hung Ngo 
+
+Table 1. Summary of the five program-analysis benchmarks, with input/output cardinalities and round counts. For escape 
+
+and borrow with multiple SCCs, output and round counts are reported for the most time-consuming SCC.                                    
+
+> Benchmark #EDBs #IDBs #SCCs #Rules #Input #Output #Rnds
+> varpointsto 23 2110 27.2M 42.3M 43
+> cgcha 5214615K 1.37M 63
+> escape 95511 44.3M 1,737 4
+> csda 211244.0M 55.8M 778
+> borrow 455971.8K 292M 1008
+
+The outcome depends on the RDBMS backend. At 8 threads, DLSQL’s geomean speedup over Soufflé is 5.46 × on Umbra, 1.02 × on Hyper, and 0.68 × on DuckDB. DuckDB’s three losses have two causes: on the small escape and cgcha 
+
+there is too little work to amortize DuckDB’s overheads (Soufflé finishes within ∼1 s), and on csda the 778-round re-cursion pays DuckDB’s per-round overhead (cf. Section 7.6). At 1 thread, DuckDB becomes more competitive (geomean 0.96 ×, winning three of five), so its 8-thread gap is due to parallelization, not algorithmic (cf. Section 7.4). Hyper is competitive in the single-threaded setting as well (geomean 1.05 ×). The order-of-magnitude wins belong to Umbra (2.42 ×
+
+already at 1 thread): at 8 threads it beats Soufflé on every benchmark, up to 14.31 × on borrow , using only the emitted  
+
+> WITH RECURSIVE
+
+query. 
+
+FlowLog is consistently behind DLSQL. FlowLog gen-erates Differential Dataflow code. On all benchmarks, it is slower than Umbra, and except on csda , it is slower than DuckDB and Hyper. FlowLog overtakes Soufflé only on csda 
+
+(1.40 ×); its geomean is 0.53 × of Soufflé. 
+
+Logica isolates the design choice. Logica targets the same DuckDB backend as DLSQL, so the same-engine comparison isolates the compilation design: at 8 threads Logica trails DLSQL by 17.4 × on escape and 20.5 × on cgcha (cf. Table 2; at 1 thread the gaps grow to 46.6 × and 24.5 ×), and it exceeds the timeout on the other three. The gap is the design: Logica drives each semi-naive iteration from an external Python loop, whereas DLSQL hands the engine one recursive query. 
+
+RecStep. RecStep completes only escape and cgcha , far behind DLSQL on every backend (cf. Table 2); on the rest it does not finish at any tried thread count, exceeding the 15-minute timeout or failing during data loading. 
+
+7.3 Impact of the Optimizations Multi-head optimization. The multi-head optimization (Section 6.1) removes the combined tagged relation Midlog uses for mutually recursive SCCs. In our benchmark, only 
+
+cgcha and varpointsto contain a multi-member SCC (both two-member), so we run the real-data ablation on cgcha and consider larger SCCs synthetically. 1 2 3 4 5 6
+
+SCC size M
+
+> 123
+> Run time ratio
+> DuckDB Umbra Hyper
+
+Figure 8. Overhead of the combined tagged relation vs. the multi-head optimization on synthetic 𝑀 -member SCCs (chains, 𝑊 =100K, 𝐿 =60, 8 threads). escape cgcha varpointsto csda borrow 02468
+
+> Speedup of 8 over 1 thread
+> 2.8 4.4 2.2 2.2 2.2 5.0 2.6 4.4 6.2 DNF 4.4 1.6 DNF DNF DNF 3.1 2.4 DNF DNF DNF 1.7 1.3 2.3 6.1 0.8 6.5 3.9 6.6 7.4 6.3 2.1 3.2 1.5 6.2 1.8
+> ideal (8×)
+> Sou ffl éFlowLog Logica RecStep DuckDB+FD Umbra+FD Hyper+FD
+
+Figure 9. Each system’s speedup at 8 threads over its own single-threaded setting. DNF: no completed 1-thread run (FlowLog borrow ; Logica/RecStep beyond escape /cgcha ). On cgcha at 8 threads, the combined tagged relation costs 1.45 × on DuckDB (2.11 s versus 1.46 s), 1.84 × on Umbra (0.233 s versus 0.126 s), and 2.02 × on Hyper (1.11 s versus 0.55 s). Figure 8 quantifies the synthetic case of growing SCC size 𝑀 on a family of 𝑀 mutually recursive relations. The tagged overhead grows with 𝑀 , reaching 3.51 × (DuckDB), 1.76 × (Umbra), and 2.48 × (Hyper) at 𝑀 =6. The optimization removes this overhead whenever its rewrite condition holds. 
+
+Functional dependencies. We compare each backend with and without the EDB-side FD keys at 8 threads. The compiled query is identical, so the speedup isolates the key-based optimizations. The keys matter most on Umbra: 1.68 × on 
+
+escape and 1.49 × on csda (a better hash-join build side), and at most 1.06 × elsewhere. On DuckDB the effect is neutral, and Hyper, which accepts the keys only as unenforced ASSUMED 
+
+hints, shows at most 1.01 ×.The FD effect replicates beyond our three main backends (cf. Section 7.5): SQLite speeds up escape 2.2 × and csda 
+
+1.15 ×, and PostgreSQL escape 1.9 × and cgcha 5.8 ×. Keys can also hurt where the recursion is cheap: SQLite’s and MySQL’s cgcha regress slightly, as index maintenance is no longer free. FD discovery is a one-time offline pass per dataset, and key building happens in the untimed load phase, symmetric with every system’s load exclusion; MySQL’s key build alone exceeds 15 minutes on the 42M-row VarPointsTo 
+
+and 43M-row Edge .
+
+7.4 Impact of Parallelization 
+
+Figure 9 reports each engine’s 8-thread speedup over its own single-threaded runtime on every benchmark. 
+
+Umbra scales best, but not uniformly. Umbra gains 6.3– 7.4 × on the four larger workloads but only 3.9 × on cgcha ;Compiling Linear Datalog to SQL for Program Analysis 
+
+Table 2. Query evaluation times at 8 threads (seconds; median ±𝜎 of five repeats; speedup of medians vs. Soufflé; +FD for the DLSQL backends). DNF: exceeds the 900 s timeout or fails during data loading.                                            
+
+> Soufflé FlowLog Logica RecStep DLSQL Benchmark DuckDB Umbra Hyper
+> escape 1.14 ±0.01 6.68 ±0.02 (0.17 ×) 84.04 ±0.23 (0.01 ×) 21.96 ±0.95 (0.05 ×)4.84 ±0.12 (0.24 ×)0.32 ±0.09 (3.57 ×)4.18 ±0.40 (0.27 ×)cgcha 0.74 ±0.01 2.75 ±0.02 (0.27 ×) 29.66 ±0.11 (0.03 ×) 58.22 ±3.73 (0.01 ×)1.45 ±0.16 (0.51 ×)0.13 ±0.11 (5.59 ×)0.53 ±0.16 (1.40 ×)varpointsto 73.42 ±0.25 74.45 ±0.17 (0.99 ×)DNF DNF 46.70 ±0.44 (1.57 ×)6.77 ±0.40 (10.84 ×)34.72 ±0.20 (2.11 ×)csda 35.01 ±0.10 25.02 ±0.09 (1.40 ×)DNF DNF 54.71 ±0.04 (0.64 ×)22.41 ±0.01 (1.56 ×)53.34 ±0.17 (0.66 ×)borrow 217.54 ±0.58 318.08 ±0.83 (0.68 ×)DNF DNF 178.43 ±0.64 (1.22 ×)15.20 ±0.09 (14.31 ×)102.11 ±0.26 (2.13 ×)Geomean 1.00 ×0.53 ×––0.68 ×5.46 ×1.02 ×
+
+the gains are monotonic in thread count, thanks to morsel-driven parallel execution. 
+
+DuckDB scales unevenly, and borrow anti-scales. DuckDB matches Umbra only on csda ; elsewhere it gains little, and on borrow more threads make it slower: 136.3 s at 1 thread vs. 178.4 s at 8 (0.76 ×). To find the root cause, we decomposed borrow into its SCCs and re-ran each alone. The SCC behind the 1008-round recursive CTE is the only one that anti-scales on DuckDB (0.59 × at 8 threads), while Umbra achieves 7.02 × on the same SCC. Thus, the effect is engine-specific, not workload-inherent. EXPLAIN ANALYZE reveals the cause: in each round, DuckDB launches a parallel scan of the static cfg_edge rela-tion, rescanning its 48,801 rows nearly in full ∼ 921 times across the 1008 rounds. As the relation is small and the per-round delta is tiny, each round performs too little work to amortize the fixed overhead of DuckDB’s parallel scan, and additional threads only add coordination cost, hence the anti-scaling. In contrast, on csda the static relation has ∼ 43M rows, so each round performs enough work to amortize this overhead, and the recursion parallelizes well. 
+
+Hyper scales, but unevenly. Hyper’s 8-thread speedups range from 1.55 × (varpointsto ) to 6.20 × (csda ); the ge-omean thread speedup (2.6 ×) is within 3% of Soufflé’s, so the parity of Section 7.2 holds at both thread counts. 
+
+7.5 Portability across Engines 
+
+We ran the generated SQL on seven engines; Table 3 reports the four beyond our main backends. DuckDB, Umbra, and Hyper accept the queries exactly as generated for all five benchmarks. Similarly, PostgreSQL, MariaDB, MySQL, and SQLite accept escape , csda , and borrow as generated. The remaining two benchmarks nest local IDBs as inner CTEs, which MariaDB, MySQL, and SQLite reject; the local-IDB inlining pass (Section 6.1) removes them, after which all three accept and validate all five (SQLite after de-parenthesizing  
+
+> UNION
+
+branches; MariaDB/MySQL under ANSI_QUOTES ). PostgreSQL accepts the nesting but allows only a sin-gle self-reference globally (a relaxing patch [21] was never merged), rejecting both even after inlining. A minimal CTE-shadowing rewrite closes this gap: an inner WITH re-declares the recursive name, leaving one counted self-reference (sound, as the working table is a fixed snapshot per evaluation of the recursive term). With the rewrite, PostgreSQL accepts both, 
+
+Table 3. Query evaluation time on the four engines beyond our main backends (seconds; median ±𝜎 ; best completed con-figuration; DNF: exceeds 900 s). cgcha /varpointsto need the inlining pass on MariaDB/MySQL/SQLite and the CTE-shadowing rewrite on PostgreSQL.                                             
+
+> Benchmark PostgreSQL MariaDB MySQL SQLite
+> escape 24.3 ±7.1 816.0 ±0.4 331.9 ±0.4 54.5 ±0.1
+> cgcha 21.4 ±5.6 DNF 19.8 ±0.0 12.2 ±0.0
+> varpointsto DNF DNF DNF DNF
+> csda DNF DNF DNF 283.1 ±0.6
+> borrow 662 ±129 DNF DNF DNF 10 610 710 8
+
+edges ( L = 20, 8 threads)     
+
+> 10 −1
+> 10 1
+> 10 3
+> Run time (s)  DNF
+> 900 s cap
+> Sou ffl éFlowLog DuckDB Umbra Hyper Logica RecStep
+> 50 100 200 400 800
+
+rounds L (50M edges, 8 threads) 
+
+> 10 1
+> 10 2
+> 10 3
+> Run time (s)  900 s cap
+
+Figure 10. Scaling at 8 threads: (a) run time vs. edge count at 𝐿 =20; (b) run time vs. round count 𝐿 at 50M edges. Only Logica hits its limit: truncated in (a), absent from (b). validating both cgcha and varpointsto . Because the recur-sion is linear, a fully collapsed single-self-reference form exists for every program in our suite, validated manually on all 25 (program, engine) combinations on validation data. Portability does not imply performance: they mostly time out on the two largest workloads (cf. Table 3). Amir Shaikhha, Anna Herlihy, and Hung Ngo 
+
+7.6 Scaling with Input Size and Recursion Depth 
+
+The previous sections considered a single real dataset input per analysis. This section uses the linear transitive closure over chains (𝑊 , 𝐿 ) (cf. Section 7.1). We run 11 configurations on all seven systems at 8 threads. First, we fixed the number of rounds ( 𝐿 =20) and varied the number of edges (1.25M– 400M). Second, we fixed the number of edges and varied the number of round counts ( 𝐿 =50–800). We validated the correctness of all 69 completed cells out of 77 (the 8 missing cells are Logica’s timeouts). Figure 10 shows the input scaling behavior. First, run time is near-linear in edge count for a fixed number of rounds. Out of six systems reaching 400M edges, five grow 82–118 ×
+
+for 80 × more edges; RecStep is sublinear (44 ×, fixed over-head amortizing as the number of edges grows). Second, the round count separates the execution models: raising 𝐿 from 50 to 800 at 50M edges leaves the Datalog-native systems (Soufflé and FlowLog) nearly flat (1.3–1.6 ×), costs the rela-tional engines 3.9–6.8 ×, and RecStep (separate SQL batches per round) 8.0 ×. Third, Logica shows significantly inferior performance, reaching the 15-minute timeout beyond 10M edges; all others complete every cell. 
+
+## 8 Related Work 
+
+Datalog engines for program analysis. Soufflé [27] com-piles Datalog to specialized C++ and pioneered many of the rule-level optimizations behind modern Datalog-based pro-gram analysis. Datalog compilation is an active topic in the compiler community. Soufflé’s interpreter [24] trades off the overhead of its compiler [43] for a 1.5–2 × execution over-head. Lattice-based fixed points [31], data-parallel compila-tion [16], incremental whole-program analysis [49], macro-based Datalog in Rust [41], and declarative C static check-ers [12] are among Datalog efforts. Flan [1] pushes further with an expressive front end and a multi-stage-programming runtime; LogicBlox [4] and its successor Rel [3] integrate Dat-alog into a commercial relational platform. FlowLog [52] low-ers rules to a per-rule relational IR over Differential Dataflow with explicit incremental-maintenance support, rather than emitting standard WITH RECURSIVE blocks for off-the-shelf en-gines. Doop [9] is the canonical Datalog-formulated points-to analysis and the source of our varpointsto benchmark. Polonius [39] reformulates Rust’s borrow checker as Datalog and is the source of our borrow benchmark. 
+
+RDBMS-backed Datalog. Several systems evaluate Datalog on a relational engine, differing in where the fixpoint runs. RecStep [14] drives a modified QuickStep engine from an external interpreter that issues non-recursive SQL per semi-naive iteration; its evaluation reports losing to Soufflé on the CSDA workload we share, partly due to this per-iteration overhead. Logica [17] compiles a Datalog dialect to SQL but either unrolls user-level recursion to a bounded depth or iterates via an external Python driver, never emitting a user-level recursive CTE. The SQL baseline in the original Soufflé compiler paper [43] is similarly an SQLite-based semi-naive driver issuing one statement per iteration. DLSQL takes the opposite route: the entire fixpoint runs inside one standard recursive query, so the host engine’s optimizer sees the whole recursive computation. Section 7.2 isolates this choice: on the identical DuckDB backend, DLSQL is 17.4 × and 20.5 ×
+
+faster than Logica on the two benchmarks Logica completes. 
+
+Recursive SQL and RDBMS support for fixed points. 
+
+SQL:1999 introduced recursive CTEs [13, 26], restricted to lin-ear recursion; database research has explored the magic-sets transformation as a query rewriter [7], semi-naive evalua-tion [5, 6], subsumption [30, 46], and proposed extensions for recursive SQL [23, 36]. RaSQL [18] and BigDatalog [48] push Datalog through Spark SQL on distributed engines. Also, there have been efforts to compile user-defined functions to recursive SQL [10, 22]. They employ a label column to dispatch among mutually recursive functions. Our tagged re-lation uses a similar idea, but at each round the engine joins an entire delta relation against the EDBs, the tag records a tuple’s source relation, and the multi-head optimization removes it whenever the SCC has a feedback-vertex primary. Language-Integrated Recursive Queries [20] embed fixpoint queries as a Scala DSL lowering to recursive SQL, explic-itly identifying the absence of mutual-recursion support in existing SQL implementations as a motivating restriction. We instead treat the engine as an unmodified backend and concentrate the front-end work in the compiler, so the same input runs on multiple engines. 
+
+Datalog-to-SQL compilation. Compiling Datalog to SQL has a long history [2, 11]; the textbook recipe is to emit one CTE per IDB predicate and order them topologically. Outside SCCs, DLSQL emits exactly this recipe: every non-recursive or self-recursive IDB becomes one CTE, in topological or-der. Inside a multi-member SCC, the recipe stops working, since with the exception of MariaDB none of the engines we tested accepts mutually recursive WITH RECURSIVE names; Midlog’s tagged and multi-head rewrites resolve exactly this case, and Section 7.3 measures their cost. DLSQL differs from prior work in its focus on (i) the Linear Datalog fragment as a portability target, validated by running the generated SQL on the seven engines of Section 7.5, and (ii) a dedicated intermediate language, Midlog, whose lexically-scoped local rules keep the output within that fragment for every sup-ported program, by lifting a natural primary head when one exists or introducing a synthetic combined tagged relation. Raqlet [47] provides the foundation for translating recursive query languages to each other, and CaQL [19] translates an embedded recursive query language to SQL. However, nei-ther supports rewriting mutually recursive SCCs into the single-self-reference recursive queries that typical engines accept; Midlog’s tagged and multi-head rewrites enable this. Compiling Linear Datalog to SQL for Program Analysis 
+
+## 9 Conclusion 
+
+We presented DLSQL, a compiler from Linear Datalog to SQL, and showed that targeting modern RDBMS is often faster than state-of-the-art Datalog engines on canonical program analyses. Two ingredients underpin this result: the Linear Datalog fragment, rich enough to express call-graph con-struction, points-to analysis, escape analysis, dataflow analy-sis, and Polonius-style borrow checking, yet narrow enough to compile into a WITH RECURSIVE block that runs across the seven relational engines (cf. Section 7.5); and the Midlog in-termediate language, which absorbs the structural mismatch between Datalog and SQL (mutual recursion and different scoping rules) into a small set of rewrites, leaving SQL emis-sion near-mechanical. Two further passes refine the output: a multi-head optimization that lifts a natural primary head when one exists, and a functional-dependency discovery pass that exposes primary keys to the engine’s optimizer. Several directions remain. First, lifting the linearity re-striction would broaden the source language to full Datalog, and its extensions, e.g., Datalog ◦ [29]. This can be achieved via three routes (non-standard SQL extensions for general fixpoints [23], an external driver or unrolling in the style of RecStep [14] and Logica [17], or compile-time rewrit-ing through non-linear-to-linear transformations [40]). Sec-ond, SCC-level linearity detection could serve as a backend-selection pass inside existing Datalog engines, routing linear SCCs to a relational backend and evaluating the rest natively. Third, lattice-valued aggregations (as in Flix) are a natural next target. 
+
+## References 
+
+[1] Supun Abeysinghe, Anxhelo Xhebraj, and Tiark Rompf. 2024. Flan: An Expressive and Efficient Datalog Compiler for Program Analysis. 
+
+Proceedings of the ACM on Programming Languages 8, POPL (2024), 2577–2609. https://doi.org/10.1145/3632928 
+
+[2] Serge Abiteboul, Richard Hull, and Victor Vianu. 1995. Foundations of Databases . Addison-Wesley. [3] Molham Aref, Paolo Guagliardo, George Kastrinis, Leonid Libkin, Victor Marsault, Wim Martens, Mary McGrath, Filip Murlak, Nathaniel Nystrom, Liat Peterfreund, et al. 2025. Rel: A programming language for relational Data. In Companion of the 2025 International Conference on Management of Data . 283–296. [4] Molham Aref, Balder Ten Cate, Todd J Green, Benny Kimelfeld, Dan Olteanu, Emir Pasalic, Todd L Veldhuizen, and Geoffrey Washburn. 2015. Design and implementation of the LogicBlox system. In Proceed-ings of the 2015 ACM SIGMOD international conference on management of data . 1371–1382. [5] Isaac Balbin and Kotagiri Ramamohanarao. 1987. A generalization of the differential approach to recursive query evaluation. The Journal of Logic Programming 4, 3 (1987), 259–262. [6] François Bancilhon. 1985. Naive Evaluation of Recursively Defined Relations. In On Knowledge Base Management Systems: Integrating Artificial Intelligence and Database Technologies, Book resulting from the Islamorada Workshop 1985 (Islamorada, FL, USA) (Topics in Information Systems) , Michael L. Brodie and John Mylopoulos (Eds.). Springer, 165–178. [7] François Bancilhon, David Maier, Yehoshua Sagiv, and Jeffrey D. Ull-man. 1986. Magic sets and other strange ways to implement logic programs. In Proceedings of the 5th ACM SIGACT-SIGMOD symposium on Principles of database systems . 1–15. [8] Stephen M. Blackburn, Robin Garner, Chris Hoffmann, Asjad M. Khan, Kathryn S. McKinley, Rotem Bentzur, Amer Diwan, Daniel Feinberg, Daniel Frampton, Samuel Z. Guyer, Martin Hirzel, Antony L. Hosk-ing, Maria Jump, Han Bok Lee, J. Eliot B. Moss, Aashish Phansalkar, Darko Stefanovic, Thomas VanDrunen, Daniel von Dincklage, and Ben Wiedermann. 2006. The DaCapo benchmarks: java benchmark-ing development and analysis. In Proceedings of the 21st Annual ACM SIGPLAN Conference on Object-Oriented Programming, Systems, Lan-guages, and Applications, OOPSLA 2006, October 22-26, 2006, Portland, Oregon, USA , Peri L. Tarr and William R. Cook (Eds.). ACM, 169–190. 
+
+https://doi.org/10.1145/1167473.1167488 
+
+[9] Martin Bravenboer and Yannis Smaragdakis. 2009. Strictly declarative specification of sophisticated points-to analyses. In Proceedings of the 24th ACM SIGPLAN conference on Object-Oriented Programming, Systems, Languages, and Applications (OOPSLA) . 243–262. [10] Tobias Burghardt, Denis Hirn, and Torsten Grust. 2022. Functional Programming on Top of SQL Engines. In Practical Aspects of Declar-ative Languages (PADL 2022) (LNCS, Vol. 13165) . Springer, 59–78. 
+
+https://doi.org/10.1007/978-3-030-94479-7_5 
+
+[11] Stefano Ceri, Georg Gottlob, and Letizia Tanca. 1989. What you always wanted to know about Datalog (and never dared to ask). IEEE Transactions on Knowledge and Data Engineering 1, 1 (1989), 146–166. [12] Alexandru Dura and Christoph Reichenbach. 2024. Clog: A Declarative Language for C Static Code Checkers. In Proceedings of the 33rd ACM SIGPLAN International Conference on Compiler Construction (CC) . 186– 197. https://doi.org/10.1145/3640537.3641579 
+
+[13] Andrew Eisenberg and Jim Melton. 1999. SQL: 1999, formerly known as SQL3. ACM SIGMOD Record 28, 1 (1999), 131–138. [14] Zhiwei Fan, Jianqiao Zhu, Zuyu Zhang, Aws Albarghouthi, Paraschos Koutris, and Jignesh M. Patel. 2019. Scaling-Up In-Memory Datalog Processing: Observations and Techniques. Proceedings of the VLDB Endowment 12, 6 (2019), 695–708. https://doi.org/10.14778/3311880. 3311886 
+
+[15] M. R. Garey and David S. Johnson. 1979. Computers and Intractability: A Guide to the Theory of NP-Completeness . W. H. Freeman. [16] Thomas Gilray, Sidharth Kumar, and Kristopher Micinski. 2021. Com-piling Data-Parallel Datalog. In Proceedings of the 30th ACM SIG-PLAN International Conference on Compiler Construction (CC) . 23–35. 
+
+https://doi.org/10.1145/3446804.3446855 
+
+[17] Google LLC. 2026. Logica: A Declarative Logic Programming Lan-guage. https://logica.dev . Accessed: 2026-08-17. [18] Jiaqi Gu, Yugo Watanabe, William Mazza, Alexander Shkapsky, Mohan Yang, Ling Ding, and Carlo Zaniolo. 2019. RaSQL: Greater power and performance for big data analytics with recursive-aggregate-SQL on Spark. In Proceedings of the 2019 International Conference on Manage-ment of Data . 467–484. [19] Anna Herlihy, Anastasia Ailamaki, and Martin Odersky. 2025. Static Typing Meets Adaptive Optimization: A Unified Approach to Re-cursive Queries. In Proceedings of the 19th International Symposium on Database Programming Languages . 1–6. https://doi.org/10.1145/ 3735106.3736533 
+
+[20] Anna Herlihy, Amir Shaikhha, Anastasia Ailamaki, and Martin Oder-sky. 2026. Language-Integrated Recursive Queries. In European Con-ference on Object-Oriented Programming (ECOOP) (LIPIcs, Vol. 372) .
+
+https://doi.org/10.4230/LIPIcs.ECOOP.2026.5 
+
+[21] Denis Hirn. 2022. Allow multiple recursive self-references. PostgreSQL commitfest entry 38/3046, https://commitfest.postgresql.org/38/3046/ .Returned with feedback; accessed 2026-08-25. [22] Denis Hirn and Torsten Grust. 2021. One WITH RECURSIVE is Worth Many GOTOs. In Proceedings of the 2021 International Conference on Management of Data (Virtual Event, China) (SIGMOD ’21) . Association for Computing Machinery, New York, NY, USA, 723–735. https: Amir Shaikhha, Anna Herlihy, and Hung Ngo //doi.org/10.1145/3448016.3457272 
+
+[23] Denis Hirn and Torsten Grust. 2023. A Fix for the Fixation on Fix-points. In Proceedings of the 13th Conference on Innovative Data Systems Research .[24] Xiaowen Hu, David Zhao, Herbert Jordan, and Bernhard Scholz. 2021. An Efficient Interpreter for Datalog by De-specializing Relations. In 
+
+Proceedings of the 42nd ACM SIGPLAN International Conference on Programming Language Design and Implementation (PLDI) . 681–695. 
+
+https://doi.org/10.1145/3453483.3454070 
+
+[25] Ykä Huhtala, Juha Kärkkäinen, Pasi Porkka, and Hannu Toivonen. 1999. TANE: An Efficient Algorithm for Discovering Functional and Approximate Dependencies. Comput. J. 42, 2 (1999), 100–111. [26] International Organization for Standardization. 1999. ISO/IEC 9075-2:1999, Information technology — Database languages — SQL — Part 2: Foundation (SQL/Foundation). https://www.iso.org/standard/26197. html . Accessed: 2026-08-21. [27] Herbert Jordan, Bernhard Scholz, and Pavle Subotić. 2016. Soufflé: On synthesis of program analyzers. In International Conference on Computer Aided Verification . Springer, 422–430. [28] Alfons Kemper and Thomas Neumann. 2011. HyPer: A Hybrid OLTP&OLAP Main Memory Database System Based on Virtual Mem-ory Snapshots. In Proceedings of the 27th IEEE International Conference on Data Engineering (ICDE) . 195–206. [29] Mahmoud Abo Khamis, Hung Q. Ngo, Reinhard Pichler, Dan Suciu, and Yisu Remy Wang. 2024. Convergence of datalog over (Pre-) Semirings. 
+
+J. ACM 71, 2 (2024), 8:1–8:55. https://doi.org/10.1145/3643027 
+
+[30] Gerhard Köstler, Werner Kießling, Helmut Thöne, and Ulrich Güntzer. 1995. Fixpoint iteration with subsumption in deductive databases. 
+
+Journal of Intelligent Information Systems 4, 2 (1995), 123–148. [31] Magnus Madsen, Ming-Ho Yee, and Ondřej Lhoták. 2016. From Dat-alog to Flix: A Declarative Language for Fixed Points on Lattices. In 
+
+Proceedings of the 37th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI) . 194–208. [32] Vasileios Nakos, Hung Q. Ngo, and Charalampos E. Tsourakakis. 2025. Targeted Least Cardinality Candidate Key for Relational Databases. In 
+
+28th International Conference on Database Theory, ICDT 2025, Barcelona, Spain, March 25-28, 2025 (LIPIcs, Vol. 328) , Sudeepa Roy and Ahmet Kara (Eds.). Schloss Dagstuhl - Leibniz-Zentrum für Informatik, 21:1– 21:18. https://doi.org/10.4230/LIPICS.ICDT.2025.21 
+
+[33] Thomas Neumann. 2011. Efficiently Compiling Efficient Query Plans for Modern Hardware. Proc. VLDB Endow. 4, 9 (2011), 539–550. https: //doi.org/10.14778/2002938.2002940 
+
+[34] Thomas Neumann and Michael Freitag. 2020. Umbra: A Disk-Based System with In-Memory Performance. Proceedings of the 10th Annual Conference on Innovative Data Systems Research (CIDR) (2020). [35] Thorsten Papenbrock and Felix Naumann. 2016. A Hybrid Approach to Functional Dependency Discovery. In Proceedings of the ACM SIGMOD International Conference on Management of Data . 821–833. [36] Linnea Passing, Manuel Then, Nina C. Hubig, Harald Lang, Michael Schreier, Stephan Günnemann, Alfons Kemper, and Thomas Neumann. 2017. SQL- and Operator-centric Data Analytics in Relational Main-Memory Databases. In Proceedings of the 20th International Conference on Extending Database Technology, EDBT 2017, Venice, Italy, March 21-24, 2017 , Volker Markl, Salvatore Orlando, Bernhard Mitschang, Periklis Andritsos, Kai-Uwe Sattler, and Sebastian Breß (Eds.). Open-Proceedings.org, 84–95. https://doi.org/10.5441/002/edbt.2017.09 
+
+[37] Teodor C. Przymusinski. 1988. On the declarative semantics of de-ductive databases and logic programs. In Foundations of Deductive Databases and Logic Programming . Morgan Kaufmann, 193–216. [38] Mark Raasveldt and Hannes Mühleisen. 2019. Duckdb: an embeddable analytical database. In Proceedings of the 2019 international conference on management of data . 1981–1984. [39] Rust Compiler Team. 2024. Polonius: A Datalog-based formulation of the Rust borrow checker. https://github.com/rust-lang/polonius .[40] Yehoshua Sagiv. 1988. Optimizing Datalog programs. In Foundations of Deductive Databases and Logic Programming . Morgan Kaufmann, 659–698. [41] Arash Sahebolamri, Thomas Gilray, and Kristopher Micinski. 2022. Seamless Deductive Inference via Macros. In Proceedings of the 31st ACM SIGPLAN International Conference on Compiler Construction (CC) .77–88. https://doi.org/10.1145/3497776.3517779 
+
+[42] Salesforce, Inc. 2026. CREATE TABLE — Hyper/Data 360 SQL Refer-ence. https://developer.salesforce.com/docs/data/data-cloud-query-guide/references/dc-sql-reference/create-table.html . Accessed Au-gust 2026. [43] Bernhard Scholz, Herbert Jordan, Pavle Subotić, and Till Westmann. 2016. On Fast Large-Scale Program Analysis in Datalog. In Proceedings of the 25th International Conference on Compiler Construction (CC) . 196– 206. [44] Amir Shaikhha. 2025. Hojabr: Towards a Theory of Everything for AI and Data Analytics. arXiv preprint arXiv:2512.23925 (2025). [45] Amir Shaikhha, Yannis Klonatos, Lionel Parreaux, Lewis Brown, Mo-hammad Dashti, and Christoph Koch. 2016. How to Architect a Query Compiler. In Proceedings of the 2016 International Conference on Man-agement of Data, SIGMOD Conference 2016, San Francisco, CA, USA, June 26 - July 01, 2016 , Fatma Özcan, Georgia Koutrika, and Sam Mad-den (Eds.). ACM, 1907–1922. https://doi.org/10.1145/2882903.2915244 
+
+[46] Amir Shaikhha, Dan Suciu, Maximilian Schleich, and Hung Q. Ngo. 2024. Optimizing Nested Recursive Queries. Proc. ACM Manag. Data 
+
+2, 1 (2024), 16:1–16:27. https://doi.org/10.1145/3639271 
+
+[47] Amir Shaikhha, Youning Xia, Meisam Tarabkhah, Jazal Saleem, and Anna Herlihy. 2026. Raqlet: Cross-Paradigm Compilation for Recursive Queries. In Proceedings of the 16th Annual Conference on Innovative Data Systems Research (CIDR) . Chaminade, USA. [48] Alexander Shkapsky, Mohan Yang, Matteo Interlandi, Hsuan Chiu, Tyson Condie, and Carlo Zaniolo. 2016. Big data analytics with Datalog queries on Spark. In Proceedings of the 2016 International Conference on Management of Data . 1135–1149. [49] Tamás Szabó, Sebastian Erdweg, and Gábor Bergmann. 2021. Incre-mental Whole-Program Analysis in Datalog with Lattices. In Pro-ceedings of the 42nd ACM SIGPLAN International Conference on Pro-gramming Language Design and Implementation (PLDI) . 1–15. https: //doi.org/10.1145/3453483.3454026 
+
+[50] Robert Tarjan. 1972. Depth-first search and linear graph algorithms. 
+
+SIAM J. Comput. 1, 2 (1972), 146–160. [51] Kai Wang, Aftab Hussain, Zhiqiang Zuo, Guoqing Xu, and Ardalan Amiri Sani. 2017. Graspan: A Single-machine Disk-based Graph Sys-tem for Interprocedural Static Analyses of Large-scale Systems Code. In Proceedings of the Twenty-Second International Conference on Archi-tectural Support for Programming Languages and Operating Systems (ASPLOS) . 389–404. https://doi.org/10.1145/3037697.3037744 
+
+[52] Hangdong Zhao, Zhenghong Yu, Srinag Rao, Simon Frisk, Zhiwei Fan, and Paraschos Koutris. 2025. FlowLog: Efficient and Extensible Datalog via Incrementality. Proceedings of the VLDB Endowment 19, 3 (2025), 361–374. https://doi.org/10.14778/3778092.3778098 Compiling Linear Datalog to SQL for Program Analysis 
+
+## Appendix: Full Rule Listings 
+
+// Base heap edges through array slots, then a linear TC. HeapReachable0(b, h) :- ArrayIndexPointsTo(b, h). HeapReachable(b, h) :- HeapReachable0(b, h). HeapReachable(b, h) :- HeapReachable(b, m) , HeapReachable0(m , h). // Global escape: anything stored in a static field, then // closed over heap reachability. GlobalEscape(h) :- StaticFieldPointsTo(h, _). GlobalEscape(h) :- GlobalEscape(b) , HeapReachable(b, h). // Per-method escape (five cases): (1) globally escaped, // (2) returned, (3) passed as actual, (4) used as receiver, // or (5) reachable from another escaping alloc. MethodEscape(h, m) :- AllocatedIn(h, m), GlobalEscape(h). MethodEscape(h, m) :-AllocatedIn(h, m), ReturnVar(v, m), VarPointsTo(h, v). MethodEscape(h, m) :-AllocatedIn(h, m), CallActualIn(m, v), VarPointsTo(h, v). MethodEscape(h, m) :-AllocatedIn(h, m), CallRecvIn(m, v), VarPointsTo(h, v). MethodEscape(h, m) :-AllocatedIn(h, m), AllocatedIn(o, m), 
+
+MethodEscape(o, m) , HeapReachable(o, h). // Captured: allocated in a reachable method, never escapes. CapturedAllocation(h, m) :-AllocatedIn(h, m), Reachable(m), !MethodEscape(h, m). 
+
+Figure 11. Escape analysis ( escape ). HeapReachable , Glob-alEscape , and MethodEscape are each linear-recursive; the recursive literal of each rule is shown in bold. The listing shows all 11 rules and all five IDB predicates counted in Table 1; the points-to summaries ( VarPointsTo , StaticField-PointsTo , and ArrayIndexPointsTo ) are precomputed inputs and thus EDB relations here. 
+
+// Linear TC of child_path. ancestor_path(x, y) :- child_path(x, y). ancestor_path(x, y) :-
+
+ancestor_path(z, y) , child_path(z, x). // Move/assignment information propagates down ancestor_path path_moved_at(x, y) :- path_moved_at_base(x, y). path_moved_at(x, y) :-
+
+path_moved_at(z, y) , ancestor_path(z, x). path_assigned_at(x, y) :- path_assigned_at_base(x, y). path_assigned_at(x, y) :-
+
+path_assigned_at(z, y) , ancestor_path(z, x). // Flow moves along the CFG, killed by an intervening // assignment (stratified negation). path_maybe_uninitialized_on_exit(p, p2) :-path_moved_at(p, p2). path_maybe_uninitialized_on_exit(p, p2) :-
+
+path_maybe_uninitialized_on_exit(p, p1) ,cfg_edge(p1, p2), !path_assigned_at(p, p2). // A use of a maybe-uninitialized path is an error. move_error(p, t) :-path_maybe_uninitialized_on_exit(p, s), cfg_edge(s, t). 
+
+Figure 12. Polonius borrow checker ( borrow ). Each re-cursive rule contains exactly one positive recursive literal, shown in bold; negation appears only at SCC boundaries. Amir Shaikhha, Anna Herlihy, and Hung Ngo 
+
+VarPointsTo(h, v) :- AssignHeapAlloc(h, v, m), Reachable(m). VarPointsTo(h, to) :- Assign(f, to), VarPointsTo(h, f) .VarPointsTo(h, to) :- Reachable(m), AssignLocal(from, to, m), VarPointsTo(h, from) .VarPointsTo(h, to) :- Reachable(m), AssignCast(t, f, to, m), SupertypeOf(t, a), HeapAllocType(h, a), VarPointsTo(h, f) .VarPointsTo(h, o) :- Reachable(m), LoadArrayIndex(b, o, m), 
+
+VarPointsTo(bh, b) , ArrayIndexPointsTo(bh, h), VarType(o, t), HeapAllocType(bh, bt), ComponentType(bt, ct), SupertypeOf(t, ct). VarPointsTo(h, o) :- Reachable(m), LoadInstanceField(b, s, o, m), 
+
+VarPointsTo(bh, b) , InstanceFieldPointsTo(h, s, bh). VarPointsTo(h, to) :- Reachable(m), LoadStaticField(fld, to, m), StaticFieldPointsTo(h, fld) .VarPointsTo(h, this) :- Reachable(m), InstrMethod(inv, m), VirtualCallBase(inv, base), VarPointsTo(h, base) ,HeapAllocType(h, ht), VirtualCallName(inv, n), VirtualCallDesc(inv, d), MethodLookup(n, d, ht, tm), ThisVar(tm, this). VarPointsTo(h, this) :- Reachable(m), InstrMethod(inv, m), SpecialCallBase(inv, base), VarPointsTo(h, base) ,CallTarget(inv, tm), ThisVar(tm, this). StaticFieldPointsTo(h, fld) :- Reachable(m), StoreStaticField(from, fld, m), VarPointsTo(h, from) .
+
+Figure 13. The complete ten-rule varpointsto program, of which Figure 2 shows four rules. The recursive literal of each rule is shown in bold: VarPointsTo and StaticField-PointsTo form a single mutually recursive SCC, and every rule contains at most one positive literal from this SCC, so the program is linear. Variable and EDB predicate names are abbreviated relative to the Soufflé source.

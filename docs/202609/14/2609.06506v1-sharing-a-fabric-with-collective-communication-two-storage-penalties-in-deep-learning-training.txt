@@ -1,0 +1,180 @@
+Title: Sharing a Fabric with Collective Communication: Two Storage Penalties in Deep Learning Training
+
+URL Source: https://arxiv.org/pdf/2609.06506v1
+
+Published Time: Wed, 09 Sep 2026 01:14:26 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Sharing a Fabric with Collective Communication: Two Storage Penalties in Deep Learning Training 
+
+1st Chen Wang 
+
+CCDS NTU Singapore 
+
+Singapore chen.wang@ntu.edu.sg 
+
+2nd Wenzhao Wu 
+
+CCDS NTU Singapore 
+
+Singapore wenzhao.wu@ntu.edu.sg 
+
+3rd Hyojin Kim 
+
+CASC LLNL 
+
+Livermore, USA kim63@llnl.gov 
+
+4th Jae-Seung Yeom 
+
+CASC LLNL 
+
+Livermore, USA yeom2@llnl.gov 
+
+Abstract —Distributed DL training on HPC systems often shares one network fabric between NCCL/RCCL collective communication and parallel-filesystem I/O. Using a real GNN training workload on a Slingshot-11 system, we show that this sharing imposes two distinct costs . The primary cost is heavy-tailed DataLoader stalls: the typical DataLoader wait is just 15 ms at steady state, yet spikes to multiple seconds in 28% of Lustre iterations and 12% of VAST iterations. The secondary cost is traffic-class contention on collective communication: Lustre I/O stalls the all-reduce by up to 145 × in an isolated benchmark. The two costs arise from different mechanisms. I/O stall latency affects any storage path that traverses the shared fabric, whereas all-reduce network contention occurs only when storage and collective communication share the same traffic class. Their common root cause is that storage I/O traverses the shared fabric. This work shows that node-local NVMe staging via DYAD 1
+
+eliminates both effects by keeping storage I/O off that path. Across a full training epoch, DYAD achieves a 7.4 × speedup over direct Lustre reads and a 1.06 × speedup over VAST. By the second epoch, once the local cache is fully warmed, DataLoader stalls are eliminated entirely, allowing DYAD to reach a 1.31 ×
+
+speedup over VAST. 
+
+I. I NTRODUCTION 
+
+Modern HPC centers have shifted from a single parallel file system to tiered, protocol-specific storage because no single system can efficiently support the diverse I/O patterns of today’s workloads [1], [2]. Large-scale simulations require the sustained, high-bandwidth access provided by parallel file systems such as Lustre, whereas AI and data analytics rely on large numbers of small files accessed by heterogeneous clients. To support both, many centers deploy all-flash systems such as VAST alongside parallel file systems, often placing them on separate network fabrics. This architecture improves performance by matching workloads to appropriate storage tiers, but also makes data access performance more difficult to predict and optimize. In this work, we investigate the performance of a deep learning training workload in such a heterogeneous storage environment. Multi-Instance Learning With Atomic Network (MILAN) [3] is a structure-based deep learning framework that predicts protein–ligand binding affinity for drug discovery using equiv-ariant graph attention networks. The model is trained on graph representations constructed from 3D protein–ligand complex 
+
+> 1
+
+Our code is publicly available at https://github.com/flux-framework/dyad. 
+
+coordinates and atomic features stored in HDF5 formats. The training set used in this study, SAIR [4], consists of 210 HDF5 files holding ∼10,000 complex structure entries each with up to 5 Boltz-1 [5] docking poses, for ∼5.2M total samples (∼157 GB raw HDF5, plus a precomputed graph-edge cache of 
+
+∼529 GB, ∼687 GB total). Training uses PyTorch Distributed Data Parallel (DDP) module across multiple nodes and GPUs, with a DistributedSampler that shuffles globally across all samples every epoch. In this study, we use four nodes and four AMD MI300A GPUs per node. Each training iteration decomposes into four major stages, in order: a DataLoader wait for the next prefetched batch (the slowest of the per-GPU I/O worker pool), a host-to-device (H2D) copy of the batched graphs onto the GPU, the forward pass including EGNN (Equivariant Graph Neural Networks), and the backward pass fused with the gradient all-reduce. Table I shows the cost breakdown at steady state using a all-flash VAST filesystem, with 4 nodes, 16 GPUs, and a batch size of 64. The median iteration takes ∼191 ms, of which ∼68.6% consists of the back-propagation (116 ms) and the exposed DataLoader wait (15 ms). The forward pass takes 18 ms and the H2D copy takes 10 ms. The rest is attributable to the optimizer and framework overhead. Each of the eight DataLoader workers prefetches eight samples per batch, reading from two HDF5 files per sample: approximately 74 KB of raw atomic coordinates and features, and 212 KB of graph edge data, averaging 286 KB per sample in total. With eight workers per GPU, each prefetch cycle reads about 2.3 MB; with the throughput of a local flash tier, this completes well within the 144–214 ms (median-p95) GPU computation window, which is why the median exposed DataLoader wait is only 15 ms at steady state. The workload is therefore not bandwidth-limited but latency-sensitive: when the shared network fabric introduces stochastic queuing delays, a single worker’s fetch can burst from a few milliseconds to several seconds, stalling the entire batch. 
+
+Figure 1 shows the effect of storage tier on the identical workload over a full epoch. Lustre takes 11,843.9 s end-to-end versus VAST’s 1,693.9 s, a 7 × gap. Both panels show spikes, but the two spike types differ in character: DataLoader stalls (top) are dense and sustained on Lustre while all-reduce communication spikes (bottom) are less frequent but arXiv:2609.06506v1 [cs.DC] 6 Sep 2026 TABLE I THE BREAKDOWN OF STEADY -STATE PER -ITERATION TIME (USING 4                       
+
+> NODES , 16 GPU S,AND BATCH SIZE 64). Stage Median p95 Max DataLoader wait 15 ms 1,781 ms 7,134 ms H2D copy 10 ms 27 ms 70 ms Forward pass 18 ms 21 ms 359 ms Backward + all-reduce 116 ms 166 ms 3,315 ms 0.001 0.01 0.1 110 100
+> DataLoader Wait (s)  VAST Lustre
+> 01000 2000 3000 4000 5000
+> Iteration index (epoch 1)
+> 0.01 0.1 110 100
+> Backward + Allreduce (s)
+> Fig. 1. Per-iteration DataLoader wait time exposed (top) and backward pass + all-reduce time (bottom) from each of 5,120 iterations in a full training epoch.
+
+still severe. As Section II shows, these patterns arise from different mechanisms, and understanding which one actually drives the wall-time penalty determines what kind of fix is worth building. II. T WO COSTS WITH SHARED -F ABRIC STORAGE 
+
+Routing storage traffic over the shared fabric introduces two distinct costs. The primary cost comes from contention with traffic external to the training job, resulting in heavy-tailed DataLoader latency that blocks the entire batch whenever a prefetch worker stalls. The secondary cost arises from traffic-class contention among traffic originating from the same training job itself, which occasionally stalls the all-reduce. Unless otherwise noted, all measurements use the full MILAN training workload on Tuolumne, LLNL’s production system. We isolate the secondary effect first with a controlled microbenchmark, then quantify both effects over a full training epoch. As shown in Figure 2, each compute node exposes four HPE Slingshot 11 Cassini NICs (CXI), each with two protocol faces on the same physical hardware: an Ethernet face (TCP/IP) and NIC Ethernet kfabric TC0 TC1+ Node-local NVMe APU   
+
+> RCCL VAST XFS
+> NIC APU APU APU NIC NIC
+> Lustre
+> Fig. 2. The system architecture of Tuolumne.
+
+a kfabric face (RDMA via the libfabric provider). Lustre’s connections and RCCL’s Slingshot plugin both route over the kfabric face and land in the same Slingshot traffic class (TC1+, HPC/RDMA). VAST, mounted over NFSv3/TCP, uses the Ethernet face and lands in a separate traffic class (TC0, Best Effort). The Slingshot fabric allocates injection credits per traffic class (TC) per switch hop; TCs do not borrow credits from one another. To investigate the secondary cost (the TC-contention mech-anism on the all-reduce) in isolation, we built a standalone benchmark 2) that runs MILAN’s actual EGNN-based model and training-loop sequence (the real forward pass, backward pass, and DDP gradient all-reduce) against each storage tier. Each run performs 200 warmup iterations followed by 100 measured iterations with no I/O (an uncontended baseline), then repeats the identical sequence again with I/O enabled. We measure all-reduce costs over four storage tiers using the same 16-GPUs across 4 nodes, reporting the worst-case interference factor (with-I/O latency divided by without-I/O latency) in Table II.         
+
+> TABLE II WORST -CASE ALL -REDUCE INTERFERENCE FACTOR (WITH -I/O ÷
+> WITHOUT -I/O) FROM THE ISOLATED MICROBENCHMARK .Storage tier Max factor shm (tmpfs, no network) 1.0 ×
+> XFS (node-local NVMe) 1.0 ×
+> VAST (NFS flash, separate TC) 24 ×
+> Lustre (parallel FS, shared TC) 145 ×
+
+In Table II, shm and XFS show no detectable all-reduce interference. Their storage paths do not touch the shared kfabric, so the all-reduce runs at baseline speed in every iteration. VAST’s separate TC substantially reduces interfer-ence, with a worst-case stall of 24 ×. Lustre, sharing TC with RCCL, reaches 145 ×, confirming that sharing a traffic class with RCCL is the dominant driver of all-reduce degradation, consistent with stochastic injection-credit contention. 
+
+> 2https://github.com/psl-ntu/nccl io bench
+
+2The primary cost stems from per-sample storage fetches over the shared fabric, which make the DataLoader latency distribution tail-heavy independently of any RCCL contention. Table III reports per-iteration DataLoader wait and all-reduce statistics over a full epoch with Lustre and VAST. Median DataLoader wait is low on both (3 ms on Lustre, 15 ms on VAST), but both distributions are extremely heavy-tailed. On Lustre, 28.2% of iterations exceed 1 s in DataLoader wait (mean 2.0 s, max 41.8 s). VAST is not immune either: 11.5% of iterations exceed 1 s (mean 324 ms, max 7.1 s), despite its storage traffic occupying a separate traffic class. Traffic-class isolation moves the storage path off the RCCL-shared TC but does not eliminate the DataLoader latency tail.                    
+
+> TABLE III PER -ITERATION STATISTICS OVER ONE FULL EPOCH .DataLoader Wait Backward + All-Reduce Config Mean p95 >1 s Mean p95 >1 s VAST 324 ms 1,782 ms 11.5% 127 ms 166 ms 0.6% Lustre 1,987 ms 11,381 ms 28.2% 227 ms 474 ms 1.5%
+
+To quantify how much each effect contributes to the epoch-time penalty, we compute the per-iteration excess above the median for each of DataLoader wait and all-reduce latency, then sum each across all iterations. For Lustre, DataLoader stalls account for ∼93% of the total excess iteration time versus only ∼7% for all-reduce spikes. For VAST, DataLoader wait excess totals 1,608 s versus only 119 s for all-reduce excess. Across every configuration we measured, DataLoader stall tail latency dominates the epoch-time penalty. 
+
+A. Mitigations 
+
+The two sources of costs require distinct solutions. All-reduce spikes reflect injection-credit contention: they occur only when storage and collective traffic compete for credits on the same TC. TC isolation (e.g., VAST on TC0) substantially reduces the secondary all-reduce effect, but it does not fix the primary DataLoader stall effect. VAST’s DataLoader latency remains heavy-tailed because VAST’s data path still traverses the shared network fabric, just on a different TC that does not compete with RCCL. Node-local NVMe hosting the entire training data addresses the root cause of both effects at once: storage reads go through PCIe rather than any network fabric, so neither TC contention nor fabric-credit exhaustion applies. As training data initially resides on a shared parallel filesystem, utilizing node-local NVMe requires a transparent staging layer to populate each node with its required samples. The I/O volume of this workload is modest: each sample is only ∼286 KB, and a prefetch of eight samples transfers about 2.3 MB. The me-dian DataLoader wait is only 3–15 ms across configurations, indicating that sustained bandwidth is not the limiting factor. Instead, performance is dominated by heavy-tailed latency on the shared fabric. Staging the working set onto node-local NVMe removes these reads from the network path. At this I/O volume, local NVMe bandwidth is more than sufficient. While a node-local NVMe is a promising solution, a single node-local NVMe often lacks sufficient capacity to host the entire training dataset. We therefore propose a solution that transparently manages sample locality across multiple node-local storage devices. III. DYAD DYAD is a producer-consumer file-streaming system de-signed for HPC applications. A DYAD server service runs on each compute node, while the DYAD client library handles I/O requests through interception mechanisms (for C) or explicit API calls (for Python). Producers publish file metadata to a distributed KVS, and consumers query the KVS to iden-tify the owning node before retrieving data via RDMA. In this workload, dataset shards are statically partitioned across nodes: each rank owns a disjoint subset of shards and serves byte-range requests from its assigned data. However, DYAD and similar burst-buffer systems [6], [7] cannot be directly applied to the MILAN workload because they are designed around file-level staging. In DL training, the sample size is often orders of magnitude smaller than the containing file, and samples are not reused within the same epoch in general. Supporting this workload therefore requires adapting the staging granularity and timing. Our key design insight is to exploit the GPU computation phase between data consumption points to hide data movement, while ensuring that samples required for the next iteration are available before the subsequent forward pass begins. Particularly, in the MILAN workload, each training itera-tion has a ∼144–214 ms GPU compute phase during which the DataLoader prefetches the next batch. If every prefetch completes within this window, DataLoader wait approaches zero. Achieving this requires two strategies working together, as explained below and illustrated in Figure 3. First, staging must be lazy . DYAD fetches each sample’s data on demand during training rather than pre-staging all files before the run. Eager pre-staging of the full ∼687 GB dataset from Lustre would impose a ∼20-minute delay before training could start, and would transfer bytes that may never be accessed in a given run (e.g., a smoke test that didn’t run for the full epoch). Second, staging must be fine-grained . Transferring whole files on first touch would fetch several GB per shard, far exceeding the ∼144–214 ms compute window and stalling the DataLoader. By fetching only the ∼2.3 MB of blocks a prefetch cycle actually needs, the first-touch latency stays within the window and the I/O cost is hidden. 
+
+Byte-range extension. We extended DYAD with a byte-range fetch path: a new dyad_consume_range() client call and a matching RPC handler allow a consumer to request an arbitrary [offset , offset + length ) span, backed by a lazy write-through cache of 64 KB-block on node-local NVMe. On a miss, the block-aligned span is read via pread() from the Lustre origin and written to the local cache via pwrite() .A companion bitmap tracks resident blocks so each block is 30 10 20 30 40          
+
+> Wall-clock time (min)
+> ~20 min waiting starts immediately
+> Eager pre-stage DYAD (lazy)
+> (a) Training startup
+> Pre-staging delay Training
+> 110 100 1000 10000
+> Time (ms, log scale)
+> prefetch: >3 s (est.) File-level (first touch)
+> prefetch: 90 ms
+> DYAD (epoch 1)
+> prefetch: 14 ms
+> DYAD (epoch 2+)
+> 200 ms window
+> (b) I/O hiding per iteration
+> GPU compute DL prefetch Fig. 3. (a) Eager pre-staging imposes a ∼20-minute delay before training begins; DYAD starts immediately. (b) Per-iteration prefetch time (log scale) relative to the ∼144–214 ms GPU compute window. File-level first-touch fetches far exceed the window, stalling the DataLoader; DYAD byte-range fetches stay hidden within it.
+
+fetched at most once per run. Concurrent requests racing on the same block are safe under an exclusive lock (idempotent re-fetch is permitted). The lock covers only the bitmap update, not the fetch itself, to avoid serializing on I/O latency. 
+
+Dataset flattening. HDF5’s per-sample access path resolves a group hierarchy and object header on every access. Under global epoch shuffling, each (pdbid, poseid) pair is read exactly once per epoch, so HDF5’s metadata cache provides no benefit. We apply a one-time preprocessing step that flattens the dataset into a byte-indexed format: each sample’s offset and length are precomputed into an in-memory index, reducing every origin-side access to a single pread() at a known offset with no per-sample metadata resolution. This step completes in minutes and is required once per dataset. IV. E VALUATION 
+
+We evaluate DYAD end-to-end against direct VAST and Lustre reads in the native HDF5 format. All measurements are a full single training epoch (5,120 iterations, ∼5.24M samples, 4-node/16-GPU/batch-64/8-workers-per-GPU), with DYAD using the MARGO [8] transport backend staging from a Lustre-backed origin. All three configurations process the identical global sample sequence each epoch.          
+
+> TABLE IV FULL SINGLE -EPOCH WALL TIME .Metric VAST Lustre DYAD Full-epoch wall time (s) 1,693.9 11,843.9 1,595.8
+> Throughput (samples/s) 3,096 443 3,286
+
+Table IV shows that DYAD, staged from Lustre alone, is 1.06 × faster than direct VAST reads and 7.4 × faster than direct Lustre reads. In a first epoch, every sample is accessed exactly once, so the NVMe cache provides no reuse benefit; the total data volume transferred from Lustre is approximately equal to that of a direct Lustre read (64 KB block granularity may cause marginal overfetch, though optimizing block size is left to future work). If a sample spans multiple 64 KB blocks, the covering block-aligned span is fetched with a single synchronous pread() /pwrite() . Two factors con-tribute to the first-epoch advantage over direct Lustre. First, DYAD uses a flattened data format rather than HDF5. Each sample access is reduced to a single pread() operation at a precomputed offset, eliminating the per-sample metadata traversal, group hierarchy lookup, and object-header resolution required by HDF5. Second, each file is assigned a single owner, ensuring that all sample fetches from a given file are issued by the same rank. This model reduces contention on the Lustre filesystem and improves the consistency of byte-range access performance. Together, flattened access and single-file ownership reduce per-sample I/O overhead and Lustre contention, enabling ∼2.3 MB prefetches to complete within the GPU compute window. I/O is thus hidden behind computation, mitigating the DataLoader stalls that dominate the primary cost. 64 KB alignment may add modest padding, but each miss remains a single contiguous pread() . This directly addresses the cause of the primary cost identified in Section II: only 2.93% of DYAD iterations exceed 1 s in DataLoader wait (150 of 5,120), versus 28.24% for Lustre and 11.48% for VAST. DYAD also mitigates the secondary cost. Lustre I/O and RCCL share the same Slingshot traffic class, so prolonged, many-client storage bursts contend with all-reduce for injection credits. In the first epoch DYAD still reads a comparable volume from Lustre, but single-owner flat 
+
+pread() s replace many ranks’ concurrent HDF5 metadata-heavy accesses to the same shards. Storage traffic on the fabric is therefore shorter-lived and less concurrent with collectives, reducing all-reduce interference. Empirically, the worst-case all-reduce time falls to 10.2 s for DYAD in epoch 1 (versus 53.8 s for Lustre and 3.3 s for VAST. Together, these also explain why DYAD outperforms even direct VAST reads: VAST substantially reduces all-reduce interference via TC isolation but not the DataLoader stall tail, whereas DYAD eliminates both. 
+
+A. Per-Iteration Interference 
+
+Figure 4 plots the total wall-clock time of every logged iter-ation. VAST and DYAD both sit in a tight band around 200– 400 ms for the overwhelming majority of iterations; Lustre shares a similar floor but has a visibly denser, heavier scatter of stalls reaching into the tens of seconds throughout the entire epoch. Specifically, 28.0% of Lustre’s iterations exceed 1 s of total iteration time (1,436 of 5,120), versus 9.9% for VAST (505 of 5,120) and 4.7% for DYAD (243 of 5,120). Lustre stalls 6× as often as DYAD and nearly 3× as often as VAST. 40 1000 2000 3000 4000 5000            
+
+> Iteration index (epoch 1)
+> 0.1 110 100
+> Iteration time (s)
+> Lustre VAST DYAD Fig. 4. Total per-iteration time for every one of the 5,120 iterations in a full training epoch. Lustre’s iterations are both more frequently and far more severely stalled, recurring throughout the entire epoch; DYAD, despite staging from the same Lustre origin, sits much closer to VAST. 0.01s 0.1s 1s 10s 100s 0.01% 0.1% 1% 10% 100%
+> Fraction of iterations exceeding x DataLoader Wait
+> VAST Lustre DYAD 0.01s 0.1s 1s 10s 100s
+> Time (s)
+> 0.01% 0.1% 1% 10% 100%
+> Fraction of iterations exceeding x Backward + Allreduce
+> Fig. 5. Tail distributions over the same full epoch, breaking total per-iteration time into DataLoader wait(top) and backward pass (bottom). Both are log-log (yis the fraction of 5,120 iterations whose value exceeds x).
+
+Lustre’s worst iteration took 54.9 s, versus 7.2 s for VAST and 10.3 s for DYAD. Figure 5 highlights the two most dominant impacts on the total iteration time during an epoch. The top panel (DataLoader wait) reveals the primary cost: VAST carries a persistent shoulder in the 100 ms–10 s range that DYAD does not, and Lustre’s tail stretches an order of magnitude further right than either. DYAD shows only 2.93% of iterations exceeding 1 s in DataLoader wait, each plausibly a spike from a fresh fetch from the Lustre origin, a cost paid at most once per sample for the life of training. The bottom panel (backward + all-reduce) confirms the secondary effect: at the 1 s line, Lustre sits at 1.54%, versus 0.61% for VAST and 0.37% for DYAD; the gap widens moving right. VAST substantially reduces the secondary effect via TC separation, while DYAD reducing storage traffic on the fabric reduces it further. We note that DYAD is not immune to the fabric contention. Its owner rank still pread() s each byte range’s first touch from the Lustre origin, over the same contended kfabric path RCCL uses. This is visible in the top panel as DYAD’s curve tracking slightly above VAST’s through the middle of the distribution before converging in the tail. However, each span is fetched from Lustre at most once , whereas direct Lustre reads pay the full fabric cost on every sample access every iteration. 
+
+B. Multi-Epoch Behavior 
+
+We ran DYAD for three consecutive full epochs (Figure 6). By the second epoch, every sample DYAD needs is already resident on its owner’s node-local NVMe, so no further Lustre-origin fetches occur at all. Under global shuffling, a rank that needs a non-local sample retrieves it from the owner via RDMA rather than from the Lustre and a third epoch confirms this is a stable plateau. DataLoader wait drops from a first-epoch mean of 90.4 ms (max 5.0 s, 2.93% of iterations exceed-ing 1 s) to a second-epoch mean of 13.8 ms (max 901 ms, 0% of iterations exceeding 1 s ), holding at a third-epoch mean of 14.1 ms (max 827 ms, again 0%). The DataLoader stall tail, the dominant contributor to epoch-time penalty, disappears entirely once the cache is warm. All-reduce time stays roughly flat across all three epochs (mean 157.3 ms → 171.4 ms →
+
+172.0 ms), consistent with residual Lustre traffic system-wide varying independently of DYAD’s own cache state. The first epoch already finishes in 1,595.8 s, faster than di-rect VAST reads’ own single-epoch time (1,693.9 s, Table IV), a 1.06 × advantage, and epochs 2 and 3 grow this: 1,293.3 s and 1,280.1 s respectively, a 1.31 × and 1.32 × advantage over direct VAST reads, and 7.4 ×, 9.2 ×, and 9.3 × faster than direct Lustre reads across the three epochs. V. R ELATED WORK AND CONCLUSION 
+
+A. Related Work 
+
+Burst buffers and node-local aggregated storage. Burst buffer systems have been extensively studied [9]–[12]. For instance, UnifyFS [7] and BeeOND-based caching file sys-tems [6] let a job aggregate node-local storage into a tem-porary, POSIX-like shared namespace for the duration of a run, primarily targeting checkpoint/restart and shared-file HPC I/O patterns. DL-training-specific variants of this idea include FanStore [13], which aggregates node-local storage into a unified POSIX namespace via system-call interception; HVAC [14], a distributed node-local read cache evaluated at 1,024-node scale; and Monarch [15], which transparently tiers data across node-local storage and the parallel file system. However, all of these systems typically operate at whole-file or POSIX-call granularity and are not designed around 5Epoch 1 Epoch 2 Epoch 3                  
+
+> 1,000 2,000 5,000 10,000
+> Wall time (s)
+> 177m 181m 190m 34m 35m 36m 27m 22m 21m
+> Per-epoch wall time (log scale)
+> Lustre VAST DYAD
+> 02000 4000 6000 8000 10000 12000 14000
+> Iteration index
+> 0.1 110 100
+> Iteration time (s)  Epoch 1 Epoch 2 Epoch 3
+> DYAD per-iteration time (3 epochs end-to-end) Fig. 6. Left: per-epoch wall time for Lustre, VAST, and DYAD across three back-to-back epochs (log scale). VAST and Lustre show no inter-epoch improvement; DYAD drops sharply after epoch 1 as its node-local cache warms. Right: DYAD per-iteration time laid out end-to-end across all three epochs (dashed lines mark boundaries). The high-tail iterations in epoch 1 are first-touch Lustre fetches; they vanish in epochs 2 and 3 once the cache is fully warm.
+
+a globally-shuffled, sample-per-request access pattern. More-over, none of them studies the interdependence or relative magnitude of DataLoader-stall and collective-communication interference effects, which this paper investigates. 
+
+Caching and I/O systems for DL training. Quiver [16] introduces a cluster-wide, hash-addressed cache with substi-tutable cache hits and job-aware prioritization, targeting cache efficiency across concurrently running jobs sharing a dataset; DeepIO [17] uses RDMA to shuffle and serve training samples from in-memory buffers spread across node-local memory; CoorDL [18] coordinates data loading and augmentation across the many jobs collocated on one server to cut redundant preprocessing; DIESEL+ [19] combines per-task distributed caching with chunk-wise shuffling and GPU-assisted decoding to accelerate image-dataset access; SHADE [20] tracks per-sample importance across a distributed job to improve the cache-hit ratio under a fixed cache budget. Closer to our staging design, DeepFetch [21] greedily prefetches samples from a neighboring node’s cache shard once local capacity is exhausted, and NoPFS [22] exploits the fact that the sampler’s shuffling seed makes an entire epoch’s access sequence known in advance to schedule near-optimal RAM/local-disk prefetch-ing. These works optimize data-loading throughput or cache efficiency, implicitly assuming a storage path free of external interference. A cache-efficiency-focused design does not by itself eliminate the primary cost unless it also routes storage traffic off the shared fabric. 
+
+HDF5-aware caching. HDF5 Cache VOL [23] intercepts the HDF5 API to transparently cache data on node-local storage and asynchronously migrate it to the parallel file system, hiding I/O behind computation without application code changes. It targets the same HDF5-on-node-local-storage setting as DYAD, but caches at the granularity of HDF5 objects accessed through the library’s own API. Under global epoch shuffling, MILAN touches millions of distinct (pdbid, poseid) groups exactly once per epoch, so caching at the VOL layer would still pay HDF5’s per-access group-hierarchy and object-header resolution on every first touch. DYAD’s dataset flattening instead resolves all metadata once, offline, into a byte-offset index, avoiding this cost entirely. 
+
+B. Conclusion 
+
+Routing storage I/O over the shared HPC fabric imposes two distinct costs on distributed DL training. The primary cost, heavy-tailed DataLoader stalls, accounts for ∼93% of Lustre’s epoch-time that is 7 × larger than that of VAST. VAST also shows a similar DataLoader performance behavior (11.5% of iterations stalling beyond 1 s despite TC isolation). The secondary cost, TC contention degrading the all-reduce by up to 145 × in an isolated benchmark, accounts for ∼7% of the epoch excess and is substantially reduced by TC isolation. But fixing only the secondary effect leaves the primary cost still high. Node-local NVMe, accessed via PCIe and thus invisible to the fabric, eliminates both at once, if a staging system can get the right bytes there transparently. DYAD does this via a lazy, block-granularity byte-range cache over a flattened, byte-offset-indexed sample format, staging only from Lustre and achieving 7.4 × faster than Lustre and 1.06 × faster than VAST in a first epoch, growing to 1.3 × in 2nd and 3rd epochs once the cache is warm and first-touch fetches stop. ACKNOWLEDGMENT 
+
+This research is supported by the Ministry of Educa-tion, Singapore, under its Academic Research Fund Tier 1 (#026632-00001, RS57/25), and by the NTU Singapore start up grant (#025593-00001). This work was performed under the auspices of the U.S. Department of Energy by Lawrence Livermore National Laboratory under Contract DE-AC52-07NA27344. LLNL-CONF-2022824 6REFERENCES [1] J. L. Bez, S. Byna, and S. Ibrahim, “I/O Access Patterns in HPC Applications: A 360-Degree Survey,” ACM Computing Surveys , vol. 56, no. 2, pp. 1–41, 2023. [2] C. Wang, K. Mohror, and M. Snir, “File System Semantics Require-ments of HPC Applications,” in Proceedings of the 30th International Symposium on High-Performance Parallel and Distributed Computing ,2021, pp. 19–30. [3] H. Kim, H. Shim, A. Ranganath, S. He, G. Stevenson, and J. E. Allen, “Protein-ligand binding affinity prediction using multi-instance learning with docking structures,” Frontiers in Pharmacology , vol. Volume 15 -2024, 2025. [4] P. Lemos, Z. Beckwith, S. Bandi, M. van Damme, J. Crivelli-Decker, B. J. Shields, T. Merth, P. K. Jha, N. De Mitri, T. J. Callahan, A. Nish, P. Abruzzo, R. Salomon-Ferrer, and M. Ganahl, “Sair: Enabling deep learning for protein-ligand interactions with a synthetic structural dataset,” bioRxiv , 2025. [Online]. Available: https://www.biorxiv.org/content/early/2025/06/21/2025.06.17.660168 [5] J. Wohlwend, G. Corso, S. Passaro, N. Getz, M. Reveiz, K. Leidal, W. Swiderski, L. Atkinson, T. Portnoi, I. Chinn, J. Silterra, T. Jaakkola, and R. Barzilay, “Boltz-1 democratizing biomolecular interaction modeling,” bioRxiv , 2025. [Online]. Available: https: //www.biorxiv.org/content/early/2025/05/06/2024.11.19.624167 [6] D. Abramson, C. Jin, J. Luong, and J. Carroll, “A BeeGFS-Based Caching File System for Data-Intensive Parallel Computing,” in Super-computing Frontiers , 2020, pp. 3–22. [7] M. J. Brim, A. T. Moody, S.-H. Lim, R. Miller, S. Boehm, C. Stanavige, K. M. Mohror, and S. Oral, “Unifyfs: A user-level shared file system for unified access to distributed local storage,” in 2023 IEEE International Parallel and Distributed Processing Symposium (IPDPS) , 2023, pp. 290– 300. [8] R. B. Ross, G. Amvrosiadis, P. Carns, C. D. Cranor, M. Dorier, K. Harms, G. Ganger, G. Gibson, S. K. Gutierrez, R. Latham et al. ,“Mochi: Composing data services for high-performance computing environments,” Journal of Computer Science and Technology , vol. 35, no. 1, pp. 121–144, 2020. [9] T. Wang, K. Mohror, A. Moody, K. Sato, and W. Yu, “An ephemeral burst-buffer file system for scientific applications,” in SC’16: Proceed-ings of the International Conference for High Performance Computing, Networking, Storage and Analysis . IEEE, 2016, pp. 807–818. [10] X. He, B. Yang, J. Gao, W. Xiao, Q. Chen, S. Shi, D. Chen, W. Liu, W. Xue, and Z.-n. Chen, “ {HadaFS }: A file system bridging the local and shared burst buffer for exascale supercomputers,” in 21st USENIX Conference on File and Storage Technologies (FAST 23) , 2023, pp. 215– 230. [11] M.-A. Vef, N. Moti, T. S¨ uß, M. Tacke, T. Tocci, R. Nou, A. Miranda, T. Cortes, and A. Brinkmann, “GekkoFS—A temporary burst buffer file system for HPC applications,” Journal of Computer Science and Technology , vol. 35, no. 1, pp. 72–91, 2020. [12] O. Tatebe, K. Obata, K. Hiraga, and H. Ohtsuji, “CHFS: Parallel consistent hashing file system for node-local persistent memory,” in 
+
+International Conference on High Performance Computing in Asia-Pacific Region , 2022, pp. 115–124. [13] Z. Zhang, L. Huang, U. Manor, L. Fang, G. Merlo, C. Michoski, J. Cazes, and N. Gaffney, “FanStore: Enabling efficient and scalable I/O for distributed deep learning,” arXiv preprint arXiv:1809.10799 , 2018. [14] A. Khan, A. K. Paul, C. Zimmer, S. Oral, S. Dash, S. Atchley, and F. Wang, “HVAC: Removing I/O bottleneck for large-scale deep learn-ing applications,” in 2022 IEEE International Conference on Cluster Computing (CLUSTER) . IEEE, 2022, pp. 324–335. [15] M. Dantas, D. Leit˜ ao, P. Cui, R. Macedo, X. Liu, W. Xu, and J. Paulo, “Accelerating deep learning training through transparent storage tiering,” in 2022 22nd IEEE International Symposium on Cluster, Cloud and Internet Computing (CCGrid) . IEEE, 2022. [16] A. V. Kumar and M. Sivathanu, “Quiver: An Informed Storage Cache for Deep Learning,” in 18th USENIX Conference on File and Storage Technologies (FAST 20) , 2020, pp. 283–296. [17] Y. Zhu, F. Chowdhury, H. Fu, A. Moody, K. Mohror, K. Sato, and W. Yu, “Multi-client DeepIO for large-scale deep learning on HPC systems,” in 
+
+International Conference for High Performance Computing, Networking, Storage and Analysis (SC18), Regular Poster , 2018. [18] J. Mohan, A. Phanishayee, A. Raniwala, and V. Chidambaram, “Ana-lyzing and mitigating data stalls in DNN training,” Proc. VLDB Endow. ,vol. 14, no. 5, pp. 771–784, 2021. [19] L. Wang, Q. Luo, and S. Yan, “DIESEL+: Accelerating distributed deep learning tasks on image datasets,” IEEE Transactions on Parallel and Distributed Systems , vol. 33, no. 5, pp. 1173–1184, 2022. [20] R. I. S. Khan, A. H. Yazdani, Y. Fu, A. K. Paul, B. Ji, X. Jian, Y. Cheng, and A. R. Butt, “SHADE: Enable fundamental cacheability for distributed deep learning training,” in 21st USENIX Conference on File and Storage Technologies (FAST 23) , 2023, pp. 135–152. [21] L. Kong, F. Mei, C. Zhu, W. Cheng, and L. Zeng, “DeepFetch: A node-aware greedy fetch system for distributed cache of deep learning applications,” in 2024 IEEE International Conference on Networking, Architecture and Storage (NAS) , 2024. [22] N. Dryden, R. B¨ ohringer, T. Ben-Nun, and T. Hoefler, “Clairvoyant prefetching for distributed machine learning I/O,” in Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis (SC ’21) , 2021. [23] H. Zheng, V. Vishwanath, Q. Koziol, H. Tang, J. Ravi, J. Mainzer, and S. Byna, “HDF5 cache VOL: Efficient and scalable parallel I/O through caching data on node-local storage,” in 2022 22nd IEEE International Symposium on Cluster, Cloud and Internet Computing (CCGrid) . IEEE, 2022. 
+
+7

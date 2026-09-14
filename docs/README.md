@@ -6,55 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-13
-- 运行时间：2026-09-14 05:53:03 UTC+8
+- 最新运行日期：2026-09-14
+- 运行时间：2026-09-15 06:26:51 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Data Scout: Targeted Web Crawling for Domain-Specific Pretraining Corpora》（6.9/10）, 《Shirshov's amalgamated free product and generic nilpotent groups》（6.9/10）, 《On the classification of small cyclotomic integers》（6.8/10）
+- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
+- 精读：《NeuroClick: Preserving Surgeon Autonomy through Hands-Free Earable Tooth-Click Control in Neurosurgery》（8.6/10）
+- 速读：《Algebraic loops, braids, and tropicalization》（7.9/10）, 《Algebraic enumeration of local density improvements for Thompson's group $F$》（7.9/10）, 《Berry-Esseen Bounds for the Number of Real Zeros of Gaussian Weyl Polynomials》（7.8/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/13/README](/202609/13/README)
+- 详情：[/202609/14/README](/202609/14/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [NeuroClick: Preserving Surgeon Autonomy through Hands-Free Earable Tooth-Click Control in Neurosurgery](/202609/14/2609.12910v1-neuroclick-preserving-surgeon-autonomy-through-hands-free-earable-tooth-click-control-in-neurosurgery)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Data Scout: Targeted Web Crawling for Domain-Specific Pretraining Corpora](/202609/13/2609.05766v1-data-scout-targeted-web-crawling-for-domain-specific-pretraining-corpora)  
+1. [Algebraic loops, braids, and tropicalization](/202609/14/2609.12074v1-algebraic-loops-braids-and-tropicalization)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+2. [Algebraic enumeration of local density improvements for Thompson's group $F$](/202609/14/2609.12290v1-algebraic-enumeration-of-local-density-improvements-for-thompsons-group-f)  
+   标签：评分：7.9/10
+   evidence：检索回退候选
+3. [Berry-Esseen Bounds for the Number of Real Zeros of Gaussian Weyl Polynomials](/202609/14/2609.12734v1-berry-esseen-bounds-for-the-number-of-real-zeros-of-gaussian-weyl-polynomials)  
+   标签：评分：7.8/10
+   evidence：检索回退候选
+4. [Martingale Transforms and Compensated Bellman Estimates for Dunkl Riesz Transforms](/202609/14/2609.12117v1-martingale-transforms-and-compensated-bellman-estimates-for-dunkl-riesz-transforms)  
    标签：评分：6.9/10
    evidence：检索回退候选
-2. [Shirshov's amalgamated free product and generic nilpotent groups](/202609/13/2609.05789v1-shirshovs-amalgamated-free-product-and-generic-nilpotent-groups)  
+5. [Torus actions on compactified braid varieties and polytopality of subword complexes](/202609/14/2609.12414v1-torus-actions-on-compactified-braid-varieties-and-polytopality-of-subword-complexes)  
    标签：评分：6.9/10
    evidence：检索回退候选
-3. [On the classification of small cyclotomic integers](/202609/13/2609.05853v1-on-the-classification-of-small-cyclotomic-integers)  
+6. [Deterministic NC Quadratic Root Counting in Characteristic Two](/202609/14/2609.12669v1-deterministic-nc-quadratic-root-counting-in-characteristic-two)  
    标签：评分：6.8/10
    evidence：检索回退候选
-4. [Algorithmic List Decoding at Capacity and Optimal Proximity Gaps for Reed-Solomon Codes](/202609/13/2609.05870v1-algorithmic-list-decoding-at-capacity-and-optimal-proximity-gaps-for-reed-solomon-codes)  
+7. [Hardy--Littlewood Maximal Operator and Two-Layer Muckenhoupt Weights on Infinite Rooted $k$-Ary Trees](/202609/14/2609.12844v1-hardy--littlewood-maximal-operator-and-two-layer-muckenhoupt-weights-on-infinite-rooted-k-ary-trees)  
    标签：评分：6.8/10
    evidence：检索回退候选
-5. [Robust high-dimensional integration using medians of coarsely scrambled Sobol' sequences](/202609/13/2609.05979v1-robust-high-dimensional-integration-using-medians-of-coarsely-scrambled-sobol-sequences)  
+8. [Compiling Linear Datalog to SQL for Program Analysis](/202609/14/2609.06301v1-compiling-linear-datalog-to-sql-for-program-analysis)  
    标签：评分：6.8/10
    evidence：检索回退候选
-6. [Stacking HI in the dark: Towards detecting the reionization-epoch 21 cm signal in Lyman-$α$ dark gaps](/202609/13/2609.05980v1-stacking-hi-in-the-dark-towards-detecting-the-reionization-epoch-21-cm-signal-in-lyman--dark-gaps)  
+9. [Lattice point visibility along polynomials has density one](/202609/14/2609.06309v1-lattice-point-visibility-along-polynomials-has-density-one)  
    标签：评分：6.7/10
    evidence：检索回退候选
-7. [Delay and Throughput Analysis of Computation Offloading in Mobile Edge Computing: A Queueing Network Approach](/202609/13/2609.06021v1-delay-and-throughput-analysis-of-computation-offloading-in-mobile-edge-computing-a-queueing-network-approach)  
+10. [Disclosure and dissolution: explainability, AI power, and situated agency in understanding](/202609/14/2609.06495v1-disclosure-and-dissolution-explainability-ai-power-and-situated-agency-in-understanding)  
    标签：评分：6.6/10
    evidence：检索回退候选
-8. [SemVul: Semantic-Enhanced Graph Neural Networks for Code Property Graph-based Vulnerability Detection](/202609/13/2609.06035v1-semvul-semantic-enhanced-graph-neural-networks-for-code-property-graph-based-vulnerability-detection)  
+11. [Sharing a Fabric with Collective Communication: Two Storage Penalties in Deep Learning Training](/202609/14/2609.06506v1-sharing-a-fabric-with-collective-communication-two-storage-penalties-in-deep-learning-training)  
    标签：评分：6.6/10
-   evidence：检索回退候选
-9. [Unbiased Monte Carlo Greeks for Discontinuous Payoffs](/202609/13/2609.06137v1-unbiased-monte-carlo-greeks-for-discontinuous-payoffs)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-10. [Closing the Long-Short View Gap in Sequential Recommendation without Cached History](/202609/13/2609.06219v1-closing-the-long-short-view-gap-in-sequential-recommendation-without-cached-history)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-11. [Sharp spectral-scale stability for parabolic equations with measure-valued delay](/202609/13/2609.06262v1-sharp-spectral-scale-stability-for-parabolic-equations-with-measure-valued-delay)  
-   标签：评分：6.4/10
    evidence：检索回退候选
 
 
