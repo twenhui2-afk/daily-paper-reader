@@ -6,58 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-14
-- 运行时间：2026-09-15 06:26:51 UTC+8
+- 最新运行日期：2026-09-15
+- 运行时间：2026-09-16 06:30:46 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《NeuroClick: Preserving Surgeon Autonomy through Hands-Free Earable Tooth-Click Control in Neurosurgery》（8.6/10）
-- 速读：《Algebraic loops, braids, and tropicalization》（7.9/10）, 《Algebraic enumeration of local density improvements for Thompson's group $F$》（7.9/10）, 《Berry-Esseen Bounds for the Number of Real Zeros of Gaussian Weyl Polynomials》（7.8/10）
+- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
+- 精读：《Patient-Level, Leakage-Aware Deep Learning for Cross-Center Periapical Radiograph Classification》（8.6/10）, 《Controlling quantum state transfer in rooted products》（8.5/10）
+- 速读：《Root-Cause Attribution Is a Search Problem: Continual Search for Long-Horizon Agent Failures》（7.7/10）, 《Event-Time Order-Flow Memory, Operational-Time Impact, and Subordinated Market Observables》（7.6/10）, 《Simplicial Complexes of Antichains in Root Posets and Related Combinatorics of Dyck Paths》（7.6/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/14/README](/202609/14/README)
+- 详情：[/202609/15/README](/202609/15/README)
 
 ### 精读区论文标签
-1. [NeuroClick: Preserving Surgeon Autonomy through Hands-Free Earable Tooth-Click Control in Neurosurgery](/202609/14/2609.12910v1-neuroclick-preserving-surgeon-autonomy-through-hands-free-earable-tooth-click-control-in-neurosurgery)  
+1. [Patient-Level, Leakage-Aware Deep Learning for Cross-Center Periapical Radiograph Classification](/202609/15/2609.14703v1-patient-level-leakage-aware-deep-learning-for-cross-center-periapical-radiograph-classification)  
    标签：评分：8.6/10
+   evidence：检索回退候选
+2. [Controlling quantum state transfer in rooted products](/202609/15/2609.14537v1-controlling-quantum-state-transfer-in-rooted-products)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+3. [Riemann-Roch Polynomials, MBM Classes and Poor IHS Manifolds](/202609/15/2609.14921v1-riemann-roch-polynomials-mbm-classes-and-poor-ihs-manifolds)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+4. [Improved Bounds for the Bilu--Linial Conjecture via Spectral Recovery from Mixed Determinantal Polynomials](/202609/15/2609.15715v1-improved-bounds-for-the-bilu--linial-conjecture-via-spectral-recovery-from-mixed-determinantal-polynomials)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
+5. [PatchRisk: Forecasting Future Vulnerability Exposure in Open-Source Dependency Networks](/202609/15/2609.13719v1-patchrisk-forecasting-future-vulnerability-exposure-in-open-source-dependency-networks)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+6. [The structure of automorphism groups of zero-dimensional monomial algebras](/202609/15/2609.13741v1-the-structure-of-automorphism-groups-of-zero-dimensional-monomial-algebras)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Algebraic loops, braids, and tropicalization](/202609/14/2609.12074v1-algebraic-loops-braids-and-tropicalization)  
-   标签：评分：7.9/10
+1. [Root-Cause Attribution Is a Search Problem: Continual Search for Long-Horizon Agent Failures](/202609/15/2609.13463v1-root-cause-attribution-is-a-search-problem-continual-search-for-long-horizon-agent-failures)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-2. [Algebraic enumeration of local density improvements for Thompson's group $F$](/202609/14/2609.12290v1-algebraic-enumeration-of-local-density-improvements-for-thompsons-group-f)  
-   标签：评分：7.9/10
+2. [Event-Time Order-Flow Memory, Operational-Time Impact, and Subordinated Market Observables](/202609/15/2609.13715v1-event-time-order-flow-memory-operational-time-impact-and-subordinated-market-observables)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-3. [Berry-Esseen Bounds for the Number of Real Zeros of Gaussian Weyl Polynomials](/202609/14/2609.12734v1-berry-esseen-bounds-for-the-number-of-real-zeros-of-gaussian-weyl-polynomials)  
-   标签：评分：7.8/10
+3. [Simplicial Complexes of Antichains in Root Posets and Related Combinatorics of Dyck Paths](/202609/15/2609.14054v1-simplicial-complexes-of-antichains-in-root-posets-and-related-combinatorics-of-dyck-paths)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-4. [Martingale Transforms and Compensated Bellman Estimates for Dunkl Riesz Transforms](/202609/14/2609.12117v1-martingale-transforms-and-compensated-bellman-estimates-for-dunkl-riesz-transforms)  
-   标签：评分：6.9/10
+4. [Open-channel radiation zeros and nonlinear damping of a critical-bubble internal mode](/202609/15/2609.15056v1-open-channel-radiation-zeros-and-nonlinear-damping-of-a-critical-bubble-internal-mode)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-5. [Torus actions on compactified braid varieties and polytopality of subword complexes](/202609/14/2609.12414v1-torus-actions-on-compactified-braid-varieties-and-polytopality-of-subword-complexes)  
-   标签：评分：6.9/10
+5. [Real-Rootedness and Gamma-Positivity for a Variation of the Morris Constant Term](/202609/15/2609.15201v1-real-rootedness-and-gamma-positivity-for-a-variation-of-the-morris-constant-term)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-6. [Deterministic NC Quadratic Root Counting in Characteristic Two](/202609/14/2609.12669v1-deterministic-nc-quadratic-root-counting-in-characteristic-two)  
+6. [Periodicity and Period-Length Bounds for Browkin $p$-Adic Continued Fractions](/202609/15/2609.15531v1-periodicity-and-period-length-bounds-for-browkin-p-adic-continued-fractions)  
+   标签：评分：7.4/10
+   evidence：检索回退候选
+7. [The Reye geometry inside the 64 lines of the Schur quartic](/202609/15/2609.10751v2-the-reye-geometry-inside-the-64-lines-of-the-schur-quartic)  
    标签：评分：6.8/10
    evidence：检索回退候选
-7. [Hardy--Littlewood Maximal Operator and Two-Layer Muckenhoupt Weights on Infinite Rooted $k$-Ary Trees](/202609/14/2609.12844v1-hardy--littlewood-maximal-operator-and-two-layer-muckenhoupt-weights-on-infinite-rooted-k-ary-trees)  
-   标签：评分：6.8/10
+8. [A tool for new Hybrid models: a swift algorithm to calculate the left inverse of a square root of a horizontally localized climatological ensemble covariance matrix](/202609/15/2609.13327v1-a-tool-for-new-hybrid-models-a-swift-algorithm-to-calculate-the-left-inverse-of-a-square-root-of-a-horizontally-localized-climatological-ensemble-covariance-matrix)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-8. [Compiling Linear Datalog to SQL for Program Analysis](/202609/14/2609.06301v1-compiling-linear-datalog-to-sql-for-program-analysis)  
-   标签：评分：6.8/10
+9. [RUPA: Nonlinear volume consistency, constraint geometry and singular penalty limits in finite elements](/202609/15/2609.13446v1-rupa-nonlinear-volume-consistency-constraint-geometry-and-singular-penalty-limits-in-finite-elements)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-9. [Lattice point visibility along polynomials has density one](/202609/14/2609.06309v1-lattice-point-visibility-along-polynomials-has-density-one)  
-   标签：评分：6.7/10
+10. [Quantitative linear independence for square roots](/202609/15/2609.14161v1-quantitative-linear-independence-for-square-roots)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-10. [Disclosure and dissolution: explainability, AI power, and situated agency in understanding](/202609/14/2609.06495v1-disclosure-and-dissolution-explainability-ai-power-and-situated-agency-in-understanding)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-11. [Sharing a Fabric with Collective Communication: Two Storage Penalties in Deep Learning Training](/202609/14/2609.06506v1-sharing-a-fabric-with-collective-communication-two-storage-penalties-in-deep-learning-training)  
-   标签：评分：6.6/10
+11. [Trace-Norm Overlaps of Quantum States: Interpolation, Equality, and Data-Processing Rigidity](/202609/15/2609.14203v1-trace-norm-overlaps-of-quantum-states-interpolation-equality-and-data-processing-rigidity)  
+   标签：评分：6.3/10
    evidence：检索回退候选
 
 
