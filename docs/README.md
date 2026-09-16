@@ -6,73 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-15
-- 运行时间：2026-09-16 06:30:46 UTC+8
+- 最新运行日期：2026-09-16
+- 运行时间：2026-09-17 06:30:19 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《Patient-Level, Leakage-Aware Deep Learning for Cross-Center Periapical Radiograph Classification》（8.6/10）, 《Controlling quantum state transfer in rooted products》（8.5/10）
-- 速读：《Root-Cause Attribution Is a Search Problem: Continual Search for Long-Horizon Agent Failures》（7.7/10）, 《Event-Time Order-Flow Memory, Operational-Time Impact, and Subordinated Market Observables》（7.6/10）, 《Simplicial Complexes of Antichains in Root Posets and Related Combinatorics of Dyck Paths》（7.6/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Pauli Supported Invariants for Periodic Graphs-Derived Hamiltonians》（6.5/10）, 《TriCalRAG: A Three-Strategy, Retrieval-Augmented Benchmark for On-Premise LLM-Based Root Cause Analysis in AIOps》（6.4/10）, 《Rethinking Software-Defined Networking Link Discovery with Dynamic Randomization》（6.4/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/15/README](/202609/15/README)
+- 详情：[/202609/16/README](/202609/16/README)
 
 ### 精读区论文标签
-1. [Patient-Level, Leakage-Aware Deep Learning for Cross-Center Periapical Radiograph Classification](/202609/15/2609.14703v1-patient-level-leakage-aware-deep-learning-for-cross-center-periapical-radiograph-classification)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [Controlling quantum state transfer in rooted products](/202609/15/2609.14537v1-controlling-quantum-state-transfer-in-rooted-products)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-3. [Riemann-Roch Polynomials, MBM Classes and Poor IHS Manifolds](/202609/15/2609.14921v1-riemann-roch-polynomials-mbm-classes-and-poor-ihs-manifolds)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-4. [Improved Bounds for the Bilu--Linial Conjecture via Spectral Recovery from Mixed Determinantal Polynomials](/202609/15/2609.15715v1-improved-bounds-for-the-bilu--linial-conjecture-via-spectral-recovery-from-mixed-determinantal-polynomials)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-5. [PatchRisk: Forecasting Future Vulnerability Exposure in Open-Source Dependency Networks](/202609/15/2609.13719v1-patchrisk-forecasting-future-vulnerability-exposure-in-open-source-dependency-networks)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-6. [The structure of automorphism groups of zero-dimensional monomial algebras](/202609/15/2609.13741v1-the-structure-of-automorphism-groups-of-zero-dimensional-monomial-algebras)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Root-Cause Attribution Is a Search Problem: Continual Search for Long-Horizon Agent Failures](/202609/15/2609.13463v1-root-cause-attribution-is-a-search-problem-continual-search-for-long-horizon-agent-failures)  
-   标签：评分：7.7/10
+1. [Pauli Supported Invariants for Periodic Graphs-Derived Hamiltonians](/202609/16/2609.14209v1-pauli-supported-invariants-for-periodic-graphs-derived-hamiltonians)  
+   标签：评分：6.5/10
    evidence：检索回退候选
-2. [Event-Time Order-Flow Memory, Operational-Time Impact, and Subordinated Market Observables](/202609/15/2609.13715v1-event-time-order-flow-memory-operational-time-impact-and-subordinated-market-observables)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-3. [Simplicial Complexes of Antichains in Root Posets and Related Combinatorics of Dyck Paths](/202609/15/2609.14054v1-simplicial-complexes-of-antichains-in-root-posets-and-related-combinatorics-of-dyck-paths)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-4. [Open-channel radiation zeros and nonlinear damping of a critical-bubble internal mode](/202609/15/2609.15056v1-open-channel-radiation-zeros-and-nonlinear-damping-of-a-critical-bubble-internal-mode)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-5. [Real-Rootedness and Gamma-Positivity for a Variation of the Morris Constant Term](/202609/15/2609.15201v1-real-rootedness-and-gamma-positivity-for-a-variation-of-the-morris-constant-term)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-6. [Periodicity and Period-Length Bounds for Browkin $p$-Adic Continued Fractions](/202609/15/2609.15531v1-periodicity-and-period-length-bounds-for-browkin-p-adic-continued-fractions)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-7. [The Reye geometry inside the 64 lines of the Schur quartic](/202609/15/2609.10751v2-the-reye-geometry-inside-the-64-lines-of-the-schur-quartic)  
-   标签：评分：6.8/10
-   evidence：检索回退候选
-8. [A tool for new Hybrid models: a swift algorithm to calculate the left inverse of a square root of a horizontally localized climatological ensemble covariance matrix](/202609/15/2609.13327v1-a-tool-for-new-hybrid-models-a-swift-algorithm-to-calculate-the-left-inverse-of-a-square-root-of-a-horizontally-localized-climatological-ensemble-covariance-matrix)  
+2. [TriCalRAG: A Three-Strategy, Retrieval-Augmented Benchmark for On-Premise LLM-Based Root Cause Analysis in AIOps](/202609/16/2609.14762v1-tricalrag-a-three-strategy-retrieval-augmented-benchmark-for-on-premise-llm-based-root-cause-analysis-in-aiops)  
    标签：评分：6.4/10
    evidence：检索回退候选
-9. [RUPA: Nonlinear volume consistency, constraint geometry and singular penalty limits in finite elements](/202609/15/2609.13446v1-rupa-nonlinear-volume-consistency-constraint-geometry-and-singular-penalty-limits-in-finite-elements)  
+3. [Rethinking Software-Defined Networking Link Discovery with Dynamic Randomization](/202609/16/2609.14805v1-rethinking-software-defined-networking-link-discovery-with-dynamic-randomization)  
    标签：评分：6.4/10
    evidence：检索回退候选
-10. [Quantitative linear independence for square roots](/202609/15/2609.14161v1-quantitative-linear-independence-for-square-roots)  
+4. [A rooted tree framework for linear time ultrabubble detection](/202609/16/2609.14852v1-a-rooted-tree-framework-for-linear-time-ultrabubble-detection)  
    标签：评分：6.3/10
    evidence：检索回退候选
-11. [Trace-Norm Overlaps of Quantum States: Interpolation, Equality, and Data-Processing Rigidity](/202609/15/2609.14203v1-trace-norm-overlaps-of-quantum-states-interpolation-equality-and-data-processing-rigidity)  
+5. [Does Deeper Reasoning Compromise Alignment? Revealing and Mitigating of Alignment Collapse in Large Reasoning Models](/202609/16/2609.08186v1-does-deeper-reasoning-compromise-alignment-revealing-and-mitigating-of-alignment-collapse-in-large-reasoning-models)  
    标签：评分：6.3/10
+   evidence：检索回退候选
+6. [SmartANN: Object Causal Modeling Boosts Approximate Nearest Neighbor Diagnosis and Auto-Design](/202609/16/2609.08240v1-smartann-object-causal-modeling-boosts-approximate-nearest-neighbor-diagnosis-and-auto-design)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+7. [zScore-N: A Neural Network for On-Chain Wallet Reputation Scoring](/202609/16/2609.08247v1-zscore-n-a-neural-network-for-on-chain-wallet-reputation-scoring)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+8. [Light-facilitated ferroelectric switching in wurtzite crystals](/202609/16/2609.08270v1-light-facilitated-ferroelectric-switching-in-wurtzite-crystals)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+9. [Knots, black holes, databases, and birthdays: Collision entropy of knot invariants](/202609/16/2609.08298v1-knots-black-holes-databases-and-birthdays-collision-entropy-of-knot-invariants)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+10. [Prescribed Abscissae on Congruent-Number Curves over Simplest Cubic Fields](/202609/16/2609.08398v1-prescribed-abscissae-on-congruent-number-curves-over-simplest-cubic-fields)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Generalized Similarity Theory for Plasmas](/202609/16/2609.08413v1-generalized-similarity-theory-for-plasmas)  
+   标签：评分：6.0/10
    evidence：检索回退候选
 
 
