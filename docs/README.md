@@ -6,57 +6,54 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-18
-- 运行时间：2026-09-19 05:14:13 UTC+8
+- 最新运行日期：2026-09-19
+- 运行时间：2026-09-20 05:32:13 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《EviRCA: Decoupling Evidence Extraction from Reasoning for Microservice Root-Cause Analysis》（8.1/10）
-- 速读：《A Square-Root Barrier to Quantum Gate Speed under Linear Coupling》（7.4/10）, 《The Three Gates: A Rooted-Operator Approach to Weil Positivity》（7.4/10）, 《Exact Hairy Black Holes in Higher-Curvature Scalar--Tensor Gravity》（6.3/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Machine-Learning Exploration of Defect Topologies and Thermodynamic Stability in Graphene with Atomic Vacancies》（6.3/10）, 《Perturbation Theory for Translating Oblate-Spheroidal Droplets with Internal Circulation》（6.2/10）, 《Skein theory and deformations》（6.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/18/README](/202609/18/README)
+- 详情：[/202609/19/README](/202609/19/README)
 
 ### 精读区论文标签
-1. [EviRCA: Decoupling Evidence Extraction from Reasoning for Microservice Root-Cause Analysis](/202609/18/2609.19825v1-evirca-decoupling-evidence-extraction-from-reasoning-for-microservice-root-cause-analysis)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [A Square-Root Barrier to Quantum Gate Speed under Linear Coupling](/202609/18/2609.19280v1-a-square-root-barrier-to-quantum-gate-speed-under-linear-coupling)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-2. [The Three Gates: A Rooted-Operator Approach to Weil Positivity](/202609/18/2609.20367v1-the-three-gates-a-rooted-operator-approach-to-weil-positivity)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-3. [Exact Hairy Black Holes in Higher-Curvature Scalar--Tensor Gravity](/202609/18/2609.17679v1-exact-hairy-black-holes-in-higher-curvature-scalar--tensor-gravity)  
+1. [Machine-Learning Exploration of Defect Topologies and Thermodynamic Stability in Graphene with Atomic Vacancies](/202609/19/2609.19191v1-machine-learning-exploration-of-defect-topologies-and-thermodynamic-stability-in-graphene-with-atomic-vacancies)  
    标签：评分：6.3/10
    evidence：检索回退候选
-4. [Monodromy Eigenvectors for Difference Equations with Root-of-Unity Step](/202609/18/2609.17742v1-monodromy-eigenvectors-for-difference-equations-with-root-of-unity-step)  
+2. [Perturbation Theory for Translating Oblate-Spheroidal Droplets with Internal Circulation](/202609/19/2609.19193v1-perturbation-theory-for-translating-oblate-spheroidal-droplets-with-internal-circulation)  
    标签：评分：6.2/10
    evidence：检索回退候选
-5. [Taylor Diagram and Wasserstein Distance for Model Evaluation](/202609/18/2609.17950v1-taylor-diagram-and-wasserstein-distance-for-model-evaluation)  
+3. [Skein theory and deformations](/202609/19/2609.19329v1-skein-theory-and-deformations)  
    标签：评分：6.2/10
    evidence：检索回退候选
-6. [Involution and Commutator Length in PU(n,1)](/202609/18/2609.17957v1-involution-and-commutator-length-in-pun1)  
+4. [Well-posedness of neural turbulence closures and tangent dissipation](/202609/19/2609.19647v1-well-posedness-of-neural-turbulence-closures-and-tangent-dissipation)  
    标签：评分：6.1/10
    evidence：检索回退候选
-7. [Generating Functions and the Minimum Spectral Radius in Strongly Connected Digraphs with $m+2$ Edges](/202609/18/2609.18367v1-generating-functions-and-the-minimum-spectral-radius-in-strongly-connected-digraphs-with-m2-edges)  
+5. [Bounds for Codimension-One Components of Zero Loci of Bernstein-Sato Ideals](/202609/19/2609.19869v1-bounds-for-codimension-one-components-of-zero-loci-of-bernstein-sato-ideals)  
    标签：评分：6.1/10
    evidence：检索回退候选
-8. [How Much Hyperspectral Information Does Chlorophyll Retrieval Really Need?](/202609/18/2609.18531v1-how-much-hyperspectral-information-does-chlorophyll-retrieval-really-need)  
+6. [Graph-Based Stochastic Power-UCT: Monte-Carlo Graph Search with Power Mean Estimation](/202609/19/2609.19956v1-graph-based-stochastic-power-uct-monte-carlo-graph-search-with-power-mean-estimation)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [Almost Linear Universal Point Sets for Planar Graphs](/202609/18/2609.10916v1-almost-linear-universal-point-sets-for-planar-graphs)  
+7. [Bridging Vision Foundation Model Priors with CLIP for Spatial-aware Few-shot Anomaly Detection in Medical Images](/202609/19/2609.12454v1-bridging-vision-foundation-model-priors-with-clip-for-spatial-aware-few-shot-anomaly-detection-in-medical-images)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [Deterministic and Random Bipartite Matching on General Networks: Convex Flow Reformulation, Asymptotic Properties, and Fast Algorithms](/202609/18/2609.10938v1-deterministic-and-random-bipartite-matching-on-general-networks-convex-flow-reformulation-asymptotic-properties-and-fast-algorithms)  
+8. [An Ultra-Widefield Swept-Source OCTA Dataset and a Polar-Gated Mamba Network for Retinal Vessel Segmentation](/202609/19/2609.12574v1-an-ultra-widefield-swept-source-octa-dataset-and-a-polar-gated-mamba-network-for-retinal-vessel-segmentation)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [Effective estimates for exponential sums with multiplicative coefficients](/202609/18/2609.11070v1-effective-estimates-for-exponential-sums-with-multiplicative-coefficients)  
+9. [Beyond Accuracy: Uncertainty-Guided Boundary Refinement for Reliable Biomedical Image Segmentation](/202609/19/2609.12892v1-beyond-accuracy-uncertainty-guided-boundary-refinement-for-reliable-biomedical-image-segmentation)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Unified CT and MRI Pancreas Segmentation for Label-Efficient Cross-Modality Subregion Transfer](/202609/19/2609.13043v1-unified-ct-and-mri-pancreas-segmentation-for-label-efficient-cross-modality-subregion-transfer)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [A Voxel-Spacing-Aware Extension of PyRadiomics for Anisotropic Texture Analysis](/202609/19/2609.14103v1-a-voxel-spacing-aware-extension-of-pyradiomics-for-anisotropic-texture-analysis)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
