@@ -1,0 +1,786 @@
+Title: Square Root Gauss-Newton iLQR
+
+URL Source: https://arxiv.org/pdf/2609.21053v1
+
+Published Time: Mon, 21 Sep 2026 00:12:42 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Square Root Gauss-Newton iLQR 
+
+Maximilian Haas-Heger and Jur van den Berg 
+
+Waabi Innovation Inc. 
+
+Abstract. The iterative Linear Quadratic Regulator (iLQR) is a widely used algorithm for nonlinear trajectory optimization. At each iteration, it solves a local linear-quadratic approximation of the problem via dy-namic programming, propagating a quadratic cost-to-go function. If the Hessian of the cost-to-go approximation is positive-semidefinite, one can derive a square root formulation of iLQR that propagates its Cholesky factor instead. This offers significant numerical advantages—much as square root Kalman filters improve upon their conventional counter-parts—particularly when iLQR is used within an augmented Lagrangian framework for handling constraints, where large penalties degrade con-ditioning. Previous square root formulations of iLQR and related al-gorithms exist, but they are either numerically suboptimal, algorithmi-cally complex, or both. In this paper, we show that the key to an effec-tive square root formulation lies in the Gauss-Newton (weighted least-squares) structure of the cost function: this yields a positive semidefi-niteness property that extends beyond the Hessian to the full augmented cost-to-go matrix, and enables a backward pass of remarkable simplicity in which each step reduces to a single QR-decomposition, from which the feedback gain and propagated Cholesky factor are extracted directly. 
+
+# 1 Introduction 
+
+Trajectory optimization—the problem of finding a sequence of controls that steers a dynamical system along a low-cost path—is a cornerstone of robotics, autonomous driving, and aerospace planning. When the dynamics are linear and the cost is quadratic with positive-(semi)definite Hessians, the problem can be solved exactly with a Linear Quadratic Regulator (LQR). In general, how-ever, the dynamics are nonlinear and the cost is non-quadratic, and we must resort to iterative methods. The most general such approach is differential dy-namic programming (DDP) [13], in which a full second-order expansion of the action-value function is performed in each step. The iterative Linear Quadratic Regulator (iLQR) [14, 21] closely resembles DDP but applies a Gauss-Newton simplification by linearizing the dynamics instead [16, 17]. The key idea behind iLQR is conceptually simple: given a current candidate trajectory, linearize the dynamics and quadratize the cost around that trajectory, solve the resulting linear-quadratic subproblem exactly, and then use the solution to obtain an improved trajectory. This process repeats until convergence. The linear-quadratic subproblem itself is solved efficiently via dynamic programming :starting from the end of the trajectory and working backward, the algorithm arXiv:2609.21053v1 [math.OC] 17 Sep 2026 2 Maximilian Haas-Heger, Jur van den Berg 
+
+computes a quadratic cost-to-go (or value) function for each time step, along with a locally optimal linear feedback policy. In standard LQR, the Hessian of the value function is positive-semidefinite 
+
+(like the covariance matrix is in a Kalman filter). This property applies to iLQR as well if the cost is expressed as a weighted sum of squared residuals . The Gauss-Newton nature of iLQR can then be extended to the cost function by linearizing the residuals rather than quadratizing the cost as a whole [7, 8, 17]. This not only further simplifies the algorithm, but also enables the formulation of a square root version of iLQR that—analogous to a square root Kalman filter [2, 3]—propagates the Cholesky factor of the cost-to-go Hessian rather than the matrix itself. This offers significant numerical advantages, particularly in poorly conditioned problems and where the available precision is limited, as representing the cost-to-go via its Cholesky factor roughly doubles the effective precision [4] and guarantees numerical positive-semidefiniteness by construction. The square root formulation becomes especially valuable when iLQR is com-bined with an augmented Lagrangian framework for handling constraints. In this setting, constraint violations are penalized by squared residual terms weighted by a large penalty parameter μ that widen the eigenvalue spread in the cost-to-go matrices and degrade the conditioning of iLQR. The square root formulation mitigates this directly, as it operates on Cholesky factors whose condition num-bers scale with √μ rather than μ.Whereas square root versions of the Kalman filter have enjoyed widespread adoption (including its storied implementation aboard the Apollo spacecraft) [3, 10], they have gained relatively limited traction within the context of iLQR. This is somewhat surprising, as linear-quadratic estimation and control are in many ways each other’s dual [22]. The work of [7] suggests a square root version of DDP, also with sum-of-squares cost functions, that propagates a non-triangular square root of the value function whose dimension grows with each time step, and from which the control policy is extracted using a pseudo-inverse. Square root techniques have also been proposed for solvers of algebraic Riccati equa-tions [4–6], which are closely related to linear-quadratic control, and for the Riccati differential equation [20], where numerical integration can cause loss of symmetry or positive-definiteness. Perhaps the most direct attempt at creating a (triangular) square root formulation of iLQR is that of [12], which also applies iLQR within an augmented Lagrangian framework. The approach is subopti-mal, however, both numerically and in terms of complexity, as it requires three separate QR-decompositions and a series of rank-one “downdates” per time step. In this paper, we present a square root iLQR approach that avoids these shortcomings. We exploit an underappreciated benefit of the Gauss-Newton ap-proximation in that not only the Hessian but the full augmented matrix of the cost-to-go function is positive-semidefinite. This enables a square root backward pass of remarkable simplicity and elegance: each step reduces to performing a sin-gle QR-decomposition, from which the feedback gain and propagated Cholesky factor are extracted directly. We will demonstrate the effectiveness and robust-ness of our square root iLQR implementation using numerical experiments. Square Root Gauss-Newton iLQR 3
+
+# 2 Problem Formulation 
+
+Consider a discrete-time dynamical system whose evolution is governed by: 
+
+xt+1 = ft(xt, ut), (1) where xt ∈ Rn is the state (e.g., position, velocity, orientation of a robot) and 
+
+ut ∈ Rm is the control input (e.g., acceleration, steering) at time t. The function 
+
+ft encodes how the system transitions from one state to the next given a control. Our goal is to choose a sequence of controls u0, . . . , uℓ−1 over a horizon of ℓ
+
+steps that minimizes the total cost: minimize cℓ(xℓ) + 
+
+> ℓ−1
+
+X
+
+> t=0
+
+ct(xt, ut) (2) subject to xt+1 = ft(xt, ut), x0 = x⋆
+
+> 0
+
+,
+
+where the states x0, . . . , xℓ are determined by the given initial state x⋆ 
+
+> 0
+
+and the chosen controls through the dynamics function ft. Here, ct(xt, ut) is the running cost incurred at time t (e.g., penalizing deviation from a desired path or excessive control effort), and cℓ(xℓ) is the terminal cost that applies to the final state. In this paper, we focus on cost functions of the weighted least-squares form: 
+
+ct(xt, ut) = 12 rt(xt, ut)T Wtrt(xt, ut), Wt ≻ 0, (3) 
+
+cℓ(xℓ) = 12 rℓ(xℓ)T Wℓrℓ(xℓ), Wℓ ≻ 0. (4) where Wt ∈ Rk×k is a positive-definite weight matrix and rt ∈ Rk is a vector of 
+
+residuals . In practice, many trajectory optimization objectives can be expressed in this form [7, 8]. A problem of this type can generally be expressed in terms of the Bell-man equation, which recursively defines a value function (or cost-to-go function) 
+
+vt(xt) that represents the minimum future cost achievable starting from state 
+
+xt at time t. For the final stage ℓ, we have: 
+
+vℓ(xℓ) = cℓ(xℓ), (5) and then backward in time for t = ℓ − 1, . . . , 0: 
+
+qt(xt, ut) = ct(xt, ut) + vt+1 (ft(xt, ut)) , (6) 
+
+πt(xt) = argmin 
+
+> ut
+
+qt(xt, ut), (7) 
+
+vt(xt) = min 
+
+> ut
+
+qt(xt, ut) = qt(xt, π t(xt)) . (8) The intermediate functions qt and πt have natural interpretations: qt(xt, ut) is the action-value function, which represents the cost of taking action ut in state 
+
+xt and then acting optimally thereafter. The function πt(xt) is the policy , which gives the optimal action to take at time t given the state xt.4 Maximilian Haas-Heger, Jur van den Berg 
+
+# 3 Standard Gauss-Newton iLQR 
+
+The iLQR algorithm assumes that we are given a current nominal trajectory 
+
+consisting of states x⋆
+
+> 0
+
+, . . . , x⋆ℓ and controls u⋆
+
+> 0
+
+, . . . , u⋆ℓ−1 that satisfies the dy-namics constraint, i.e., x⋆t+1 = ft(x⋆t , u⋆t ), for all t. We work in terms of small deviations from this trajectory: 
+
+δxt = xt − x⋆t , δut = ut − u⋆t . (9) The algorithm repeatedly performs two passes over the trajectory: 1. Backward pass. Starting from the terminal state and moving backward in time, locally approximate the dynamics and each residual vector as linear around the current trajectory, and solve the resulting linear-quadratic sub-problem via dynamic programming. This produces a linear feedback policy at each step. 2. Forward pass. Starting from the initial state, simulate the system forward using the linear feedback policy to obtain a new, improved trajectory. These two passes alternate until the trajectory converges. 
+
+3.1 Local approximations 
+
+In iLQR the dynamics and cost are approximated as linear and quadratic func-tions, respectively, around the current nominal trajectory. 
+
+Dynamics linearization: We linearize the dynamics around the nominal trajectory as ft(xt, ut) ≈ ft(x⋆t , u⋆t ) + ∇xft δxt + ∇uft δut. Recognizing that 
+
+ft(xt, ut) − ft(x⋆t , u⋆t ) = xt+1 − x⋆t+1 = δxt+1 , we can write this succinctly as: 
+
+δxt+1 
+
+1
+
+
+
+≈ Ft
+
+
+
+δut
+
+δxt
+
+1
+
+ , Ft =
+
+∇uft ∇xft 00T 0T 1
+
+ 
+
+> x⋆t,u⋆t
+
+, (10) where Ft is a matrix of Jacobians evaluated at the nominal trajectory. 
+
+Cost quadratization: The running cost is approximated as a quadratic function around the nominal trajectory: 1
+
+ct(xt, ut) ≈ 12
+
+δut
+
+δxt
+
+1
+
+
+
+> T
+
+Ct
+
+δut
+
+δxt
+
+1
+
+ , cℓ(xℓ) ≈ 12
+
+δxℓ
+
+1
+
+T
+
+Cℓ
+
+δxℓ
+
+1
+
+
+
+. (11) Rather than quadratizing the cost directly, i.e. expanding ct to second order, the Gauss-Newton version of iLQR approximates the residual vector rt linearly: 
+
+rt(xt, ut) ≈ Rt
+
+
+
+δut
+
+δxt
+
+1
+
+ , rℓ(xℓ) ≈ Rℓ
+
+δxℓ
+
+1
+
+
+
+, (12)  
+
+> 1
+
+Appending a “1” to the state vector lets a quadratic with linear and constant terms be written as a single matrix expression. We call the matrix involved an augmented matrix , and denote such matrices by majuscule bold symbols throughout. Square Root Gauss-Newton iLQR 5
+
+with Jacobians and residual values evaluated at the nominal trajectory: 
+
+Rt = ∇urt ∇xrt rt
+
+ 
+
+> x⋆t,u⋆t
+
+, Rℓ = ∇xrℓ rℓ
+
+ 
+
+> x⋆ℓ,u⋆ℓ
+
+. (13) Substituting Eq. (12) into Eq. (3) and comparing with Eq. (11) gives: 
+
+Ct = RTt WtRt ⪰ 0, (14) which is positive-semidefinite by construction. 
+
+3.2 Backward pass 
+
+Given linear dynamics and quadratic cost, the cost-to-go function vt as defined in Eqs. (5)–(8) and policy πt as defined in Eq. (7) are quadratic and linear, respectively, for all t, and can be explicitly evaluated in closed-form. Let the (approximate) value function be defined relative to the nominal trajectory as: 
+
+vt(xt) ≈ 12
+
+δxt
+
+1
+
+T
+
+St
+
+δxt
+
+1
+
+
+
+, St =
+
+Sxx sx
+
+sT 
+
+> x
+
+s
+
+
+
+, (15) where Sxx approximates the Hessian of the cost-to-go function, sx its gradient, and s encodes twice its value at the nominal trajectory. Then initially, for t = ℓ,since the terminal cost is approximated by a quadratic function as well (see Eq. (11) and Eq. (14)), we have, following Eq. (5): 
+
+Sℓ = RTℓ WℓRℓ ⪰ 0. (16) From this starting point, the algorithm steps backward in time, computing πt
+
+(as defined in Eq. (7)) and vt for each t = ℓ − 1, . . . , 0. Combining the cost-to-go function of time t+1 with the local approximations of time t, we obtain the action-value function at time t as defined in Eq. (6): 
+
+qt(xt, ut) = 12
+
+
+
+δut
+
+δxt
+
+1
+
+
+
+> T
+
+Qt
+
+
+
+δut
+
+δxt
+
+1
+
+ , Qt =
+
+
+
+Quu Qux qu
+
+QT 
+
+> ux
+
+Qxx qx
+
+qT 
+
+> u
+
+qT 
+
+> x
+
+q
+
+ , (17) where the matrix Qt is obtained by substituting the linearized dynamics of Eq. (10) into the cost-to-go function of time t+1 (Eq. (15)) and adding the immediate cost of the current time step (Eq. (11) and Eq. (14)): 
+
+Qt = RTt WtRt + F Tt St+1 Ft ⪰ 0. (18) To find the optimal control, we minimize qt over δut (see Eq. (7)). Since qt
+
+is quadratic, we can do so in closed form if Quu ≻ 0; Section 3.4 discusses what guarantees this. Solving ∂q t/∂δ ut = 0 gives: 
+
+δut = −Q−1
+
+> uu
+
+Qux qu
+
+ δxt
+
+1
+
+
+
+= −Lt
+
+δxt
+
+1
+
+
+
+, Lt = Q−1
+
+> uu
+
+Qux qu
+
+ , (19) 6 Maximilian Haas-Heger, Jur van den Berg 
+
+where Lt is the feedback gain matrix defining the (locally) optimal policy πt.Substituting the optimal δut back into Eq. (17) eliminates the control and gives the updated cost-to-go function at time t (see Eqs. (8) and (15)) with: 
+
+St =
+
+Qxx qx
+
+qT 
+
+> x
+
+q
+
+
+
+− LTt Quu Lt ⪰ 0. (20) This is the well-known Riccati recursion . The subtraction of LTt Quu Lt ⪰ 0 repre-sents the cost reduction achieved relative to the nominal trajectory by choosing controls optimally. The recursion continues until S0 has been computed. 
+
+3.3 Forward pass 
+
+Once the backward pass is complete, we have a feedback policy Lt for all t. The forward pass simulates the system from the given initial state x0 ← x⋆ 
+
+> 0
+
+using: 
+
+ut ← u⋆t − Lt
+
+xt − x⋆t
+
+α
+
+
+
+, xt+1 ← ft(xt, ut), (21) where α ∈ (0 , 1] is a step-size parameter. When α = 1, the full policy of the linear-quadratic subproblem is applied, while α = 0 yields the current trajectory; any value in between effectively interpolates between these two extremes. Let j(α) be the total cost of the trajectory resulting from the choice of α, and let j⋆ = j(0) be the total cost of the current nominal trajectory. A backtracking line search selects α by starting from α = 1 and halving it until the Armijo-Goldstein sufficient-decrease condition is satisfied [15]: 
+
+j(α) − j⋆ ≤ β α d, (22) where β ∈ (0 , 12 ] and d = dj/dα |α=0 . The value d < 0 equals twice the cost change predicted by the linear-quadratic model, 2 and is obtained in the backward pass by taking the sum over all t of the bottom-right entry of the matrix −LTt Quu Lt
+
+(see Eq. (20)). 3 The resulting trajectory becomes the new nominal, and the alternation of backward and forward passes continues until | 12 d/j ⋆| falls below a specified tolerance, indicating that the optimization has converged. 
+
+3.4 Advantages of the Gauss-Newton Approach 
+
+The Gauss-Newton specialization carries several important advantages over work-ing with general cost functions: 1. No second derivatives. The approach requires only first derivatives (Ja-cobians) of the residual functions, not second derivatives of the cost.              
+
+> 2This follows because the change in cost under the linear-quadratic model is a quadratic function of αthat attains its minimum at α= 1.
+> 3Were the constant term of the quadratized cost—the bottom-right entry of Ct—set to zero, this same value would accumulate in the entry sof Stand could be extracted from S0.Square Root Gauss-Newton iLQR 7
+
+2. Positive-semidefiniteness by construction. Since Ct = RTt WtRt with 
+
+Wt ≻ 0, the augmented matrix Ct is positive-semidefinite automatically. No regularization is needed. Moreover, the elements of Ct encoding the gradients and value are exact. 3. The full augmented cost-to-go matrix is positive-semidefinite. Since 
+
+Ct ⪰ 0 and St+1 ⪰ 0 implies F Tt St+1 Ft ⪰ 0, their sum Qt = Ct +
+
+F Tt St+1 Ft ⪰ 0 (Eq. (18)). In turn, St is the Schur complement of Quu ≻ 0in Qt ⪰ 0, so St ⪰ 0 as well. Since Sℓ = Cℓ ⪰ 0, the argument applies by induction to all t. This property—positive-semidefiniteness of the full aug-mented cost-to-go matrix, not just its Hessian block—is the key enabler of the square root formulation that follows in Section 4. The one prerequisite this structure does not supply is Quu ≻ 0. Here Cuu =
+
+∇T 
+
+> u
+
+rt Wt∇urt, which is positive-definite exactly when the Jacobian ∇urt ∈
+
+Rk×m has full column rank—possible only if k ≥ m—and we impose this as a requirement on the residual functions. It is a mild one in practice, as a strictly positive cost on every control channel suffices. Let us take a closer look at how the Gauss-Newton approach creates a positive-semidefinite approximation of the true Hessians of the running cost functions. For a cost of the form c(z) = 12 r(z)T W r(z), the true Hessian is: 
+
+∇2
+
+> zz
+
+c = ∇T 
+
+> z
+
+r W ∇zr + ( W r) · ∇ 2
+
+> zz
+
+r. (23) The Gauss-Newton approximation retains only the first term. This is why it is particularly effective when either the residuals are small (making W r ≈ 0) or the residual functions are nearly linear (making ∇2
+
+> zz
+
+r ≈ 0). This is also what sets the formulation apart from the usual ones. With general cost functions Quu 
+
+is positive-definite only near an optimum, and iLQR variants force positivity by Levenberg-Marquardt regularization of Quu [14, 12, 21] or of Sxx [19], by setting Quu = I [16], or by clamping negative eigenvalues to obtain the nearest positive-semidefinite Hessian [11, 18]. Regularizing Quu alone, however, leaves the cost-to-go Hessians Sxx indefinite in general, and that precludes a square root formulation outright: an indefinite matrix has no real Cholesky factor. 
+
+# 4 Square Root iLQR 
+
+The Gauss-Newton cost structure guarantees that the augmented matrices St
+
+and Qt are positive-semidefinite for all t. This is what makes a square root formulation possible. Instead of propagating St, the algorithm propagates an upper-triangular Cholesky factor √St satisfying √St T√St = St, whose condition number equals the square root of that of St, roughly doubling the number of reliable significant digits. In the backward pass of square root iLQR we wish to compute √St and Lt
+
+given pSt+1 . The derivation proceeds in two steps. First, we show that √St ap-pears as the bottom-right block of the Cholesky factor √Qt of Qt. Then, we show how to compute √Qt directly from available inputs using a QR-decomposition, without ever explicitly constructing Qt or any other squared matrix. 8 Maximilian Haas-Heger, Jur van den Berg 
+
+4.1 Cholesky factorization of Q t
+
+Any positive-definite matrix Q ≻ 0 has a unique (up to sign conventions on the diagonal) upper-triangular Cholesky factor √Q such that Q = √Q T√Q. If Q is partitioned into two-by-two blocks, its Cholesky factor is given by: 
+
+Q =
+
+Q00 Q01 
+
+QT 
+
+> 01
+
+Q11 
+
+
+
+, pQ =
+
+"√Q00 
+
+√Q00  
+
+> −T
+
+Q01 
+
+0
+
+q
+
+Q11 − QT
+
+> 01
+
+Q−100 Q01 
+
+#
+
+. (24) The bottom-right entry involves Q11 −QT
+
+> 01
+
+Q−100 Q01 , the Schur complement of Q00 
+
+in Q. For the matrix Qt as defined in Eq. (17), partitioned with Q00 conformal to Quu , this Schur complement is precisely St as given by Eq. (20). If we let √Qt =  U00 U01  
+
+> 0U11
+
+, then by Eq. (19) and Eq. (20) the blocks are: 
+
+U00 = pQ00 = pQuu , (25) 
+
+U01 = pQ00 
+
+> −T
+
+Q01 = pQ00 Q−100 Q01 = pQuu Lt, (26) 
+
+U11 =
+
+q
+
+Q11 − QT
+
+> 01
+
+Q−100 Q01 = pSt. (27) Thus, the Cholesky factorization of Qt becomes: 
+
+Qt = pQtTpQt, pQt =
+
+√Quu 
+
+√Quu Lt
+
+0 √St
+
+
+
+. (28) In other words, the quantities we seek— √St and Lt—are encoded directly in the Cholesky factor √Qt of Qt. The remaining question is how to compute this Cholesky factor from square root inputs without forming any squared matrix. 
+
+4.2 Computing √Qt via QR-decomposition 
+
+The second key fact underpinning square root iLQR is that if we can construct an alternative factorization Qt = M T M of Qt for some matrix M , then the Cholesky factor √Qt can be obtained directly from the QR-decomposition of 
+
+M . The QR-decomposition of a matrix M ∈ Ra×b (a ≥ b) produces a semi-orthogonal matrix Q ∈ Ra×b (QT Q = I) and an upper-triangular matrix U ∈
+
+Rb×b such that M = QU [9]. Since Q is semi-orthogonal, we have M T M =
+
+U T QT QU = U T U . Thus, if Qt = M T M , then by definition U is the Cholesky factor √Qt, as it is upper-triangular and satisfies U T U = Qt.Such an alternative factorization of Qt can in fact be constructed straight-forwardly. Substituting Eq. (14) into Eq. (18) gives Qt = RTt WtRt + F Tt St+1 Ft,which can be rewritten as: 
+
+Qt = M Tt Mt, Mt =
+
+ √Wt RtpSt+1 Ft
+
+
+
+. (29) Hence, the QR-decomposition of Mt yields √Qt directly, without ever ex-plicitly constructing Qt. Since QR-decomposition operates via orthogonal trans-formations (typically Householder reflections) that preserve norms and do not Square Root Gauss-Newton iLQR 9
+
+amplify rounding errors, computing √Qt this way is numerically superior to ex-plicitly computing M Tt Mt and then factoring it using a Cholesky decomposition. Moreover, QR-factorization can robustly produce Cholesky factors of posi-tive-semidefinite matrices (such as Qt). The Cholesky factor is not unique in that case, but this does not affect the correctness of square root iLQR: Consider √Qt as partitioned in Eq. (28). Since Quu ≻ 0, the blocks in the top row will be unique. The bottom-right block √St may not be unique as St ⪰ 0, but it will be a faithful Cholesky factor of St in the sense that it is upper-triangular and that √St T√St = St.Note, lastly, that we do not use the Q-factor of the QR-factorization. This allows for a particularly efficient “Q-less” implementation that requires (for a ≥
+
+b) only ∼ 2ab 2 − 23 b3 floating-point operations (omitting sub-cubic terms) [9]. 
+
+4.3 Summary 
+
+Since Mt is constructed from available inputs only (including pSt+1 ), and √Qt
+
+contains the quantities we seek ( √St and Lt), each step of the backward pass in square root iLQR reduces to executing the following three simple steps: 1. Construct matrix Mt as defined in Eq. (29) using pSt+1 (and other inputs). 2. Compute the upper-triangular matrix 
+
+U = pQt =
+
+U00 U01 
+
+0 U11 
+
+
+
+(30) through the (Q-less) QR-decomposition of Mt.3. Extract Lt and √St from U , partitioned as in Eq. (28): 
+
+Lt ← U −100 U01 , pSt ← U11 , (31) where back-substitution can be used for the left-multiplication by U −100 .The backward pass is initialized by setting √Sℓ. By Eq. (16), Sℓ = M Tℓ Mℓ
+
+with Mℓ = √Wℓ Rℓ, so √Sℓ follows directly from the QR-factorization of Mℓ.The forward pass is exactly as in Section 3.3, with the difference that the value −d > 0 can be obtained by summing the squared length of the rightmost column of U01 over all time steps during the square root backward pass. 4
+
+4.4 Computational complexity 
+
+The relationship between standard and square root iLQR mirrors the clas-sical tradeoff between the normal equations and QR-decomposition in linear                         
+
+> 4Evaluating the inequality of Eq. (22) requires computing the difference j(α)−j⋆
+> of two potentially large numbers, which can cause catastrophic cancellation. By recognizing that the total cost of a trajectory is of the form j=12∥j∥2, where j
+> is the vector that stacks [ √Wtrt(xt,ut)] for all t, this difference can be computed accurately as j(α)−j⋆=12(j(α) + j⋆)·(j(α)−j⋆). 10 Maximilian Haas-Heger, Jur van den Berg
+
+least squares. A careful accounting of floating-point operations per backward-pass step—taking into account symmetry and triangularity—yields the following (omitting sub-cubic terms), where k, m, and n are the dimensions of the residual, control, and state, respectively: Square root iLQR: ∼ 2k(m + n)2 + 73 n3 + 3 mn 2 + m2n − 23 m3, (32) Standard iLQR: ∼ k(m + n)2 + 3 n3 + 5 mn 2 + 2 m2n + 13 m3. (33) The leading k-dependent term doubles, so the overhead of square root iLQR is at most a factor of 2—the classic price of QR over normal equations [9]. The remaining terms, however, are smaller, and the two methods break even when 
+
+k = m3 + m2n + 2 mn 2 + 23 n3
+
+(m + n)2 . (34) For m = n, this crossover occurs at k = 76 n, i.e., close to the minimum residual dimension k = m required by the full-rank condition on ∇urt. In practice the overhead is modest for problems where k is on the order of m+n: on the bimanual manipulation problem of Section 6 a complete trajectory optimization is within 3% of the standard solver on a 3 .0 GHz Xeon E5-2687W v4. 
+
+# 5 Constrained iLQR 
+
+In many practical applications, the trajectory must satisfy additional constraints beyond the dynamics in order to, for example, avoid collisions or respect actuator limits. An effective approach to handling constraints in iLQR is the augmented Lagrangian method [12], which converts the constrained problem into a sequence of unconstrained problems [1]. We extend the trajectory optimization problem of Eq. (2) by adding inequality constraints at each time step: minimize cℓ(xℓ) + 
+
+> ℓ−1
+
+X
+
+> t=0
+
+ct(xt, ut)subject to xt+1 = ft(xt, ut), x0 = x⋆
+
+> 0
+
+, gt(xt, ut) ≤ 0, (35) where gt(xt, ut) ∈ Rp is a vector of p inequality constraints at time step t.The augmented Lagrangian approach converts constraints into cost terms by introducing Lagrange multipliers λt ∈ Rp and a penalty parameter μ > 0. At each stage t, we form the augmented cost c+ 
+
+> t
+
+:
+
+c+ 
+
+> t
+
+(xt, ut) = μ
+
+2 ∥max {0, λt/μ + gt(xt, ut)}∥ 2 , (36) and this is simply added to the original running cost ct at each time step. Equal-ity constraints ht(xt, ut) = 0 can be handled analogously by omitting the max-imization with zero (i.e., treating the constraints as always active). The optimization proceeds as an outer–inner loop that repeats until the con-straints are satisfied to within a desired tolerance: Square Root Gauss-Newton iLQR 11 
+
+1. Inner loop. Run iLQR to convergence on the unconstrained problem with the augmented cost ct + c+ 
+
+> t
+
+, treating λt and μ as constants. 2. Outer loop. Update the Lagrange multipliers and increase the penalty: 
+
+λt ← max {0, λt + μgt(xt, ut)}, μ ← ϕ μ (ϕ > 1) . (37) The penalty term of Eq. (36) is a weighted square, and therefore the Gauss-Newton formulation applies directly. We linearize the constraint function gt and form the cost Hessian from Jacobians alone, yielding the approximation: 
+
+c+ 
+
+> t
+
+(xt, ut) ≈ μ
+
+2
+
+δut
+
+δxt
+
+1
+
+
+
+> T
+
+GTt DtGt
+
+δut
+
+δxt
+
+1
+
+, Gt = ∇ugt ∇xgt λt/μ +gt
+
+ 
+
+> x⋆t,u⋆t
+
+,
+
+where Dt = diag( λt/μ +gt(x⋆t , u⋆t ) > 0) ⪰ 0 is a diagonal and idempotent matrix with a 0 or 1 on the diagonal for each constraint indicating whether it is active. The resulting augmented cost matrix is positive-semidefinite by construction: 
+
+Ct = RTt WtRt + μG Tt DtGt ⪰ 0. (38) The square root backward pass of Section 4 therefore applies unchanged but for one additional row block in Mt:5
+
+Qt = M Tt Mt, Mt =
+
+
+
+√Wt Rt
+
+√μ D tGtpSt+1 Ft
+
+ , (39) and correspondingly Mℓ =  √Wℓ Rℓ√μ D ℓGℓ
+
+ for the initialization. The augmented Lagrangian framework is effective but introduces a tension with numerical precision. The larger the penalty parameter μ, the faster the outer loop converges [1]—but since μ enters as a weight in the cost Hessian, the eigenvalues of the cost-to-go matrix St scale with μ, while eigenvalues associated with the unconstrained objectives remain at their original magnitudes. This re-sults in a large condition number for the matrix St, and may cause swamping or cancellation in the repeated matrix manipulations within the backward pass. In practice, rounding first erodes the accuracy of the computed policy and then, once Quu is indefinite or singular, prevents the standard backward pass from pro-ducing a policy at all. It is against exactly this that the square root formulation of Section 4 is of benefit, and Section 6 measures by how much. 
+
+# 6 Numerical Experiments 
+
+We validate the practical benefits of square root iLQR on a constrained trajec-tory optimization problem within the augmented Lagrangian framework and its associated conditioning challenges.               
+
+> 5Note that Dtis symmetric and idempotent. So, DTtDt=D2
+> t=Dt.12 Maximilian Haas-Heger, Jur van den Berg
+> Fig. 1. Bimanual manipulation trajectory. Two 3-link arms transport a rigid object from the initial pose ( t= 0) to the goal at (0 ,1,0) (green rectangle), shown at four keyframes. This trajectory was obtained using square root Gauss-Newton iLQR within an augmented Lagrangian loop.
+
+Consider two planar 3-link robot arms that must cooperatively transport a rigid object from an initial pose to a goal pose (Fig. 1). Each arm has link lengths l = 0 .4 m, with bases at ( ±0.5, 0), and grips the object at a body-frame offset of ( ±0.15 , 0). The state x ∈ R6 consists of three joint angles per arm (n = 6), and the control u ∈ R6 consists of joint velocities. The dynamics are 
+
+xt+1 = xt + ∆t ut with ∆t = 0 .05 s over ℓ = 60 steps. The residual rt comprises a goal-tracking term at the terminal step and velocity-penalizing terms at every step. Since the object pose is recovered from the two grasp points, closing the kinematic chain needs only a single scalar equality constraint g(x) = 0, requiring the end-effectors to stay the correct distance apart, which we enforce via the augmented Lagrangian framework. The key practical advantage of square root iLQR emerges when the penalty parameter μ grows large. To isolate the effect of numerical conditioning from other convergence factors, we first solve the problem to convergence at mod-erate μ using the full augmented Lagrangian loop, obtaining a well-converged trajectory. We then evaluate a single backward pass at artificially elevated values of μ, comparing the feedback gain matrices Lt produced by each method against a reference. Both methods execute an identical sequence of operations in exact arithmetic, so any difference in Lt is pure numerical error. The value of μ here serves as a proxy for the condition numbers encountered among the cost-to-go matrices, which grow linearly in μ.Fig. 2 shows the relative error in feedback gains as a function of μ for four backward pass variants, all measured against a reference computed at 50 deci-mal digits of precision using Python’s mpmath library. All variants degrade with striking regularity, with the standard iLQR variants losing approximately one significant digit per decade of μ, and the square root variants losing significant digits at half that rate. This is consistent with the fact that Cholesky factors have condition numbers that are the square root of those of the full matrices. For the standard f64 variant (orange), barely two significant digits survive at 
+
+μ = 10 15 , and at μ = 10 16 the Cholesky decomposition of Quu fails outright. The square root f64 variant (blue) starts an order of magnitude closer to machine epsilon and still retains six to seven significant digits at μ = 10 20 . Repeating the experiment in f32 arithmetic confirms that the pattern is intrinsic to the formulation and not an artifact of f64: the two f32 curves reproduce the f64 Square Root Gauss-Newton iLQR 13            
+
+> Fig. 2. Maximum relative error max t∥Lt−L⋆t∥F/∥L⋆t∥Fin feedback gains for four backward pass variants, measured against a 50 decimal digit arbitrary-precision refer-ence L⋆tcomputed with Python’s mpmath library: the standard backward pass in f64 (orange), the square root backward pass in f64 (blue), the standard backward pass in f32 (red dash-dot), and the square root backward pass in f32 (green dashed).
+
+pair, slopes and low-μ separation alike, translated upward in error by roughly the eight decades that separate the two machine epsilons. The standard f32 pass (red dash-dot) consequently fails already at μ = 10 7.Whereas the standard variants fail for too large values of μ (the matrix Quu 
+
+becomes indefinite or singular), the square root variants degrade silently. They produce meaningless results when μ grows too large, as can be seen from the (green dashed) curve of the square root f32 variant for μ = 10 15 and upwards, without any indication of error. This is because numerical positivity is guar-anteed when using Cholesky factors (although they may still become singular). A health check comes free, however, since U00 = √Quu is already triangular. The squared ratio of its largest to its smallest diagonal magnitude bounds the condition number of Quu from below. Its smallest diagonal entry tends to zero exactly as ∇urt loses column rank. We flag a step once that entry falls below √ϵ
+
+times the largest, where ϵ is the machine epsilon; by that point half the available digits are gone. A flagged step can trigger regularization or early termination. The advantage of square root iLQR does not depend on problem size. A sec-ond problem supplies a size knob: a planar chain of N links unfurling toward a goal outside its circular workspace, with an inequality on each constrained tip that activates as that tip reaches the boundary. We swept three parame-ters, doubling each in turn at fixed arm length: the state and control dimension 14 Maximilian Haas-Heger, Jur van den Berg 
+
+(N = 4 to 32, four tips constrained), the horizon ( ℓ = 20 to 160, N = 16) and the number of constrained tips (4 to 32, on a 32-link chain). Absolute failure thresholds do move, by up to two decades over the dimension range. Both back-ward passes move together, however, so the margin between them survives: in every configuration the square root formulation buys five to six extra decades of 
+
+μ in f32. A single backward pass isolates round-off, but whether the added precision changes the outcome of a complete solve is a separate question. We ran the full augmented Lagrangian loop from 24 randomized initial trajectories with an f32 backward pass, tightening the constraint tolerance until each method failed. Both reach 10 −6; at 10 −7 the square root solver still succeeds from all 24 starts against 3, and at 10 −8 from all 24 against none, the successful runs agreeing on the same trajectory and final cost. In f64 the same divergence appears near 10 −11 . What the formulation buys is therefore not a better optimum but how much further the outer loop can be driven before the backward pass gives out, allowing as a result for much tighter constraint tolerances. 
+
+# 7 Discussion and Conclusion 
+
+Many trajectory optimization problems can be formulated with weighted sums-of-squares cost functions in practice, including those with (in)equality constraints as we have shown in this paper. For such problems, we have presented an el-egant and easy-to-implement square root formulation of Gauss-Newton iLQR that roughly doubles the effective numerical precision at negligible additional cost—under 3% of computation time over a complete solve. Our approach re-duces each step of the backward pass to computing a single QR-decomposition of a fixed-size matrix, and as such qualitatively improves upon previous square root iLQR variants [7, 12]. The authors believe that when it is applicable, there is no reason not to use the square root Gauss-Newton iLQR over standard Gauss-Newton iLQR, analogous to the fact that there are (almost) no downsides to using a square root Kalman filter over a standard one in any production system. The relative success of square root variants of the Kalman filter compared to square root variants of iLQR may be explained by the fact that when posed as an optimization problem, any linear-Gaussian estimation problem also adheres to the Gauss-Newton cost structure, and can therefore benefit from equally elegant square root solutions. In contrast, iLQR and related algorithms are typically presented in the context of the most general problem definition, which does not readily lend itself to a square root implementation. Even so, Appendix A sketches a possible square root formulation for general cost functions, though such a formulation is necessarily less elegant. Ultimately, it is the Gauss-Newton cost structure that makes the square root formulation of iLQR that we introduced in this paper so pleasingly simple, and we hope that the success square root variants have enjoyed in the estimation space can be extended to the area of trajectory optimization. Square Root Gauss-Newton iLQR 15 
+
+# A Square Root iLQR for General Cost Functions 
+
+For completeness, we sketch how a square root formulation of iLQR can be constructed for general cost functions as well. In this case √Sxx , sx and s (see Eq. (15)) are propagated separately. For a square root formulation to work, a (possibly non-triangular) square root of the Hessian block of the cost matrix 
+
+Ct must be available in each step. Since this Hessian is in general indefinite, such a square root does not exist. Therefore, we propose to use the square root of the nearest positive-semidefinite approximation of this Hessian. That is, we eigendecompose the Hessian of the cost function: 
+
+∇2
+
+> uu
+
+ct ∇2
+
+> ux
+
+ct
+
+∇2
+
+> xu
+
+ct ∇2
+
+> xx
+
+ct
+
+ 
+
+> x⋆t,u⋆t
+
+= P ΛP T , (40) where P is orthogonal and Λ is a diagonal matrix of eigenvalues, then set negative eigenvalues to zero and positive ones to their square root, and let: ˜Mt =
+
+ pmax {Λ, 0} P T
+
+√Sxx ,t +1 
+
+∇uft ∇xft
+
+
+
+, (41) such that we have  Quu Qux  
+
+> QT
+> ux Qxx
+
+ = ˜M Tt ˜Mt. If we let Lt = Kt kt
+
+, we have for the Cholesky factor ˜U of the Hessian block of Qt:˜U =
+
+ ˜U00 ˜U01 
+
+0 ˜U11 
+
+
+
+=
+
+sQuu Qux 
+
+QT 
+
+> ux
+
+Qxx 
+
+
+
+=
+
+√Quu 
+
+√Quu Kt
+
+0 √Sxx ,t 
+
+
+
+, (42) and it is obtained as the upper-triangular factor of the QR-factorization of ˜Mt.From ˜U , we can extract Kt = ˜U −100 ˜U01 and √Sxx ,t = ˜U11 . Further, we have: 
+
+qu = ∇T 
+
+> u
+
+ft sx,t +1 + ∇uct, qx = ∇T 
+
+> x
+
+ft sx,t +1 + ∇xct, q = st+1 + 2 ct, (43) from which the other desired quantities—the feedforward term kt and the gra-dient sx and value s of the updated cost-to-go function—can be computed: ˜qu = ˜U −T 
+
+> 00
+
+qu, kt = ˜U −100 ˜qu, sx,t = qx − ˜U T 
+
+> 01
+
+˜qu, st = q − ˜qT 
+
+> u
+
+˜qu. (44) The left-multiplications by ˜U −T 
+
+> 00
+
+and ˜U −100 can be performed by forward- and back-substitution, respectively. The above construction is perfectly workable, but it reintroduces both squared quantities and regularization logic—precisely what the Gauss-Newton structure of the main text dispenses with. 16 Maximilian Haas-Heger, Jur van den Berg 
+
+# References 
+
+1. D. Bertsekas. Nonlinear Programming , 2nd edition. Athena Scientific, 1999. 2. G. Bierman. Factorization Methods for Discrete Sequential Estimation . Academic Press, 1977. 3. T. M. Chin. Square-root formulas for Kalman filter, information filter, and RTS smoother: Links via boomerang prediction residual. IPN Progress Report , 42-233, Jet Propulsion Laboratory, California Institute of Technology, May 2023. 4. P. Dewilde. Riccati or square root equation? The semi-separable case. Mathematical Methods in Systems, Optimization, and Control , pp. 85–112. Springer Basel, 2012. 5. G. Frison, J. B. Jørgensen. Efficient implementation of the Riccati recursion for solving linear-quadratic control problems. In Proc. IEEE MSC , pp. 1117–1122, 2013. 6. G. Frison, H. H. B. Sørensen, B. Dammann, J. B. Jørgensen. High-performance small-scale solvers for linear model predictive control. In Proc. IEEE ECC , pp. 128–133, 2014. 7. P. Geoffroy, N. Mansard, M. Raison, S. Achiche, Y. Tassa, E. Todorov. From inverse kinematics to optimal control. In Proc. Int. Workshop Human-Friendly Robotics ,2014. 8. M. Giftthaler, M. Neunert, M. St¨ auble, J. Buchli, M. Diehl. A family of iterative Gauss-Newton shooting methods for nonlinear optimal control. In Proc. IEEE/RSJ IROS , 2018. 9. G. H. Golub, C. F. Van Loan. Matrix Computations , 4th edition. Johns Hopkins University Press, 2013. 10. M. S. Grewal, A. P. Andrews. Applications of Kalman filtering in aerospace 1960 to the present. IEEE Control Syst. Mag. , vol. 30, no. 3, pp. 69–78, 2010. 11. N. J. Higham. Computing a nearest symmetric positive semidefinite matrix. Linear Algebra Appl. vol. 103, pp. 103–118, 1988. 12. T. A. Howell, B. E. Jackson, Z. Manchester. ALTRO: A fast solver for constrained trajectory optimization. In Proc. IEEE/RSJ IROS , pp. 7674–7679, 2019. 13. D. Jacobson, D. Mayne. Differential Dynamic Programming. American Elsevier Publishing Company, 1970. 14. W. Li, E. Todorov. Iterative linear quadratic regulator design for nonlinear biolog-ical movement systems. In Proc. ICINCO , 2004. 15. J. Nocedal, S. J. Wright. Numerical Optimization , 2nd edition. Springer, 2006. 16. V. Roulet, S. Srinivasa, M. Fazel, Z. Harchaoui. Iterative linear quadratic opti-mization for nonlinear control: Differentiable programming algorithmic templates. 
+
+Open J. Math. Optim. , vol. 5, article 8, 2024. 17. A. Sideris, J. E. Bobrow. An efficient sequential linear quadratic algorithm for solving nonlinear optimal control problems. In Proc. ACC , pp. 2275–2280, 2005. 18. W. Sun, J. van den Berg, R. Alterovitz. Stochastic extended LQR for optimization-based motion planning under uncertainty. IEEE Trans. Autom. Sci. Eng. 
+
+13(2):437–447, 2016. 19. Y. Tassa, T. Erez, E. Todorov. Synthesis and stabilization of complex behaviors through online trajectory optimization. IEEE/RSJ IROS , 2012. 20. R. Tedrake. Underactuated Robotics: Algorithms for Walking, Running, Swimming, Flying, and Manipulation . Course notes for MIT 6.832, 2024. 21. E. Todorov, W. Li. A generalized iterative LQG method for locally-optimal feed-back control of constrained nonlinear stochastic systems. In Proc. ACC , 2005. 22. E. Todorov. General duality between optimal control and estimation. IEEE CDC ,2008.

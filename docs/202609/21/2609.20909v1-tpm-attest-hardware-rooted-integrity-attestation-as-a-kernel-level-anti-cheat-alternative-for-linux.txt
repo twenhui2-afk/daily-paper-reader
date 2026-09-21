@@ -1,0 +1,247 @@
+Title: TPM-Attest: Hardware-Rooted Integrity Attestation as a Kernel-Level Anti-Cheat Alternative for Linux
+
+URL Source: https://arxiv.org/pdf/2609.20909v1
+
+Published Time: Mon, 21 Sep 2026 00:03:45 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# TPM-Attest: Hardware-Rooted Integrity Attestation as a Kernel-Level Anti-Cheat Alternative for Linux 
+
+Anudeep Gedela 1 and Dr. A. Yaswanth 1,* 1GITAM School of Technology, GITAM (Deemed to be University), Visakhapatnam, India 
+
+> *
+
+Corresponding author – Assistant Professor, Department of Computer Science & Engineering, yamanapu@gitam.edu 
+
+Abstract 
+
+Multiplayer PC gaming on Linux faces a structural problem: the anti-cheat systems that publishers require operate as proprietary Ring 0 kernel modules that are architecturally incom-patible with Linux’s security model, GPL licensing, and stable ABI guarantees. We argue the right response is not to port these invasive modules to Linux, but to replace them entirely. This paper presents TPM-Attest , a hardware-rooted remote attestation framework that uses the Trusted Platform Module (TPM) 2.0 and the Linux Integrity Measurement Architecture (IMA) to prove, cryptographically, that a client booted cleanly and ran only authorised software – without any kernel driver, without proprietary code, and without scanning player memory. The system intercepts Epic Online Services (EOS) SDK calls via a userspace LD_PRELOAD hook, gates session access on a live TPM quote bound to a server-issued nonce, and constructs an index-prefixed Merkle tree over the IMA log that is immune to duplicate-leaf collision attacks. Across 500 constructed tamper sessions we achieve a 100% detection rate; incremental leaf caching reduces repeat-attestation latency to under 3 seconds on real TPM 2.0 hardware. Acontrolled red-team evaluation against a live demo game confirms all four file-backed attack vectors are blocked while precisely characterising the two confirmed bypass conditions. The full implementation is released as open-source software. 
+
+# 1 Introduction 
+
+Valve’s Proton compatibility layer has made thousands of Windows titles playable on Linux [15], yet competitive multiplayer games remain off-limits for most Linux players. The barrier is not the game logic – it is the anti-cheat. Systems like Easy Anti-Cheat and BattlEye rely on Ring 0 kernel drivers that assume a Windows environment, conflict with Linux’s stable ABI guarantees, and cannot be shipped under GPL. The result is straightforward: Linux players are locked out. Worse, this lockout carries a hidden cost for everyone. A recent audit of four widely deployed kernel-mode anti-cheat systems found that two behaved indistinguishably from rootkits – broad OS visibility, covert channels, and access far exceeding any legitimate integrity-checking purpose [8]. Players on Windows accept these risks because they have no choice; Linux’s kernel rejects such code, which is why Linux support is absent. We take a different approach. Instead of scanning memory at runtime, TPM-Attest asks one ques-tion at session startup: did this machine boot into a known-good state and execute only authorised software? The TPM 2.0 microcontroller, present on virtually every modern motherboard, can 1arXiv:2609.20909v1 [cs.CR] 17 Sep 2026 answer this with a hardware-signed cryptographic quote [1]. Paired with the Linux Integrity Mea-surement Architecture – a kernel subsystem maintaining a tamper-evident log of every executed binary and loaded library since boot [6] – the result is an attestation report the server can verify in under 15 seconds. A clean chain permits the session; any deviation denies access before the game reaches the network [2]. This paper makes five core contributions: 1. An open-source, end-to-end TPM-Attest framework combining TPM 2.0 quotes and IMA measurement logs for Linux gaming integrity verification. 2. An index-prefixed Merkle tree construction immune to duplicate-leaf collision attacks (CVE-2012-2459 class). 3. A dynamic LD_PRELOAD interception hook gating EOS SDK sessions on real-time attestation results. 4. A comprehensive experimental evaluation including latency profiling, tamper-detection rates, and a comparative analysis against Keylime and kernel-mode anti-cheat baselines. 5. VOID SECTOR – a complete playable 2-D space-shooter demo game whose session launch is gated end-to-end by the TPM-Attest pipeline, providing a live, reproducible demonstration of the full attestation flow (game client → hook → daemon → TPM → server → session granted/denied). 
+
+# 2 Background and Foundations 
+
+2.1 TPM 2.0 and Platform Configuration Registers (PCRs) 
+
+The TPM 2.0 microcontroller operates as a secure cryptoprocessor physically isolated from the host CPU [1]. Platform Configuration Registers (PCRs) are volatile memory slots storing hashes representing the platform’s boot and software state, structured in accordance with NIST BIOS integrity measurement guidelines [21]. PCRs are updated via a one-way extend operation: PCR new = SHA-256 (PCR old ∥ m) (1) where m is the new measurement value. This one-way chaining prevents register rollback or state forging. To prove register contents to an external verifier, the TPM provides the quote operation (tpm2_quote ). The microcontroller signs a composite digest over designated PCRs using its internal, non-migratable Attestation Key (AK), binding a server-supplied challenge nonce η directly into the signed structure to defeat replay attacks [5]. Freshness is cryptographically guaranteed. 
+
+2.2 Integrity Measurement Architecture (IMA) 
+
+Alongside the hardware cryptoprocessor, the Linux Integrity Measurement Architecture (IMA) hooks the virtual filesystem to record software execution at the kernel level [3]. Whenever an executable binary or shared library is mapped into memory via execve or mmap , IMA intercepts the system call, computes the cryptographic digest of the file contents, logs the record into an append-only ASCII event table, and immediately extends the measurement into PCR 10. The chain begins at boot. To link runtime executions back to the physical firmware state, IMA anchors the log with a dedicated boot_aggregate measurement over PCRs 0–7: 2boot_aggregate = SHA-256 
+
+> 7
+
+M
+
+> i=0
+
+PCR i
+
+!
+
+(2) 
+
+2.3 Shared Library Interception ( LD_PRELOAD )
+
+Shared library preloading is a standard Unix mechanism [13]. By configuring the LD_PRELOAD 
+
+environment variable, the dynamic linker prioritises our shim library ahead of standard system de-pendencies. We export exact matching function signatures for critical Epic Online Services (EOS) SDK routines, intercept outbound network attempts before packet transmission, query local at-testation state over a Unix socket, and drop unauthorised calls in-process. No game source code modification is required. 
+
+2.4 Index-Prefixed Merkle Tree 
+
+Naive binary Merkle trees have a well-documented vulnerability: duplicate-leaf collisions [14]. If an unauthenticated log re-orders entries or appends duplicate measurements, a standard tree can generate identical intermediate hashes, allowing an adversary to bypass log completeness checks. TPM-Attest prevents this vulnerability entirely. We prepend the 64-bit absolute log index i directly to the leaf hash preimage: 
+
+ℓi = SHA-256 (i ∥ pcr i ∥ tmpl_hash i ∥ file_hash i ∥ filename i) (3) Internal nodes are computed as: 
+
+nparent = SHA-256 (ℓleft ∥ ℓright ) (4) Position binding is absolute. Because each leaf hash ℓi explicitly embeds its sequence index i,reordering, duplicating, or truncating log entries inevitably yields a divergent root hash that the verifier rejects on arrival. 
+
+# 3 Related Work 
+
+The idea of using hardware measurements to verify software integrity on a running host dates to Sailer et al., who introduced IMA and showed that a remote verifier can reliably detect compromised binaries without modifying the client kernel [6]. Keylime , developed at MIT Lincoln Laboratory and now a CNCF-graduated project, industrialised this into a scalable agent/registrar/verifier ar-chitecture for cloud, edge, and IoT deployments [7]. TPM-Attest draws on the same measurement primitives but targets a different problem: gating a single consumer desktop’s game session at the moment an EOS SDK call fires, rather than monitoring a server fleet continuously. The strongest motivation for this work is Dorner and Klausner’s 2024 independent forensic audit, which revealed that commercial kernel-mode drivers frequently abuse Ring 0 privileges to maintain unmonitored telemetry streams, establish covert channels, and perform sweeping memory inspection far beyond their declared anti-cheat function [8]. TPM-Attest is a direct architectural response: the trust anchor shifts into dedicated hardware and the third-party kernel driver is eliminated entirely. Alangari and Alharbi’s 2025 survey of anti-cheat defences confirms that no existing Linux-native solution combines hardware-rooted trust with EOS SDK integration and GPL compatibility [9]. 3Coker et al. formalised remote attestation properties [10]; our nonce challenge-response design sat-isfies their freshness and binding criteria directly within the IETF RATS architecture [2], conforming to Entity Attestation Token (EAT) claims schemas [20]. Bratus et al. and Petroni et al. argue that passive load-time measurement and active runtime scanning are complementary [11, 12] – a per-spective we adopt in Section 8 by separating platform trust from memory policing. An alternative hardware trust mechanism lies in Trusted Execution Environments (TEEs) such as Intel SGX [18, 19], where isolated enclaves measure code pages and issue CPU-signed attestation to-kens. However, enclaves are ill-suited to consumer gaming: they require invasive engine partitioning, incur steep cross-boundary penalties, and leave the host kernel, display server, and graphics drivers completely unmeasured [19]. Whole-system TPM+IMA attestation establishes platform trust across diverse Linux distributions without requiring game developers to re-architect their software. 
+
+# 4 Threat Model and Security Goals 
+
+4.1 Adversary Capabilities 
+
+We model a motivated adversary who has obtained root access to the target machine and seeks to gain an unfair advantage in a multiplayer game without detection. The adversary may replace or patch game binaries on disk, inject cheat libraries at process-launch time, load unsigned kernel modules, capture and replay a previously accepted attestation report, or run the game inside a virtual machine equipped with a software-emulated TPM. 
+
+4.2 Prevented Attacks 
+
+1. Binary and library tampering: If an adversary replaces or patches an executable, IMA logs the modified hash during execve and extends PCR 10. The resulting Merkle root diverges, triggering immediate server rejection. 2. Kernel modification: Tampering with the kernel binary or boot modules alters PCR 9. The stored baseline breaks. 3. Report replay: An attacker intercepting a valid quote cannot reuse it. Every attestation payload is bound to a fresh, server-generated cryptographic nonce with a 30-second expiry. 4. TPM emulation (vTPM/swtpm): Virtualised or software-emulated TPMs cannot forge manufacturer-signed Endorsement Key certificates. In STRICT_EK_VERIFICATION mode, the server drops uncertified quotes on arrival. 5. Unauthorised MOK kernel: Custom kernels signed with third-party Machine Owner Keys alter the Secure Boot measurement in PCR 7. The session is denied. 
+
+4.3 Out-of-Scope Attacks 
+
+We explicitly define our attack boundaries. Physical bus-level attacks – such as SPI/LPC sniffing or malicious PCIe DMA devices – bypass operating system controls and fall outside scope. Similarly, runtime code injection via ptrace or anonymous mappings ( mmap ) into already-measured processes cannot be detected by load-time hooks: IMA measures file objects at invocation, never dynamic memory modified post-launch. Section 7.5 confirms these boundary conditions empirically; Section 9 outlines mitigations. 45 System Design and Architecture 
+
+TPM-Attest is built around three loosely coupled components that together form the complete attestation pipeline (Figure 1). Each component communicates only through well-defined interfaces – Unix socket or HTTP – so any layer can be replaced or audited independently without touching the others. 
+
+Attested Machine 
+
+Game Client 
+
+eac_hook.so 
+
+(LD_PRELOAD Hook) 
+
+shim.py 
+
+(Local Daemon) 
+
+report.py 
+
+(Report Generator) TPM 2.0 Hardware IMA Security  
+
+> calls EOS SDK APIs Unix socket queries agent reads PCR reads IMA log
+
+Verification Server 
+
+server/main.py  
+
+> HTTP POST /attest
+
+Figure 1: TPM-Attest system architecture: client-side attestation agent, local interception hook/-daemon, and remote verification server. 
+
+5.1 Phase 1: Client-Side Attestation Agent 
+
+• PCR Reader ( agent/pcr_reader.py ): Spawns tpm2_pcrread to retrieve SHA-256 PCR bank for indices {0, 1, 4, 7, 9, 10 }.• IMA Reader ( agent/ima_reader.py ): Parses the kernel measurement log and computes the Merkle tree per Equations 3–4. • Report Generator ( agent/report.py ): Invokes tpm2_quote under a secure temp directory (permissions 0o700 ) signing PCRs with the Attestation Key (AK) at handle 0x81000000 ,incorporating the server-issued nonce η.
+
+5.2 Phase 2: Local Interception Hook and Daemon 
+
+• Dynamic Hook ( phase3/eac_hook.c ): Intercepts the EOS_AntiCheatClient_AddNotify MessageToServer callback. Establishes a blocking Unix-socket connection with a 30-second 
+
+SO_RCVTIMEO timeout. Uses a custom fail-closed parse_json_bool parser to prevent string-injection bypasses. • Local Daemon ( phase3/shim.py ): Acts as the local coordinator between the game hook and the attestation pipeline. Queried over the Unix socket, the daemon retrieves a fresh challenge nonce from the verifier, directs the client agent to generate the quote and Merkle tree, submits the payload to POST /attest , and relays the pass/fail decision back to the game process; verification failure closes the socket immediately. 55.3 Phase 3: Verification Server 
+
+The verification backend ( server/main.py ) runs as a stateless FastAPI service backed by an SQLite persistence store. Server-side state is minimal, retaining only root credentials needed for verification: enrolled AK public keys, vendor EK certificates, active nonces, and pinned PCR reference manifests. All authority resides on the server; the client holds zero trust state. This design guarantees that even a root adversary cannot tamper with baseline records or forge attestation history. Once quote signatures and IMA Merkle roots validate against the enrolled profile, the server mints a signed, short-lived session token adhering to RFC 9711 (EAT) [20]. Access expires automatically unless refreshed. Generated via a CSPRNG on GET /challenge , each nonce η is committed in an atomic transaction, verified on POST /attest , and purged upon evaluation to preclude reuse: 
+
+η ← CSPRNG (32 bytes ), η / ∈ N used (5) 
+
+# 6 Security Protocols and Hardening 
+
+6.1 Nonce Challenge-Response Protocol 
+
+Replay attacks threaten remote verification protocols. To defeat them, TPM-Attest executes a strict challenge-response exchange. The client initiates GET /challenge , receiving a 32-byte cryp-tographic nonce η recorded with a timestamp. When the attested quote arrives at POST /attest ,the verifier atomically confirms the AK signature over the PCR bank, verifies that η matches the quote’s qualifying data byte-for-byte, and purges η. To constrain replay windows under network capture, the verifier enforces a 30-second maximum nonce lifetime (Equation 6): 
+
+| tnow − tη | ≤ ∆tmax , η / ∈ N used (6) Both conditions must hold simultaneously. On the client side, shim.py mirrors this constraint with a 30-second SO_RCVTIMEO socket timeout, dropping the session cleanly if the daemon hangs. 
+
+6.2 Dynamic Policy Enforcement 
+
+1. STRICT_EK_VERIFICATION : Mandates an Endorsement Key backed by a valid X.509 certificate issued by a recognised hardware silicon manufacturer CA. Raw or self-signed public keys are dropped immediately. This rule prevents virtualised emulators like swtpm from spoofing clean platform measurements. 2. REQUIRE_PCR7_PINNING : Matches PCR 7 directly against the baseline manifest recorded dur-ing initial enrolment. Because PCR 7 measures the Secure Boot certificate hierarchy (PK, KEK, db) and active revocation lists [21], any unauthorised MOK certificate enrolled by the player alters the digest and causes immediate session denial. 3. REQUIRE_IMA_MINIMUM_ENTRIES : Checks that the submitted IMA log contains a realistic vol-ume of measurements (at least 500 entries on standard desktop boots). This policy thwarts adversaries who attempt to bypass attestation by booting with ima_policy=tcb disabled or clearing the log buffer in RAM. 67 Experimental Results 
+
+All experiments ran on a consumer desktop: Intel Core i7-10700, 16 GB RAM, Ubuntu 22.04 LTS with kernel 6.5, Secure Boot enabled, and an Intel PTT firmware TPM 2.0 (fTPM) [17]. We chose a firmware TPM deliberately – as established by Raj et al. [17], firmware-based TPMs execute within an isolated processor execution environment (such as Intel PTT or AMD PSP) and represent by far the most common configuration in consumer gaming PCs; any result obtained exclusively on a discrete chip would be unrepresentative of the actual deployment environment. No special kernel patches or elevated privileges beyond normal tpm2-tools device-node access were required. 
+
+7.1 Tamper Detection Accuracy 
+
+We scripted 500 attestation sessions – 100 per tamper category – each using a fresh server-issued nonce. For every session we applied the tamper condition, triggered attestation, and recorded whether the server rejected the report before issuing a token. Table 1 summarises the results. Table 1: Tamper detection results across 500 attestation sessions. 
+
+Tamper Scenario Sessions Detected Missed Detection Rate 
+
+Binary Substitution 100 100 0 100.0% IMA Log Truncation 100 100 0 100.0% IMA Log Duplication 100 100 0 100.0% Nonce Replay 100 100 0 100.0% vTPM / swtpm Emulation 100 100 0 100.0% 
+
+Total 500 500 0 100.0% 
+
+7.2 Latency Profiling 
+
+We measured wall-clock time for each pipeline stage over 50 independent runs, with the IMA log at approximately 8,000 entries – a realistic size for a desktop that has been running for a few hours. Table 2 reports means and standard deviations. Table 2: Attestation pipeline latency (averaged over 50 runs, Intel PTT). 
+
+Pipeline Stage Mean (s) Std Dev (s) 
+
+IMA Log Read & Merkle Build (first run, ∼8k entries) 12.20 0.43 IMA Log Read & Merkle Build (incremental/cached) 0.18 0.02 TPM Quote Generation ( tpm2_quote ) 2.10 0.11 Network Round-Trip + Server Verification 0.70 0.08 
+
+Total – First Attestation 15.00 0.52 
+
+Total – Repeat Attestation (cached) 2.98 0.15 The total attestation latency Ttotal is modelled as the sum of three independent pipeline stages: 
+
+Ttotal = TIMA + Tquote + Tnet (7) 7where TIMA is the IMA log read and Merkle build time, Tquote is the TPM quote generation time, and Tnet is the network round-trip and server verification time. With incremental leaf caching (Section 5), the repeat-attestation model reduces to: 
+
+Tcached = Tquote + Tnet ≈ 2.80 s (8) since caching the leaf hashes reduces TIMA from 12.20 s to 0.18 s (a ∼98% reduction). Figure 2 visualises the latency breakdown, and Figure 3 shows how total latency scales with IMA log size. 
+
+IMA Build TPM Quote Network Total (1st) Total (Repeat) 0510 15 
+
+> 12 .22.10.715 2.98
+> Latency (seconds)
+
+Attestation Pipeline Latency Breakdown Figure 2: Mean latency per pipeline stage. “Total (Repeat)” uses incremental Merkle leaf caching. 
+
+0 2 4 6 8 10 12 14 16 18 20 010 20 30 
+
+IMA Log Entries (thousands) IMA Build Latency (seconds)  IMA Merkle Build Time vs. Log Size Full rebuild Incremental (cached) Figure 3: IMA Merkle build time as a function of log size. Incremental caching reduces latency by 
+
+∼98%. 
+
+7.3 Comparative Analysis 
+
+Table 3 compares TPM-Attest against Keylime and representative commercial kernel-mode anti-cheat systems across six evaluation axes. 8Table 3: Feature and security comparison: TPM-Attest vs. Keylime vs. commercial kernel-mode anti-cheat. 
+
+Criterion TPM-Attest Keylime Kernel-Mode AC 
+
+Requires kernel driver No No Yes Open source Yes Yes No Linux native Yes Yes Limited Hardware-rooted trust (TPM) Yes Yes No Runtime memory inspection No No Yes Consumer desktop target Yes No Yes EOS SDK integration Yes No Yes Rootkit-like OS visibility [8] No No 2 of 4 First-attest latency ∼15 s ∼12 s <5 s Repeat-attest latency <3 s <3 s Continuous GPL-compatible Yes Yes No 
+
+7.4 Merkle Collision Immunity Verification 
+
+To validate the index-prefix construction (Eq. 3), we generated Merkle trees for three log variants and confirmed all roots are distinct: Table 4: Merkle root uniqueness test: position-bound leaf hashing prevents collision. 
+
+Log Entries Root Unique? 
+
+Baseline [A, B, C ] – (reference) Appended [A, B, C, C ] Yes Reordered [A, C, B ] Yes Standard tree [A, B, C, C ] vs [A, B, C ] No (collision) All 10 unit tests and end-to-end integration tests completed with a 100% pass rate .
+
+7.5 Red-Team Adversarial Evaluation 
+
+Automated unit tests establish algorithmic correctness, but real security requires adversarial pres-sure. We subjected the VOID SECTOR demo game to an active, controlled red-team evaluation while running under the complete TPM-Attest pipeline on our reference testbed. Six distinct attack scenarios were launched against the gaming client. Four attacks targeted on-disk and protocol state; two targeted live process memory. Table 5 catalogues each attack methodology, its threat-model expectation, the empirical outcome observed, and the elapsed time-to-detection (TTD). The four file-backed attack vectors are fully blocked within one attestation cycle ( ≤15.3 s). The two runtime-injection vectors succeed as predicted – not as a failure of the attestation design, but as a confirmed boundary condition: TPM-Attest provides load-time integrity guarantees and deliberately avoids the invasive kernel-mode scanning required for runtime memory inspection. Documenting 9Table 5: Red-team adversarial evaluation results against the VOID SECTOR demo game. 
+
+Attack Method Expected Actual TTD (s) 
+
+Binary substitution Swap game binary post-boot, re-launch Blocked Blocked 15.0 IMA log tamper Edit ascii_runtime _measurements 
+
+Blocked Blocked 15.1 Nonce replay Resend captured attestation report Blocked Blocked 0.1 vTPM / swtpm spoof Run game in VM with software TPM Blocked Blocked 15.3 
+
+ptrace injection gdb memory-write into running process Bypass Bypass † N/A Anon. mmap shellcode 
+
+mmap(MAP_ANONYMOUS) +shellcode write Bypass Bypass † N/A       
+
+> †Confirmed bypass: IMA does not measure anonymous mappings or ptrace writes into already-measured processes. These are documented out-of-scope attacks (Section 4), consistent with the threat model. Kernel Lockdown Mode would partially mitigate ptrace scope.
+
+these as confirmed, reproducible bypasses rather than theoretical concerns strengthens the threat model’s precision and motivates the complementary mitigations in Section 9. 
+
+# 8 Recommended Deployment Stack 
+
+TPM-Attest is one layer in a defence-in-depth system. The following companion technologies address attacks outside its scope: • TPM Session Encryption (HMAC/AES): Mitigates physical bus snooping. Enable pa-rameter encryption sessions in production. • IOMMU Enforcement ( intel_iommu=on ): Mitigates PCIe DMA attacks. The agent checks 
+
+/sys/kernel/iommu_groups/ and refuses to generate a report if IOMMU is disabled. • dm-verity: Establishes a transparent, block-level cryptographic verification layer directly beneath the root filesystem, calculating SHA-256 digests across individual 4096-byte blocks organised into an in-kernel Merkle tree. Any unmeasured modification triggers an I/O error on access – a design proven at scale across ChromeOS [16] and Android Verified Boot 2.0 [22]. The operating system becomes immutable. • Kernel Lockdown Mode: Restricts root-privileged code from subverting kernel execution via /dev/mem , custom BPF probes, or unsigned module injection, preserving the integrity of the trusted computing base post-boot [4]. Without Lockdown, root can bypass userspace controls. 10 9 Limitations and Discussion 
+
+9.1 The Linux Customisation Paradox 
+
+Remote attestation operates on an uncompromising premise: the host must match a known-good, vendor-approved cryptographic reference state. In consumer Linux, this premise clashes head-on with open-source culture. Linux enthusiasts expect full control over their machines. They com-pile bespoke kernels, patch out-of-tree drivers via DKMS, tune CPU schedulers, and enrol private Machine Owner Keys (MOKs) directly into UEFI NVRAM. Imposing rigid PCR 7 and PCR 9 reference baselines breaks this workflow. Yet granting unrestricted kernel customisation creates an inescapable security hazard: a player with arbitrary kernel-mode execution rights can easily patch the IMA subsystem in RAM, falsify log entries, or hijack the TPM character device ( /dev/tpmrm0 ). This tension between hardware-enforced integrity and personal computing sovereignty represents the single greatest non-technical hurdle to anti-cheat attestation on open platforms. 
+
+9.2 Runtime Memory Tampering 
+
+TPM-Attest is deliberately a load-time system. It measures what goes into memory, not what hap-pens inside memory afterward. Once a game process is running, an adversary with root privileges can attach a debugger via ptrace or map an anonymous executable buffer ( mmap(MAP_ANONYMOUS) )to inject unsigned cheat code directly into the process address space without touching the filesys-tem. IMA never sees these pages. Because no file boundary is crossed, no log entry is generated and PCR 10 remains unaltered. Detecting such in-memory modifications through passive attes-tation alone is fundamentally impossible. To close this gap without resorting to invasive Ring 0 kernel drivers, game operators must deploy platform-level policy controls. Enabling Linux Kernel Lockdown mode ( lockdown=confidentiality ) restricts root from attaching to running processes or mapping raw physical memory, cutting off the primary userspace injection pathways while pre-serving system stability. 
+
+9.3 Evaluation Scope and Future Work 
+
+Our empirical evaluation demonstrates the correctness of the verification logic under controlled tampering scenarios. While our red-team testing successfully validated the boundaries of the threat model, we have not benchmarked against commercial cheat packages engineered to evade runtime memory hooks. Looking ahead, we plan to profile quote generation latencies across a diverse port-folio of discrete chips and firmware TPMs from Intel, AMD, and Infineon [17], while exploring automated IMA leaf compaction for long-running systems. 
+
+# 10 Conclusion 
+
+Hardware-rooted remote attestation offers a credible, privacy-preserving way out of the anti-cheat deadlock on Linux. By anchoring trust in TPM 2.0 silicon and Linux IMA logs, TPM-Attest proves that an operating system booted cleanly and executed only genuine game files – all without installing third-party kernel modules, without violating GPL licences, and without inspecting private player memory. Our prototype proves the model works. Across 500 controlled tamper sessions, the system achieved a 100% detection rate. Incremental leaf caching slashes repeat-session latency to under 3 seconds on consumer gaming hardware. While runtime memory injection requires complementary 11 platform hardening such as Kernel Lockdown, TPM-Attest demonstrates that anti-cheat does not need to behave like a rootkit to keep competitive gaming fair. 
+
+# References 
+
+[1] Trusted Computing Group. TPM 2.0 Library Specification, Part 1: Architecture. Revision 1.59, 2018. [2] H. Birkholz, I. Vigano, and J. Desruisseaux. Remote Attestation Procedures (RATS) Architec-ture. IETF RFC 9334, 2023. [3] Linux Kernel Organization. Integrity Measurement Architecture (IMA). Kernel Documentation, 2021. https://www.kernel.org/doc/html/latest/security/IMA-templates.html 
+
+[4] L. Poettering. Brave New Trusted Boot World. All Systems Go! Conference, 2021. [5] tpm2-software Project. tpm2-tools Command Line Utility Suite. https://github.com/ tpm2-software/tpm2-tools , 2024. [6] R. Sailer, X. Zhang, T. Jaeger, and L. van Doorn. Design and Implementation of a TCG-based Integrity Measurement Architecture. In Proc. 13th USENIX Security Symposium , pp. 223–238, 2004. [7] M. Rowe et al. (MIT Lincoln Laboratory / Keylime Developers). Keylime: A TPM-based Highly Scalable Remote Boot Attestation and Runtime Integrity Measurement Solution. CNCF Project. 
+
+https://github.com/keylime/keylime .[8] C. Dorner and L. D. Klausner. If It Looks Like a Rootkit and Deceives Like a Rootkit: A Critical Examination of Kernel-Level Anti-Cheat Systems. In Proc. 19th Intl. Conf. on Availability, Reliability and Security (ARES 2024) , Art. 62, pp. 1–11. arXiv:2408.00500, 2024. [9] A. Alangari and O. Alharbi. A Systematic Review of Technical Defenses Against Software-Based Cheating in Online Multiplayer Games. arXiv:2512.21377, 2025. [10] G. Coker, J. Guttman, P. Loscocco, A. Herzog, J. Millen, B. O’Hanlon, J. Ramsdell, A. Segall, J. Sheehy, and B. Sniffen. Principles of Remote Attestation. International Journal of Informa-tion Security , 10(2):63–81, 2011. [11] S. Bratus, C. Locasto, M. L. Patterson, L. Sassaman, and A. Shubina. Why Else Would They Call It “Trusted Computing”? In Proc. Workshop on Hot Topics in Security (HotSec) , 2008. [12] N. L. Petroni Jr., T. Fraser, J. Molina, and W. A. Arbaugh. Copilot – A Coprocessor-based Kernel Runtime Integrity Monitor. In Proc. 13th USENIX Security Symposium , pp. 179–194, 2004. [13] M. Kerrisk. The Linux Programming Interface. No Starch Press, 2010. Chapter 42: Advanced Features of Shared Libraries. [14] Bitcoin Project. CVE-2012-2459: Block Merkle Hash Duplicate Transaction Vulnerability. 
+
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2012-2459 , 2012. 12 [15] Valve Corporation. Proton: Compatibility Tool for Steam Play. https://github.com/ ValveSoftware/Proton , 2018. [16] Google LLC. Verified Boot: dm-verity in ChromeOS. Google Security Blog, 2023. https:// www.chromium.org/chromium-os/chromiumos-design-docs/verified-boot/ 
+
+[17] H. Raj, S. Saroiu, A. Wolman, R. Aigner, J. Cox, P. England, C. Fenner, K. Kinshumann, J. Loeser, D. Mattoon, M. Nystrom, D. Robinson, R. Spiger, S. Thom, and D. Wooten. fTPM: A Software-Only Implementation of a TPM Chip. In Proc. 25th USENIX Security Symposium ,pp. 841–856, 2016. [18] I. Anati, S. Gueron, S. Johnson, and V. Scarlata. Innovative Technology for CPU Based At-testation and Sealing. In Proc. 2nd Intl. Workshop on Hardware and Architectural Support for Security and Privacy (HASP) , 2013. [19] V. Costan and S. Devadas. Intel SGX Explained. IACR Cryptology ePrint Archive , Report 2016/086, 2016. https://eprint.iacr.org/2016/086 
+
+[20] H. Birkholz, J. O’Donoghue, N. Cam-Winget, and C. Wallace. The Entity Attestation Token (EAT). IETF RFC 9711, April 2025. [21] A. Regenscheid and K. Scarfone. BIOS Integrity Measurement Guidelines. NIST Special Pub-lication 800-155 (Draft), 2011. National Institute of Standards and Technology. [22] Google LLC. Android Verified Boot 2.0. Android Open Source Project Documentation, 2023. 
+
+https://source.android.com/docs/security/features/verifiedboot 
+
+13
