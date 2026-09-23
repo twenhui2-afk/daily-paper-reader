@@ -6,66 +6,60 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-22
-- 运行时间：2026-09-23 06:01:16 UTC+8
+- 最新运行日期：2026-09-23
+- 运行时间：2026-09-24 05:44:06 UTC+8
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：4
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
-- 精读：《Buccal-Lingual Analysis and Inflammation Tracking in Oral Soft Tissues Using Quantitative Ultrasound: A Preclinical Study》（8.5/10）, 《Exact Quotients of Fresnel-Kummer Surfaces and Certified Biaxial Refraction》（8.3/10）
-- 速读：《A Proof of the Common Root Conjecture for Legendre Polynomials》（7.9/10）, 《The Three Gates: A Rooted-Operator Approach to Weil Positivity》（7.5/10）, 《NostrAgent: A Decentralized Identity and Delegation Architecture for Sovereign Agentic Systems》（7.3/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《RootQuantV2: Adapting a Vision Foundation Model for Root-Trait Regression from Minirhizotron Imagery》（8.2/10）, 《Support-Primitive Decomposition of Constacyclic Codes over Finite Fields: Coefficients-Based and Roots-Based Descriptions》（8.1/10）
+- 速读：《Representation-tame Geiß-Leclerc-Schröer algebras and a revised GLS conjecture on root systems》（7.9/10）, 《From IceCube to IT-Sphere: A Hybrid Quantum-Classical GNN for Banking IT Root Cause Analysis》（7.4/10）, 《A sharp density bound for 5-connected graphs with no $\Ke$ minor》（7.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/22/README](/202609/22/README)
+- 详情：[/202609/23/README](/202609/23/README)
 
 ### 精读区论文标签
-1. [Buccal-Lingual Analysis and Inflammation Tracking in Oral Soft Tissues Using Quantitative Ultrasound: A Preclinical Study](/202609/22/2609.23931v1-buccal-lingual-analysis-and-inflammation-tracking-in-oral-soft-tissues-using-quantitative-ultrasound-a-preclinical-study)  
-   标签：评分：8.5/10
+1. [RootQuantV2: Adapting a Vision Foundation Model for Root-Trait Regression from Minirhizotron Imagery](/202609/23/2609.25567v1-rootquantv2-adapting-a-vision-foundation-model-for-root-trait-regression-from-minirhizotron-imagery)  
+   标签：评分：8.2/10
    evidence：检索回退候选
-2. [Exact Quotients of Fresnel-Kummer Surfaces and Certified Biaxial Refraction](/202609/22/2609.23249v1-exact-quotients-of-fresnel-kummer-surfaces-and-certified-biaxial-refraction)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-3. [Consistent intercept estimation and inference for unit-root INAR(2) processes](/202609/22/2609.23339v1-consistent-intercept-estimation-and-inference-for-unit-root-inar2-processes)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-4. [Square-Root Higher-Order Exceptional Points with Symmetry-Induced Multiple Spectral Responses](/202609/22/2609.24017v1-square-root-higher-order-exceptional-points-with-symmetry-induced-multiple-spectral-responses)  
+2. [Support-Primitive Decomposition of Constacyclic Codes over Finite Fields: Coefficients-Based and Roots-Based Descriptions](/202609/23/2609.26414v1-support-primitive-decomposition-of-constacyclic-codes-over-finite-fields-coefficients-based-and-roots-based-descriptions)  
    标签：评分：8.1/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [A Proof of the Common Root Conjecture for Legendre Polynomials](/202609/22/2609.22330v1-a-proof-of-the-common-root-conjecture-for-legendre-polynomials)  
+1. [Representation-tame Geiß-Leclerc-Schröer algebras and a revised GLS conjecture on root systems](/202609/23/2609.26503v1-representation-tame-gei-leclerc-schrer-algebras-and-a-revised-gls-conjecture-on-root-systems)  
    标签：评分：7.9/10
    evidence：检索回退候选
-2. [The Three Gates: A Rooted-Operator Approach to Weil Positivity](/202609/22/2609.20367v2-the-three-gates-a-rooted-operator-approach-to-weil-positivity)  
-   标签：评分：7.5/10
+2. [From IceCube to IT-Sphere: A Hybrid Quantum-Classical GNN for Banking IT Root Cause Analysis](/202609/23/2609.22822v1-from-icecube-to-it-sphere-a-hybrid-quantum-classical-gnn-for-banking-it-root-cause-analysis)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-3. [NostrAgent: A Decentralized Identity and Delegation Architecture for Sovereign Agentic Systems](/202609/22/2609.22944v1-nostragent-a-decentralized-identity-and-delegation-architecture-for-sovereign-agentic-systems)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-4. [TriFleetRCA: On-Premise LLM Root Cause Analysis for Kubernetes](/202609/22/2609.23766v1-trifleetrca-on-premise-llm-root-cause-analysis-for-kubernetes)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-5. [Heat flow and repeated differentiation of polynomials with i.i.d. roots](/202609/22/2609.24867v1-heat-flow-and-repeated-differentiation-of-polynomials-with-iid-roots)  
+3. [A sharp density bound for 5-connected graphs with no $\Ke$ minor](/202609/23/2609.26041v1-a-sharp-density-bound-for-5-connected-graphs-with-no-ke-minor)  
    标签：评分：7.2/10
    evidence：检索回退候选
-6. [Perturbation Theory for Translating Oblate-Spheroidal Droplets with Internal Circulation](/202609/22/2609.19193v2-perturbation-theory-for-translating-oblate-spheroidal-droplets-with-internal-circulation)  
-   标签：评分：6.5/10
+4. [Polyak-Type Extragradient Methods for Monotone Root-Finding Problems](/202609/23/2609.26581v1-polyak-type-extragradient-methods-for-monotone-root-finding-problems)  
+   标签：评分：7.2/10
    evidence：检索回退候选
-7. [Toeplitz $C^*$-algebras on radially weighted Fock spaces: commutativity and spectral representation](/202609/22/2609.20652v2-toeplitz-c-algebras-on-radially-weighted-fock-spaces-commutativity-and-spectral-representation)  
-   标签：评分：6.1/10
-   evidence：检索回退候选
-8. [Inheriting the Count: How Visualization Literacy Got Its Measure](/202609/22/2609.14813v1-inheriting-the-count-how-visualization-literacy-got-its-measure)  
+5. [Fine-Tuning Fixes Mode Collapse and Over-Dispersion in LLMs](/202609/23/2609.16454v1-fine-tuning-fixes-mode-collapse-and-over-dispersion-in-llms)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [Low Dimensional Sampling under Reconstructed Constraints](/202609/22/2609.14837v1-low-dimensional-sampling-under-reconstructed-constraints)  
+6. [Sign patterns of real powers of infinite products: resolution of four conjectures of Schlosser and Zhou](/202609/23/2609.22324v1-sign-patterns-of-real-powers-of-infinite-products-resolution-of-four-conjectures-of-schlosser-and-zhou)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [A proof of Sylvester's conjecture](/202609/22/2609.14893v1-a-proof-of-sylvesters-conjecture)  
+7. [A proof of the irreducibility conjecture for Legendre polynomials](/202609/23/2609.22336v1-a-proof-of-the-irreducibility-conjecture-for-legendre-polynomials)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [A proof of Sylvester's conjecture](/202609/22/2609.14893v2-a-proof-of-sylvesters-conjecture)  
+8. [Root-of-Unity Sections of Dilated Euler-Product Quotients](/202609/23/2609.22346v1-root-of-unity-sections-of-dilated-euler-product-quotients)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+9. [Gaussian Vertex-Face Balance in Random Convex Polyhedra with Fixed Edge Count](/202609/23/2609.22402v1-gaussian-vertex-face-balance-in-random-convex-polyhedra-with-fixed-edge-count)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Metric Self-Dual Completion and Optimal Additive Hardness for Quantum and Graph-State Distance](/202609/23/2609.22669v1-metric-self-dual-completion-and-optimal-additive-hardness-for-quantum-and-graph-state-distance)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Feasible Frontiers for Sub-Gamma Envelopes: the Variance--Pole Trade-off for Infinitely Divisible Laws](/202609/23/2609.23069v1-feasible-frontiers-for-sub-gamma-envelopes-the-variance--pole-trade-off-for-infinitely-divisible-laws)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
