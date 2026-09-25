@@ -6,57 +6,60 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-24
-- 运行时间：2026-09-25 06:26:13 UTC+8
+- 最新运行日期：2026-09-25
+- 运行时间：2026-09-26 06:35:03 UTC+8
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 12 篇推荐（精读 1 篇，速读 11 篇）
-- 精读：《A photonic integrated comb engine for ultracold quantum gases》（8.5/10）
-- 速读：《Bounded joins of biclosed sets》（7.8/10）, 《Component-wise accurate fixed point iterations for computing the square root of a singular M-matrix》（7.2/10）, 《Quantized six-vertex model at roots of unity: Frobenius property and free-parafermion spectra》（7.2/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《Square-Root Higher-Order Exceptional Points with Symmetry-Induced Multiple Spectral Responses》（8.1/10）, 《Vaught's Conjecture for Sums of Products of Rooted Trees》（8.0/10）
+- 速读：《Recursive Paintboxes and the Martin Boundary of the Hoffman Rooted-Tree Graph》（7.8/10）, 《Spectral eigenvalue problem of Cantor measures and Artin's primitive root conjecture》（7.1/10）, 《A Block Decomposed QUBO Workflow for Chromosome-Y Phylogeny Reconstruction》（7.1/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/24/README](/202609/24/README)
+- 详情：[/202609/25/README](/202609/25/README)
 
 ### 精读区论文标签
-1. [A photonic integrated comb engine for ultracold quantum gases](/202609/24/2609.28294v1-a-photonic-integrated-comb-engine-for-ultracold-quantum-gases)  
-   标签：评分：8.5/10
+1. [Square-Root Higher-Order Exceptional Points with Symmetry-Induced Multiple Spectral Responses](/202609/25/2609.24017v2-square-root-higher-order-exceptional-points-with-symmetry-induced-multiple-spectral-responses)  
+   标签：评分：8.1/10
+   evidence：检索回退候选
+2. [Vaught's Conjecture for Sums of Products of Rooted Trees](/202609/25/2609.28606v1-vaughts-conjecture-for-sums-of-products-of-rooted-trees)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Bounded joins of biclosed sets](/202609/24/2609.27253v1-bounded-joins-of-biclosed-sets)  
+1. [Recursive Paintboxes and the Martin Boundary of the Hoffman Rooted-Tree Graph](/202609/25/2609.30135v1-recursive-paintboxes-and-the-martin-boundary-of-the-hoffman-rooted-tree-graph)  
    标签：评分：7.8/10
    evidence：检索回退候选
-2. [Component-wise accurate fixed point iterations for computing the square root of a singular M-matrix](/202609/24/2609.27520v1-component-wise-accurate-fixed-point-iterations-for-computing-the-square-root-of-a-singular-m-matrix)  
-   标签：评分：7.2/10
+2. [Spectral eigenvalue problem of Cantor measures and Artin's primitive root conjecture](/202609/25/2609.29038v1-spectral-eigenvalue-problem-of-cantor-measures-and-artins-primitive-root-conjecture)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-3. [Quantized six-vertex model at roots of unity: Frobenius property and free-parafermion spectra](/202609/24/2609.27740v1-quantized-six-vertex-model-at-roots-of-unity-frobenius-property-and-free-parafermion-spectra)  
-   标签：评分：7.2/10
+3. [A Block Decomposed QUBO Workflow for Chromosome-Y Phylogeny Reconstruction](/202609/25/2609.29856v1-a-block-decomposed-qubo-workflow-for-chromosome-y-phylogeny-reconstruction)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-4. [Localized charges, reset noise, and boundary memory in matrix-product-conserving quantum chains](/202609/24/2609.23195v1-localized-charges-reset-noise-and-boundary-memory-in-matrix-product-conserving-quantum-chains)  
+4. [Intrinsic-Extrinsic Coupling in Learning Dynamics](/202609/25/2609.30185v1-intrinsic-extrinsic-coupling-in-learning-dynamics)  
+   标签：评分：7.0/10
+   evidence：检索回退候选
+5. [Bayesian Sample Size Determination: Sampling Distribution Estimation or Exploration?](/202609/25/2609.19489v1-bayesian-sample-size-determination-sampling-distribution-estimation-or-exploration)  
    标签：评分：6.0/10
    evidence：检索回退候选
-5. [Wave Numbers: Discrete Sequence Algebras, Sieve Projectors, and Dynamical Geometry](/202609/24/2609.23233v1-wave-numbers-discrete-sequence-algebras-sieve-projectors-and-dynamical-geometry)  
+6. [Radial dam breaks in a two-dimensional droplet bearing environment](/202609/25/2609.19508v1-radial-dam-breaks-in-a-two-dimensional-droplet-bearing-environment)  
    标签：评分：6.0/10
    evidence：检索回退候选
-6. [Wave Numbers: Discrete Sequence Algebras, Sieve Projectors, and Dynamical Geometry](/202609/24/2609.23233v2-wave-numbers-discrete-sequence-algebras-sieve-projectors-and-dynamical-geometry)  
+7. [A $(1+1/\sqrt{2})$-Approximation for the Multiple-Depot Traveling Salesman Problem](/202609/25/2609.19537v1-a-11sqrt2-approximation-for-the-multiple-depot-traveling-salesman-problem)  
    标签：评分：6.0/10
    evidence：检索回退候选
-7. [Quantum Satake in Type A: The General and Generic Case](/202609/24/2609.23253v1-quantum-satake-in-type-a-the-general-and-generic-case)  
+8. [Embedding rooted blow-ups of tree posets](/202609/25/2609.23543v1-embedding-rooted-blow-ups-of-tree-posets)  
    标签：评分：6.0/10
    evidence：检索回退候选
-8. [Quantum Satake in Type A: The General and Generic Case](/202609/24/2609.23253v2-quantum-satake-in-type-a-the-general-and-generic-case)  
+9. [Demographic inference of pathogen-infected populations from partially observed transmission forests](/202609/25/2609.23624v1-demographic-inference-of-pathogen-infected-populations-from-partially-observed-transmission-forests)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [Long-Tail Rebalancing for Non-Verbal Vocalization-Aware ASR: A Track~1 System for the NVVSpeech Challenge](/202609/24/2609.23462v1-long-tail-rebalancing-for-non-verbal-vocalization-aware-asr-a-track1-system-for-the-nvvspeech-challenge)  
+10. [The quasi-isometry classes of Galton--Watson trees](/202609/25/2609.23882v1-the-quasi-isometry-classes-of-galton--watson-trees)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [Long-Tail Rebalancing for Non-Verbal Vocalization-Aware ASR: A Track 1 System for the NVVSpeech Challenge](/202609/24/2609.23462v2-long-tail-rebalancing-for-non-verbal-vocalization-aware-asr-a-track-1-system-for-the-nvvspeech-challenge)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [On the Moufang condition for polar spaces](/202609/24/2609.23526v1-on-the-moufang-condition-for-polar-spaces)  
+11. [GDN Tree-Scan: Served Tree Verification for Recurrent-Hybrid Language Models](/202609/25/2609.23900v1-gdn-tree-scan-served-tree-verification-for-recurrent-hybrid-language-models)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
