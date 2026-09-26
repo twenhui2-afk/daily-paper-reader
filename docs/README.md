@@ -6,60 +6,54 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-25
-- 运行时间：2026-09-26 06:35:03 UTC+8
+- 最新运行日期：2026-09-26
+- 运行时间：2026-09-27 06:20:09 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Square-Root Higher-Order Exceptional Points with Symmetry-Induced Multiple Spectral Responses》（8.1/10）, 《Vaught's Conjecture for Sums of Products of Rooted Trees》（8.0/10）
-- 速读：《Recursive Paintboxes and the Martin Boundary of the Hoffman Rooted-Tree Graph》（7.8/10）, 《Spectral eigenvalue problem of Cantor measures and Artin's primitive root conjecture》（7.1/10）, 《A Block Decomposed QUBO Workflow for Chromosome-Y Phylogeny Reconstruction》（7.1/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《A Spatio-Temporal Generalisation of Green Kubo》（6.3/10）, 《Repeated differentiation of random polynomials with i.i.d. rotationally invariant roots》（6.2/10）, 《Time-uniform accuracy of ensemble Kalman filters with localization》（6.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/25/README](/202609/25/README)
+- 详情：[/202609/26/README](/202609/26/README)
 
 ### 精读区论文标签
-1. [Square-Root Higher-Order Exceptional Points with Symmetry-Induced Multiple Spectral Responses](/202609/25/2609.24017v2-square-root-higher-order-exceptional-points-with-symmetry-induced-multiple-spectral-responses)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
-2. [Vaught's Conjecture for Sums of Products of Rooted Trees](/202609/25/2609.28606v1-vaughts-conjecture-for-sums-of-products-of-rooted-trees)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Recursive Paintboxes and the Martin Boundary of the Hoffman Rooted-Tree Graph](/202609/25/2609.30135v1-recursive-paintboxes-and-the-martin-boundary-of-the-hoffman-rooted-tree-graph)  
-   标签：评分：7.8/10
+1. [A Spatio-Temporal Generalisation of Green Kubo](/202609/26/2609.23905v1-a-spatio-temporal-generalisation-of-green-kubo)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-2. [Spectral eigenvalue problem of Cantor measures and Artin's primitive root conjecture](/202609/25/2609.29038v1-spectral-eigenvalue-problem-of-cantor-measures-and-artins-primitive-root-conjecture)  
-   标签：评分：7.1/10
+2. [Repeated differentiation of random polynomials with i.i.d. rotationally invariant roots](/202609/26/2609.23909v1-repeated-differentiation-of-random-polynomials-with-iid-rotationally-invariant-roots)  
+   标签：评分：6.2/10
    evidence：检索回退候选
-3. [A Block Decomposed QUBO Workflow for Chromosome-Y Phylogeny Reconstruction](/202609/25/2609.29856v1-a-block-decomposed-qubo-workflow-for-chromosome-y-phylogeny-reconstruction)  
-   标签：评分：7.1/10
+3. [Time-uniform accuracy of ensemble Kalman filters with localization](/202609/26/2609.23927v1-time-uniform-accuracy-of-ensemble-kalman-filters-with-localization)  
+   标签：评分：6.2/10
    evidence：检索回退候选
-4. [Intrinsic-Extrinsic Coupling in Learning Dynamics](/202609/25/2609.30185v1-intrinsic-extrinsic-coupling-in-learning-dynamics)  
-   标签：评分：7.0/10
+4. [Positive formulas for q-Zeta numerators of Ferrers-cell posets](/202609/26/2609.24541v1-positive-formulas-for-q-zeta-numerators-of-ferrers-cell-posets)  
+   标签：评分：6.1/10
    evidence：检索回退候选
-5. [Bayesian Sample Size Determination: Sampling Distribution Estimation or Exploration?](/202609/25/2609.19489v1-bayesian-sample-size-determination-sampling-distribution-estimation-or-exploration)  
+5. [Magic positivity of Snapper polynomials for matroids](/202609/26/2609.24917v1-magic-positivity-of-snapper-polynomials-for-matroids)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+6. [Physics-constrained inference of somatic dynamics from dendritic recordings with sparse somatic supervision in weakly coupled two-compartment neuron model](/202609/26/2609.25436v1-physics-constrained-inference-of-somatic-dynamics-from-dendritic-recordings-with-sparse-somatic-supervision-in-weakly-coupled-two-compartment-neuron-model)  
    标签：评分：6.0/10
    evidence：检索回退候选
-6. [Radial dam breaks in a two-dimensional droplet bearing environment](/202609/25/2609.19508v1-radial-dam-breaks-in-a-two-dimensional-droplet-bearing-environment)  
+7. [Idealistic equivalence relations and the Lusin derivative](/202609/26/2609.21305v1-idealistic-equivalence-relations-and-the-lusin-derivative)  
    标签：评分：6.0/10
    evidence：检索回退候选
-7. [A $(1+1/\sqrt{2})$-Approximation for the Multiple-Depot Traveling Salesman Problem](/202609/25/2609.19537v1-a-11sqrt2-approximation-for-the-multiple-depot-traveling-salesman-problem)  
+8. [Knowledge-Graph-Augmented Chronos-2 for HEC-RAS Surrogate Forecasting](/202609/26/2609.21381v1-knowledge-graph-augmented-chronos-2-for-hec-ras-surrogate-forecasting)  
    标签：评分：6.0/10
    evidence：检索回退候选
-8. [Embedding rooted blow-ups of tree posets](/202609/25/2609.23543v1-embedding-rooted-blow-ups-of-tree-posets)  
+9. [Stability of the Riesz-type inequalities under gluing](/202609/26/2609.21399v1-stability-of-the-riesz-type-inequalities-under-gluing)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [Demographic inference of pathogen-infected populations from partially observed transmission forests](/202609/25/2609.23624v1-demographic-inference-of-pathogen-infected-populations-from-partially-observed-transmission-forests)  
+10. [Estimating heterogeneous treatment effects from randomised trials: a comparison of the risk modelling and treatment effect modelling approaches](/202609/26/2609.21526v1-estimating-heterogeneous-treatment-effects-from-randomised-trials-a-comparison-of-the-risk-modelling-and-treatment-effect-modelling-approaches)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [The quasi-isometry classes of Galton--Watson trees](/202609/25/2609.23882v1-the-quasi-isometry-classes-of-galton--watson-trees)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [GDN Tree-Scan: Served Tree Verification for Recurrent-Hybrid Language Models](/202609/25/2609.23900v1-gdn-tree-scan-served-tree-verification-for-recurrent-hybrid-language-models)  
+11. [Et Tu, MacBook? Unprivileged Keystroke Inference and Context Profiling via the Built-in IMU Side Channel](/202609/26/2609.21569v1-et-tu-macbook-unprivileged-keystroke-inference-and-context-profiling-via-the-built-in-imu-side-channel)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
