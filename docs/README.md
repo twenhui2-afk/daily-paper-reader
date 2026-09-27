@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-26
-- 运行时间：2026-09-27 06:20:09 UTC+8
+- 最新运行日期：2026-09-27
+- 运行时间：2026-09-28 06:02:01 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,45 +15,45 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《A Spatio-Temporal Generalisation of Green Kubo》（6.3/10）, 《Repeated differentiation of random polynomials with i.i.d. rotationally invariant roots》（6.2/10）, 《Time-uniform accuracy of ensemble Kalman filters with localization》（6.2/10）
+- 速读：《Exact Ehrhart Series of Birkhoff Polytopes via Constant Terms and Finite-Field Evaluation》（6.4/10）, 《On the limiting distribution of the number of improper edges for random trees》（6.4/10）, 《Zeros and Roots of Unity for Characters of Solvable Groups》（6.3/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/26/README](/202609/26/README)
+- 详情：[/202609/27/README](/202609/27/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [A Spatio-Temporal Generalisation of Green Kubo](/202609/26/2609.23905v1-a-spatio-temporal-generalisation-of-green-kubo)  
+1. [Exact Ehrhart Series of Birkhoff Polytopes via Constant Terms and Finite-Field Evaluation](/202609/27/2609.25863v1-exact-ehrhart-series-of-birkhoff-polytopes-via-constant-terms-and-finite-field-evaluation)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+2. [On the limiting distribution of the number of improper edges for random trees](/202609/27/2609.26045v1-on-the-limiting-distribution-of-the-number-of-improper-edges-for-random-trees)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+3. [Zeros and Roots of Unity for Characters of Solvable Groups](/202609/27/2609.26842v1-zeros-and-roots-of-unity-for-characters-of-solvable-groups)  
    标签：评分：6.3/10
    evidence：检索回退候选
-2. [Repeated differentiation of random polynomials with i.i.d. rotationally invariant roots](/202609/26/2609.23909v1-repeated-differentiation-of-random-polynomials-with-iid-rotationally-invariant-roots)  
+4. [Does Graph Structure Earn Its Place in Microservice Root-Cause Analysis? A Controlled Study on RCAEval, and What the Benchmark Was Really Measuring](/202609/27/2609.27069v1-does-graph-structure-earn-its-place-in-microservice-root-cause-analysis-a-controlled-study-on-rcaeval-and-what-the-benchmark-was-really-measuring)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+5. [Local Weak Limits for Equilibrium and Risk in Economic Networks](/202609/27/2609.27107v1-local-weak-limits-for-equilibrium-and-risk-in-economic-networks)  
    标签：评分：6.2/10
    evidence：检索回退候选
-3. [Time-uniform accuracy of ensemble Kalman filters with localization](/202609/26/2609.23927v1-time-uniform-accuracy-of-ensemble-kalman-filters-with-localization)  
+6. [Definability and undecidability via the torsion subgroup of units](/202609/27/2609.27210v1-definability-and-undecidability-via-the-torsion-subgroup-of-units)  
    标签：评分：6.2/10
    evidence：检索回退候选
-4. [Positive formulas for q-Zeta numerators of Ferrers-cell posets](/202609/26/2609.24541v1-positive-formulas-for-q-zeta-numerators-of-ferrers-cell-posets)  
+7. [Classical Root Systems Reveal Defect-Junction Data in Stabilizer Renyi Entropy](/202609/27/2609.27537v1-classical-root-systems-reveal-defect-junction-data-in-stabilizer-renyi-entropy)  
    标签：评分：6.1/10
    evidence：检索回退候选
-5. [Magic positivity of Snapper polynomials for matroids](/202609/26/2609.24917v1-magic-positivity-of-snapper-polynomials-for-matroids)  
+8. [NeuralSRNF: Neural Square Root Normal Fields for the Statistical Shape Analysis and Generation of Nonrigid 3D and 4D Objects](/202609/27/2609.27728v1-neuralsrnf-neural-square-root-normal-fields-for-the-statistical-shape-analysis-and-generation-of-nonrigid-3d-and-4d-objects)  
    标签：评分：6.1/10
    evidence：检索回退候选
-6. [Physics-constrained inference of somatic dynamics from dendritic recordings with sparse somatic supervision in weakly coupled two-compartment neuron model](/202609/26/2609.25436v1-physics-constrained-inference-of-somatic-dynamics-from-dendritic-recordings-with-sparse-somatic-supervision-in-weakly-coupled-two-compartment-neuron-model)  
+9. [Nonabelian vortices: From topological strings to nonvolatile memory](/202609/27/2609.28025v1-nonabelian-vortices-from-topological-strings-to-nonvolatile-memory)  
    标签：评分：6.0/10
    evidence：检索回退候选
-7. [Idealistic equivalence relations and the Lusin derivative](/202609/26/2609.21305v1-idealistic-equivalence-relations-and-the-lusin-derivative)  
+10. [GaitVista: Reliability-Aware AI Measurement toward Accessible Longitudinal Gait Assessment](/202609/27/2609.22619v1-gaitvista-reliability-aware-ai-measurement-toward-accessible-longitudinal-gait-assessment)  
    标签：评分：6.0/10
    evidence：检索回退候选
-8. [Knowledge-Graph-Augmented Chronos-2 for HEC-RAS Surrogate Forecasting](/202609/26/2609.21381v1-knowledge-graph-augmented-chronos-2-for-hec-ras-surrogate-forecasting)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-9. [Stability of the Riesz-type inequalities under gluing](/202609/26/2609.21399v1-stability-of-the-riesz-type-inequalities-under-gluing)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-10. [Estimating heterogeneous treatment effects from randomised trials: a comparison of the risk modelling and treatment effect modelling approaches](/202609/26/2609.21526v1-estimating-heterogeneous-treatment-effects-from-randomised-trials-a-comparison-of-the-risk-modelling-and-treatment-effect-modelling-approaches)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [Et Tu, MacBook? Unprivileged Keystroke Inference and Context Profiling via the Built-in IMU Side Channel](/202609/26/2609.21569v1-et-tu-macbook-unprivileged-keystroke-inference-and-context-profiling-via-the-built-in-imu-side-channel)  
+11. [Sharp $L^2$-stability and gradient stability hierarchies of the $L^2$-Poincaré inequalities on Euclidean balls and Gaussian Poincaré inequality](/202609/27/2609.22626v1-sharp-l2-stability-and-gradient-stability-hierarchies-of-the-l2-poincar-inequalities-on-euclidean-balls-and-gaussian-poincar-inequality)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
