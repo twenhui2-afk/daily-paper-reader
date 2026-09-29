@@ -1,0 +1,1246 @@
+Title: Accelerating Branch MPC with Two-Level Parallel Direct Solves on GPUs
+
+URL Source: https://arxiv.org/pdf/2609.29977v1
+
+Published Time: Fri, 25 Sep 2026 01:25:58 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Accelerating Branch MPC with Two-Level Parallel Direct Solves on GPUs 
+
+Fenglong Song 1, Luyao Zhang 2, Liang Wu 3, J´ an Drgoˇ na 3, and Colin N. Jones 1
+
+Abstract — Branch model predictive control optimizes multi-ple future trajectories coupled through shared decisions, with computational demands increasing as the number of scenarios and prediction horizon grow. We present a GPU-accelerated direct linear solver for branch MPC formulations in which all trajectories share a single root decision node and evolve inde-pendently thereafter. By operating at the linear-algebra level, the solver provides a reusable backend for multiple optimization algorithms whose reduced systems have the required symmetric positive-definite structure. The solver exploits two levels of parallelism: across scenarios and along each prediction horizon. A tailored variable ordering enables horizon-parallel Cholesky factorization while preserving a single root–tail coupling block per scenario in the factor. Numerical experiments demonstrate substantial speedups over state-of-the-art sparse direct solvers, achieving factorization speedups of up to 6.0 × over cuDSS 
+
+and 27.6 × over eight-thread PARDISO , with triangular solve speedups of up to 3.5 × and 15.8 ×, respectively. 
+
+I. I NTRODUCTION 
+
+Model predictive control (MPC) selects control actions us-ing predictions of future system behavior. Under uncertainty, however, a single predicted trajectory may not represent the range of disturbances or operating modes that the system may encounter. Branch MPC addresses this limitation by optimiz-ing multiple candidate future trajectories whose decisions can diverge as additional information becomes available [1], [2], preparing different responses to possible future evolutions. However, its computational cost grows with both the number of trajectories and the prediction horizon. This paper proposes a computational approach that ap-plies directly to the broad class of branch MPC problems that appears under different names throughout the MPC literature, such as min-max feedback MPC over disturbance trees [3], scenario-tree stochastic MPC [4], [5], multi-stage robust MPC [6], risk-averse MPC in which the expectation over the tree is replaced by a coherent risk measure [7], contingency MPC for automated driving [8]–[10], and branch MPC for interactive, multi-modal motion planning [2]. These formulations differ in how the tree is generated, but they all produce optimization problems, and hence linear systems, with the same tree-induced sparsity.         
+
+> This work is supported by NCCR Automation, a National Centre of Competence in Research, funded by the Swiss National Science Foundation (grant number 51NF40 225155). This work is also partially supported by the U.S. DOE, Office of Science, ASCR program under the Scientific Discovery through Advanced Computing (SciDAC) Institute “LEADS: LEarning-Accelerated Domain Science” and by the Ralph O’Connor Sustainable Energy Institute (ROSEI) at Johns Hopkins University.
+> 1Automatic Control Laboratory, ´Ecole polytechnique f´ ed´ erale de Lau-sanne (EPFL).
+
+{fenglong.song }@epfl.ch   
+
+> 2Delft Center for Systems and Control, Delft University of Technology.
+> 3Department of Civil and Systems Engineering, Johns Hopkins Univer-sity. tail 1
+> 𝑠 11, 𝑢 11𝑠 12, 𝑢 12𝑠 13, 𝑢 13
+
+· · ·   
+
+> 𝑠 1
+> 𝑁
+> tail 2
+> 𝑠 21, 𝑢 21𝑠 22, 𝑢 22𝑠 23, 𝑢 23
+
+· · ·       
+
+> 𝑠 2
+> 𝑁
+> tail 𝑀
+> 𝑠 𝑀
+> 1, 𝑢 𝑀
+> 1𝑠 𝑀
+> 2, 𝑢 𝑀
+> 2𝑠 𝑀
+> 3, 𝑢 𝑀
+> 3
+
+· · · 
+
+> 𝑠 𝑀 𝑁
+> horizon level scenario level
+
+...𝑠 0, 𝑢 0
+
+> root
+
+Fig. 1: Illustration for the branch MPC we consider in this work, where s stands for states and u stands for inputs. All M scenario tails share one complete root decision node 
+
+(s0, u 0) and evolve independently afterwards. Specifically, we consider a formulation in which all trajec-tories share one root decision node and evolve independently thereafter , as illustrated in Fig. 1. This structure exposes two complementary sources of parallelism: different scenario tails can be processed concurrently, while operations along the horizon can also be organized into parallel levels. Such large and relatively regular collections of trajectories pro-vide substantial parallelism and great potential for Graphics Processing Units (GPUs) to take advantage of. The sparsity structure of the scenario tree has been ex-ploited in related work. The Riccati recursion can be used to process independent subtrees toward the root, requiring work linear in the number of nodes [11], [12]. Dual-Newton methods provide a complementary decomposition by operat-ing directly on tree-structured quadratic programs and permit parallel branch processing without a scenario-wise reformu-lation [13]. Although these approaches expose concurrency across branches, their temporal recursions remain sequential along each branch, limiting the available parallelism for long prediction horizons. This limitation motivates the use of temporal paralleliza-tion methods developed for optimal control. Associative scans enable parallel linear-quadratic control along the pre-diction horizon [14], [15]. With sufficient computational resources, it can reduce the time complexity from O(N ) to 
+
+O(log N ), where N is the horizon length. Related structure-exploiting factorization methods organize the computation into a hierarchy of parallel subproblems, likewise achieving logarithmic time complexity [16]–[19]. These techniques provide building blocks for parallelizing the computations within each trajectory branch. Recent work exploits both directions of parallelism arXiv:2609.29977v1 [eess.SY] 24 Sep 2026 through solver-specific recursions. The method in [20] em-beds associative scans within an augmented Lagrangian framework, while [21] applies rake–compress Riccati re-cursion to general scenario trees. Our approach targets a different computation layer. We exploit the two-level paral-lelism directly at the linear-algebra level , performing parallel Cholesky factorization and triangular solves when solving the linear system arising from the optimization algorithms. It can therefore serve as a backend for multiple optimization methods, such as interior-point methods (IPMs) and the alter-nating direction method of multipliers (ADMM), whenever they produce linear systems with the same target structure (see Appendix I). Our contributions are:  
+
+> •
+
+We develop a direct factorization and triangular solve procedure for root-coupled branch MPC systems that combines parallelism across scenarios and along each prediction horizon.  
+
+> •
+
+We implement 1 the method as a GPU linear-algebra backend, which can be integrated into multiple opti-mization algorithms whose reduced systems have the required symmetric positive-definite structure.  
+
+> •
+
+We evaluate our implementation through numerical experiments across multiple scenario counts and pre-diction horizons, showing substantial speedups com-pared with state-of-the-art general sparse direct solvers 
+
+PARDISO [22] and cuDSS [23]. 
+
+Notation We denote the set of real numbers by R, and use Rn and Rn×n for the spaces of real n-vectors and real 
+
+n × n matrices, respectively. The cone of real symmetric positive-definite (SPD) matrices is denoted by Sn
+
+> ++
+
+. We use 
+
+Inm := {m, m + 1 , . . . , n } for integer index sets. Throughout the paper, M and N are reserved for the number of scenarios and their common horizon length, respectively. Accordingly, 
+
+i ∈ IM 
+
+> 1
+
+always indexes a scenario, whereas k ∈ IN 
+
+> 0
+
+always indexes a temporal stage. A scenario superscript, as in xik,is an index rather than an exponent. All vectors are column vectors, and parentheses denote vertical concatenation, e.g., 
+
+(x1, . . . , x N ) := [ x⊤ 
+
+> 1
+
+, . . . , x ⊤ 
+
+> N
+
+]⊤. We use In for the n × n
+
+identity matrix and blkdiag( ·) for block-diagonal concate-nation. II. P RELIMINARIES 
+
+We briefly introduce the parallel Cholesky factorization and triangular solve for block tridiagonal systems. Consider an SPD block-tridiagonal matrix Ψ with N diagonal blocks: 
+
+
+
+D1 E⊤
+
+> 1
+
+E1 D2
+
+. . .. . . . . . E⊤ 
+
+> N−1
+
+EN −1 DN
+
+| {z }
+
+> Ψ
+
+
+
+ξ1
+
+ξ2
+
+...
+
+ξN
+
+| {z } 
+
+> ξ
+
+=
+
+
+
+r1
+
+r2
+
+...
+
+rN
+
+| {z } 
+
+> r
+
+For any block-wise permutation matrix Γ, define 
+
+bξ := Γ ξ, br := Γ r, bΨ := ΓΨΓ ⊤.
+
+> 1Link to code: github.com/PREDICT-EPFL/branch-mpc-linsys-solver
+
+The original system is equivalent to bΨbξ = br since Γ⊤Γ = 
+
+I. The vector bξ contains the same variable blocks in the sequence specified by the rows of Γ. Thus, symmetrically permuting Ψ while applying the same permutation to ξ and 
+
+r is equivalent to reordering the block variables. A block-wise recursive permutation is proposed by [18] to expose parallelism in factorization and triangular solves. We denote its N -block instance by ΓN . At each recursive call, the permutation takes every other block from the current ordered sequence, starting with the first, while preserving their relative order. It then treats the unselected blocks as a new ordered sequence and repeats the same operation: 
+
+ΓN (ξ1, . . . , ξ N ) =  ξ1, ξ 3, ξ 5, . . . , Γ⌊N/ 2⌋(ξ2, ξ 4, ξ 6, . . . ).
+
+Take N = 7 as an example, we have 
+
+Γ7(ξ1, . . . , ξ 7) = ( ξ1, ξ 3, ξ 5, ξ 7 | ξ2, ξ 6 | ξ4),
+
+where the vertical bars show the groups produced by the recursive calls. Applying Γ7 symmetrically to Ψ gives 
+
+Γ7ΨΓ ⊤ 
+
+> 7
+
+=
+
+
+
+D1 E⊤
+
+> 1
+
+D3 E2 E⊤
+
+> 3
+
+D5 E⊤ 
+
+> 5
+
+E4
+
+D7 E6
+
+E1 E⊤ 
+
+> 2
+
+D2
+
+E5 E⊤ 
+
+> 6
+
+D6
+
+E3 E⊤ 
+
+> 4
+
+D4
+
+
+
+. (1) The groups produced by this recursion induce multiple levels of parallelism used by the factorization and triangular solves. In this example, the blocks 1, 3, 5, 7 are mutually uncoupled and can be processed concurrently. After their contributions have been applied, blocks 2 and 6 can be processed concurrently, followed by block 4. Because each recursive step reduces the number of remaining blocks by approximately one half, the permutation enables O(log N )
+
+time complexity with sufficient parallel resources. We refer interested readers to [18] for more details. III. P ROBLEM STRUCTURE 
+
+A. Problem Formulation 
+
+We consider the problem formulation 
+
+min  
+
+> x0,{xi
+> 1: N}Mi=1
+> M
+
+X
+
+> i=1
+
+Ji(x0, x i 
+
+> 1: N
+
+)
+
+s.t. f ik(xik, x ik+1 ) = 0 , ∀k ∈ IN −11 , i ∈ IM 
+
+> 1
+
+,hik(xik, x ik+1 ) ≤ 0, ∀k ∈ IN −11 , i ∈ IM 
+
+> 1
+
+,f i
+
+> 0
+
+(x0, x i
+
+> 1
+
+) = 0 , ∀i ∈ IM 
+
+> 1
+
+,hi
+
+> 0
+
+(x0, x i
+
+> 1
+
+) ≤ 0, ∀i ∈ IM 
+
+> 1
+
+,f iN (xiN ) = 0 , ∀i ∈ IM 
+
+> 1
+
+,hiN (xiN ) ≤ 0, ∀i ∈ IM 
+
+> 1
+
+,
+
+(2) where x0 is the shared root block 2, while xi 
+
+> 1: N
+
+:= (xi
+
+> 1
+
+, . . . , x iN ) denotes the scenario-dependent tail variables as illustrated in Fig. 1. The cost for the i-th scenario is 
+
+Ji(x0, x i 
+
+> 1: N
+
+) := ℓi
+
+> 0
+
+(x0, x i
+
+> 1
+
+) +  
+
+> N−1
+
+X
+
+> k=1
+
+ℓik(xik, x ik+1 ) + ℓiN (xiN ).
+
+Notice that xik contains both states and inputs of the i-th scenario at the k-th stage 3 for a compact formulation. 
+
+Assumption 1: We assume that the shared root and all tail variables have unified size, i.e., x0 ∈ Rnb and xik ∈
+
+Rnb , ∀i ∈ IM 
+
+> 1
+
+, k ∈ IN 
+
+> 1
+
+.
+
+Remark 1: Although the last stage xiN is smaller since it has no input, it can be padded to satisfy Assumption 1. 
+
+B. Structure of the Linear System 
+
+The optimization methods considered in this work require repeated solutions of linear systems 
+
+K∆x = r, (3) where K is SPD (explained in Appendix I) and ∆x is the unknown to be solved. For each scenario i, we define the stacked tail: 
+
+∆xi := (∆ xi
+
+> 1
+
+, . . . , ∆xiN ) ∈ RN n b .
+
+Grouping the tails and placing the root last gives 
+
+∆x := (∆ x1, . . . , ∆xM , ∆x0) ∈ R(M N +1) nb .
+
+Similarly, we partition the right-hand side as 
+
+r = ( r1, . . . , r M , r 0), ri = ( ri
+
+> 1
+
+, . . . , r iN ),
+
+where rik, r 0 ∈ Rnb . With this ordering, the matrix becomes 
+
+K =
+
+
+
+K1 C⊤
+
+> 1
+
+K2 C⊤
+
+> 2
+
+. . . ...
+
+KM C⊤
+
+> M
+
+C1 C2 · · · CM R
+
+
+
+∈ S(M N +1) nb 
+
+> ++
+
+. (4) Here, Ki is the temporal system associated with tail i, R ∈
+
+Snb 
+
+> ++
+
+is the root block associated with the variables ∆x0, and 
+
+Ci couples tail i to the root. Different tails have no direct coupling and interact only through the root block. Each tail matrix Ki has the block-tridiagonal structure: 
+
+Ki =
+
+
+
+Di, 1 E⊤
+
+> i, 1
+
+Ei, 1 Di, 2
+
+. . .. . . . . . E⊤ 
+
+> i,N −1
+
+Ei,N −1 Di,N 
+
+
+
+∈ SN n b 
+
+> ++
+
+. (5) The shared root variables couple directly to only the first temporal block of each tail, making the matrix Ci contain only one non-zero block Ci, 1 ∈ Rnb×nb at the beginning: 
+
+Ci = Ci, 1 0 · · · 0 ∈ Rnb×N n b .  
+
+> 2The initial condition constraint that arises in a scenario-based optimal control problem can be described by fi
+> 0(x0, x i
+> 1).
+> 3Except for the last stage, where the inputs do not appear.
+
+The resulting coefficient matrix has a block-diagonal-arrow structure with block-tridiagonal tails and a single root-coupling block in each tail. The next section develops a direct solver tailored to this structure. IV. T WO -L EVEL PARALLEL DIRECT SOLUTION 
+
+The root-coupled system in (4) exposes two distinct sources of parallelism:  
+
+> •
+
+Scenario-level parallelism (SLP) : the tail matrices Ki
+
+have no direct coupling with each other and can be processed concurrently.  
+
+> •
+
+Horizon-level parallelism (HLP) : the natural tempo-ral variable order creates a block-tridiagonal structure within each Ki, whose Cholesky factorization and tri-angular solve can be done in parallel as studied by [18]. This section introduces a block permutation that exposes parallelism within every tail without spreading its coupling to the root variables. The resulting factorization and triangular solves exploit both levels of parallelism and synchronize the tails only through operations on the root block. 
+
+A. Block Permutation for Two-Level Parallelism 
+
+To expose parallelism, we apply a dedicated permutation to the matrix K. Let Π denote the permutation matrix of the complete system. The original system is then equivalent to 
+
+ΠKΠ⊤
+
+| {z }
+
+> bK
+
+Π∆ x| {z } 
+
+> ∆bx
+
+= Π r|{z} 
+
+> br
+
+, (6) where bK := Π KΠ⊤ is the permuted matrix, ∆bx := Π∆ x is the permuted unknown and br := Π r are the permuted right-hand-side (RHS). The rows of Π specify the sequence in which the block variables appear in ∆bx and br. Consequently, factorizing bK is algebraically equivalent to factorizing K
+
+according to that variable order. We first reverse the order of variables corresponding to tail i on the block-level, and the reason for doing this will become clear later: 
+
+Ωi∆xi =  ∆xiN , . . . , ∆xi
+
+> 1
+
+ , Ωiri =  riN , . . . , r i
+
+> 1
+
+ ,
+
+where Ωi ∈ RN n b×N n b is the corresponding block-reversal permutation matrix. Then we construct the block-wise per-mutation ΓN −1 from [18] defined in Section II and apply it onto (∆ xiN , . . . , ∆xi
+
+> 2
+
+) and (riN , . . . , r i
+
+> 2
+
+). The block ∆xi
+
+> 1
+
+,which is the only tail block coupled to the root variables 
+
+∆x0, is excluded from ΓN −1 and kept last. The permutation matrix for the i-th tail is therefore 
+
+Πi =
+
+ΓN −1 00 Inb
+
+
+
+Ωi,
+
+and we denote its corresponding permuted unknown and RHS associated with the i-th tail by 
+
+∆bxi := Π i∆xi, bri := Π iri.
+
+Since we consider the case where all tails have the same horizon length and block dimensions, the same permutation matrix: nnz = 495 factor: nnz = 420, fill-in = 144 matrix: nnz = 495 factor: nnz = 276, fill-in = 0      
+
+> matrix: nnz = 495 factor: nnz = 366, fill-in = 90 matrix: nnz = 495 factor: nnz = 348, fill-in = 72 variable order: (xi
+> 1, x i
+> 2, x i
+> 3, x i
+> 4, x i
+> 5, x i
+> 6, x i
+> 7, x i
+> 8, x i
+> 9
+> )
+> i=1 ,2, x 0
+
+(a) forward ordering, sequential in horizon   
+
+> variable order: (xi
+> 9, x i
+> 8, x i
+> 7, x i
+> 6, x i
+> 5, x i
+> 4, x i
+> 3, x i
+> 2, x i
+> 1
+> )
+> i=1 ,2, x 0
+
+(b) reverse ordering, sequential in horizon   
+
+> variable order: (xi
+> 9, x i
+> 7, x i
+> 5, x i
+> 3, x i
+> 1, x i
+> 8, x i
+> 4, x i
+> 6, x i
+> 2
+> )
+> i=1 ,2, x 0
+
+(c) reverse ordering, parallel in horizon ( xi 
+
+> 1
+
+not separated)   
+
+> variable order: (xi
+> 9, x i
+> 7, x i
+> 5, x i
+> 3, x i
+> 8, x i
+> 4, x i
+> 6, x i
+> 2, x i
+> 1
+> )
+> i=1 ,2, x 0
+
+(d) reverse ordering, parallel in horizon ( xi 
+
+> 1
+
+separated) 
+
+> tail diagonal blocks tail off-diagonal blocks root block root–tail coupling fill-in horizon-level parallelism hierarchy
+
+Fig. 2: Sparsity of the matrix in the linear system to be solved and its Cholesky factor under different variable orderings. We choose M = 2 scenarios and N = 9 for a brief demonstration. All block sizes are assumed to be 3. pattern is applied independently to every tail. The complete permutation matrix is therefore 
+
+Π = blkdiag (Π 1, Π2, . . . , ΠM , I nb ) ,
+
+and the permuted matrix is given by 
+
+bK1 bC⊤
+
+> 1
+
+bK2 bC⊤
+
+> 2
+
+. . . ...
+
+bKM bC⊤
+
+> M
+
+bC1 bC2 · · · bCM R
+
+| {z }
+
+> bK
+
+
+
+∆bx1
+
+∆bx2
+
+...
+
+∆bxM
+
+∆x0
+
+| {z }
+
+> ∆bx
+
+=
+
+br1
+
+br2
+
+...
+
+brM
+
+r0
+
+| {z } 
+
+> br
+
+, (7) which retains the block-diagonal-arrow structure in bK and preserves scenario-level independence. Each tail is given by bKi = Π iKiΠ⊤ 
+
+> i
+
+, which allows exposing horizon-level parallelism independently inside all tails as described in Section II. Moreover, since ∆xi 
+
+> 1
+
+remains last in every tail, the per-muted coupling matrix bCi has the following form: 
+
+bCi = CiΠ⊤ 
+
+> i
+
+= 0 · · · 0 Ci, 1
+
+ ∈ Rnb×N n b , (8) which contains only one non-zero block in the end. Figure 2 illustrates the effect of variable reversal and separated treatment of ∆xi
+
+> 1
+
+. Under forward temporal order-ing, eliminating ∆xi 
+
+> 1
+
+creates a coupling between the root and ∆xi
+
+> 2
+
+, causing subsequent eliminations to propagate this coupling along the tail as shown in Figure 2(a), creating considerable fill-in blocks. Figure 2(b) reverses the variables in each tail to avoid the fill-in, but the factorization remains sequential along the horizon. Applying the recursive block permutation to the complete reversed tail as in Figure 2(c) exposes horizon-level parallelism, but allows ∆xi 
+
+> 1
+
+to enter an earlier elimination level and again spreads the root coupling. The proposed permutation, as illustrated in Figure 2(d), applies ΓN −1 only to ∆xiN , . . . , ∆xi 
+
+> 2
+
+and fixes ∆xi 
+
+> 1
+
+at the end. Placing ∆xi 
+
+> 1
+
+last ensures that the root–tail coupling remains confined to a single block in the Cholesky factor, as established in Section IV-B, while the remaining tail variables admit horizon-parallel elimination. 
+
+B. Parallel Cholesky Factorization 
+
+We consider the permuted matrix bK in (7) and compute its Cholesky factor L such that LL ⊤ = bK, where L is lower triangular and inherits the block-diagonal-arrow form: 
+
+L =
+
+
+
+L1
+
+L2
+
+. . .
+
+LM
+
+F1 F2 · · · FM LR
+
+
+
+.Algorithm 1 Two-Level Parallel Cholesky Factorization 
+
+Require: Tail matrices {Ki}Mi=1 , coupling blocks {Ci, 1}Mi=1 ,root block R, and permutations {Πi}Mi=1  
+
+> 1:
+
+for all i = 1 , . . . , M in parallel do ▷ SLP  
+
+> 2:
+
+Compute the permuted matrix bKi 
+
+> 3:
+
+Li ← chol( bKi) ▷ Tail factor., O(n3 
+
+> b
+
+log N ), HLP  
+
+> 4:
+
+Fi, 1 ← Ci, 1L−⊤  
+
+> i, 1
+
+▷ Tail coupling solve, O(n3 
+
+> b
+
+) 
+
+> 5:
+
+Ui ← Fi, 1F ⊤ 
+
+> i, 1
+
+▷ Local Schur update, O(n3 
+
+> b
+
+) 
+
+> 6:
+
+end for  
+
+> 7:
+
+eR ← R − PMi=1 Ui ▷ Root reduction, O(n2 
+
+> b
+
+log M ) 
+
+> 8:
+
+LR ← chol( eR) ▷ Root factorization, O(n3 
+
+> b
+
+) 
+
+> 9:
+
+return {Li}Mi=1 , {Fi, 1}Mi=1 , and LR
+
+Matching the blocks in LL ⊤ = bK yields the following five steps: 1) Tail factorization: Li ← chol( bKi) for all i ∈ IM 
+
+> 1
+
+.2) Tail coupling solve: Fi ← bCiL−⊤  
+
+> i
+
+for all i ∈ IM 
+
+> 1
+
+.3) Local Schur update: Ui ← FiF ⊤ 
+
+> i
+
+for all i ∈ IM 
+
+> 1
+
+.4) Root reduction: eR ← R − PMi=1 Ui.5) Root factorization: LR ← chol( eR).For each tail, the factorization, coupling solve, and local Schur update are performed in sequence. These computa-tions are independent across tails and can therefore proceed concurrently. The root reduction combines their contributions before the root block is factorized. Specifically, we demon-strate the first three steps in more detail: 
+
+1) Tail factorization: Within each tail, the factorization of 
+
+bKi uses the method in [18, Algorithm 4] as we introduced in Section II, achieving horizon-level parallelization. 
+
+2) Tail coupling solve: Since bC⊤ 
+
+> i
+
+has non-zeros only on its last block row, solving Fi ← bCiL−⊤  
+
+> i
+
+produces all zeros until the final block of Fi, i.e., 
+
+Fi = 0 · · · 0 Fi, 1
+
+ ∈ Rnb×N n b .
+
+Therefore, when computing Fi ← bCiL−⊤  
+
+> i
+
+, instead of using the complete matrices, it can be reduced to: 
+
+Fi, 1 ← Ci, 1L−⊤  
+
+> i, 1
+
+,
+
+where Li, 1 ∈ Rnb×nb is the final diagonal block of Li,associated with the original stage variable ∆xi
+
+> 1
+
+. A formal proof is given in Appendix II. 
+
+3) Local Schur update: Since Fi only contains one non-zero block Fi, 1, Ui ← FiF ⊤ 
+
+> i
+
+can be simplified as 
+
+Ui ← Fi, 1F ⊤
+
+> i, 1
+
+.
+
+Algorithm 1 summarizes the two-level parallel Cholesky factorization, with the time complexity of each step anno-tated in the comments, assuming sufficient parallel comput-ing units are available. By summing them up, the overall time complexity of the proposed Cholesky factorization is 
+
+O(n3 
+
+> b
+
+log N + n2 
+
+> b
+
+log M ).
+
+Algorithm 2 Two-Level Parallel Triangular Solves 
+
+Require: Tail factors {Li}Mi=1 , coupling factors {Fi, 1}Mi=1 ,permutations {Πi}Mi=1 , root factor LR and RHS r
+
+Forward substitution  
+
+> 1:
+
+for all i = 1 , . . . , M in parallel do ▷ SLP  
+
+> 2:
+
+bri ← Πiri 
+
+> 3:
+
+∆yi ← L−1 
+
+> i
+
+bri ▷ Tail fwd subs., O(n2 
+
+> b
+
+log N ), HLP  
+
+> 4:
+
+end for  
+
+> 5:
+
+er0 ← r0−PMi=1 Fi, 1∆yi 
+
+> 1
+
+▷ Root reduc., O(n2 
+
+> b
+
++nblog M ) 
+
+> 6:
+
+∆y0 ← L−1 
+
+> R
+
+er0 ▷ Root fwd subs., O(n2 
+
+> b
+
+)
+
+Backward substitution  
+
+> 7:
+
+∆x0 ← L−⊤  
+
+> R
+
+∆y0 ▷ Root bwd subs., O(n2 
+
+> b
+
+) 
+
+> 8:
+
+for all i = 1 , . . . , M in parallel do ▷ SLP  
+
+> 9:
+
+∆yi 
+
+> 1
+
+← ∆yi 
+
+> 1
+
+− F ⊤
+
+> i, 1
+
+∆x0 ▷ Root prop., O(n2 
+
+> b
+
+) 
+
+> 10:
+
+∆bxi ← L−⊤  
+
+> i
+
+∆yi ▷ Tail bwd subs., O(n2 
+
+> b
+
+log N ), HLP  
+
+> 11:
+
+∆xi ← Π⊤ 
+
+> i
+
+∆bxi 
+
+> 12:
+
+end for  
+
+> 13:
+
+∆x ← (∆ x1, . . . , ∆xM , ∆x0) ▷ Assemble solution  
+
+> 14:
+
+return ∆x
+
+C. Parallel Triangular Solve 
+
+Given the permuted right-hand side br, we solve 
+
+L∆y = br, L⊤∆bx = ∆ y, 
+
+by forward and backward substitution, respectively. Here, 
+
+∆y = (∆ y1, . . . , ∆yM , ∆y0),
+
+where ∆yi ∈ RN n b and ∆y0 ∈ Rnb . The solution consists of six stages: 1) Tail forward substitution: ∆yi ← L−1 
+
+> i
+
+bri for all i ∈ IM 
+
+> 1
+
+.2) Root reduction: er0 ← r0 − PMi=1 Fi∆yi.3) Root forward substitution: ∆y0 ← L−1 
+
+> R
+
+er0.4) Root backward substitution: ∆x0 ← L−⊤  
+
+> R
+
+∆y0.5) Root propagation: ∆˜ yi ← ∆yi−F ⊤ 
+
+> i
+
+∆x0 for all i ∈ IM 
+
+> 1
+
+.6) Tail backward substitution: ∆bxi ← L−⊤  
+
+> i
+
+∆˜ yi, for all 
+
+i ∈ IM 
+
+> 1
+
+.The tail operations in the first, fifth, and sixth stages are independent across tails and can therefore be performed concurrently at the scenario level. Within each tail, the forward and backward solves use the horizon-level parallel algorithm in [18, Algorithm 5]. Similar to the factorization, since Fi = [ 0 · · · 0 Fi, 1 ], the root reduction depends only on the last block of ∆yi, and root propagation modifies only that block, we can rewrite the root reduction step as er0 ← r0 − PMi=1 Fi, 1∆yi 
+
+> 1
+
+and the root propagation step as ∆˜ yi 
+
+> 1
+
+← ∆yi 
+
+> 1
+
+− F ⊤
+
+> i, 1
+
+∆x0 for all i ∈ IM 
+
+> 1
+
+,
+
+where ∆yi 
+
+> 1
+
+is the last block of ∆yi.Algorithm 2 summarizes the two-level parallel triangular solve, and the time complexity per step is marked in the comments, assuming sufficient parallel computing units. The overall time complexity is O(n2 
+
+> b
+
+log N + nb log M ).V. N UMERICAL EXPERIMENTS 
+
+To verify the effectiveness of our proposed method, we implement it using NVIDIA Warp [24], a Python framework 20 40 60 80 100 120 140 160 180 200                                                                                                     
+
+> scenarios  M
+> 2.4 3.3 3.6 4.4 4.3 5.1 4.7 5.8 5.8 5.9 6.0 4.3 5.2 5.7 6.6 6.6 7.4 7.7 8.8 9.9 10.0 10.8 5.8 7.1 7.3 8.6 9.0 11.0 10.9 11.6 12.4 13.3 13.1 7.4 8.9 9.1 10.8 12.0 13.3 13.4 14.5 15.2 14.7 15.4 8.1 9.6 10.9 12.6 13.2 14.6 15.1 15.6 16.8 18.0 18.4 9.3 11.8 12.3 14.2 14.8 16.5 17.0 17.8 19.7 20.6 19.9 10.6 13.5 13.2 15.2 17.0 17.3 19.1 19.9 21.1 22.2 22.2 11.1 14.4 15.7 16.1 18.1 19.9 20.4 21.7 22.4 23.1 23.9 11.8 14.6 16.1 16.5 19.4 20.7 21.8 22.5 23.2 25.9 26.0 12.2 15.8 16.6 18.2 20.6 20.9 23.0 24.3 25.4 27.6 27.6
+
+Factorization 
+
+20 30 40 50 60 70 80 90 100 110 120 
+
+horizon N
+
+20 40 60 80 100 120 140 160 180 200                                                                                                     
+
+> scenarios  M
+> 0.4 0.5 0.6 0.7 0.7 0.8 0.7 0.9 0.9 0.9 0.9 0.6 0.8 0.9 1.0 1.0 1.1 1.2 1.3 1.4 1.5 1.8 0.8 1.0 1.1 1.5 1.4 1.7 1.8 1.9 2.0 2.5 2.8 1.0 1.3 1.5 1.8 1.9 2.2 2.4 3.4 4.5 4.8 5.4 1.2 1.6 1.7 2.0 2.3 3.0 4.1 5.6 6.8 8.3 8.7 1.4 1.8 2.0 2.4 3.5 5.0 6.6 8.1 9.3 10.2 10.2 1.5 1.8 2.1 3.1 4.9 6.4 7.5 9.5 10.5 11.3 11.9 1.4 2.1 2.5 4.1 6.4 8.2 9.3 11.8 12.1 12.8 13.3 1.6 2.2 3.4 5.5 8.0 9.7 10.9 12.8 12.7 13.6 15.2 1.8 2.4 4.2 7.0 9.1 10.6 12.1 13.7 14.6 14.5 15.8
+
+Triangular solve 
+
+> 510 15 20 25
+> 246810 12 14
+
+(a) Speedup against PARDISO (8 threads). 20 40 60 80 100 120 140 160 180 200                                                                                                     
+
+> scenarios  M
+> 2.1 2.0 2.0 2.2 2.2 2.5 2.3 2.5 2.3 2.5 2.7 2.3 2.3 2.4 3.1 3.0 3.4 3.6 4.1 4.2 4.3 4.2 2.7 3.0 3.1 3.9 4.1 4.6 4.6 5.1 4.7 5.0 4.8 2.8 3.4 3.8 4.6 4.9 5.1 5.2 5.7 4.9 5.4 5.0 4.0 4.3 4.4 5.1 5.1 5.1 5.6 5.8 5.1 5.4 5.2 4.1 4.6 5.0 5.3 5.2 5.7 5.7 5.9 5.1 5.1 5.5 4.4 4.9 5.4 5.3 5.1 5.6 5.6 5.9 5.3 5.2 5.5 4.6 5.2 5.4 5.4 5.3 5.6 5.8 5.9 5.0 5.2 5.6 5.0 5.6 5.4 5.4 5.7 5.5 5.7 6.0 5.5 5.6 5.4 5.5 5.8 5.5 5.3 5.3 5.4 5.6 5.9 5.3 5.3 5.6
+
+Factorization 
+
+20 30 40 50 60 70 80 90 100 110 120 
+
+horizon N
+
+20 40 60 80 100 120 140 160 180 200                                                                                                     
+
+> scenarios  M
+> 1.9 1.9 1.7 1.9 2.0 2.3 2.1 2.3 2.1 2.2 2.5 1.9 2.2 2.3 2.6 2.7 2.7 2.7 2.9 2.8 2.7 2.8 2.5 2.7 2.6 3.3 2.7 2.6 2.4 2.7 2.4 2.5 2.3 2.5 2.8 2.7 3.0 2.6 2.5 2.3 2.4 2.2 2.3 2.4 3.5 3.3 2.8 2.7 2.4 2.4 2.3 2.4 2.3 2.3 2.1 3.4 3.3 2.5 2.6 2.3 2.3 2.2 2.3 2.1 2.2 2.0 3.3 3.0 2.3 2.5 2.3 2.2 2.1 2.2 2.1 2.1 2.0 3.2 2.9 2.2 2.5 2.5 2.1 2.0 2.1 2.0 2.1 2.0 3.1 2.9 2.2 2.4 2.2 2.0 2.0 2.0 1.9 2.0 2.1 3.0 2.8 2.1 2.4 2.1 2.0 1.9 2.1 1.9 2.0 2.0
+
+Triangular solve  
+
+> 2.02.53.03.54.04.55.05.56.0
+> 1.82.02.22.42.62.83.03.23.4
+
+(b) Speedup against cuDSS .
+
+Fig. 3: Speedups of the proposed parallel factorization and triangular solve compared to PARDISO and cuDSS .to generate high-performance kernels for NVIDIA GPUs. For the horizon-level parallel factorization and triangular solve, we use the existing open-source implementation socu [18]. Fixed sparsity permits a one-time analysis phase that allo-cates persistent workspaces and generates CUDA kernels. The factorization and solve pipelines are captured separately as CUDA graphs to reduce kernel launch overhead. All experiments are carried out on a workstation equipped with an Intel Core Ultra 9 285K CPU, 64 GB of system memory, and an NVIDIA GeForce RTX 5090 GPU with 32 GB of device memory. All solvers use double-precision (float64) arithmetic. 
+
+A. Experiment Settings 
+
+We consider a quadrotor navigating in 3-D space among spherical obstacles under uncertainty. Its model has 12 states, including position, velocity, ZYX Euler angles, and body rates, and 4 inputs corresponding to the rotor thrusts, leading to a block size nb = 16 . Each scenario independently sam-ples a vehicle mass with a 10% relative standard deviation and a time-invariant wind acceleration. We sweep M ∈ { 20 , 40 , . . . , 200 } scenarios and N ∈{20 , 30 , . . . , 160 } stages to cover a wide range of configu-rations. We compare our solver against two state-of-the-art general sparse direct solvers: Intel MKL PARDISO [22] 4,and NVIDIA cuDSS [23]. For PARDISO , we use 8 threads 
+
+4We call PARDISO ’s low-level Python binding and avoid dynamic mem-ory allocation. We set MKL DYNAMIC=FALSE , OMP DYNAMIC=FALSE ,and OMP WAIT POLICY=ACTIVE to reduce thread scheduling overhead. 
+
+bound to the CPU’s 8 performance cores, with default nested dissection ordering and iterative refinement turned off. The one-time costs, including symbolic analysis, kernel generation, memory allocation, and CUDA graph capture, are excluded from the reported time. For our solver and cuDSS ,data remain device-resident. Each value is the median of 50 executions after 10 warm-up runs. 
+
+B. Results 
+
+Across all experiments, the infinity norm of the difference between the solutions returned from our implementation and those from the two baseline solvers is around or be-low 10 −13 , demonstrating the correctness within double-precision tolerance. The speedup maps in Fig. 3 report the speedups relative to the 2 baseline solvers. Relative to 
+
+PARDISO , the proposed factorization is 2.4–27 .6× faster over the grid. The triangular-solve speedup ranges from approximately 0.4× at the smallest problem to 15 .8×. When the problem size is small, PARDISO is faster in the triangular solve than the proposed method, which is expected since the workload is not big enough to amortize the fixed overhead of the GPU, such as kernel launch and synchronization. Once either the scenario count or the horizon length increases, the additional scenario- and horizon-level parallel work is sufficient to amortize these costs, and the proposed triangular solve takes advantage of this. The comparison with cuDSS isolates the benefit over a general-purpose GPU sparse direct solver. The proposed method achieves 2.0–6.0× factorization speedups and 1.7–40 80 120 160 200 
+
+scenarios M
+
+0.1 0.2 0.5 125
+
+> time [ms]
+
+proposed cuDSS PARDISO factorization triangular solve (a) Fixed horizon length N = 30 with varying M .40 80 120 160 
+
+horizon N
+
+0.1 0.2 0.5 12510 20 
+
+> time [ms]
+
+proposed cuDSS PARDISO factorization triangular solve (b) Fixed number of scenarios M = 100 with varying N .
+
+Fig. 4: Absolute factorization and triangular-solve times along representative slices of the parameter grid. 
+
+3.5× triangular solve speedups, remaining faster at every tested point. The advantage generally increases with M and 
+
+N , but less regularly than the speedup pattern in Fig. 3a, possibly related to the superpanel strategy of cuDSS , which groups some columns into dense panels. The speedups over 
+
+cuDSS likely arise from exploiting the specific structure of the matrix. Operating on dense blocks may improve memory locality and reduce sparse-indexing overhead, while explic-itly scheduling independent tails and parallel elimination levels exposes concurrency at both the scenario and horizon levels. The tailored ordering also confines each root–tail coupling to a single block in the factor, limiting the asso-ciated fill-in and data movement. Although cuDSS exploits sparsity through general-purpose analysis and factorization, its ordering and scheduling are not necessarily tailored to these structural properties. Figure 4a shows the sensitivity of execution time to the scenario count and prediction horizon. Along scenario count, as shown in Figure 4a with fixed N = 30 , increasing 
+
+M from 20 to 200 increases factorization time only from approximately 0.15 to 0.35 ms and triangular solve time from approximately 0.10 to 0.16 ms. This weak dependence on scenario count demonstrates the effectiveness of concurrent tail processing on the GPU over the tested range. Along horizon length, as shown in Figure 4b with fixed M = 100 ,increasing N from 40 to 160 raises the factorization time and the triangular solve time by 3.1× and 2.3× for a four times longer horizon. Over the same range, PARDISO ’s times grow by 6.0× and 16 .6×. The factorization remains below 
+
+1 ms and the triangular solve below 0.35 ms at M = 100 ,
+
+N = 160 , highlighting the ability to handle large scenario collections and long horizons at low absolute latency. VI. C ONCLUSION AND FUTURE WORK 
+
+This paper presented a direct linear-system solver for branch MPC where multiple scenarios are coupled through a single root node. By combining scenario-level and horizon-level parallelism, the proposed method directly accelerates both Cholesky factorization and triangular solve for the underlying linear system in the optimization algorithm on the GPU. The experimental results show substantial speedups over state-of-the-art general sparse direct solvers, highlight-ing the benefits of our method. Future work will consider formulations in which the entire input sequence is shared across all scenarios. In that case, the scenario tails are coupled through horizon-wide input variables rather than a single root node, presenting a different sparsity pattern which requires new methods to exploit the potential parallelism. REFERENCES [1] R. Oliveira, S. H. Nair, and B. Wahlberg, “Interaction and decision making-aware motion planning using branch model predictive con-trol,” in 2023 IEEE Intelligent Vehicles Symposium (IV) , 2023, pp. 1–8. [2] Y. Chen, U. Rosolia, W. Ubellacker, N. Csomay-Shanklin, and A. D. Ames, “Interactive multi-modal motion planning with branch model predictive control,” IEEE Robotics and Automation Letters , vol. 7, no. 2, pp. 5365–5372, 2022. [3] P. O. M. Scokaert and D. Q. Mayne, “Min-max feedback model predictive control for constrained linear systems,” IEEE Transactions on Automatic Control , vol. 43, no. 8, pp. 1136–1142, 1998. [4] D. Bernardini and A. Bemporad, “Scenario-based model predictive control of stochastic constrained linear systems,” in Proceedings of the 48th IEEE Conference on Decision and Control held jointly with the 28th Chinese Control Conference , 2009, pp. 6333–6338. [5] A. Mesbah, “Stochastic model predictive control: An overview and perspectives for future research,” IEEE Control Systems Magazine ,vol. 36, no. 6, pp. 30–44, 2016. [6] S. Lucia, T. Finkler, and S. Engell, “Multi-stage nonlinear model predictive control applied to a semi-batch polymerization reactor under uncertainty,” Journal of Process Control , vol. 23, no. 9, pp. 1306–1319, 2013. [7] P. Sopasakis, D. Herceg, A. Bemporad, and P. Patrinos, “Risk-averse model predictive control,” Automatica , vol. 100, pp. 281–288, 2019. [8] J. P. Alsterda, M. Brown, and J. C. Gerdes, “Contingency model predictive control for automated vehicles,” in 2019 American Control Conference (ACC) , 2019, pp. 717–722. [9] J. P. Alsterda and J. C. Gerdes, “Contingency model predictive control for linear time-varying systems,” 2021. [Online]. Available: https://arxiv.org/abs/2102.12045 [10] L. Zheng, L. Zhang, P. Yu, Y. Sun, S. Grammatico, J. Ma, and C. Liu, “Contingency planning for safety-critical autonomous vehicles: A review and perspectives,” 2026, arXiv:2601.14880. [11] G. Frison, D. Kouzoupis, M. Diehl, and J. B. Jørgensen, “A high-performance riccati based solver for tree-structured quadratic pro-grams,” IFAC-PapersOnLine , vol. 50, no. 1, pp. 14 399–14 405, 2017. [12] G. Frison and M. Diehl, “HPIPM: A high-performance quadratic programming framework for model predictive control,” IFAC-PapersOnLine , vol. 53, no. 2, pp. 6563–6569, 2020. [13] D. Kouzoupis, E. Klintberg, G. Frison, S. Gros, and M. Diehl, “A dual newton strategy for tree-sparse quadratic programs and its implementation in the open-source software treeQP,” International Journal of Robust and Nonlinear Control , vol. 29, no. 8, pp. 2438– 2457, 2019. [14] S. S¨ arkk¨ a and ´ A. F. Garc´ ıa-Fern´ andez, “Temporal parallelisation of dy-namic programming and linear quadratic control,” IEEE Transactions on Automatic Control , vol. 68, no. 2, pp. 851–866, 2023. [15] L. Amatucci, J. Sousa-Pinto, G. Turrisi, D. Orban, V. Barasuol, and C. Semini, “Primal-dual ilqr for gpu-accelerated learning and control in legged robots,” IEEE Robotics and Automation Letters , vol. 11, no. 1, pp. 1010–1017, 2026. [16] I. Nielsen and D. Axehill, “A parallel structure exploiting factorization algorithm with applications to model predictive control,” in 2015 54th IEEE Conference on Decision and Control (CDC) , 2015, pp. 3932– 3938. [17] P. Pas and P. Patrinos, “Cyqlone: A parallel, high-performance linear solver for optimal control,” 2026, arXiv:2512.09058. [18] R. Schwan, D. Kuhn, and C. N. Jones, “GPU-accelerated cholesky factorization of block tridiagonal matrices,” 2026, arXiv:2601.03754. [19] F. Song, R. Schwan, Y. Chen, and C. N. Jones, “Parallel kkt solver in piqp for multistage optimization,” 2025, arXiv:2511.00946. [20] L. Zhang, C. Lin, and S. Grammatico, “Parallel branch model predic-tive control on GPUs,” 2026, arXiv:2506.13624. [21] J. Sousa-Pinto, “Rake-compress riccati recursions for parallel scenario-tree model predictive control,” 2026, arXiv:2608.01332. [22] O. Schenk, K. G¨ artner, W. Fichtner, and A. Stricker, “Pardiso: a high-performance serial and parallel sparse linear solver in semiconductor device simulation,” Future Gener. Comput. Syst. , vol. 18, no. 1, p. 69–78, Sep. 2001. [23] NVIDIA Corporation, “cuDSS Library,” https://developer.nvidia.com/ cudss, 2024. [24] M. Macklin, “Warp: A High-performance Python Framework for GPU Simulation and Graphics,” Mar. 2022, NVIDIA GPU Technology Conference (GTC). [Online]. Available: https://github.com/NVIDIA/ warp [25] R. Schwan, Y. Jiang, D. Kuhn, and C. N. Jones, “PIQP: A proximal interior-point quadratic programming solver,” in IEEE Conference on Decision and Control (CDC) , 2023, pp. 1088–1093. [26] B. Stellato, G. Banjac, P. Goulart, A. Bemporad, and S. Boyd, “OSQP: an operator splitting solver for quadratic programs,” Mathematical Programming Computation , vol. 12, no. 4, pp. 637–672, 2020. 
+
+APPENDIX ILINEAR SYSTEM SPARSITY IN IPM AND ADMM For nonlinear instances of (2), sequential quadratic pro-gramming (SQP) generates a sequence of QP subproblems by linearizing the constraints and constructing a quadratic approximation of the objective. Therefore, we consider QP subproblems that preserve the coupling structure of (2). It therefore suffices to study the linear systems arising from the following QP: 
+
+min  
+
+> x
+> 12
+
+x⊤P x + c⊤x
+
+s.t. Ax = b, hl ≤ Gx ≤ hu, (9) where P is symmetric positive semi-definite, A is the equality-constraint matrix, and G is the inequality-constraint matrix. We next show that standard ADMM and primal-dual IPM formulations differ in their numerical weights but not in the structural sparsity of the reduced system. 
+
+a) IPM: For the primal-dual IPM, after eliminating the slack variables, the regularized KKT matrix has the form 
+
+KIPM =
+
+P + τ I A⊤ G⊤
+
+A −δI 0
+
+G 0 −(W + δI )
+
+ , (10) where τ, δ > 0 are regularization parameters and W is a diagonal matrix with all positive entries. See [25] for details. 
+
+b) ADMM: Following the formulation of OSQP [26, Eq. (24)], the linear system system to be solved for (9) has the form 
+
+KADMM =
+
+P + σI A⊤ G⊤
+
+A −ρ−1I 0
+
+G 0 −ρ−1I
+
+ , (11) We can see that matrices (10) and (11) have the same sparsity pattern. Solvers like OSQP directly factorize the matrix (11). Alternatively, we can work on a reduced system by eliminating the second and third block rows, which yields a linear system with a matrix 
+
+K = P + τ I + δ−1A⊤A + G⊤(W + δI )−1G, (12) which is guaranteed to be symmetric positive definite. APPENDIX II BLOCK -SPARSITY IN TAIL COUPLING SOLVE 
+
+Theorem 1: Consider the permuted coupling matrix bCi
+
+in (8). Let Li be the Cholesky factor of bKi, and let 
+
+Fi be the unique solution of FiL⊤ 
+
+> i
+
+= bCi. Then Fi has the same terminal-block support as bCi, namely, Fi =0 · · · 0 Fi, 1
+
+.
+
+Proof: We write the matrix L as 
+
+Li =
+
+Li 0
+
+Gi Li, 1
+
+
+
+,
+
+where Li, 1 is the last diagonal block of Li. Writing Fi =[F i Fi, 1] and transposing the coupling solve gives LiF ⊤ 
+
+> i
+
+=
+
+bC⊤ 
+
+> i
+
+. By (8), this system is 
+
+Li 0
+
+Gi Li, 1
+
+ "
+
+F ⊤
+
+> i
+
+F ⊤
+
+> i, 1
+
+#
+
+=
+
+ 0
+
+C⊤
+
+> i, 1
+
+
+
+.
+
+Since Li is nonsingular, the first block equation implies F i =0. Therefore, only the last block of Fi can be nonzero.
