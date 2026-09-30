@@ -1,0 +1,396 @@
+Title: Accelerating the Mitigation of LLM Inference Nondeterminism Across GPU Architectures
+
+URL Source: https://arxiv.org/pdf/2609.25624v1
+
+Published Time: Wed, 23 Sep 2026 00:36:22 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# Accelerating the Mitigation of LLM Inference Nondeterminism Across GPU Architectures 
+
+# Liam Cooper 1, Shinnung Jeong 1, Hyeran Jeon 2, Jeffrey Young 1, Hyesoon Kim 1
+
+> 1
+
+Georgia Institute of Technology, 2University of California, Merced 
+
+Abstract 
+
+Large language model (LLM) outputs are expected to be repro-ducible under greedy decoding, yet in practice the same model, prompt, and software stack produce different outputs on differ-ent GPUs. The root cause is floating-point non-associativity combined with hardware-dependent kernel selection. Infer-ence frameworks select different matrix-multiplication ker-nels on each architecture, with different parallel reduction orders and unspecified tensor-core arithmetic, and the result-ing rounding differences can flip output tokens. Existing so-lutions have imperfect cross-architecture reproducibility and incur a significant performance penalty. We present a solution employing a set of fixed-configuration fused-upcast GEMM kernels that load 16-bit weights from memory, upcast them to FP32 in registers, and accumulate with IEEE-754 arithmetic in a reduction order that is a pure function of the problem shape and is therefore independent of the device, its SM count, or kernel scheduling. By fixing the floating-point reduction or-der as a function of problem shape alone, every GPU runs the same operation sequence, so cross-architecture reproducibil-ity of the linear layers reduces to correct IEEE-754 arithmetic rather than to rounding differences staying below a tie-flip threshold. We confirm our solution’s linear-layer outputs are bitwise identical across NVIDIA Ampere, Ada, and Hopper GPUs, while running 1.17 to 3.1× faster end-to-end than the state-of-the-art solution and cutting weight-memory traffic in half. 
+
+# Introduction 
+
+Reproducibility is a basic expectation of deployed software, and large language models are increasingly deployed in-side systems that assume it. Continuous-integration pipelines need identical regression outputs to distinguish real behav-ioral changes from numerical noise. Regulated industries such as finance, healthcare, and law must be able to re-play a model’s exact response for auditing. Agentic work-loads rely on deterministic replay for undo/redo and de-bugging (Khatchadourian 2026; Gundersen and Kjensmo 2018). Greedy decoding (temperature 0, always selecting the highest-probability token, and fixing the seed) would or-dinarily be expected to yield deterministic outputs. Even with identical model weights, prompts, software ver-sions, and greedy decoding, LLM outputs can diverge across GPU architectures, GPU counts, and batch sizes due to 
+
+Preprint. Source code available at: https://github.com/lpc97667/rf 
+
+floating-point non-associativity and architecture-dependent tensor-core accumulations (Yuan et al. 2025; Atil et al. 2025; He and Thinking Machines Lab 2025; IEEE 2019; Muller et al. 2018). Low-precision formats such as BF16 further am-plify these rounding differences, which can flip the argmax when the top candidate tokens are nearly tied, causing the generated sequences to diverge (Fasi et al. 2021; Sun et al. 2023; Valpey et al. 2025). The state-of-the-art mitigation for cross-GPU divergence is (Yuan et al. 2025), which stores weights in BF16 but performs all computation in FP32: every linear layer up-casts its weight matrix to a temporary FP32 copy and calls the vendor GEMM. This shrinks per-operation rounding error to the FP32 level, at which near-tie argmax flips become rare. But ’s design has two limitations. First, it enforces reproducibility at the cost of performance: LLM decoding is memory-bandwidth-bound, and because the transient FP32 copy is what the GEMM actually reads, ’s weight traffic, the quantity that sets decode latency, is fully FP32. The BF16 storage saves resident memory while leaving memory bandwidth demand unchanged. Second, its reproducibility is statistical rather than by construction: the vendor GEMM still selects different kernels with different reduction orders on each architecture, so different GPUs that we tested (A100, L40S, and H100) still compute different logits, and the to-kens merely agree most of the time because the FP32-level differences are usually too small to flip a tie. We present , which delivers a stronger re-producibility property than at a significantly lower performance overhead. For accelerating reproducibil-ity, replaces the cast-then-GEMM pattern with fused-upcast GEMM kernels: BF16 weights are loaded from HBM and upcast to FP32 in registers inside the matrix-multiplication kernel, with all accumulation performed by IEEE-754 fused multiply-add (FMA) instructions whose re-sults are bit-specified for given operands on every architec-ture. Because the upcast happens entirely in registers, weight memory traffic returns to BF16 levels, halving the memory traffic during decode while eliminating the need for transient FP32 weight allocation. To enforce a stronger reproducibil-ity, we pin every choice that vendor libraries vary per device: kernel configurations are compile-time constants selected by problem shape alone (no autotuning), no tensor-core paths are used for the FP32 accumulation, and small-batch de-arXiv:2609.25624v1 [cs.AR] 22 Sep 2026 code shapes use a deterministic split-K scheme whose partial sums are combined in a fixed ascending order with no atom-ics. The complete floating-point reduction order is therefore a pure function of the problem shape. This design converts cross-architecture reproducibility from an empirical tendency into a verifiable kernel-level property. We show that ’s linear-layer outputs are bitwise identical across three GPU architectures on every probe shape we test, spanning decode and prefill regimes, BF16 and FP32 weights, and ragged dimensions. As a corol-lary of the same design, is also batch-invariant within its decode bucket: a given request’s outputs are bit-wise independent of how many other requests share its batch, a property identified as the key to run-to-run determinism in serving systems (He and Thinking Machines Lab 2025) and one that ’s vendor GEMMs do not have. In summary, this paper makes the following contributions: 
+
+• An analysis of why FP32-compute nondeterminism mit-igation pipelines remain both slow and only statistically reproducible, locating the residual divergence channel in the GEMM reduction order. 
+
+• , a linear layer built from fixed-configuration fused-upcast Triton GEMM kernels with IEEE-754 FMA accumulation and deterministic split-K, whose reduction order is a pure function of problem shape. 
+
+• A cross-architecture bitwise validation methodology and results: ’s linear-layer outputs are bit-identical across Ampere, Ada, and Hopper GPUs, a property we verify with seeded probes and independent per-node hash-ing. 
+
+• An end-to-end evaluation in vLLM showing improvement in reproducibility, throughput ( 1.17 –3.1×), and memory (up to 1.4 GiB weight savings, converted to KV-cache capacity), over the state-of-the-art. 
+
+# Background and Related Work 
+
+## Floating-Point Non-Associativity and GPU Kernels 
+
+IEEE-754 floating-point addition rounds after every opera-tion, so (a+b)+ c̸ = a+( b+c) in general (IEEE 2019; Muller et al. 2018). A dot product of length K can therefore yield different results depending on how its partial sums are asso-ciated, with worst-case error growing with the accumulation depth and the condition number of the sum (Shanmugavelu et al. 2024). GPU GEMM kernels exploit this freedom ag-gressively: tile sizes, the number of accumulators, split-K
+
+factors, and atomic reduction schemes all can change the association order, and high-performance libraries such as cuBLAS select among many such kernels using architecture-and shape-dependent heuristics. Run-to-run determinism on a single device is typically guaranteed, but nothing constrains two different architectures to select the same kernel. Tensor cores add a second, deeper source of architec-ture dependence. The matrix-multiply-accumulate (MMA) units on NVIDIA GPUs accumulate internally with trun-cated (round-toward-zero) significand alignment, carry out of the standard, and per-generation differences in intermedi-ate width and normalization. These behaviors are officially undocumented, but are observable to cause differences across Volta, Ampere, Ada, and Hopper (Fasi et al. 2021; Sun et al. 2023; Markidis et al. 2018; Valpey et al. 2025; Li et al. 2024; Xie et al. 2025). Notably, “FP32” GEMMs on mod-ern NVIDIA GPUs are typically executed on tensor cores in the TF32 format, which rounds inputs to a 10-bit signif-icand (Stosic and Micikevicius 2021), so even a nominally FP32 pipeline can silently inherit tensor-core arithmetic un-less TF32 is explicitly disabled. 1 In contrast, the scalar fused multiply-add (FMA) instructions on CUDA cores implement IEEE-754 arithmetic exactly: for given operands, an FMA produces the same bits on every architecture. This asym-metry, bit-specified scalar FMA versus unspecified MMA internals, is the foundation builds on. 
+
+## Nondeterminism in LLM Inference 
+
+Yuan et al. (2025) provide the first systematic study of LLM inference divergence across GPU types, GPU counts, and batch sizes, showing that greedy decoding is not reproducible in practice: under BF16, accuracy on AIME’24 (Zhang and Math-AI 2024) varies by up to 9% and output lengths by up to 9,000 tokens across 12 runtime configurations, with reasoning models diverging on essentially 100% of problems within the first ∼100 tokens. Their analysis attributes the divergence to reduction-order-sensitive rounding interacting with near-tie argmax decisions: at observed divergence points the top-1/top-2 probability gap is a fraction of a percent, well within reach of BF16 rounding noise. Their mitigation, 
+
+, loads weights in FP32, stores linear-layer weights in BF16, and upcasts each weight matrix back to FP32 just-in-time for its matmul, reducing divergence to below 3.4% of problems at 34% less memory than full FP32. He and Thinking Machines Lab (2025) attribute serv-ing nondeterminism to the lack of batch invariance: vary-ing batch sizes change GEMM tilings and reduction or-ders, producing different outputs despite deterministic ker-nels. Their batch-invariant BF16 kernels eliminate within-device nondeterminism at a reported ∼20% matmul slow-down but remain architecture-dependent. Like their ap-proach, uses batch-invariant kernels, but addition-ally guarantees bit-identical results across GPU architectures by restricting all arithmetic to IEEE-compliant FMAs. Two recent systems address determinism at different layers of the stack. LLM-42 (Gond et al. 2026) argues that batch-invariant kernels are overly restrictive because they preclude shape-adaptive optimizations. Instead, it restores determin-ism through scheduler-level verification: fast nondetermin-istic decoding is periodically checked against a fixed-shape deterministic replay, with rollback on mismatch, so overhead applies only to requests requiring determinism. LLM-42 only addresses reproducibility for LLMs on the same GPU archi-tecture, unlike ’s goal of fast cross-architecture de-terminism. Hawkeye (Badash et al. 2026) reverse-engineers             
+
+> 1This applies at multiple layers of the stack independently: disabling TF32 in PyTorch (torch.backends.cuda.matmul.allow_tf32 )does not affect kernels generated by Triton, which must be constrained separately per dot operation.
+
+the architecture-specific internals of NVIDIA tensor-core MMA instructions to emulate them on CPUs, demonstrating that Ampere, Ada, and Hopper implement different MMA arithmetic. In contrast, makes the dominant ker-nels themselves bit-identical across GPU architectures, elim-inating the need for slower replay on CPU. aims to reduce the verification burden by accelerating reproducibil-ity whereas Hawkeye reports an order of magnitude slower for bitwise reproducibility. Fusing a storage-format conversion into the GEMM has been explored by prior works. Weight-only quantization sys-tems dequantize INT4 weights to FP16 in registers inside the matmul for bandwidth (Lin et al. 2024; Frantar et al. 2025). takes the essence of this technique, but with the opposite numerical goal: those kernels autotune per device and accumulate on tensor cores to maximize throughput, surrendering any cross-architecture bit-for-bit agreement, whereas pins every such degree of freedom to keep the reduction order identical across devices. Broader literature characterizes numerical variability in HPC and deep learning: compiler-induced variability (Bent-ley et al. 2019), randomized testing of floating-point behav-ior across platforms (Laguna 2020), cross-vendor accelerator differences (Zahid, Laguna, and Le 2024; Li et al. 2024), and the impact of tooling randomness on training (Zhuang et al. 2022). Our focus is complementary: we target the inference-time, cross-architecture channel and the operations that dom-inate LLM FLOPs. 
+
+# Design 
+
+reimplements the linear layers of a hybrid-precision (BF16-storage, FP32-compute) inference pipeline as fixed-configuration Triton GEMM kernels. Figure 1 sum-marizes the difference from . computes each linear layer as 
+
+y = x W ⊤ 
+
+> fp32
+
++ b, Wfp32 = cast( Wbf16 ), (1) where the cast materializes a full FP32 copy of W in HBM on every forward pass: one extra kernel launch, a transient allocation of size 2|W |, and, because the GEMM reads the FP32 copy, weight traffic at FP32 width. computes the same quantity with the upcast fused into the GEMM: 
+
+y = x up( Wbf16 )⊤ + b, (2) where up( ·) denotes a per-tile register upcast: each BF16 weight tile is loaded from HBM, widened to FP32 in reg-isters, multiplied against the FP32 activation tile, and accu-mulated in FP32. Weights cross the memory bus at BF16 width and nothing FP32-sized is ever materialized in HBM. Since decode-phase GEMMs are memory-bandwidth-bound and weights dominate the bytes, halving weight traffic yields lower decode latency. The performance improvement comes without numerical compromise. Reproducibility is supported by four design rules that constrain the principal sources of device-dependent variation: 
+
+Figure 1: Dataflow in the GPU for and .(a) materializes an FP32 copy of every weight matrix in HBM on every forward pass and hands it to an architecture-tuned vendor GEMM: each architecture is sus-ceptible to reduce in a different order. (b) loads BF16 weights directly and upcasts in registers inside a fixed-configuration IEEE-FMA kernel, reducing weight traffic and fixing the reduction order. 
+
+R1: IEEE FMA only. Every dot product is ex-ecuted with IEEE-754 FMA on CUDA cores (input_precision=“ieee” on each Triton tl.dot ). Triton’s default for FP32 operands on Ampere and newer is TF32 tensor cores, whose internal accumulation is unspecified and architecture-dependent (Fasi et al. 2021; Stosic and Micikevicius 2021), causing cross-architecture disagreements (Xie et al. 2025). Framework-level TF32 switches do not propagate into Triton-generated kernels, so the constraint must be applied per operation. IEEE FMA is bit-specified for given operands on every architecture, making the elementary arithmetic outputs identical. 
+
+R2: No autotuning. Autotuners benchmark candidate con-figurations on the local device and keep the fastest, which makes the compiled kernel a function of the machine it was tuned on. In our ablation testing, running the same search over the same candidate space on A100, L40S and H100 selects the same configuration for only 3 of 9 representa-tive GEMM shapes, and repeating the identical search on one device changes its own answer on 1 of 9 shapes, be-cause near-equal candidates trade places under measurement noise. The split factor is a standard tuned knob that fully determines the reduction tree, and the K-block size sets the segment boundaries feeding it. ’s configurations are instead compile-time constants selected by a pure func-tion of the problem shape (M, N, K ): one for decode-shaped GEMMs ( M ≤ 64 ) and one for prefill-shaped GEMMs, tuned once offline and pinned for every architecture. 
+
+R3: Deterministic split-K. Decode-shaped GEMMs ( M
+
+small, N × K large) underutilize the GPU without splitting the reduction dimension, but classic split-K combines par-tial sums with atomic additions whose order is a scheduling race (Figure 2a). splits K into S contiguous seg-ments, where S is a pure function of K; each segment is accumulated sequentially by exactly one program into a par-tials workspace, and a second kernel reduces the S partials in fixed ascending segment order (Figure 2b). No atomics appear anywhere, so the complete floating-point reduction 𝐾 0 𝐾 1 𝐾 2 𝐾 3                  
+
+> Dot product over 𝐾 (one output element)
+> 𝑃 0𝑃 1𝑃 2𝑃 3
+> +
+> Arrival order race
+> 𝑦
+> (a) Classic split-𝐾 𝐾 0𝐾 1𝐾 2𝐾 3
+> 𝑆 =4 contiguous segments ,=()𝑆 𝑓 𝐾
+> 𝑃 0𝑃 1𝑃 2𝑃 3
+> +++𝑦
+> Seq. FMMA per segment with partials summed in ascending segment order without atomics
+> (b) Deterministic split-𝐾
+
+Figure 2: Split-K reduction of one output element. (a) Clas-sic split-K merges partial sums with atomicAdd , so the reduction order is whatever order the segments’ programs happen to finish in, different per run and per device. (b) 
+
+fixes the segmentation as a pure function of K
+
+and sums the partials in ascending segment order in a second kernel, making the floating-point reduction tree a determin-istic function of the problem shape. tree is a deterministic function of shape, independent of the device, its SM count, and grid scheduling. 
+
+R4: Batch invariance by construction. Within the decode bucket, the configuration and the K-segmentation depend only on K, never on the batch dimension M . A given row of the batch therefore executes the same FMA sequence at any batch size from 1 to 64: per-request outputs are bitwise independent of co-scheduled load. This is the property He and Thinking Machines Lab (2025) obtain with dedicated batch-invariant kernels. Together, R1–R4 supports reproducibility by construction: for a given input, weight, and shape, each FLOP and its po-sition in the reduction tree are determined by the problem shape. Cross-architecture reproducibility then no longer de-pends on FP32-level rounding differences staying below a tie-flip threshold; it reduces to a single premise, that each GPU implements IEEE-754 FP32 arithmetic correctly. That premise is documented for CUDA core FP32 and confirmed by our work on A100, L40S, and H100 GPUs where the lin-ear layer outputs are bit-identical on every shape we probe. This is a different basis for reproducibility than ’s, whose reduction order stays device-dependent and which can only bound the magnitude of the resulting differences. An ablation study of R1–R4 can be found in the technical supplement (Section C). We additionally found that ’s published imple-mentation stores the output projection ( lm_head ) in FP32: its weight-conversion filter matches only attention and MLP projection layers, silently exempting the vocabulary projec-tion and contradicting the stated bf16-storage policy at a cost of vocab ×hidden ×2 bytes ( ≈1 GiB for an 8B model with a 128k vocabulary). We remedy this by storing the lm_head 
+
+in BF16 for models with untied embeddings. 
+
+covers the linear layers, which account for the majority of FLOPs and the divergence channel identified by prior analysis. Attention, rotary embeddings, normaliza-tion, and the sampler remain the engine’s FP32 implementa-tions and may in principle select architecture-specific code paths. The end-to-end experiments below measure whether any residual channel is observable in practice. 
+
+# Evaluation 
+
+## Experimental Setup 
+
+Hardware and software. We evaluate on three NVIDIA architectures: Ampere (A100), Ada Lovelace (L40S), and Hopper (H100). All experiments run on a single GPU. All nodes run an identical software environment: PyTorch 2.6.0 with CUDA 12.4, and Triton 3.2.0. Following ,vLLM 0.8 and the xFormers attention backend is used. 
+
+Models and benchmarks. We evaluate three instruction-tuned models spanning tied and untied embeddings and a range of sizes: meta-llama/Llama-3.2-3B-Instruct (Meta 2024), Qwen/Qwen3-4B-Instruct-2507 (Qwen Team 2025), and deepseek-ai/DeepSeek-R1-Distill-Llama-8B (DeepSeek-AI 2025). Qwen/Qwen3-14B is added for memory profiling. Benchmarks are GSM8K (Cobbe et al. 2021), MATH500 (Lightman et al. 2024), AIME24 (Zhang and Math-AI 2024), and GPQA-Diamond (Rein et al. 2023). We selected these datasets to align with ’s evaluation and all are evaluated with greedy decoding and batch size 32. The Llama-3.2 template normally sets a date string which gets embedded in the rendered system prompt. Evaluation sweeps spanning a calendar day boundary therefore present different token sequences to nominally identical configura-tions. This artifact can masquerade as hardware nondeter-minism, manifesting as both cross-GPU and cross-seed diver-gence, affecting the baseline and the mitigated system alike. We observed up to a 37.60% difference in cross-GPU prompt divergence which would otherwise have no divergence on sweeps spanning over two calendar days. We therefore pin the date string to a fixed value in all reported experiments. The Qwen3-4B and DeepSeek-R1-Distill templates contain no date field and are unaffected. 
+
+Methods. We compare three inference configurations. The unmitigated model default (BF16 storage and compute) is the baseline whose nondeterminism motivates the problem. 
+
+replaces ’s linear layers with our ker-nels. This comparison serves as our principal ablation: re-placing ’s fixed-order kernels with architecture-tuned vendor GEMMs while holding the storage precision, compute precision, model, and surrounding inference stack fixed isolates the effect of deterministic kernel design. The unmitigated BF16 configuration provides a complementary end-to-end ablation of the reproducibility mitigation stack. Each (model, benchmark, GPU, method) cell is run under three different seeds. 
+
+## Cross-Architecture Determinism 
+
+We first validate the kernel-level claim directly. A seeded probe generates fixed inputs and weights for seven GEMM cases spanning both shape buckets (decode and prefill), BF16 and FP32 weights, and ragged shapes. The inputs are seeded on the CPU so every GPU sees identical input bits. Across A100, L40S, and H100, all seven cases are bitwise identical under : every tensor compares equal element-for-element and every digest matches. For the same probe through ’s cast-then-cuBLAS path, no shape produces identical bits on all three architectures. A100 and L40S disagree on all seven shapes, A100 and H100 on four, and H100 and L40S on five; in each divergent case 88–99% of output elements differ, with maximum differences of 2.7×10 −7 to 4.9×10 −6 of the out-put scale. The scattered pairwise agreements are cases where two architectures happened to select the same cuBLAS kernel for that shape: agreement by coincidence of undocumented kernel-selection heuristics, constrained by no specification and stable across neither shapes nor architecture pairs. These differences sit four orders of magnitude below BF16 round-ing noise, which is why ’s tokens usually (but are not guaranteed to) agree. The probe also corroborates batch invariance in 
+
+. On all three architectures, row 0 of a 
+
+batch-M GEMM is bit-identical to the batch-size-1 result for every M ≤ 64 tested. Under , row 0 changes bits at every tested batch size M ≥ 2 on A100 and H100 (and at all but the smallest sizes on L40S), so inherits batch-size sensitivity even at FP32 precision, while ’s per-request outputs are independent of co-scheduled load. 
+
+## End-to-End Determinism 
+
+Table 1 reports cross-GPU and cross-seed token divergence for end-to-end inference using all three methods. Three ob-servations follow. First, unmitigated inference is not remotely reproducible. Under BF16, 31–100% of problems (median ≈85% ) produce a different greedy token stream on at least one pair of GPU architectures, and 6–25% of streams differ across seeds on the same GPU purely from batch-composition variation. This is the reproducibility crisis set out to fix, quantified here across three architectures. Second, FP32 compute alone ( ) shrinks diver-gence to well under 1% on every configuration. It does not reach zero: a residual persists on five of twelve cells, up to 
+
+0.51% . ’s guarantee is statistical: the FP32-level differences are usually too small to flip a greedy decision, but nothing forces them to zero. Third, the controlled kernel ablation shows that 
+
+eliminates the linear-layer channel entirely. is no worse than in every one of the twelve cells. On DeepSeek it is zero across all benchmarks, and for Qwen on all but GSM8K. On Llama-3.2-3B it is zero on all four bench-marks. The single cell where is nonzero, Qwen3-4B on GSM8K ( 0.08% , one problem versus ’s 
+
+0.23% ), is a single token that sits at an exact FP32 tie on H100 while A100 and L40S resolve it with a 3.8 × 10 −6-nat margin. The residual is caused by the unpinned attention ker-nel in layer 0 on H100 rather than to the linear layers. The final answer is unchanged on all three GPUs. pins the reduction order of the linear layers, but attention, normaliza-tion, and the sampler remain vendor kernels whose reduction order stays architecture-dependent. The pinned QKV projec-tion is bitwise identical on all three GPUs with the first divergence being the output of the layer-0 attention, where 
+
+Figure 3: The two quantities that decide whether a token flips, plotted on one axis (nats). (a) Cumulative distribution of the greedy decision margin g, the top-1/top-2 logit gap, over 2.6M decoded positions. Dotted verticals mark each method’s median cross-GPU shift, so the height at which a vertical meets a model’s curve is that method’s per-token flip probability on that model. (b) Cumulative distribution of the cross-GPU shift |∆| of that same margin, split by architecture pair. The left-hand intercept is the fraction of positions on which the two GPUs agree bitwise. the H100 departs from A100 and L40S by about 6 × 10 −8.That perturbation then propagates and compounds through the residual stream, and a greedy decision flips only where it grows to exceed the local decision margin. Such exposed positions are rare: across the 381 ,426 decoded GSM8K posi-tions in this benchmark only one flips. At that position the tie is resolved by argmax , which deterministically returns the lower token id. ’s guarantee is thus exact for the linear layers, which carry the dominant FLOPs and the diver-gence channel prior analysis identifies, but does not extend to the remaining non-GEMM kernels. This confirms the De-sign section scope caveat and isolates fixed-order attention as the outstanding source of nondeterminism. Across every method and cell, ’s cross-seed divergence is zero. 
+
+## Decision Margins and Logit Noise 
+
+Table 1 leaves an obvious question: why some solutions leave some model and benchmark cells reproducible and others not? A greedy token flips between two GPUs only when the hardware perturbs the top-1/top-2 logit difference by more than that difference itself, so the answer is a comparison of two quantities measured on the same scale. We denote the decision margin at position t as g(t) = ℓ1(t) − ℓ2(t), the logit gap between the best and second-best token. The cross-GPU shift is ∆( t) = gA(t) − gB (t) for two architectures ACross-GPU divergence (% of problems) Cross-seed divergence (% of pairs) Model Task Unmitigated Unmitigated                                                                         
+
+> DeepSeek-R1-Distill-8B GSM8K 88.86 0.15 019.06 00
+> MATH500 93.00 0.40 025.40 00
+> AIME24 100.00 00000
+> GPQA-Diamond 100.00 0.51 012.74 00
+> Llama-3.2-3B GSM8K 66.64 0017.34 00
+> MATH500 79.60 0013.60 00
+> AIME24 86.67 0017.78 00
+> GPQA-Diamond 30.81 0012.07 00
+> Qwen3-4B GSM8K 70.81 0.23 0.08 5.96 00
+> MATH500 83.60 0018.33 00
+> AIME24 100.00 00000
+> GPQA-Diamond 99.49 0.51 020.09 00
+
+Table 1: End-to-end determinism across A100, L40S, and H100. Cross-GPU divergence: percentage of problems whose greedy token stream differs across at least one pair of GPU architectures at matched seed. Cross-seed divergence: percentage of (problem, seed-pair) comparisons that differ on the same GPU. Unmitigated BF16 diverges on 30.81–100% of problems across GPUs. 
+
+greatly reduces this but leaves a residual on five of twelve configurations, up to 0.51% . is ≤ in every cell and is exactly 0 wherever the divergence was driven by the linear layers. Its one nonzero cell, Qwen3-4B GSM8K at 
+
+0.08% , is a single tied token localized to the unpinned attention kernel on H100 rather than the linear layers, and still improves on ’s 0.23% . The divergence metric used is further discussed in technical supplement Section B. and B at the same position. Both are read directly from the stored top-5 log-probabilities: the log-sum-exp normalizer is token-independent and cancels in the difference, so a log-probability gap is also a logit gap. We measure ∆ only on the prefix over which the two runs still emit identical tokens, be-cause past the first flip they are decoding different sequences and their positions are no longer comparable. A position is exposed exactly when g < ∆.Figure 3(a) shows that the models are confident at the typical position (median margin 4 to 19 nats) but that the low tail is heavy enough to matter: about 1% of positions sit within 0.1 nats of a tie and roughly 1 in 10 4 within 10 −3.Below 10 −1 the tail is close to linear, P (g ≤ x) ≈ ρx with 
+
+ρ between 0.06 and 0.17 per nat, which is the reason there is no safe precision short of exactness: the exposed fraction is proportional to the noise, so every order of magnitude of extra precision buys exactly one order of magnitude fewer flips and no threshold below which flips stop. Figure 3(b) places the three methods’ cross-GPU shifts on that same axis. Unmitigated BF16 shifts the margin by a median of 6.3 × 10 −2 nats, squarely inside the exposed tail, which is why 31 to 100% of problems diverge. ’s FP32 compute moves the shift down by three and a half orders of magnitude, to a median of 1.8 × 10 −5 nats be-tween A100 and L40S and 3.6 × 10 −5 against H100, but it almost never removes it: only 4.0% and 2.3% of positions respectively come out bitwise equal, because cuBLAS still reduces in a different order on each architecture. 
+
+inverts that ratio. Between A100 and L40S its logits are bit-wise identical at 98 .4% of 3.4M positions, and at 100 .000% 
+
+on both Llama-3.2-3B and Qwen3-4B, with the surviving mass another order of magnitude smaller than ’s. Against H100 the shift is not eliminated (median 7.9 × 10 −6
+
+nats, 9.6% bitwise equal): the linear layers are pinned, but the attention, normalization, and sampler kernels vLLM selects on sm90 are not. Llama-3.2-3B adds no residual of its own. Two checks confirm that the margin-versus-shift picture is the operative mechanism. First, flips should occur where the margin is below the noise: at the first divergent token of every cross-GPU flip event, the median margin is 0.125 nats under BF16 and 1.1 × 10 −5 to 7.4 × 10 −5 nats under ,tracking each method’s own shift across four decades. Sec-ond, the picture predicts rates, not just orderings. Treating margin and shift as independent draws gives a per-token flip probability p = 12 E∆[P (g < |∆|)] , where the factor of one half is the single sign of the shift that moves the decision, and a per-problem divergence of 1 − (1 − p)L over L decoded tokens. Across the 18 (model, benchmark, method) cells with nonzero measured divergence, spanning 0.08% to 100% , the median ratio of predicted to measured divergence is 1.5. The same analysis applied within a device across seeds isolates batch invariance at the logit level: ’s margins are bitwise identical at 100 .000% of 10 .0M positions for all three models while also reaches 100% on all three, and unmitigated BF16 on 95 to 99% .
+
+## End-to-End Performance 
+
+Figure 4 reports full-pipeline end-to-end wall-clock times. 
+
+is faster than in all 36 configura-tions, by 1.17 –1.43 × on A100 and H100 and by 1.6–
+
+3.1× on L40S. The architecture-dependence is explained by a roofline model: ’s decode reads FP32-width weights while reads BF16-width, so the achiev-able improvement grows with how bandwidth-bound the GPU is. The A100’s low FP32-compute-to-bandwidth ra-tio (12.5 FLOP/byte) leaves decode partially FP32-compute-bound. The L40S sits at 106 FLOP/byte, where its 
+
+decode is dominated by FP32 weight reads, so Figure 4: End-to-end evaluation wall-clock time (mean of 3 seeds with error bars showing the standard deviation) for ,
+
+, and unmitigated BF16 across three GPU architectures, three models, and four benchmarks. is faster than 
+
+in every configuration, with the largest gains on the bandwidth-lean L40S, while retaining reproducibility that BF16 lacks.           
+
+> Weights (GiB) Peak spike (GiB) KV tokens
+> DeepSeek-R1-Distill-Llama-8B
+> 16.92 0.445 70,832
+> 15.94 0.051 74,912 Qwen3-14B
+> 30.41 0.673 128,288
+> 28.96 0.060 133,536
+
+Table 2: Memory profile configured with vLLM’s 
+
+gpu_memory_utilization = 0 .9 on models with un-tied embeddings. “Weights”: resident parameter bytes. “Peak spike”: transient allocation above steady state during a for-ward pass. “KV tokens”: KV-cache capacity granted by vLLM under the same memory budget, which ’s savings convert directly into serving capacity. reaches and, for the decode-heavy DeepSeek reasoning model, well exceeds the 2× weight-traffic bound. The bound applies to GEMM traffic alone. End-to-end gains can exceed it because also eliminates ’s per-layer cast kernels and transient allocations. Measured speedups increase monotonically with the hardware ratio, exactly as the model predicts. These are conservative, whole-workload numbers: they include prefill (where ’s IEEE-FMA Triton GEMM reaches ∼0.85 × cuBLAS throughput) and CPU-side scoring. Further analysis of the performance discrepancy between GPU architectures can be found in the technical supplement (Section A). 
+
+## Memory 
+
+Since total GPU memory usage is uninformative as vLLM allocates a fixed fraction for KV cache, Table 2 isolates the three memory components that differ between methods. On untied-embedding models, ’s completed BF16 storage policy saves about 1–1.4 GiB of resident weights. 
+
+’s transient FP32 weight copies produce a per-step allocation spike the size of the largest projection matrix ( 0.4–
+
+0.7 GiB on these models). ’s spike is smaller. Un-der a fixed memory budget, vLLM converts both savings into additional KV-cache blocks, i.e., 4–7% more KV capacity. 
+
+## Accuracy 
+
+changes only the order of FP32 additions rela-tive to . Accuracy differences between the meth-ods are numerical-noise-level. On both Qwen3-4B tasks the scores are identical (93.93% GSM8K, 87.2% MATH500). On Llama-3.2-3B the methods differ by 1–2 problems per benchmark, a difference within the numerical noise that mo-tivates this work. Eliminating that noise, not shifting the mean, is the contribution. Numerical error against an FP64 reference is at the same 10 −7-relative level for both meth-ods, and ’s split-K actually shortens accumulation chains slightly. 
+
+# Conclusion 
+
+’s argument covers any hardware with correctly implemented IEEE-754 FMA, which in principle could miti-gate nondeterminism on various ML accelerators. Validating bitwise portability across different vendors (where software, not just hardware, differ) is an open problem. LLM inference diverges across GPU architectures be-cause vendor kernels choose architecture-specific reduction orders and unspecified tensor-core arithmetic, and because low-precision rounding places many greedy decisions within flipping distance. showed that FP32 compute can make token flips more rare, but paid FP32 bandwidth for BF16 storage and left the reduction-order channel open. 
+
+closes that channel: fused-upcast GEMM ker-nels with IEEE-754 FMA arithmetic, shape-pure configu-rations, and deterministic split-K make linear-layer outputs bitwise identical across Ampere, Ada, and Hopper, while running 1.17 –3.1× faster than end-to-end and freeing weight memory for KV cache. Reproducibility and efficiency are not in tension: the same discipline that fixes the reduction order also eliminates redundant memory traffic. 
+
+# References 
+
+Atil, B.; Aykent, S.; Chittams, A.; Fu, L.; Passonneau, R. J.; Radcliffe, E.; Rajagopal, G. R.; Sloan, A.; Tudrej, T.; Ture, F.; Wu, Z.; Xu, L.; and Baldwin, B. 2025. Non-Determinism of "Deterministic" LLM Settings. arXiv:2408.04667. Badash, E.; Boneh, D.; Komargodski, I.; and Srivas-tava, M. 2026. Hawkeye: Reproducing GPU-Level Non-Determinism. In Proceedings of the 9th Conference on Ma-chine Learning and Systems (MLSys) .Bentley, M.; Briggs, I.; Gopalakrishnan, G.; Ahn, D. H.; La-guna, I.; Lee, G. L.; and Jones, H. E. 2019. Multi-Level Analysis of Compiler-Induced Variability and Performance Tradeoffs. In Proceedings of the 28th International Sympo-sium on High-Performance Parallel and Distributed Com-puting , HPDC ’19, 61–72. New York, NY, USA: Association for Computing Machinery. ISBN 9781450366700. Cobbe, K.; Kosaraju, V.; Bavarian, M.; Chen, M.; Jun, H.; Kaiser, L.; Plappert, M.; Tworek, J.; Hilton, J.; Nakano, R.; Hesse, C.; and Schulman, J. 2021. Training Verifiers to Solve Math Word Problems. arXiv:2110.14168. DeepSeek-AI. 2025. DeepSeek-R1: Incentivizing Rea-soning Capability in LLMs via Reinforcement Learning. arXiv:2501.12948. Fasi, M.; Higham, N. J.; Mikaitis, M.; and Pranesh, S. 2021. Numerical behavior of NVIDIA tensor cores. PeerJ Com-puter Science , 7: e330. Frantar, E.; Castro, R. L.; Chen, J.; Hoefler, T.; and Alistarh, D. 2025. MARLIN: Mixed-Precision Auto-Regressive Par-allel Inference on Large Language Models. In Proceedings of the 30th ACM SIGPLAN Annual Symposium on Principles and Practice of Parallel Programming , PPoPP ’25, 239–251. New York, NY, USA: Association for Computing Machinery. ISBN 9798400714436. Gond, R.; Kamath, A. K.; Ramjee, R.; and Panwar, A. 2026. LLM-42: Enabling Determinism in LLM Inference with Ver-ified Speculation. arXiv preprint arXiv:2601.17768 .Gundersen, O. E.; and Kjensmo, S. 2018. State of the art: Reproducibility in artificial intelligence. In Proceedings of the AAAI conference on artificial intelligence , volume 32. He, H.; and Thinking Machines Lab. 2025. Defeating Non-determinism in LLM Inference. Thinking Machines Lab: Connectionism . Https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/. IEEE. 2019. IEEE Standard for Floating-Point Arithmetic. 
+
+IEEE Std 754-2019 (Revision of IEEE 754-2008) , 1–84. Khatchadourian, R. 2026. Replayable Financial Agents: A Determinism-Faithfulness Assurance Harness for Tool-Using LLM Agents. arXiv:2601.15322. Laguna, I. 2020. Varity: Quantifying Floating-Point Vari-ations in HPC Systems Through Randomized Testing. In 
+
+2020 IEEE International Parallel and Distributed Process-ing Symposium (IPDPS) , 622–633. Li, X.; Li, A.; Fang, B.; Swirydowicz, K.; Laguna, I.; and Gopalakrishnan, G. 2024. FTTN: Feature-Targeted Testing for Numerical Properties of NVIDIA & AMD Matrix Ac-celerators. In 2024 IEEE 24th International Symposium on Cluster, Cloud and Internet Computing (CCGrid) , 39–46. Lightman, H.; Kosaraju, V.; Burda, Y.; Edwards, H.; Baker, B.; Lee, T.; Leike, J.; Schulman, J.; Sutskever, I.; and Cobbe, K. 2024. Let 's Verify Step by Step. In International Confer-ence on Learning Representations .Lin, J.; Tang, J.; Tang, H.; Yang, S.; Chen, W.-M.; Wang, W.-C.; Xiao, G.; Dang, X.; Gan, C.; and Han, S. 2024. AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration. In Gibbons, P.; Pekhimenko, G.; and Sa, C. D., eds., Proceedings of Machine Learning and Systems , volume 6, 87–100. Markidis, S.; Chien, S. W. D.; Laure, E.; Peng, I. B.; and Vetter, J. S. 2018. NVIDIA Tensor Core Programmabil-ity, Performance & Precision. In 2018 IEEE International Parallel and Distributed Processing Symposium Workshops (IPDPSW) , 522–531. Meta. 2024. Llama 3.2 3B Instruct. https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct. Muller, J.-M.; Brunie, N.; de Dinechin, F.; Jeannerod, C.-P.; Joldes, M.; Lefèvre, V.; Melquiond, G.; Revol, N.; and Torres, S. 2018. Handbook of Floating-Point Arithmetic .Springer International Publishing. ISBN 9783319765266. Qwen Team. 2025. Qwen3 Technical Report. arXiv:2505.09388. Rein, D.; Hou, B. L.; Stickland, A. C.; Petty, J.; Pang, R. Y.; Dirani, J.; Michael, J.; and Bowman, S. R. 2023. GPQA: A Graduate-Level Google-Proof Q&A Benchmark. arXiv:2311.12022. Shanmugavelu, S.; Taillefumier, M.; Culver, C.; Hernandez, O.; Coletti, M.; and Sedova, A. 2024. Impacts of floating-point non-associativity on reproducibility for HPC and deep learning applications. arXiv:2408.05148. Stosic, D.; and Micikevicius, P. 2021. Accel-erating AI Training with NVIDIA TF32 Tensor Cores. https://developer.nvidia.com/blog/accelerating-ai-training-with-tf32-tensor-cores/. NVIDIA Blog. Sun, W.; Li, A.; Geng, T.; Stuijk, S.; and Corporaal, H. 2023. Dissecting Tensor Cores via Microbenchmarks: La-tency, Throughput and Numeric Behaviors. IEEE Transac-tions on Parallel and Distributed Systems , 34(1): 246–261. Valpey, B.; Li, X.; Pai, S.; and Gopalakrishnan, G. 2025. An SMT Formalization of Mixed-Precision Matrix Mul-tiplication: Modeling Three Generations of Tensor Cores. arXiv:2502.15999. Xie, P.; Gao, Y.; Wang, Y.; and Xue, J. 2025. Revealing Floating-Point Accumulation Orders in Software/Hardware Implementations. arXiv:2411.00442. Yuan, J.; Li, H.; Ding, X.; Xie, W.; Li, Y.-J.; Zhao, W.; Wan, K.; Shi, J.; Hu, X.; and Liu, Z. 2025. Understanding and Mitigating Numerical Sources of Nondeterminism in LLM Inference. In The Thirty-ninth Annual Conference on Neural Information Processing Systems .Zahid, A. H.; Laguna, I.; and Le, W. 2024. Testing GPU Numerics: Finding Numerical Differences Between NVIDIA and AMD GPUs. In SC24-W: Workshops of the International Conference for High Performance Computing, Networking, Storage and Analysis , 547–557. Zhang, Y.; and Math-AI, T. 2024. American Invitational Mathematics Examination (AIME) 2024. Zhuang, D.; Zhang, X.; Song, S.; and Hooker, S. 2022. Ran-domness in neural network training: Characterizing the im-pact of tooling. Proceedings of Machine Learning and Sys-tems , 4: 316–336. Technical Supplement A. Why the L40S Results Outperform the H100 Results under 
+
+On our decode-dominated workloads runs faster on the NVIDIA L40S than on the NVIDIA H100 for most layers. This is not an anomaly. It follows directly from the reproducibility mechanism of combined with the arithmetic profile of autoregressive decoding. We explain it in three steps: the compute path that is restricted to, the arithmetic intensity of decode, and the resulting uti-lization gap between the two GPUs. 
+
+## is accelerated by FP32 vector units, not tensor cores 
+
+To produce bitwise-identical results across GPU architec-tures, performs every linear-layer accumulation with IEEE-754 single-precision fused multiply-add on the CUDA (vector) cores. It never dispatches to the tensor cores, whose accumulation order and internal rounding are unspec-ified and vary across GPU generations. The hardware peak relevant to is therefore the FP32 vector through-put, not the tensor-core throughput that dominates vendor comparisons. Table 3 lists this peak for the three GPUs we study, together with the memory bandwidth and the resulting roofline ridge point, the arithmetic intensity above which a kernel becomes compute-bound. Two facts stand out. First, the L40S has the highest FP32 vector throughput of the three, because each of its Ada streaming multiprocessors exposes 128 FP32 lanes at a high clock, whereas the A100 exposes 64. Excluding the tensor cores therefore removes the H100’s principal advantage. Second, the ridge points span nearly an order of magnitude: a kernel must reach 106 FLOP/byte to be compute-bound on the L40S, but only 25.6 on the H100 and 12.5 on the A100. 
+
+## Decode runs at low arithmetic intensity 
+
+Consider a linear layer that multiplies a batch of M token vectors by a weight matrix of shape N × K stored in BF16. The layer performs 2M N K floating-point operations and reads 2N K bytes of weights, which dominate the memory traffic when M is small. Its arithmetic intensity is therefore AI = 2M N K 
+
+2N K = M FLOP/byte .
+
+During decode, M equals the number of sequences generated concurrently, which is small. Our measurements use M =32 . At this intensity the layer lies below the ridge point of every GPU in Table 3. In the ideal roofline limit each GPU would then be bound by weight-read bandwidth or by peak FP32, whichever is smaller. That ideal limit favors the H100, whose bandwidth is more than twice that of the L40S. The measured ordering is the reverse, which shows that neither GPU operates near its roofline and that peak numbers alone do not determine the outcome. 
+
+## Workload Size 
+
+The binding constraint is occupancy. A decode GEMM at 
+
+M = 32 produces few output tiles, and with the tensor cores 
+
+Figure 5: End-to-end speedup over against each GPU’s FP32-compute-to-bandwidth ratio (peak FP32 TFLOPS ÷ memory bandwidth). Small points are the four (model, benchmark) configurations and large points are means. disabled each tile is evaluated as a stream of scalar FP32 fused multiply-adds. The L40S has fewer streaming multi-processors but high per-SM FP32 throughput, so it keeps its execution units busy on these small problems and sustains a rate close to what the problem allows. The H100 has a larger SM array and more bandwidth, but a small GEMM does not expose enough parallel work to fill it, so much of the device stays idle and its effective throughput falls well below its peak. Table 4 reports per-layer decode latency and achieved FP32 throughput for a single Llama-3.2-3B for-ward at M = 32 . The L40S matches or exceeds the H100 on four of the five projections, and both GPUs realize 11 to 18 TFLOP/s. The one exception is the language-model head, whose output dimension N = 128256 is large enough to generate the tiles needed to fill the H100 SM array; there the H100 is faster. This exception supports the explanation rather than contradicting it: the H100 wins on the single layer wide enough to use it. 
+
+## Scope of the effect 
+
+The inversion is specific to the low-intensity, low-occupancy regime of small-batch decode. As the batch grows, the arith-metic intensity M rises, the number of output tiles increases, and the H100 SM array fills. The same holds during prefill, where M spans the full prompt length. In those regimes the H100 recovers its expected advantage. The behavior described here should therefore be read as a property of memory- and occupancy-limited decode under a tensor-core-free reproducibility constraint, not as a general ordering of the two GPUs. 
+
+# B. Divergence Metrics and Div_Index Results 
+
+The determinism table in the main paper reports two per-centages per (model, benchmark, method) cell: a cross-GPU divergence rate and a cross-seed divergence rate. This sec-tion states precisely how those percentages are computed, and then reports the same experiments under the Div_Index GPU FP32 vector (TFLOP/s) FP32 lanes/SM SMs HBM BW (GB/s) Ridge (FLOP/byte) A100 19.5 64 108 1555 12.5 L40S 91.6 128 142 864 106.0 H100 51.2 128 114 2000 25.6 
+
+Table 3: FP32 vector (non-tensor-core) compute peak, memory bandwidth, and roofline ridge point for the three GPUs. Because 
+
+never uses the tensor cores, the FP32 vector peak is the relevant compute bound, and the L40S has the highest of the three.                                     
+
+> Projection ( N×K)L40S ( μs) H100 ( μs) L40S (TFLOP/s) H100 (TFLOP/s) qkv ( 5120 ×3072 )57.2 70.6 17.6 14.3 o ( 3072 ×3072 )56.7 57.2 10.7 10.6 gate/up ( 16384 ×3072 )191.4 205.1 16.8 15.7 down ( 3072 ×8192 )88.8 132.1 18.1 12.2 lm head ( 128256 ×3072 )1701.5 1532.7 14.8 16.5
+
+Table 4: Per-layer decode latency and achieved FP32 throughput for a single Llama-3.2-3B forward at batch M = 32 , measured per GPU under . The L40S is faster on four of five projections. The H100 leads only on the language-model head, the one layer wide enough to fill its SM array. metric of (Yuan et al. 2025), which records when a divergence first occurs rather than whether it occurs. 
+
+## How the divergence percentages are computed 
+
+Every metric is built from one primitive: a comparison of two greedy token streams. Fix a model, a benchmark, and a method (unmitigated BF16, , or ). For a problem p decoded on GPU A we write the emitted greedy token stream as yA(p) = ( yA 
+
+> 0
+
+, y A 
+
+> 1
+
+, . . . ), taken from column 
+
+0 of the stored top-5 token dump. For an ordered pair of runs on GPUs A and B at the same seed, the first-divergence index is 
+
+d(p; A, B ) = min { t : yAt (p)̸ = yBt (p) },
+
+with d = ∞ when the two streams are identical over their common length and have equal length. Because a single flipped token permanently forks the two sequences, d is the only event that matters: everything after it is a comparison between two already-different generations. 
+
+Cross-GPU divergence (the Div_Percent analog). Hold the seed fixed and vary the GPU. A problem is cross-GPU divergent if d(p; A, B ) < ∞ for at least one architecture pair 
+
+{A, B } ⊆ { A100 , L40S , H100 } at any matched seed. The cross-GPU divergence rate is 
+
+Div% = #{ p : p is cross-GPU divergent }
+
+#{ p } ,
+
+the fraction of problems whose greedy output is not identi-cal on every architecture. This is the per-problem quantity reported in the main paper, and it is the direct counterpart of the Div_Percent metric of , which reports the percentage of problems whose outputs differ across its 12 runtime configurations. We aggregate at the problem level rather than the pair level because a problem that forks on any pair is not reproducible for a user, independent of how many of the pairs reproduce it. A pair-level rate is also available in our released summary and is uniformly smaller. 
+
+Cross-seed divergence. Hold the GPU fixed and vary the seed. The cross-seed rate is the fraction of same-GPU, same-problem seed-pair comparisons for which d < ∞. Greedy decoding is seed-independent by definition, so this rate is 0 in the ideal case, and any nonzero value is pure run-to-run non-determinism from batch composition and scheduling rather than from the numerics of a single forward pass. is batch-invariant by construction (rule R4 in the main paper), so its cross-seed rate is exactly 0 in every cell. 
+
+## Div_Index 
+
+summarizes the same forking process from the other side. Its Div_Index is the token index at which re-sponses that were identical up to that point first disagree, av-eraged over the divergent examples of a dataset, with the con-vention that a higher Div_Index means divergence is pushed later and the outputs are therefore more consistent ( 
+
+writes −1 for a dataset in which nothing diverges). We report the direct analog: the mean first-divergence index 
+
+Div _Index = mean 
+
+> (p,A,B ) :
+> d(p;A,B )<∞
+
+d(p; A, B ),
+
+averaged over every divergent cross-GPU comparison at matched seed. The two metrics answer complementary ques-tions on the same event: Div% counts how often a fork hap-pens, and Div_Index measures how deep into the generation it happens. Table 5 pairs the two for all twelve cells. Three patterns hold. First, unmitigated BF16 forks early, with a first diver-gence at a mean of only 65 to 208 tokens: on greedy reasoning traces thousands of tokens long, the architectures part ways almost at the start. Second, FP32 compute both lowers Div% and pushes Div_Index far later, to as much as 3551 tokens for 
+
+on DeepSeek GPQA-Diamond, which is the same statement as its low Div% seen through the timing lens. The surviving forks are not only rarer but also deferred. Third, 
+
+removes the linear-layer fork outright: in every Unmitigated BF16                                                                                
+
+> Model Benchmark Div% Div_Index Div% Div_Index Div% Div_Index Llama-3.2-3B GSM8K 66.6 65 0−0−
+> MATH500 79.6 106 0−0−
+> AIME24 86.7 153 0−0−
+> GPQA-Diamond 30.8 114 0−0−
+> Qwen3-4B GSM8K 71.3 99 0.23 436 0.08 671 MATH500 83.4 204 0−0−
+> AIME24 100 204 0−0−
+> GPQA-Diamond 99.5 131 0.51 493 0−
+> DeepSeek-R1-Distill-8B GSM8K 88.9 104 0.15 187 0−
+> MATH500 93.0 189 0.40 534 0−
+> AIME24 100 208 0−0−
+> GPQA-Diamond 100 145 0.51 3551 0−
+
+Table 5: Divergence percentage (Div%, the fraction of problems that fork across at least one GPU pair) alongside Div_Index (the mean first-divergence token index over divergent cross-GPU pairs, higher is better) for all three methods. A dash marks a cell with no divergent cross-GPU pair, which is the ideal outcome. Div% falls and Div_Index rises together as numerics improve, from left to right. For the sub-1% cells the Div_Index mean rests on few divergent pairs (as few as one distinct problem on the GPQA-Diamond cells), so those entries are small-sample estimates. cell whose divergence originates in the GEMMs there is no divergent cross-GPU pair at all, so Div_Index is undefined (shown as a dash), the strongest possible reading of the met-ric. The only finite entry is Qwen3-4B on GSM8K (671 tokens), a single problem whose residual originates in the unpinned attention kernel rather than the linear layers. 
+
+# C. Ablation of the Design Rules R1–R4 
+
+The four design rules of the main paper each forbid something that a performance-first GEMM implementation would do. This section measures, one rule at a time, both what the rule buys and what it costs. 
+
+Method. We use a copy of the kernel in which each rule is a parameter rather than a constant, verified bit-wise identical to the shipped kernel when all four rules are on. Exactly one rule is switched off per experiment with ev-erything else held fixed. The test set is nine GEMM cases: the QKV, down, output and lm_head projections of the evaluated models at the decode batch size of 32 , two pre-fill projections at a chunk of 2048 rows, and one deliberately awkward 100 × 1000 × 1000 shape that exercises the masked code paths. Inputs are drawn from a CPU generator with a fixed seed and copied to the device, so every GPU is fed identical input bits and any later difference was introduced by the hardware or by the ablated rule. The ragged shape is not one any of the models serves, so it is reported separately in the timing summaries. 
+
+## R1: IEEE FMA only 
+
+Table 6 varies only the input_precision argument of every tl.dot .Under R1 every case is bitwise identical on all three ar-chitectures. Under TF32 tensor cores no case is. The failure pattern is instructive: A100 and L40S agree with each other on all nine cases, and both disagree with H100 on all nine.                         
+
+> Setting Bitwise Worst Error Time all GPUs cross-GPU vs. FP64 vs. R1
+> ieee (R1) 9/9 –4.8×10 −61.00
+> tf32 0/9 1.1×10 −57.6×10 −40.42
+> tf32x3 0/9 2.4×10 −79.3×10 −71.45
+> omitted 0/9 1.1×10 −57.6×10 −40.42
+
+Table 6: R1 ablation over nine GEMM cases on A100, L40S and H100. “Bitwise across GPUs” counts cases whose output is identical on all three architectures. Differences are scaled by the output magnitude. The last column is the median decode-shape time relative to ieee , so values below 1 mean the ablated setting is faster. Ampere and Ada issue the same TF32 MMA instruction, while Hopper issues a different one, so the agreement be-tween two of the three GPUs is a consequence of two archi-tectures happening to share an instruction rather than of any guarantee. This is the same coincidental-agreement pattern the main paper reports for cuBLAS kernel selection, and it is exactly what a specification-level argument is meant to replace. The accuracy column shows that the ablation also gives up what the FP32 pipeline was for. TF32 carries ten man-tissa bits, and its error against an FP64 reference is 4.0 to 
+
+7.6 × 10 −4 of the output scale, three orders of magnitude above IEEE FMA’s 4.8 × 10 −6 and of the same order as BF16 rounding. A hybrid-precision pipeline that computes in TF32 is therefore not computing in FP32 in any sense that matters. The three-pass tf32x3 variant recovers the accuracy but not the reproducibility, since it is built from the same architecture-dependent MMA. R1 is not free at the kernel level: IEEE FMA runs on the CUDA cores, so the GEMMs are 2.4× slower than TF32 Configuration selected by autotuning (BM , B N , B K ), S Bitwise across GPUs Shape (M, N, K ) A100 L40S H100 pinned / autotuned Decode QKV, 8B (32 , 6144 , 4096) (32 , 128 , 64) , 8 (32 , 128 , 64) , 8 (32 , 256 , 32 ), 8 yes / yes Decode down, 8B (32 , 4096 , 14336) (32 , 128 , 64) , 8 (32 , 128 , 64) , 8 (32 , 128 , 64) , 8 yes / yes Decode QKV, Qwen3-4B (32 , 6144 , 2560) (32 , 128 , 64) , 8 (32 , 128 , 64) , 8 (32 , 256 , 32 ), 8 yes / yes Decode down, Qwen3-4B (32 , 2560 , 9728) (32 , 64 , 64) , 8 (32 , 64 , 64) , 8 (32 , 128 , 64) , 8 yes / yes Decode output proj. (32 , 4096 , 4096) (32 , 128 , 32) , 8 (32 , 128 , 64 ), 4 (32 , 128 , 32) , 8 yes / no                                                                   
+
+> Decode lm_head , 3B (32 ,128256 ,3072) (32 ,128 ,64) ,2(32 ,128 ,64) ,2(32 ,128 ,64) ,1yes / no
+> Prefill QKV, 8B (2048 ,6144 ,4096) (128 ,256 ,32) ,1(128 ,256 ,32) ,1(128 ,256 ,32) ,1yes / yes Prefill down, 8B (2048 ,4096 ,14336) (128 ,128 ,32) ,1(128 ,256 ,32) ,1(128 ,256 ,32) ,1yes / yes Ragged probe (100 ,1000 ,1000) (16 ,64 ,32) ,1(16 ,64 ,32) ,1(16 ,64 ,32) ,1yes / yes
+
+Table 7: R2 ablation. Each architecture runs the identical search over the identical candidate space. The last column compares the output of the pinned configuration across the three GPUs, and then the output of each GPU’s own autotuned choice across the three GPUs. at the median decode shape and 5.6× slower at the median prefill shape. That cost is measured against an alternative that fails both goals of the pipeline, and it is not a cost against our baseline: ’s cuBLAS SGEMM path also executes on the FP32 units, so the end-to-end comparison in the main paper is between two FP32 CUDA-core implementations, and is the faster of the two. Finally, the last row substantiates the claim that framework-level switches do not reach Tri-ton. Every node in this experiment ran with 
+
+torch.backends.cuda.matmul.allow_tf32 = False . Simply omitting the input_precision 
+
+argument reproduced the TF32 result bit for bit on 9/9 cases on all three GPUs, and never matched the IEEE result. The constraint has to be applied per operation. 
+
+## R2: No autotuning 
+
+We replace the pinned configuration with a real autotuner: the same candidate space of 18 tile configurations crossed with split factors S ∈ { 1, 2, 4, 8}, benchmarked on the local device, run identically on each architecture. we replace the pinned configuration with a benchmark-and-select search of the kind triton.autotune implements. The candidate space is filtered by one shared-memory bound for all three GPUs, so a different winner reflects a different choice and not a different menu. Table 7 lists what each device picks. The same configuration wins on all three architectures for only 3 of the 9 shapes. Autotuning is not a function of just the device. Repeating the identical search three times on one node changed the winner on 1 of 9 shapes on the A100, because two near-equal candidates trade places under measurement noise. That these choices are numerical choices, and not merely scheduling choices, is visible on a single device. Within the decode candidate space the 72 candidates produce 4 distinct outputs, and on 4 of the 27 (shape, GPU) cells the autotuner’s pick already disagrees bitwise with the pinned configura-tion on that same GPU. Composed across architectures, the pinned configuration is bitwise identical on 9/9 shapes while the autotuned one is identical on 7/9.One nuance is worth stating precisely, because it narrows where R2 does its work. With R1 and R3 in force, the accu-mulation over the reduction dimension is strictly ascending in k, so BM , BN , the warp count and the pipeline depth are numerically inert: they change the schedule but not the reduc-tion tree. The numerical content of the tuner’s choice there-fore flows through the split factor, and through BK where it changes the segmentation. R2 remains necessary for three reasons. The split factor is a tuned knob in every practical Triton GEMM and is precisely the one that moves the bits; the inertness of the remaining knobs is an observed property of one Triton version’s lowering rather than a specification, and pinning is what makes reproducibility independent of it. An autotuner optimizes time, so given the choice it removes R1 as well, selecting TF32 on 26 of the 27 (shape, GPU) cells. Pinning does not incur significant cost over the entire LLM pipeline. Over the eight served shapes the pinned configu-ration takes 1.4% longer than the best found configuration at the median and 21 .9% longer at worst, the worst case be-ing the lm_head shape on the L40S. The synthetic ragged probe is the one outlier, at 29 to 70 ×: a 100 × 1000 × 1000 
+
+problem gives the pinned 128 × 128 prefill tile only eight output tiles to spread over more than a hundred SMs. No served prefill chunk is that small, but the case does mark the boundary of where a single pinned prefill configuration is appropriate. 
+
+## R3: Deterministic split-K
+
+R3 makes two commitments, and we ablate them separately. 
+
+Atomics. Table 9 repeats each variant 50 times on one de-vice. Classic split-K returned 50 different results in 50 runs on 15 of the 18 (shape, GPU) cells, with run-to-run spreads up to 2.2 × 10 −7 of the output scale, the same order as the cross-architecture differences the main paper measures for 
+
+and therefore large enough to flip a token at a nar-row decision margin. The three exceptions are the lm_head 
+
+shape, where the merge order happened to be stable on all three GPUs across all 50 runs, which is the point rather than a counterexample: the order is a race, and whether it bites is a property of the schedule and not of the program. Ordered split-K and no split each returned exactly one result in every run on every GPU, and both are bitwise identical across all Table 8: Hardware specifications of the evaluation machines.                                                           
+
+> Component L40S H100 A100
+> GPU
+> Model NVIDIA L40S PCIe (SM89) NVIDIA H100 PCIe (SM90) NVIDIA A100 PCIe 40GB (SM80) Count 1×1×1×
+> VRAM 45 GiB 80 GiB 40 GiB
+> CPU
+> Model Intel(R) Xeon(R) CPU Max 9468 Intel(R) Xeon(R) Gold 6454S Intel(R) Xeon(R) Gold 6454S Sockets 222Cores / Threads 96 / 192 64 / 128 64 / 64 Max. Freq. 2.1 GHz 3.4 GHz 3.4 GHz
+> Memory
+> System RAM 503 GiB 503 GiB 503 GiB Distinct outputs, 50 runs Ordered Decode shape none ordered atomic vs. none QKV, 8B 1150 1.9–4.1×
+> Down, 8B 1150 2.8–4.4×
+> QKV, Qwen3-4B 1150 1.9–2.6×
+> Down, Qwen3-4B 1150 3.7–5.6×
+> Output proj. 1150 2.1–3.1×
+> lm_head , 3B 1110.8–1.0×
+
+Table 9: R3 ablation on the six decode shapes, run-to-run on a fixed device. Counts are identical on A100, L40S and H100. The last column is the speedup of ordered split-K over no split, ranged over the three GPUs. three architectures on all six shapes, while atomic split-K is identical across architectures on one. Split-K is not optional for the decode shapes: the ordered version is 1.9 to 5.6× faster than no split on the five projection shapes. Only lm_head , whose N is already large enough to fill the machine, prefers no split. Ordering the reduction is free: the ordered variant is 4.2% faster than the atomic one at the median, since writing S partials and summing them in a second pass costs no more than contending on atomics. 
+
+The split factor must be shape-pure. Sweeping S ∈{1, 2, 4, 8, 16 } produces five distinct outputs on all six shapes, so the split factor fully determines the result. A performance-first rule that sizes the split by wave quanti-zation, which is how CUTLASS-style GEMMs choose their slices, selects S = 2 , 8 and 16 on A100, L40S and H100 for the same decode QKV shape, because the three devices have 108 , 142 and 114 SMs. Its output consequently differs across architectures on four of the six shapes. Making S afunction of K alone is what removes the SM count from the numerics. 
+
+## R4: Batch invariance by construction 
+
+We compute row 0 of the same input at batch sizes M =1 to 64 and compare its bits against the M = 1 result, under four policies: , a variant whose split factor is occupancy-sized, a variant whose configuration and split                     
+
+> Shapes with row 0independent of M(of 6) GPU occupancy per-Mtuned cuBLAS A100 6120L40S 6110H100 6210
+
+Table 10: R4 ablation over twelve batch sizes in 1 ≤ M ≤ 64 .A shape counts only if row 0 is bitwise identical at every one of the twelve. Under cuBLAS, row 0 differs from the M = 1 
+
+result at eleven of the twelve batch sizes on every shape and every GPU. are re-searched by measurement at every batch size as a Triton autotuner keyed on M would do, and cuBLAS. 
+
+is batch-invariant on all 18 (shape, GPU) cells. The occupancy-sized and per-M tuned variants are invariant on 4 of 18 each, and cuBLAS on none, differing from the single-request result at eleven of the twelve batch sizes every-where. The two ablated policies also lose cross-architecture agreement: comparing row 0 at M = 32 across the three GPUs, matches on all six shapes while the ab-lated policies match on two or fewer. This is the same mech-anism seen in R3, since a batch-dependent tile count feeds a device-dependent split factor. R4 is cheap but not free. Re-tuning at every batch size is 
+
+5 to 25% faster than the shape-pure policy at M ≤ 16 on the A100 and H100, 2 to 9% faster at M = 32 , and within noise on the L40S. Buying per-request independence from co-scheduled load therefore costs a few percent of GEMM time at the batch size used throughout the paper, which the end-to-end results absorb. R4’s claim is stated for the decode bucket, M ≤ 64 . row 0
+
+changes at M = 65 under every policy including ,because that crosses the documented shape-bucket boundary into the prefill configuration. Immediately above that bound-ary the pinned prefill configuration is poorly matched to the shape, and a tuned kernel is roughly 3× faster at M = 65 to 
+
+128 .

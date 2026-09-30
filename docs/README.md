@@ -6,64 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-29
-- 运行时间：2026-09-30 07:24:50 UTC+8
+- 最新运行日期：2026-09-30
+- 运行时间：2026-10-01 07:15:53 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Positivity Rigidity for Grossman-Larson Characters and the Kingman Face of the Hoffman Rooted-Tree Graph》（8.3/10）, 《Bounded joins of biclosed sets》（8.2/10）
-- 速读：《Rootwise estimates for Weyl alternants》（7.6/10）, 《Coordinate descents, monodromy, and finite normalization of marked-root maps》（7.5/10）, 《A2A-ForensicTrace: Offline Verification of Tamper-Evident A2A Runtime Evidence》（7.5/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Robust Reconstruction on Trees with a Growing Alphabet》（6.8/10）, 《The Conway-Parker algebra and the largest Fischer group》（6.7/10）, 《OSCC: Certified Observation-Safe Coupling Optimization for Gradient-Noise Control in Imperfect-Information Learning》（6.6/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202609/29/README](/202609/29/README)
+- 详情：[/202609/30/README](/202609/30/README)
 
 ### 精读区论文标签
-1. [Positivity Rigidity for Grossman-Larson Characters and the Kingman Face of the Hoffman Rooted-Tree Graph](/202609/29/2609.31026v1-positivity-rigidity-for-grossman-larson-characters-and-the-kingman-face-of-the-hoffman-rooted-tree-graph)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-2. [Bounded joins of biclosed sets](/202609/29/2609.27253v2-bounded-joins-of-biclosed-sets)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [ST-pRRTC: Parallel Space-Time RRT-C with Adaptive Goal-Time Forests](/202609/29/2609.30533v1-st-prrtc-parallel-space-time-rrt-c-with-adaptive-goal-time-forests)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Rootwise estimates for Weyl alternants](/202609/29/2609.32214v1-rootwise-estimates-for-weyl-alternants)  
-   标签：评分：7.6/10
+1. [Robust Reconstruction on Trees with a Growing Alphabet](/202609/30/2609.33263v1-robust-reconstruction-on-trees-with-a-growing-alphabet)  
+   标签：评分：6.8/10
    evidence：检索回退候选
-2. [Coordinate descents, monodromy, and finite normalization of marked-root maps](/202609/29/2609.33491v1-coordinate-descents-monodromy-and-finite-normalization-of-marked-root-maps)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-3. [A2A-ForensicTrace: Offline Verification of Tamper-Evident A2A Runtime Evidence](/202609/29/2609.33924v1-a2a-forensictrace-offline-verification-of-tamper-evident-a2a-runtime-evidence)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-4. [Certificate-Governed CRT Sparse FFT: Verified Global-Label Candidate Construction under Explicit Decoding Models](/202609/29/2609.34086v1-certificate-governed-crt-sparse-fft-verified-global-label-candidate-construction-under-explicit-decoding-models)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-5. [The paxotopy method for finding isolated roots of a system of nonlinear equations](/202609/29/2609.34583v1-the-paxotopy-method-for-finding-isolated-roots-of-a-system-of-nonlinear-equations)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-6. [A proof of Frenkel's bound for the hyperbolic Kac-Moody Lie Algebra A_1^++](/202609/29/2609.35325v1-a-proof-of-frenkels-bound-for-the-hyperbolic-kac-moody-lie-algebra-a1)  
-   标签：评分：7.3/10
-   evidence：检索回退候选
-7. [Trivial zeros of zeta functions of type $\mathrm{A}_r$](/202609/29/2609.28354v1-trivial-zeros-of-zeta-functions-of-type-mathrmar)  
+2. [The Conway-Parker algebra and the largest Fischer group](/202609/30/2609.33331v1-the-conway-parker-algebra-and-the-largest-fischer-group)  
    标签：评分：6.7/10
    evidence：检索回退候选
-8. [Accelerating Branch MPC with Two-Level Parallel Direct Solves on GPUs](/202609/29/2609.29977v1-accelerating-branch-mpc-with-two-level-parallel-direct-solves-on-gpus)  
+3. [OSCC: Certified Observation-Safe Coupling Optimization for Gradient-Noise Control in Imperfect-Information Learning](/202609/30/2609.33543v1-oscc-certified-observation-safe-coupling-optimization-for-gradient-noise-control-in-imperfect-information-learning)  
    标签：评分：6.6/10
    evidence：检索回退候选
-9. [Constants in the Weighted Law of the Iterated Logarithm under Long-Range Dependence: Hermite Rank Two](/202609/29/2609.30331v1-constants-in-the-weighted-law-of-the-iterated-logarithm-under-long-range-dependence-hermite-rank-two)  
+4. [Low-Stretch Spanning Trees via Smoothed Analysis of Dijkstra's Algorithm](/202609/30/2609.35136v1-low-stretch-spanning-trees-via-smoothed-analysis-of-dijkstras-algorithm)  
    标签：评分：6.6/10
    evidence：检索回退候选
-10. [The geometry of solutions to the general sextic](/202609/29/2609.30422v1-the-geometry-of-solutions-to-the-general-sextic)  
+5. [Accelerating the Mitigation of LLM Inference Nondeterminism Across GPU Architectures](/202609/30/2609.25624v1-accelerating-the-mitigation-of-llm-inference-nondeterminism-across-gpu-architectures)  
    标签：评分：6.5/10
    evidence：检索回退候选
-11. [Using Machine Learning to Investigate Predictors of Fasting Blood Glucose: Insights into Circadian Timing and Age Interactions](/202609/29/2609.32386v1-using-machine-learning-to-investigate-predictors-of-fasting-blood-glucose-insights-into-circadian-timing-and-age-interactions)  
+6. [Enumerating pattern-avoiding translation-invariant total orders](/202609/30/2609.25656v1-enumerating-pattern-avoiding-translation-invariant-total-orders)  
    标签：评分：6.5/10
+   evidence：检索回退候选
+7. [C-to-Rust Fallacy: Automatic Refactoring != Memory Security](/202609/30/2609.25682v1-c-to-rust-fallacy-automatic-refactoring--memory-security)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+8. [Measure-zero delocalization in the complex plane: exact mobility arcs in a non-Hermitian off-diagonal quasiperiodic lattice](/202609/30/2609.25877v1-measure-zero-delocalization-in-the-complex-plane-exact-mobility-arcs-in-a-non-hermitian-off-diagonal-quasiperiodic-lattice)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+9. [You Should Be Properly Scoring Your Odometry](/202609/30/2609.25900v1-you-should-be-properly-scoring-your-odometry)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+10. [Towards real-time ion range verification via hybrid Compton-PET 3D imaging at isochronous cyclotrons](/202609/30/2609.25993v1-towards-real-time-ion-range-verification-via-hybrid-compton-pet-3d-imaging-at-isochronous-cyclotrons)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+11. [Lower bounds for the critical CR GJMS operator](/202609/30/2609.26371v1-lower-bounds-for-the-critical-cr-gjms-operator)  
+   标签：评分：6.2/10
    evidence：检索回退候选
 
 
