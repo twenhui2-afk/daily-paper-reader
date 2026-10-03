@@ -6,70 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-02
-- 运行时间：2026-10-03 07:21:40 UTC+8
+- 最新运行日期：2026-10-03
+- 运行时间：2026-10-04 05:54:28 UTC+8
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：5
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
-- 精读：《The role of root allometry and root overlap in vegetation pattern formation》（8.6/10）, 《Beyond Conditional Independence: Root Cause Analysis with Deep Causal Models》（8.5/10）
-- 速读：《Where Root Cause Analysis Fails: A Retrieval-Reranking Decomposition》（7.8/10）, 《Controller Identifiability: The Boundary Between Logarithmic and Square-Root Local Minimax Regret in Structured Adaptive LQR》（7.7/10）, 《A Generalized Langevin Model of Latent Liquidity and Concave Price Impact》（7.6/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Positivity-preserving scalar auxiliary variable schemes for gradient flows via a quadratic reformulation》（7.8/10）, 《Coloring 3-colorable graphs with $O(n^{4/23})$ colors via a Gaussian-cover recursion》（7.7/10）, 《$\rm{PGL}_2$ webs at roots of unity》（7.6/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/02/README](/202610/02/README)
+- 详情：[/202610/03/README](/202610/03/README)
 
 ### 精读区论文标签
-1. [The role of root allometry and root overlap in vegetation pattern formation](/202610/02/2610.01730v1-the-role-of-root-allometry-and-root-overlap-in-vegetation-pattern-formation)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [Beyond Conditional Independence: Root Cause Analysis with Deep Causal Models](/202610/02/2609.36771v1-beyond-conditional-independence-root-cause-analysis-with-deep-causal-models)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-3. [CEER2: Directional and Tunable End-Effector and Root Compliance for Humanoid Loco-Manipulation](/202610/02/2609.38709v1-ceer2-directional-and-tunable-end-effector-and-root-compliance-for-humanoid-loco-manipulation)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-4. [Natural reparameterization and continuity of the solution map for polynomials](/202610/02/2609.39389v1-natural-reparameterization-and-continuity-of-the-solution-map-for-polynomials)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-5. [Spectral eigenvalue problem of Cantor measures and Artin's primitive root conjecture](/202610/02/2609.29038v2-spectral-eigenvalue-problem-of-cantor-measures-and-artins-primitive-root-conjecture)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Where Root Cause Analysis Fails: A Retrieval-Reranking Decomposition](/202610/02/2609.36686v1-where-root-cause-analysis-fails-a-retrieval-reranking-decomposition)  
+1. [Positivity-preserving scalar auxiliary variable schemes for gradient flows via a quadratic reformulation](/202610/03/2610.01063v1-positivity-preserving-scalar-auxiliary-variable-schemes-for-gradient-flows-via-a-quadratic-reformulation)  
    标签：评分：7.8/10
    evidence：检索回退候选
-2. [Controller Identifiability: The Boundary Between Logarithmic and Square-Root Local Minimax Regret in Structured Adaptive LQR](/202610/02/2609.37063v1-controller-identifiability-the-boundary-between-logarithmic-and-square-root-local-minimax-regret-in-structured-adaptive-lqr)  
+2. [Coloring 3-colorable graphs with $O(n^{4/23})$ colors via a Gaussian-cover recursion](/202610/03/2610.01071v1-coloring-3-colorable-graphs-with-on423-colors-via-a-gaussian-cover-recursion)  
    标签：评分：7.7/10
    evidence：检索回退候选
-3. [A Generalized Langevin Model of Latent Liquidity and Concave Price Impact](/202610/02/2609.37872v1-a-generalized-langevin-model-of-latent-liquidity-and-concave-price-impact)  
+3. [$\rm{PGL}_2$ webs at roots of unity](/202610/03/2610.01881v1-rmpgl2-webs-at-roots-of-unity)  
    标签：评分：7.6/10
    evidence：检索回退候选
-4. [Matrix roots of order n of a multivariate polynomial](/202610/02/2609.38238v1-matrix-roots-of-order-n-of-a-multivariate-polynomial)  
-   标签：评分：7.6/10
+4. [Real-rootedness and ultra log-concavity of rank-two matroid Ehrhart $h^*$-polynomials](/202610/03/2609.37439v1-real-rootedness-and-ultra-log-concavity-of-rank-two-matroid-ehrhart-h-polynomials)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-5. [A Kac-Moody root system and linear ordinary differential equations](/202610/02/2609.39733v1-a-kac-moody-root-system-and-linear-ordinary-differential-equations)  
-   标签：评分：7.5/10
+5. [On minima of theta and Epstein zeta functions in dimension four](/202610/03/2609.37615v1-on-minima-of-theta-and-epstein-zeta-functions-in-dimension-four)  
+   标签：评分：7.1/10
    evidence：检索回退候选
-6. [Authorization for Self-Modifying AI Agent Populations: Conserving Authority across Replacement, Forking, and Rollback](/202610/02/2610.00347v1-authorization-for-self-modifying-ai-agent-populations-conserving-authority-across-replacement-forking-and-rollback)  
-   标签：评分：7.5/10
+6. [Functional inequalities along Wasserstein geodesics](/202610/03/2609.39252v1-functional-inequalities-along-wasserstein-geodesics)  
+   标签：评分：7.0/10
    evidence：检索回退候选
-7. [CMS Open Data Visualization with FireworksWeb](/202610/02/2609.35843v1-cms-open-data-visualization-with-fireworksweb)  
+7. [Generalised Mixing-Plane Method for Compressible Reacting-Mixture Flows in Steady Multiphysics Turbomachinery Simulations](/202610/03/2609.39746v1-generalised-mixing-plane-method-for-compressible-reacting-mixture-flows-in-steady-multiphysics-turbomachinery-simulations)  
    标签：评分：6.9/10
    evidence：检索回退候选
-8. [Dual-Anchor Acceleration Is Near-Optimal for Stochastic Monotone Root-Finding](/202610/02/2609.36033v1-dual-anchor-acceleration-is-near-optimal-for-stochastic-monotone-root-finding)  
+8. [Zero modes and oscillatory instabilities of a Lorentz-violating Kalb-Ramond field on a Schwarzschild background](/202610/03/2609.39936v2-zero-modes-and-oscillatory-instabilities-of-a-lorentz-violating-kalb-ramond-field-on-a-schwarzschild-background)  
+   标签：评分：6.9/10
+   evidence：检索回退候选
+9. [Finite-time boundary collision in planar linear quadratic regulator gradient flows](/202610/03/2610.00297v1-finite-time-boundary-collision-in-planar-linear-quadratic-regulator-gradient-flows)  
    标签：评分：6.8/10
    evidence：检索回退候选
-9. [Resultants, Recursive Formulas and Binet Formulas for $\textrm{SU}(N)$ Verlinde Sums](/202610/02/2609.36088v1-resultants-recursive-formulas-and-binet-formulas-for-textrmsun-verlinde-sums)  
+10. [Defense Feedback and Global-Game Selection](/202610/03/2610.00323v1-defense-feedback-and-global-game-selection)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Additive Quasi-isometry via rooted graph partitions and layering partition](/202610/02/2609.36186v1-additive-quasi-isometry-via-rooted-graph-partitions-and-layering-partition)  
+11. [How Divergence Becomes Decision Flips in Compressed Language Models](/202610/03/2610.00694v1-how-divergence-becomes-decision-flips-in-compressed-language-models)  
    标签：评分：6.8/10
-   evidence：检索回退候选
-11. [Where the Model Changes Its Mind: Hindsight-Divergence Localization for Efficient Reinforcement Learning with Verifiable Rewards](/202610/02/2609.36864v1-where-the-model-changes-its-mind-hindsight-divergence-localization-for-efficient-reinforcement-learning-with-verifiable-rewards)  
-   标签：评分：6.7/10
    evidence：检索回退候选
 
 
