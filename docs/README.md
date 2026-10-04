@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-03
-- 运行时间：2026-10-04 05:54:28 UTC+8
+- 最新运行日期：2026-10-04
+- 运行时间：2026-10-05 05:50:49 UTC+8
 - 运行状态：成功
 - 本次总论文数：11
 - 精读区：0
@@ -15,46 +15,46 @@
 
 ### 今日简报（AI）
 - 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Positivity-preserving scalar auxiliary variable schemes for gradient flows via a quadratic reformulation》（7.8/10）, 《Coloring 3-colorable graphs with $O(n^{4/23})$ colors via a Gaussian-cover recursion》（7.7/10）, 《$\rm{PGL}_2$ webs at roots of unity》（7.6/10）
+- 速读：《Exact Chained-Word Threshold and Monotone-Path Structure in the Even Root-of-Unity Kaleidoscope Yang-Baxter Algebra》（7.0/10）, 《Colored Khovanov homology theories at prime roots of unity》（6.8/10）, 《Stark effect of hydrogenic ions as a test of the indefinite-metric formalism of the eight-component relativistic wave equation for spin-$\frac{1}{2}$ particles》（6.7/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/03/README](/202610/03/README)
+- 详情：[/202610/04/README](/202610/04/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Positivity-preserving scalar auxiliary variable schemes for gradient flows via a quadratic reformulation](/202610/03/2610.01063v1-positivity-preserving-scalar-auxiliary-variable-schemes-for-gradient-flows-via-a-quadratic-reformulation)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-2. [Coloring 3-colorable graphs with $O(n^{4/23})$ colors via a Gaussian-cover recursion](/202610/03/2610.01071v1-coloring-3-colorable-graphs-with-on423-colors-via-a-gaussian-cover-recursion)  
-   标签：评分：7.7/10
-   evidence：检索回退候选
-3. [$\rm{PGL}_2$ webs at roots of unity](/202610/03/2610.01881v1-rmpgl2-webs-at-roots-of-unity)  
-   标签：评分：7.6/10
-   evidence：检索回退候选
-4. [Real-rootedness and ultra log-concavity of rank-two matroid Ehrhart $h^*$-polynomials](/202610/03/2609.37439v1-real-rootedness-and-ultra-log-concavity-of-rank-two-matroid-ehrhart-h-polynomials)  
-   标签：评分：7.1/10
-   evidence：检索回退候选
-5. [On minima of theta and Epstein zeta functions in dimension four](/202610/03/2609.37615v1-on-minima-of-theta-and-epstein-zeta-functions-in-dimension-four)  
-   标签：评分：7.1/10
-   evidence：检索回退候选
-6. [Functional inequalities along Wasserstein geodesics](/202610/03/2609.39252v1-functional-inequalities-along-wasserstein-geodesics)  
+1. [Exact Chained-Word Threshold and Monotone-Path Structure in the Even Root-of-Unity Kaleidoscope Yang-Baxter Algebra](/202610/04/2609.39262v1-exact-chained-word-threshold-and-monotone-path-structure-in-the-even-root-of-unity-kaleidoscope-yang-baxter-algebra)  
    标签：评分：7.0/10
    evidence：检索回退候选
-7. [Generalised Mixing-Plane Method for Compressible Reacting-Mixture Flows in Steady Multiphysics Turbomachinery Simulations](/202610/03/2609.39746v1-generalised-mixing-plane-method-for-compressible-reacting-mixture-flows-in-steady-multiphysics-turbomachinery-simulations)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-8. [Zero modes and oscillatory instabilities of a Lorentz-violating Kalb-Ramond field on a Schwarzschild background](/202610/03/2609.39936v2-zero-modes-and-oscillatory-instabilities-of-a-lorentz-violating-kalb-ramond-field-on-a-schwarzschild-background)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-9. [Finite-time boundary collision in planar linear quadratic regulator gradient flows](/202610/03/2610.00297v1-finite-time-boundary-collision-in-planar-linear-quadratic-regulator-gradient-flows)  
+2. [Colored Khovanov homology theories at prime roots of unity](/202610/04/2610.01122v1-colored-khovanov-homology-theories-at-prime-roots-of-unity)  
    标签：评分：6.8/10
    evidence：检索回退候选
-10. [Defense Feedback and Global-Game Selection](/202610/03/2610.00323v1-defense-feedback-and-global-game-selection)  
-   标签：评分：6.8/10
+3. [Stark effect of hydrogenic ions as a test of the indefinite-metric formalism of the eight-component relativistic wave equation for spin-$\frac{1}{2}$ particles](/202610/04/2610.02060v1-stark-effect-of-hydrogenic-ions-as-a-test-of-the-indefinite-metric-formalism-of-the-eight-component-relativistic-wave-equation-for-spin-frac12-particles)  
+   标签：评分：6.7/10
    evidence：检索回退候选
-11. [How Divergence Becomes Decision Flips in Compressed Language Models](/202610/03/2610.00694v1-how-divergence-becomes-decision-flips-in-compressed-language-models)  
-   标签：评分：6.8/10
+4. [A Monte Carlo Estimator for an Isolated Polynomial Zero via Contour Integral Representations](/202610/04/2610.02085v1-a-monte-carlo-estimator-for-an-isolated-polynomial-zero-via-contour-integral-representations)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+5. [Lens Space Surgeries and the Bleiler-Litherland Conjecture](/202610/04/2609.31757v1-lens-space-surgeries-and-the-bleiler-litherland-conjecture)  
+   标签：评分：6.6/10
+   evidence：检索回退候选
+6. [Lens Space Surgeries and the Bleiler-Litherland Conjecture](/202610/04/2609.31757v2-lens-space-surgeries-and-the-bleiler-litherland-conjecture)  
+   标签：评分：6.5/10
+   evidence：检索回退候选
+7. [Reducing Combinatorial Redundancy in Mixed-Integer MPC via Ranking-Based Feasible-Set Restriction for Reconfigurable Batteries](/202610/04/2609.32029v1-reducing-combinatorial-redundancy-in-mixed-integer-mpc-via-ranking-based-feasible-set-restriction-for-reconfigurable-batteries)  
+   标签：评分：6.5/10
+   evidence：检索回退候选
+8. [Conductors and Quadratic base change](/202610/04/2609.32104v1-conductors-and-quadratic-base-change)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+9. [Factorizations in algebraic monogenic semidomains](/202610/04/2609.32138v1-factorizations-in-algebraic-monogenic-semidomains)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+10. [Finite Expression Approximation of High-Dimensional PDEs Without the Curse of Dimensionality](/202610/04/2609.32229v1-finite-expression-approximation-of-high-dimensional-pdes-without-the-curse-of-dimensionality)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+11. [Skeletons in Flow: Graph Structured Flow Matching for Human Motion Prediction](/202610/04/2609.32231v1-skeletons-in-flow-graph-structured-flow-matching-for-human-motion-prediction)  
+   标签：评分：6.3/10
    evidence：检索回退候选
 
 
