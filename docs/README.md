@@ -6,55 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-04
-- 运行时间：2026-10-05 05:50:49 UTC+8
+- 最新运行日期：2026-10-06
+- 运行时间：2026-10-06 08:46:03 UTC+8
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：0
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
-- 速读：《Exact Chained-Word Threshold and Monotone-Path Structure in the Even Root-of-Unity Kaleidoscope Yang-Baxter Algebra》（7.0/10）, 《Colored Khovanov homology theories at prime roots of unity》（6.8/10）, 《Stark effect of hydrogenic ions as a test of the indefinite-metric formalism of the eight-component relativistic wave equation for spin-$\frac{1}{2}$ particles》（6.7/10）
+- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
+- 精读：《EviDent-CBCT: Evidence-Bottlenecked Report Generation from Dental CBCT under Non-Exhaustive Report Supervision》（8.6/10）, 《On the Average Sizes of Ideals and Antichains in Some Infinite Families of Posets》（8.3/10）
+- 速读：《Root isolation for analytic functions using cubic hermite interpolation》（7.6/10）, 《Learning from Repaired Reasoning: Root-Cause-Guided On-Policy Distillation》（7.5/10）, 《Homomesy of Tropical $T$-systems: Finite Type》（6.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/04/README](/202610/04/README)
+- 详情：[/202610/06/README](/202610/06/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [EviDent-CBCT: Evidence-Bottlenecked Report Generation from Dental CBCT under Non-Exhaustive Report Supervision](/202610/06/2610.02375v1-evident-cbct-evidence-bottlenecked-report-generation-from-dental-cbct-under-non-exhaustive-report-supervision)  
+   标签：评分：8.6/10
+   evidence：检索回退候选
+2. [On the Average Sizes of Ideals and Antichains in Some Infinite Families of Posets](/202610/06/2610.03579v1-on-the-average-sizes-of-ideals-and-antichains-in-some-infinite-families-of-posets)  
+   标签：评分：8.3/10
+   evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Exact Chained-Word Threshold and Monotone-Path Structure in the Even Root-of-Unity Kaleidoscope Yang-Baxter Algebra](/202610/04/2609.39262v1-exact-chained-word-threshold-and-monotone-path-structure-in-the-even-root-of-unity-kaleidoscope-yang-baxter-algebra)  
-   标签：评分：7.0/10
+1. [Root isolation for analytic functions using cubic hermite interpolation](/202610/06/2610.02934v1-root-isolation-for-analytic-functions-using-cubic-hermite-interpolation)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-2. [Colored Khovanov homology theories at prime roots of unity](/202610/04/2610.01122v1-colored-khovanov-homology-theories-at-prime-roots-of-unity)  
-   标签：评分：6.8/10
+2. [Learning from Repaired Reasoning: Root-Cause-Guided On-Policy Distillation](/202610/06/2610.03515v1-learning-from-repaired-reasoning-root-cause-guided-on-policy-distillation)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-3. [Stark effect of hydrogenic ions as a test of the indefinite-metric formalism of the eight-component relativistic wave equation for spin-$\frac{1}{2}$ particles](/202610/04/2610.02060v1-stark-effect-of-hydrogenic-ions-as-a-test-of-the-indefinite-metric-formalism-of-the-eight-component-relativistic-wave-equation-for-spin-frac12-particles)  
-   标签：评分：6.7/10
-   evidence：检索回退候选
-4. [A Monte Carlo Estimator for an Isolated Polynomial Zero via Contour Integral Representations](/202610/04/2610.02085v1-a-monte-carlo-estimator-for-an-isolated-polynomial-zero-via-contour-integral-representations)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-5. [Lens Space Surgeries and the Bleiler-Litherland Conjecture](/202610/04/2609.31757v1-lens-space-surgeries-and-the-bleiler-litherland-conjecture)  
-   标签：评分：6.6/10
-   evidence：检索回退候选
-6. [Lens Space Surgeries and the Bleiler-Litherland Conjecture](/202610/04/2609.31757v2-lens-space-surgeries-and-the-bleiler-litherland-conjecture)  
+3. [Homomesy of Tropical $T$-systems: Finite Type](/202610/06/2610.02548v1-homomesy-of-tropical-t-systems-finite-type)  
    标签：评分：6.5/10
    evidence：检索回退候选
-7. [Reducing Combinatorial Redundancy in Mixed-Integer MPC via Ranking-Based Feasible-Set Restriction for Reconfigurable Batteries](/202610/04/2609.32029v1-reducing-combinatorial-redundancy-in-mixed-integer-mpc-via-ranking-based-feasible-set-restriction-for-reconfigurable-batteries)  
+4. [Exact random centering and hybrid fluctuation limits for interacting reinforced processes under critical Markov switching](/202610/06/2610.02609v1-exact-random-centering-and-hybrid-fluctuation-limits-for-interacting-reinforced-processes-under-critical-markov-switching)  
    标签：评分：6.5/10
    evidence：检索回退候选
-8. [Conductors and Quadratic base change](/202610/04/2609.32104v1-conductors-and-quadratic-base-change)  
+5. [A Compressible Miles Instability for Wind-Wave Generation in a Neutral Atmosphere](/202610/06/2610.02628v1-a-compressible-miles-instability-for-wind-wave-generation-in-a-neutral-atmosphere)  
    标签：评分：6.4/10
    evidence：检索回退候选
-9. [Factorizations in algebraic monogenic semidomains](/202610/04/2609.32138v1-factorizations-in-algebraic-monogenic-semidomains)  
+6. [Simultaneous Global Convergence Failure of Newton's and Halley's Methods in Degree Four](/202610/06/2610.03246v1-simultaneous-global-convergence-failure-of-newtons-and-halleys-methods-in-degree-four)  
    标签：评分：6.4/10
    evidence：检索回退候选
-10. [Finite Expression Approximation of High-Dimensional PDEs Without the Curse of Dimensionality](/202610/04/2609.32229v1-finite-expression-approximation-of-high-dimensional-pdes-without-the-curse-of-dimensionality)  
+7. [Harmonic Eigenspace: A Web-based Application for Navigating and Composing Microtonal Harmony](/202610/06/2610.03398v1-harmonic-eigenspace-a-web-based-application-for-navigating-and-composing-microtonal-harmony)  
    标签：评分：6.3/10
    evidence：检索回退候选
-11. [Skeletons in Flow: Graph Structured Flow Matching for Human Motion Prediction](/202610/04/2609.32231v1-skeletons-in-flow-graph-structured-flow-matching-for-human-motion-prediction)  
+8. [A single induction proof of Simons' Riemannian holonomy theorem](/202610/06/2610.03409v1-a-single-induction-proof-of-simons-riemannian-holonomy-theorem)  
    标签：评分：6.3/10
+   evidence：检索回退候选
+9. [Symmetry-guided Design Principles for Spin Splitting and Hall Transport in Orthorhombic Altermagnetic Perovskites](/202610/06/2609.33130v1-symmetry-guided-design-principles-for-spin-splitting-and-hall-transport-in-orthorhombic-altermagnetic-perovskites)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+10. [FloodDiffusion 2: Efficient and Path Controllable Streaming Motion Generation](/202610/06/2609.33167v1-flooddiffusion-2-efficient-and-path-controllable-streaming-motion-generation)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+11. [FloodDiffusion 2: Efficient and Path Controllable Streaming Motion Generation](/202610/06/2609.33167v2-flooddiffusion-2-efficient-and-path-controllable-streaming-motion-generation)  
+   标签：评分：6.1/10
    evidence：检索回退候选
 
 

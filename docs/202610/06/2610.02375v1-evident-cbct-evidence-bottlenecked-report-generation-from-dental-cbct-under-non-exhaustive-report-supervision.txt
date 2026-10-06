@@ -1,0 +1,2806 @@
+EviDent-CBCT: Evidence-Bottlenecked Report Generation from Dental CBCT
+under Non-Exhaustive Report Supervision
+Ruiyang Hao, Zhi Qin Tan, Yulan He, Owen Addison, Yunpeng Li∗
+King’s College London
+{ruiyang.hao, zhi_qin.tan, yulan.he, owen.addison, yunpeng.li}@kcl.ac.uk
+Abstract
+Dento-maxillofacial cone-beam CT (CBCT) reports may con-
+tain dozens of tooth-specific, anatomical, and spatial findings
+from a single 3D scan. Learning to generate such reports
+from limited clinical data is challenging because routine re-
+ports may not exhaustively document image findings, and a
+non-mention may reflect either absence or non-reporting. We
+present EviDent-CBCT, an evidence-bottlenecked framework
+designed for this incomplete supervision. An anatomy-aware
+network maps each CBCT scan to a discrete record of tooth-
+level, global, and tooth-IAC evidence. A dental-logic consis-
+tency projection reconciles incompatible evidence before a de-
+terministic renderer and an image-blind local language model
+generate the report using only this record. For tooth-level evi-
+dence, reliability-aware training uses eligible non-mentions as
+reduced-weight negatives, while unreported global and tooth-
+IAC labels remain unknown. A metal-sensitive input chan-
+nel preserves intensity cues from dental materials. Across
+three validation runs, EviDent-CBCT achieves 0.666±0.006
+merged evidence set-F1 and 0.402 ± 0.003 RadFact-Lite-
+Dental logical-F1, versus 0.371±0.018 for the strongest con-
+trolled direct baseline. In the ODIN 2026 challenge, it ranked
+second in automated evaluation and third in blinded clinical
+Arena comparison on the hidden test set. These results sup-
+port the discrete evidence record as an effective and auditable
+interface for CBCT report generation.
+1
+Introduction
+Cone-beam computed tomography (CBCT) provides three-
+dimensional views of dento-maxillofacial structures and
+is widely used for dental diagnosis and treatment plan-
+ning (Kaasalainen et al. 2021; Reddy et al. 2024). A single
+scan may reveal findings involving individual teeth, the jaws,
+sinuses, scan coverage, and spatial relations to the inferior
+alveolar canal (IAC), often requiring assignment to a specific
+anatomical region or FDI tooth position. CBCT reporting is
+therefore more than image captioning: a system must recover
+case-specific findings, preserve their anatomical identity and
+polarity, and express them coherently.
+Routine reports, however, record what was documented
+in clinical practice rather than exhaustively annotating the
+image. A non-mention may indicate true absence, report-
+specific omission, habitual non-reporting, or oversight, and
+these mechanisms cannot be distinguished from the report
+∗Corresponding author. This work was supported by King’s
+College London via the Faculty of Dentistry, Oral and Craniofacial
+Sciences Newland Pedley Studentship.
+alone (Pandharipande et al. 2016; Hartung et al. 2020). Nev-
+ertheless, aggregate non-mention patterns may provide use-
+ful negative signal without establishing absence in an indi-
+vidual case. We refer to this setting as non-exhaustive routine
+report supervision; its scope and interpretation are detailed
+in supplementary Sect. A.
+This setting is particularly challenging for direct image-
+to-text generation. Recent radiology systems connect visual
+encoders to large language models (Wang et al. 2023; Li
+et al. 2024; Liu et al. 2024a; Xiao et al. 2025), but with
+limited CBCT-report pairs, a direct generator must jointly
+learn three-dimensional anatomy, visual grounding, report-
+specific content selection, and language generation from in-
+complete targets. These functions remain entangled, obscur-
+ing whether candidate-reference discrepancies arise from vi-
+sual prediction, incomplete documentation, or realization.
+Canonicalization reduces linguistic variation (Vosshenrich
+et al. 2023; Bannur et al. 2023) but not sparse visual supervi-
+sion; auxiliary evidence losses do not ensure that generation
+depends on predicted evidence; and fixed templates provide
+control at the cost of expressive flexibility (Delbrouck et al.
+2025; Li et al. 2025). These limitations motivate an explicit
+content interface that separates evidence prediction from lan-
+guage realization and prevents the decoder from bypassing
+predicted findings.
+We propose EviDent-CBCT, a three-stage framework built
+around a discrete evidence bottleneck (Figure 1). Stage 1
+segments individual teeth and key anatomical structures and
+extracts structure-specific features. Stage 2 uses anatomy-
+aligned branches to predict tooth-level, global, and tooth-IAC
+evidence; eligible tooth-level non-mentions provide reduced-
+weight negative supervision, unreported global and tooth-
+IAC labels remain unknown, and a metal-sensitive chan-
+nel preserves dental-material intensity cues. A determinis-
+tic dental-logic projection then reconciles incompatible tu-
+ples using anatomical semantics and confidence. Stage 3
+renders the corrected record into a deterministic draft and
+supplies only this draft to an image-blind language model.
+Thus, unlike direct generators conditioned on continuous vi-
+sual representations, EviDent-CBCT makes the consistency-
+projected record the sole source of case-specific informa-
+tion, preventing bypass while keeping content selection and
+rewrite-induced deviations auditable. Across three validation
+runs, EviDent-CBCT achieves 0.402 ± 0.003 RadFact-Lite-
+arXiv:2610.02375v1  [cs.CV]  1 Oct 2026
+
+
+DENTAL CBCT INPUT
+Dental CBCT
+Axial
+Coronal
+Sagittal
+FDI
+ Tooth Indexing
+EVIDENCE SUPERVISION
+MODE
+Tooth branch supervision
+With reliability-aware 
+non-mention supervision
+Global branch supervision
+Only explicit supervision
+Relation branch supervision
+Only explicit supervision
+Accounting for Routine Clinical 
+Reporting Practice
+STAGE 3:  EVIDENCE-BOTTLENECKED REPORT GENERATION
+Deterministic Renderer
+(from evidence tuples)
+Canonical Evidence Draft
+(structured, deterministic)
+Image-blind Rewrite
+(local LLM - Qwen)
+Final Clinical Report
+GPT Teacher Rewriter
+(cloud LLM)
+Qwen Student Rewriter
+(local LLM)
+rewrite distillation
+(training only)
+Inference 
+Path
+Training 
+Supervision
+Unmentioned 
+Supervision
+STAGE 1: ANATOMICAL COORDINATE SYSTEM
+Where is each dental and maxillofacial structure?
+Input
+3D UNet-like U-Mamba2 
+Encoder-decoder
+Output
+Masks
+(46 anatomical structures)
+Structure Tokens
+(Compact Representations)
+Tooth
+Mandible
+Maxilla
+Sinus
+IAC
+Others
+CONSISTENCY-PROJECTED 
+EVIDENCE BOTTLENECK
+STAGE 2: Evidence Prediction
+What is the symptom or condition in dental and maxillofacial structure?
+TOOTH 
+BRANCH
+32 FDI positions
+11 findings
+GLOBAL 
+BRANCH
+Whole-Volume 
+evidence
+12 findings
+RELATION 
+BRANCH
+Tooth-IAC evidence
+8 findings
+Tooth-centered 
+3D crop
+Gated 
+Fusion
+Findings 
+Probability
+Whole 
+Volume
+Appearance 
+Encoder
+Global 
+Token
+Findings 
+Probability
+Left
+Posterior Crop
+Right 
+posterior crop
+Findings 
+Probability
+DISCRETE DENTAL EVIDENCE (E)
+Type
+Key
+Pred.
+Conf.
+tooth 36
+missing
+0.92
+tooth 46
+implant
+0.95
+Global
+mandibular 
+atrophy
+0.88
+48-IAC
+close
+0.86
+…
+…
+…
+…
+11
+12
+13
+14
+15
+16
+17
+18
+21
+22
+23
+24
+25
+26
+27
+28
+31 32 33
+34
+35
+36
+37
+38
+41
+42
+43
+44
+45
+46
+47
+48
+Upper Jaw
+Lower Jaw
+FDI Numbering
+tooth 36 | missing
+tooth 46 | implant
+Global | mandibular 
+atrophy
+48-IAC | close
+……
+TEETH
+· Tooth #36 is missing.
+· Implant is present at #46.
+GLOBAL FINDINGS
+· There is mandibular 
+atrophy.
+TOOTH-IAC RELATIONS
+· Tooth 48 is near the IAC.
+……
+No Images,
+No visual token Inputs
+Content traceable 
+to evidence tuples
+Figure 1: Overview of EviDent-CBCT. During training, routine clinical reports are converted into source-linked reference
+evidence that preserves verbatim supporting spans; explicit labels supervise all branches; eligible tooth-level non-mentions
+provide reduced-weight negative supervision. At inference, Stage 1 extracts anatomical masks and structure tokens from the
+CBCT volume. Stage 2 combines tooth-centered, whole-volume, and posterior-mandibular views to predict tooth, global, and
+tooth-IAC findings, which are consolidated into a discrete evidence record. A dental-logic consistency projection reconciles
+incompatible evidence before Stage 3 deterministically renders a canonical draft, which serves as the sole case-specific input
+to an image-blind local Qwen rewriter. The rewriter is trained through GPT-based content-preserving distillation on drafts
+constructed from consistency-projected predicted evidence. Solid arrows indicate inference; orange arrows signify training-only
+supervision; and light-blue arrows denote reduced-weight supervision from eligible tooth-level non-mentions.
+Dental logical-F1, versus 0.371 ± 0.018 for the strongest
+controlled direct interface. It ranked second in the automated
+evaluation and third in blinded clinical comparison in the
+ODIN 2026 challenge. Our main contributions are:
+• We introduce an evidence-bottlenecked framework in
+which a discrete evidence record is the only case-specific
+input to an image-blind report generator, supporting trans-
+parent dental-logic correction and an auditable record of
+selected case-specific content.
+• We design anatomy-aligned evidence learning under non-
+exhaustive report supervision, using class-dependent reli-
+ability weights for tooth-level non-mentions and a metal-
+sensitive channel for dental intensity cues.
+• We provide controlled direct-generation comparisons
+across five visual interfaces, two report targets, and
+general-purpose and medically aligned language de-
+coders, together with three-run tooth-branch ablations
+and a reference-derived analysis of evidence coverage,
+prediction, and realization.
+2
+Related Work
+Medical report generation.
+Medical report generation has
+evolved from recurrent and joint disease-report models (Jing,
+Xie, and Xing 2018; Wang et al. 2018) to memory-based,
+retrieval-based, and region-guided architectures (Chen et al.
+2020, 2021; Endo et al. 2021; Tanida et al. 2023). Recent sys-
+tems increasingly connect visual encoders to large language
+models through frozen-LLM adaptation, diagnosis prompts,
+knowledge augmentation, and flexible token fusion (Wang
+et al. 2023; Liu et al. 2024a; Jin et al. 2024; Li et al. 2024;
+Wang et al. 2025; Goswami, Subedi, and Chakraborty 2025;
+Shi et al. 2026). Most prior work targets chest radiographs,
+
+
+while CT2Rep extends direct generation to volumetric CT
+(Hamamci, Er, and Menze 2024). Despite these advances,
+report decoders generally remain conditioned on continuous
+visual features, retrieved text, or soft diagnostic guidance.
+Factuality and evidence interfaces.
+Factual correctness
+has consequently become a central concern. Prior work op-
+timizes clinical coherence and entity, relation, or semantic-
+level agreement (Liu et al. 2019; Miura et al. 2021; Delbrouck
+et al. 2022); RadGraph supports structured clinical extrac-
+tion (Jain et al. 2021), and RadFact evaluates reports through
+bidirectional proposition entailment (Bannur et al. 2024).
+Grounding, preference optimization, and reasoning further
+improve visual attribution and factuality (Bannur et al. 2024;
+Xiao et al. 2025; Jing et al. 2026), but do not require genera-
+tion to proceed through an explicit record of predicted find-
+ings. Structured approaches such as KERP, region-guided
+generation, and concept bottlenecks instead separate content
+prediction from verbalization (Li et al. 2019; Koh et al. 2020;
+Tanida et al. 2023). EviDent-CBCT makes this separation a
+hard inference-time constraint: an auditable evidence record
+is the sole case-specific input to an image-blind realizer.
+Dental CBCT Analysis.
+Dental CBCT learning has pri-
+marily focused on anatomical segmentation. nnU-Net pro-
+vides a strong general framework (Isensee et al. 2021);
+connectivity-aware methods address the thin inferior alveolar
+canal (Liu et al. 2024b; Bolelli et al. 2025); and recent work
+expands multi-structure segmentation through large dental
+benchmarks and state-space models (Bolelli et al. 2026; Tan
+et al. 2025). Moving toward clinical interpretation, Lumetti et
+al. formulate dental CBCT reporting as ontology-grounded
+prediction of finding presence, anatomical allocation, and
+clinical qualifiers from clinician-validated structured targets
+(Lumetti et al. 2026). Their system treats structured predic-
+tion as the final output and does not address narrative real-
+ization; its task-specific schema and structured metrics are
+therefore not directly comparable to free-text report genera-
+tion. EviDent-CBCT instead learns tooth-level, global, and
+tooth-IAC evidence from selective, non-exhaustive routine
+reports and makes the predicted discrete record the required
+case-specific input to an image-blind narrative realizer.
+3
+Problem Formulation
+Let x denote a 3D CBCT volume and y its observed clini-
+cal report. Direct generation estimates p(y | x). We instead
+derive a finite evidence record
+Ey = (Ey
+tooth, Ey
+global, Ey
+relation)
+(1)
+from the report. Ey
+tooth contains findings indexed by FDI tooth
+position, Ey
+global contains volume-level findings, and Ey
+relation
+contains tooth-IAC and canal-course findings. The super-
+script emphasizes that this is evidence observed through y,
+not exhaustive image truth. Reporting is factorized as
+bE = qθ(x),
+eE = Πdent( bE),
+y0 = R( eE),
+by = Gϕ(y0),
+(2)
+where qθ predicts evidence, Πdent is a deterministic dental-
+logic consistency projection, R is a deterministic renderer,
+and Gϕ is an image-blind rewriter.
+Every content item in y0 is generated from a tuple in eE.
+The rewriter is instructed to preserve finding identity, polar-
+ity, and FDI number while altering ordering, aggregation,
+syntax, and lexical choice. Because learned realization is not
+guaranteed to be lossless, retaining y0 makes rewrite-induced
+deviations directly auditable and allows evidence prediction
+to be evaluated separately from language realization.
+4
+Method
+Overview
+As illustrated in Figure 1, the method isolates these measur-
+able interfaces: anatomical localization, report-derived ev-
+idence recovery, deterministic consistency correction, and
+textual realization of the selected evidence. Stage 1 supplies
+anatomical masks and reusable structure tokens. Stage 2
+maps anatomy-aligned inputs to a partially observed mul-
+tilabel record. Stage 3 converts the record to prose while
+keeping the content interface discrete.
+Reference Evidence Construction
+Before model training, we construct reference evidence from
+each observed report with a two-pass, dental-knowledge-
+guided workflow. The first pass GPT-5.5 agent identifies
+coverage statements, tooth-indexed findings, tooth-IAC rela-
+tions, global clinical facts, and normal or explicitly negative
+findings, while retaining the supporting report span for ev-
+ery item. A review-and-correction agent implemented with
+Claude Opus 4.8 then verifies each structured item against its
+source text, confirming 98.3% on the first pass and directly
+correcting the remaining 1.7% before Stage 2 label con-
+struction. Schema definitions and verification procedures are
+provided in Sect. B of supplementary.
+The resulting JSON is deliberately richer than the com-
+pact Stage 2 interface: it combines normalized entries with
+free-form facts and source text, whereas Stage 2 projects
+recurrent, learnable content into 11 tooth, 12 global, and
+8 relation categories. The complete prediction schema and
+label frequencies are listed in supplementary Sect. B. The
+workflow structures the observed report; it does not claim to
+adjudicate the report or create exhaustive clinical truth.
+Stage 1: Anatomy Segmentation and Feature
+Exposure
+Stage 1 is an nnU-Net-v2-style 3D U-Mamba2 segmenter
+(Tan et al. 2025) trained on ToothFairy3 to predict 46
+segmentation classes, including FDI-position tooth masks,
+mandible, maxilla, sinuses, canals, and dental-material
+masks. It supplies anatomical masks for crop construction
+and semantic channels, together with pooled encoder tokens
+for individual structures. The segmenter achieves a macro
+Dice of 0.899 over present structures and a case-averaged
+Dice of 0.880; training and feature-extraction details are pro-
+vided in Sect. C of supplementary.
+Stage 2: Reliability-Aware Evidence Prediction
+Branch-specific views.
+The schema is decomposed into
+three multilabel branches with separate anatomical inputs
+and classifiers. The tooth branch predicts 11 findings at
+
+
+each of 32 FDI positions from tooth-centered crops. The
+global branch predicts 12 volume-level findings from a down-
+sampled full volume. The relation branch predicts eight
+canal-related findings from left and right posterior-mandible
+views. This decomposition aligns each receptive field and
+output space with the corresponding clinical unit.
+Anatomy-aligned fusion.
+Each branch contains a from-
+scratch 3D encoder that produces an appearance feature r.
+The global branch uses r directly. The relation and tooth
+branches project the corresponding Stage 1 token into a con-
+text feature c and use an anatomical embedding s to identify
+the tooth or region. Their gated hybrid representation is
+g = σ(Wg[r; c; s] + bg),
+z = (1 −g) ⊙r + g ⊙c. (3)
+where Wg and bg are the learnable projection matrix and bias
+of the element-wise fusion gate. The hybrid representation
+can exploit segmentation context while retaining raw inten-
+sity patterns that Stage 1 may discard. The main system uses
+a scratch global branch and a hybrid relation branch. The
+corresponding global-relation interface sweep is reported in
+supplementary Sect. F.
+Metal-sensitive intensity channel.
+Standard preprocess-
+ing compresses high-intensity CBCT values, obscuring dif-
+ferences among metallic restorations and prostheses. We
+therefore add a raw-intensity channel to each tooth crop,
+with its window estimated from high-density dental-material
+regions within the tooth-centered crop. It suppresses lower-
+density tissue while preserving normalized variation among
+high-density materials and artifacts, complementing the con-
+ventional anatomical channel.
+Reliability-aware tooth-level non-mention supervision.
+Report parsing assigns each tooth-class pair an observed
+positive, an observed negative, or an unmentioned state.
+We apply non-mention supervision only to eligible tooth-
+level labels; unreported global and tooth-IAC labels remain
+unknown and are excluded from the corresponding losses.
+Motivated by the hypothesis that eligible tooth-level non-
+mentions are predominantly negative in aggregate, while re-
+maining uncertain at the individual-case level, we compare
+three policies: explicit excludes it from the loss, hard
+assigns it a unit-weight negative label, and pu-weak assigns
+it a negative label with reduced, class-dependent weight.
+This reliability-weighting strategy is inspired by positive-
+unlabeled (PU) learning (Kiryo et al. 2017). The weighted
+tooth-branch objective is
+L =
+X
+i,c
+βc w(sic, c) BCE(eyic, pic),
+(4)
+where βc addresses class prevalence and w represents su-
+pervision reliability. Explicit positive and negative state-
+ments receive unit weight, whereas eligible tooth-level non-
+mentions receive 0 < w(unmentioned, c) < 1 under
+pu-weak. The schema-specific supervision rules and class-
+dependent weights are detailed in supplementary Sect. B.
+Tooth-level sampling and missingness conditioning.
+Within the tooth branch, per-class epoch sampling retains
+all supervised positives while limiting exposure to abun-
+dant negatives. A detached missing-tooth probability condi-
+tions the remaining attribute head, allowing it to distinguish
+present and likely-absent tooth contexts without propagating
+attribute loss into missingness prediction. The sampling and
+conditioning details are given in Sect. C of supplementary.
+Stage 3: Evidence-Bottlenecked Report Realization
+Dental-logic consistency projection.
+Before rendering,
+deterministic constraints derived from dental anatomical se-
+mantics map bE to eE = Πdent( bE). Rather than treating se-
+lected labels independently, the projection removes combina-
+tions that violate predefined dental compatibility constraints,
+using predicted confidence only to resolve mutually exclu-
+sive alternatives. It operates solely on predicted tuples, in-
+troduces no positive finding, and leaves the corrected record
+inspectable at the evidence interface. The complete constraint
+definitions are provided in supplementary Sect. C.
+Deterministic evidence rendering.
+A non-parametric ren-
+derer converts the consistency-projected evidence set eE
+into a canonical draft. Findings are grouped by compatible
+anatomical region and finding type, with compact templates
+used for repetitive patterns such as a fully edentulous arch.
+The resulting draft explicitly enumerates the content selected
+by Stage 2 while leaving sentence structure, ordering, aggre-
+gation, and clinical phrasing to the learned realizer.
+Content-preserving teacher rewrites.
+For each training
+case, we construct the draft from consistency-projected pre-
+dicted evidence, thereby exposing the realizer to inputs re-
+sembling those encountered at deployment. GPT-4o (OpenAI
+2024) then rewrites the draft into natural clinical language.
+The corresponding clinical report is provided only as a lin-
+guistic reference, and GPT-4o is instructed to preserve the
+factual content of the draft without adding, removing, or cor-
+recting findings. The resulting rewrites serve as realization
+targets rather than corrected evidence labels.
+Image-blind
+behavioral
+distillation.
+We
+distill
+the
+teacher’s evidence-to-report realization behavior into a lo-
+cal Qwen2.5-7B rewriter adapted with low-rank adaptation
+(LoRA) (Hu et al. 2022). The student receives only the de-
+terministic draft during both training and inference; it has
+no access to the CBCT volume, the reference report, or a
+parallel visual representation through which it could bypass
+the evidence bottleneck. It is therefore not explicitly trained
+to identify or correct Stage 2 prediction errors. We retain the
+deterministic draft for direct comparison, and inference re-
+quires no external model call. Decoding details are reported
+in supplementary Sect. C. We empirically evaluate the trained
+student rewriter’s content preservation and rewrite fidelity in
+Auditability and Rewrite Fidelity, with additional analyses
+provided in supplementary Sect. D.
+5
+Experiments
+Dataset
+The paired subset of ToothFairy4 contains 624 CBCT vol-
+umes and 1,001 English reports (Lumetti et al. 2026). Re-
+ports associated with the same volume are consolidated at
+
+
+EviDent-CBCT
+CBCT
+CBCT
+CBCT
+CBCT
+Seg-Pretrained Stage-1 
+Encoder (Frozen)
+Seg-Pretrained Stage-1 
+Encoder (Trainable)
+Evidence-Pretrained 
+Stage-2 Encoder 
+(Trainable)
+Evidence-Pretrained 
+Stage-2 Encoder
+(Trainable)
+Stage 1 - Seg
+Stage 1 - Seg
+Stage 1
+Anatomy-Seg
+Stage 2
+Evidence Prediction
+Consistency-Projected 
+Evidence Bottleneck
+Stage 3
+Report Generation
+Feature 
+Adaptor
+Feature 
+Adaptor
+Feature 
+Adaptor
+Feature 
+Adaptor
+Report
+LLM Decoder
+LLM Decoder
+LLM Decoder
+LLM Decoder
+Report
+Report
+Report
+Auxiliary Evidence 
+Head (Training Only)
+Report
+Deterministic 
+Renderer
+Image-blind 
+LLM Rewriter
+Direct-1: Frozen Stage1
+Direct-2: Fine-tuned Stage1
+Direct CBCT-to-Report Generation
+Direct-3: Continuous Stage-2 Features
+Direct-4: Direct 3 + Auxiliary Evidence
+Evidence
+Teeth:
+Findings: Caries, Root Fracture
+36, 37
+Type
+Key
+Pred.
+Conf.
+tooth 36 missing
+0.92
+tooth 46 implant
+0.95
+Global mandibular 
+atrophy
+0.88
+48-IAC
+close
+0.86
+…
+…
+…
+…
+LLM Decoder
+Report
+Evidence-Pretrained 
+Stage-2 Encoder 
+(Frozen)
+Stage 1 - Seg
+Feature 
+Adaptor
+Direct-5: Frozen Stage-2 Features
+CBCT
+Figure 2: Comparison of the inference-time interfaces used by the controlled direct generators and EviDent-CBCT.
+Direct 1 and Direct 2 condition a language decoder on frozen or fine-tuned Stage 1 representations. Direct 3 fine-tunes Stage 2-
+checkpoint-initialized branches and supplies their continuous features to the decoder; Direct 4 adds training-only auxiliary
+evidence supervision, while Direct 5 freezes the Stage 2 branches. These five interfaces are instantiated with Qwen3-8B and
+Med42-8B decoders. EviDent-CBCT instead supplies a consistency-projected evidence record as the only case-specific input to
+an image-blind realizer. Its deterministic draft exposes the predicted findings and makes rewrite-induced deviations auditable.
+the label level; when they disagree on a binary finding, we
+exclude that label from supervision rather than arbitrate be-
+tween readers. As each scan contributes many tooth-level
+instances, this conservative treatment still provides ample,
+unambiguous supervision for Stage 2, while modeling inter-
+report disagreement remains future work. We split the 624
+paired volumes into 561 training and 63 validation cases.
+The same volume-level partition was applied to all three
+stages and all direct baselines. Any ToothFairy3 volume cor-
+responding to a validation case was excluded from Stage 1
+training. ToothFairy4 additionally includes a hidden test set
+of 50 CBCT scans from an independent center, evaluated by
+the challenge organizers; official results are reported below.
+Evaluation Metrics
+Merged Stage 2 logical set-F1.
+For each case, positive tu-
+ples parsed from the reference report are pooled across the
+tooth, global, and relation branches within the evaluation
+mask. Predicted and reference-derived tuples match only
+when their structured keys are identical. We compute per-
+case precision and recall, average each quantity over cases,
+and take the harmonic mean of those two averages. This
+RadFact-style aggregation is an LLM-free measure of struc-
+tured agreement with the reports. Merged Stage 2 logical
+set-F1 is computed on the selected tuples before consistency
+projection, isolating the learned evidence predictor from de-
+terministic correction. Its formal definition and aggregation
+conventions are given in supplementary Sect. G.
+Internal report metrics.
+RadFact decomposes each narra-
+tive report into clinical propositions and evaluates entailment
+bidirectionally (Bannur et al. 2024). Candidate propositions
+supported by the reference determine logical precision, while
+reference propositions supported by the candidate determine
+logical recall; logical F1 is their harmonic mean. We build
+on RadFact-Lite (Lumetti 2026) with a dentist-guided dental-
+atomic parser, FDI normalization, and dental entailment in-
+structions. Exact and rule-guaranteed matches are resolved
+deterministically, while comparisons are judged by GPT-5.6-
+Luna. The original bidirectional aggregation is unchanged.
+We report these metrics together with BLEU-4 (Papineni
+et al. 2002) and METEOR (Banerjee and Lavie 2005). Main-
+paper metrics use the same fixed reference report per volume;
+supplementary Sect. E provides a mean-over-references ro-
+bustness analysis. Full details and an author audit of RadFact-
+Lite-Dental are provided in supplementary Sect. G. The of-
+ficial ODIN evaluation uses a different RadFact protocol.
+We therefore report its scores separately and do not directly
+compare their absolute values with RadFact-Lite-Dental.
+Paired uncertainty analysis.
+For the primary comparison,
+we average case-level logical metrics across runs, jointly
+bootstrap matched cases, recompute corpus-level logical F1,
+and report the percentile 95% confidence interval of paired
+differences. Details are provided in supplementary Sect. E.
+EviDent-CBCT vs. Controlled Direct Generation
+Figure 2 summarizes EviDent-CBCT and five controlled
+direct-generation interfaces. Direct 1 projects frozen Stage 1
+
+
+Family
+Visual/report interface
+Report target
+Logical P
+Logical R
+Logical F1
+BLEU-4
+METEOR
+Direct Qwen3-8B
+Direct 1: frozen Stage 1 tokens
+Raw
+.216 ± .016
+.245 ± .036
+.229 ± .018
+.121 ± .005
+.352 ± .004
+Direct 1: frozen Stage 1 tokens
+Canonical
+.295 ± .033
+.294 ± .043
+.294 ± .034
+.095 ± .004
+.349 ± .006
+Direct 2: fine-tuned Stage 1 encoder
+Raw
+.257 ± .027
+.251 ± .009
+.253 ± .011
+.135 ± .007
+.338 ± .012
+Direct 2: fine-tuned Stage 1 encoder
+Canonical
+.331 ± .056
+.315 ± .023
+.322 ± .036
+.093 ± .007
+.355 ± .005
+Direct 3: continuous Stage 2 features
+Raw
+.238 ± .034
+.236 ± .030
+.236 ± .025
+.124 ± .015
+.325 ± .024
+Direct 3: continuous Stage 2 features
+Canonical
+.351 ± .004
+.314 ± .009
+.331 ± .005
+.099 ± .003
+.356 ± .005
+Direct 4: Direct 3 + auxiliary evidence
+Raw
+.240 ± .038
+.249 ± .030
+.244 ± .034
+.119 ± .015
+.322 ± .007
+Direct 4: Direct 3 + auxiliary evidence
+Canonical
+.342 ± .008
+.322 ± .027
+.331 ± .014
+.098 ± .003
+.357 ± .015
+Direct 5: frozen Stage 2 encoder
+Raw
+.239 ± .035
+.233 ± .017
+.234 ± .010
+.121 ± .014
+.326 ± .015
+Direct 5: frozen Stage 2 encoder
+Canonical
+.346 ± .018
+.311 ± .020
+.327 ± .003
+.097 ± .002
+.358 ± .011
+Direct Med42-8B
+Direct 1: frozen Stage 1 tokens
+Raw
+.227 ± .016
+.264 ± .015
+.243 ± .005
+.121 ± .015
+.360 ± .006
+Direct 1: frozen Stage 1 tokens
+Canonical
+.356 ± .020
+.334 ± .014
+.344 ± .012
+.098 ± .002
+.353 ± .007
+Direct 2: fine-tuned Stage 1 encoder
+Raw
+.266 ± .031
+.293 ± .016
+.278 ± .024
+.129 ± .009
+.352 ± .009
+Direct 2: fine-tuned Stage 1 encoder
+Canonical
+.388 ± .019
+.354 ± .017
+.371 ± .018
+.100 ± .002
+.360 ± .003
+Direct 3: continuous Stage 2 features
+Raw
+.291 ± .003
+.272 ± .036
+.280 ± .018
+.134 ± .012
+.341 ± .011
+Direct 3: continuous Stage 2 features
+Canonical
+.366 ± .005
+.359 ± .011
+.362 ± .006
+.099 ± .001
+.357 ± .003
+Direct 4: Direct 3 + auxiliary evidence
+Raw
+.273 ± .020
+.272 ± .019
+.271 ± .002
+.127 ± .017
+.324 ± .017
+Direct 4: Direct 3 + auxiliary evidence
+Canonical
+.374 ± .008
+.356 ± .010
+.365 ± .007
+.101 ± .002
+.361 ± .004
+Direct 5: frozen Stage 2 encoder
+Raw
+.252 ± .004
+.274 ± .020
+.262 ± .010
+.120 ± .013
+.313 ± .011
+Direct 5: frozen Stage 2 encoder
+Canonical
+.380 ± .024
+.342 ± .006
+.360 ± .013
+.099 ± .001
+.354 ± .003
+EviDent-CBCT
+Consistency-projected evidence record
+Deterministic template
+.372 ± .002
+.428 ± .008
+.398 ± .004
+.158 ± .003
+.425 ± .004
+Consistency-projected evidence record
+Local distilled rewrite
+.384 ± .002
+.423 ± .004
+.402 ± .003
+.083 ± .001
+.386 ± .001
+Table 1: Validation set results, reported as mean±std over three runs. Logical metrics use RadFact-Lite-Dental.
+structure tokens, while Direct 2 recomputes these tokens
+from a fixed-size volume and fine-tunes the encoder lev-
+els that produce them. Direct 3 initializes the global, rela-
+tion, and tooth branches from the corresponding Stage 2
+checkpoints and supplies their trainable continuous fea-
+tures to the language decoder; Direct 4 additionally ap-
+plies Stage 2 matched auxiliary supervision; and Direct 5
+freezes the Stage 2 branches while retaining a trainable fea-
+ture adapter and decoder, testing whether direct SFT de-
+grades the evidence-pretrained representation. Each interface
+is instantiated with either Qwen3-8B (Yang et al. 2025) or
+Med42-8B (Christophe et al. 2024) and trained with both raw
+and canonical report targets. The raw target is the observed
+clinical report, whereas the canonical target is obtained by
+rendering reference-derived evidence and passing the draft
+through the frozen rewriter, thereby reducing linguistic and
+content-selection variability. Further implementation details
+and qualitative comparisons are provided in supplementary
+Sect. E and Sect. I, respectively.
+Canonical targets improve every decoder-interface pair.
+Med42 strengthens the direct controls, with canonical Direct
+2 reaching .371 ± .018 F1, compared with at most .331 for
+Qwen3. Among Stage 2-initialized Med42 controls, Direct 3
+and Direct 4 reach .362±.006 and .365±.007, respectively.
+Freezing the Stage 2 branches in Direct 5 yields a decline
+with both Qwen3 and Med42, providing no improvement
+over the corresponding trainable Direct 3 pathways.
+EviDent-CBCT reaches .398 ± .004 logical-F1 with de-
+terministic templates and .402 ± .003 after local rewriting.
+The template also obtains the highest BLEU-4 and ME-
+TEOR, showing that the comparison does not depend on
+the learned realizer. Against the strongest Med42 direct con-
+figuration, the rewritten output has an unrounded paired F1
+gain of .0317, with a 95% bootstrap confidence interval of
+[.0047, .0586]. Moreover, Direct 3 and Direct 4 use the
+same evidence-pretrained Stage 2 initialization while retain-
+ing a continuous, bypassable interface. These controls sup-
+port making the discrete evidence record the required report
+interface rather than only a pretraining signal or auxiliary tar-
+get. Per-run results and specifications are reported in supple-
+mentary Sect. E. This advantage persists under mean-over-
+references evaluation (.374 vs. .333; supplementary Sect. E).
+Stage-wise Analysis of Evidence-to-Report Pathway
+Table 2 traces the successive representations from the
+observed report to the generated output. Reference self-
+comparison reaches 1.000 logical-F1. The extracted source
+spans cover 96.5% of alphanumeric report content on aver-
+age, and their verbatim reassembly reaches .957 logical-F1.
+Together with the second-agent verification pass, this indi-
+cates that the extraction workflow retains most evaluator-
+recognized report content. The residual consists mainly of
+sparse orientation notes, classification terms, and broad nor-
+mal statements; detailed coverage analysis is provided in
+supplementary Sect. B.
+The largest loss occurs when the richer evidence JSON
+is projected into the compact prediction schema and deter-
+ministically rendered, reducing logical-F1 from .957 to .589.
+The schema preserves recurrent finding identities but omits
+details without dedicated labels, including the distribution
+and degree of atrophy, treatment quality, bridge topology,
+and lesion morphology or size. Qwen realization raises the
+reference-derived score to .597 by restoring narrative organi-
+zation, aggregation, and clinically familiar phrasing. Because
+
+
+Candidate report
+Logical F1
+Reference report vs. itself
+1.000
+Verbatim source clues from evidence extraction
+.957
+Reference-derived evidence →template
+.589
+Reference-derived evidence →template →Qwen
+.597
+Predicted evidence →template
+.389 ± .006
+Predicted evidence →template →Qwen
+.398 ± .001
+Consistency-projected evidence →template
+.398 ± .004
+Consistency-projected evidence →template →Qwen .402 ± .003
+Table 2: Evidence-to-report pathway decomposition and
+reference-derived operational ceiling. Reference-derived
+rows are evaluated once; predicted-evidence rows are re-
+ported as mean±std over three runs.
+Axis
+Variant
+Logical P
+Logical R
+Logical F1
+Base
+gated, metal, pu-weak .434 ± .028
+.538 ± .022 .480 ± .007
+Supervision hard
+.408 ± .017 .548 ± .030 .467 ± .017
+explicit
+.405 ± .057
+.328 ± .035
+.359 ± .018
+Fusion
+concat
+.435 ± .036 .525 ± .033
+.474 ± .015
+visual-only
+.422 ± .018
+.534 ± .033
+.471 ± .004
+scratch-only
+.379 ± .021
+.512 ± .039
+.435 ± .001
+Metal
+no metal channel
+.415 ± .019
+.527 ± .039
+.463 ± .006
+Table 3: Tooth-branch Stage 2 logical set metrics, reported as
+mean±std over three model runs. All non-ablated branches
+and inputs are held fixed.
+the rewriter receives only the deterministic draft, .597 is an
+operational ceiling for the current compact schema-to-report
+pathway, not for the richer evidence JSON.
+We next quantify the effect of the Stage 3 dental-logic
+consistency projection. Its constraints were fixed before the
+final report-level evaluation and modified 178 tuple in-
+stances across 52 unique validation cases over three runs:
+162 missing-tooth/IAC conflicts and 16 contradictory canal-
+course predictions. The projection raises template F1 from
+.389±.006 to .398±.004 and rewritten F1 from .398±.001
+to .402±.003, showing that correction occurs at the evidence
+interface rather than in the language realizer. The remaining
+gap to the reference-derived pathway primarily reflects up-
+stream evidence prediction.
+Auditability and Rewrite Fidelity
+The deterministic draft makes learned realization auditable
+at the proposition level. An author reviewed 30 evalua-
+tion cases for additions, omissions, polarity changes, FDI
+or anatomical-side reassignment, finding substitutions, and
+redundancy. All template propositions were preserved in
+28 cases (93.3%), with no polarity reversal, FDI reassign-
+ment, or anatomical-side reassignment. The two substantive
+changes both aligned the rewrite more closely with the ref-
+erence: one removed a crown prediction where the reference
+described a restoration, and the other changed a restoration
+to a crown. Rewriting is therefore not guaranteed to be loss-
+less, even though individual changes can regularize imperfect
+predicted evidence. Its modest aggregate improvement is re-
+ported in Table 2, and retaining the pre-rewrite draft keeps
+case-level changes inspectable. The full audit protocol and
+case-level deviations are reported in supplementary Sect. D.
+Stage 2 Evidence Learning and Tooth Ablations
+The final g_scratch_r_hybrid pipeline uses a scratch
+global branch, a hybrid relation branch, and the tooth-base
+configuration. Across three runs, it reaches .666 ± .006
+merged Stage 2 logical set-F1 and .402 ± .003 final report
+logical-F1. Tooth evidence is the most fine-grained compo-
+nent of the merged record and the focus of Table 3. Sup-
+plementary Sect. H further reports class-wise recognition
+results for the tooth branch under pu-weak, hard, and
+explicit supervision, together with class-wise results for
+the fixed global and relation branches.
+Within the tooth branch, treating every eligible non-
+mention as a full-weight negative (hard) raises logical
+set-F1 from .359 ± .018 with explicit supervision to
+.467±.017, primarily by increasing recall from .328 to .548.
+This suggests that tooth-level report silence provides useful
+negative signal in aggregate. Assigning class-dependent re-
+duced weights to these non-mentions (pu-weak) gives the
+best balance, with .434 ± .028 precision, .538 ± .022 recall,
+and .480 ± .007 F1. Within the current split and weighting
+scheme, these results support reduced-weight supervision for
+eligible tooth-level non-mentions, but do not establish that
+the selected weights are clinically calibrated or that the same
+policy applies to global and relation labels.
+The fusion variants are close: gated hybrid, concat, and
+visual-only reach tooth-branch F1 values of .480, .474, and
+.471, whereas scratch-only falls to .435. Removing the metal-
+sensitive channel lowers tooth-branch F1 from .480 to .463.
+These ablations are measured directly at the Stage 2 tooth
+interface, with the global and relation branches held fixed.
+Official ODIN 2026 Hidden-Test Evaluation
+On the ODIN 2026 hidden test set1, EviDent-CBCT achieved
+an official aggregate score of 0.3033 (RadFact F1 0.3245,
+BLEU-4 0.1206, METEOR 0.3171), ranking second in auto-
+mated evaluation and third in the clinical Arena. The official
+RadFact protocol differs from our RadFact-Lite-Dental eval-
+uation, so the absolute scores are not directly comparable.
+6
+Conclusion and Outlook
+We presented EviDent-CBCT, an evidence-bottlenecked
+framework for learning dento-maxillofacial CBCT reports
+from non-exhaustive routine-report supervision. Its discrete
+record separates evidence prediction from language real-
+ization, enables deterministic dental-consistency correction,
+and makes selected report content auditable. For tooth-level
+evidence, eligible non-mentions receive reduced-weight neg-
+ative supervision, while unreported global and tooth-IAC
+labels remain unknown. Across three validation runs, the
+system achieves 0.402 ± 0.003 RadFact-Lite-Dental logical-
+F1, compared with 0.371±0.018 for the strongest controlled
+direct generator. It further ranked second in the ODIN 2026
+1https://odin2026.grand-challenge.org/challenge-winners/
+
+
+Table 4: Official ODIN 2026 ToothFairy4 hidden-test results for the top three teams. The official RadFact protocol differs from
+RadFact-Lite-Dental used in our internal validation.
+Team
+RadFact F1
+BLEU-4
+METEOR
+Aggregate Score
+Arena Score
+shivam.singh
+0.3924
+0.1476
+0.3269
+0.3614
+1307
+EviDent-CBCT(ours)
+0.3245
+0.1206
+0.3171
+0.3033
+985
+ViktorB
+0.2321
+0.0865
+0.2828
+0.2226
+1172
+automated evaluation and third in the blinded clinical com-
+parison. The controlled comparisons, supervision ablations,
+and coverage analysis support the discrete evidence record
+as a structured content interface for report-grounded CBCT
+generation.
+These findings remain limited by non-exhaustive report
+supervision, the lack of independently adjudicated image-
+level truth, and a compact schema that underrepresents rare
+qualifiers and findings. The hidden-test evaluation provides
+independent-center testing and blinded clinical assessment,
+although the test references remain unavailable for detailed
+error analysis. Future work will model cross-report disagree-
+ment, preserve rare qualifiers, and evaluate additional exter-
+nal cohorts with blinded dental readers.
+References
+Banerjee, S.; and Lavie, A. 2005. METEOR: An Automatic Metric
+for MT Evaluation with Improved Correlation with Human Judg-
+ments. In Proceedings of the ACL Workshop on Intrinsic and Ex-
+trinsic Evaluation Measures for Machine Translation and/or Sum-
+marization, 65–72. Ann Arbor, Michigan: Association for Compu-
+tational Linguistics.
+Bannur, S.; Bouzid, K.; Castro, D. C.; Schwaighofer, A.; Thieme,
+A.; Bond-Taylor, S.; Ilse, M.; Pérez-García, F.; Salvatelli, V.;
+Sharma, H.; et al. 2024. MAIRA-2: Grounded radiology report
+generation. arXiv:2406.04449.
+Bannur, S.; Hyland, S.; Liu, Q.; Perez-Garcia, F.; Ilse, M.; Castro,
+D. C.; Boecking, B.; Sharma, H.; Bouzid, K.; Thieme, A.; et al.
+2023. Learning to exploit temporal structure for biomedical vision-
+language processing. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, 15016–15027. Van-
+couver, British Columbia, Canada: IEEE.
+Bolelli, F.; Lumetti, L.; van Nistelrooij, N.; Vinayahalingam, S.;
+Di Bartolomeo, M.; Marchesini, K.; Pellacani, A.; Candeloro, E.;
+Rosati, G.; Xi, T.; et al.2026. Multi-structuresegmentation in CBCT
+volumes: The ToothFairy2 challenge. Medical Image Analysis, 112:
+104095.
+Bolelli, F.; Lumetti, L.; Vinayahalingam, S.; Di Bartolomeo, M.;
+Pellacani, A.; Marchesini, K.; van Nistelrooij, N.; van Lierop, P.;
+Xi, T.; Liu, Y.; et al. 2025. Segmenting the inferior alveolar canal
+in CBCTs volumes: The ToothFairy challenge. IEEE Transactions
+on Medical Imaging, 44(4): 1890–1906.
+Chen, Z.; Shen, Y.; Song, Y.; and Wan, X. 2021. Cross-modal mem-
+ory networks for radiology report generation. In Proceedings of the
+Annual Meeting of the Association for Computational Linguistics
+and the International Joint Conference on Natural Language Pro-
+cessing, 5904–5914. Online: Association for Computational Lin-
+guistics.
+Chen, Z.; Song, Y.; Chang, T.-H.; and Wan, X. 2020. Generating
+radiology reports via memory-driven transformer. In Proceedings
+of the Conference on Empirical Methods in Natural Language Pro-
+cessing, 1439–1449. Online: Association for Computational Lin-
+guistics.
+Christophe, C.; Kanithi, P. K.; Raha, T.; Khan, S.; and Pimentel, M.
+A. F. 2024. Med42-v2: A suite of clinical LLMs. arXiv:2408.06142.
+Delbrouck, J.-B.; Chambon, P.; Bluethgen, C.; Tsai, E.; Almusa,
+O.; and Langlotz, C. 2022. Improving the factual correctness of
+radiology report generation with semantic rewards. In Proceedings
+of the Findings of the Association for Computational Linguistics:
+Conference on Empirical Methods in Natural Language Processing,
+4348–4360. Abu Dhabi, United Arab Emirates: Association for
+Computational Linguistics.
+Delbrouck, J.-B.; Xu, J.; Moll, J.; Thomas, A.; Chen, Z.; Ostmeier,
+S.; Azhar, A.; Li, K. Z.; Johnston, A.; Bluethgen, C.; et al. 2025. Au-
+tomated structured radiology report generation. In Proceedings of
+the Annual Meeting of the Association for Computational Linguis-
+tics, 26813–26829. Vienna, Austria: Association for Computational
+Linguistics.
+Endo, M.; Krishnan, R.; Krishna, V.; Ng, A. Y.; and Rajpurkar,
+P. 2021.
+Retrieval-based chest X-ray report generation using a
+pre-trained contrastive language-image model. In Proceedings of
+Machine Learning for Health, 209–219. Virtual: PMLR.
+Goswami, D.; Subedi, R.; and Chakraborty, S. 2025. MediVLM:
+A Vision Language Model for Radiology Report Generation from
+Medical Images. In Proceedings of the Findings of the Association
+for Computational Linguistics: Conference on Empirical Methods
+in Natural Language Processing, 10287–10304. Suzhou, China:
+Association for Computational Linguistics.
+Hamamci, I. E.; Er, S.; and Menze, B. 2024. CT2Rep: Automated
+radiology report generation for 3D medical imaging. In Proceedings
+of the International Conference on Medical Image Computing and
+Computer-Assisted Intervention, 476–486. Marrakesh, Morocco:
+Springer Nature Switzerland.
+Hartung, M. P.; Bickle, I. C.; Gaillard, F.; and Kanne, J. P. 2020.
+How to create a great radiology report.
+RadioGraphics, 40(6):
+1658–1670.
+Hu, E. J.; Shen, Y.; Wallis, P.; Allen-Zhu, Z.; Li, Y.; Wang, S.;
+Wang, L.; and Chen, W. 2022. LoRA: Low-rank adaptation of large
+language models. In Proceedings of the International Conference
+on Learning Representations. Virtual.
+Isensee, F.; Jaeger, P. F.; Kohl, S. A. A.; Petersen, J.; and Maier-
+Hein, K. H. 2021. nnU-Net: A self-configuring method for deep
+learning-based biomedical image segmentation. Nature Methods,
+18(2): 203–211.
+Jain, S.; Agrawal, A.; Saporta, A.; Truong, S. Q. H.; Duong, D. N.;
+Bui, T.; Chambon, P.; Zhang, Y.; Lungren, M. P.; Ng, A. Y.; Lan-
+glotz, C. P.; and Rajpurkar, P. 2021. RadGraph: Extracting clinical
+entities and relations from radiology reports. In Proceedings of the
+Conference on Neural Information Processing Systems, Datasets
+and Benchmarks Track, volume 1. Virtual: Curran Associates, Inc.
+Jin, H.; Che, H.; Lin, Y.; and Chen, H. 2024.
+PromptMRG:
+Diagnosis-driven prompts for medical report generation. In Pro-
+ceedings of the AAAI Conference on Artificial Intelligence, 3, 2607–
+2615. Vancouver, British Columbia, Canada: AAAI Press.
+
+
+Jing, B.; Xie, P.; and Xing, E. 2018. On the automatic generation
+of medical imaging reports. In Proceedings of the Annual Meet-
+ing of the Association for Computational Linguistics, 2577–2586.
+Melbourne, Australia: Association for Computational Linguistics.
+Jing, P.; Lee, K.; Zhang, Z.; Zhou, H.; Yuan, Z.; Gao, Z.; Zhu, L.;
+Papanastasiou, G.; Fang, Y.; and Yang, G. 2026. Reason like a radi-
+ologist: Chain-of-thought and reinforcement learning for verifiable
+report generation. Medical Image Analysis, 109: 103910.
+Kaasalainen, T.; Ekholm, M.; Siiskonen, T.; and Kortesniemi, M.
+2021. Dental cone beam CT: An updated review. Physica Medica,
+88: 193–217.
+Kiryo, R.; Niu, G.; du Plessis, M. C.; and Sugiyama, M. 2017.
+Positive-unlabeled learning with non-negative risk estimator. In
+Proceedings of the Conference on Neural Information Processing
+Systems, volume 30, 1675–1685. Long Beach, California, USA:
+Curran Associates, Inc.
+Koh, P. W.; Nguyen, T.; Tang, Y. S.; Mussmann, S.; Pierson, E.; Kim,
+B.; and Liang, P. 2020. Concept bottleneck models. In Proceedings
+of the International Conference on Machine Learning, 5338–5348.
+Virtual: PMLR.
+Li, C. Y.; Liang, X.; Hu, Z.; and Xing, E. P. 2019. Knowledge-driven
+encode, retrieve, paraphrase for medical image report generation.
+In Proceedings of the AAAI Conference on Artificial Intelligence,
+1, 6666–6673. Honolulu, Hawaii, USA: AAAI Press.
+Li, Y.; Liu, Y.; Wang, Z.; Liang, X.; Liu, L.; Wang, L.; and Zhou, L.
+2025. S-RRG-Bench: Structured radiology report generation with
+fine-grained evaluation framework. Meta-Radiology, 3(4): 100171.
+Li, Y.; Wang, Z.; Liu, Y.; Wang, L.; Liu, L.; and Zhou, L. 2024.
+KARGEN: Knowledge-enhanced automated radiology report gen-
+eration using large language models. In Proceedings of the Inter-
+national Conference on Medical Image Computing and Computer-
+Assisted Intervention, 382–392. Marrakesh, Morocco: Springer Na-
+ture Switzerland.
+Liu, C.; Tian, Y.; Chen, W.; Song, Y.; and Zhang, Y. 2024a. Boot-
+strapping large language models for radiology report generation. In
+Proceedings of the AAAI Conference on Artificial Intelligence, 17,
+18635–18643. Vancouver, British Columbia, Canada: AAAI Press.
+Liu, G.; Hsu, T.-M. H.; McDermott, M.; Boag, W.; Weng, W.-H.;
+Szolovits, P.; and Ghassemi, M. 2019. Clinically accurate chest
+X-ray report generation. In Proceedings of the Machine Learning
+for Healthcare Conference, 249–269. Ann Arbor, Michigan, USA:
+PMLR.
+Liu, Y.; Xin, R.; Yang, T.; and Wang, L. 2024b. Inferior alveolar
+nerve segmentation in CBCT images using connectivity-based se-
+lective re-training. In Proceedings of the Challenges on Supervised
+and Semi-Supervised Multi-Structure Segmentation and Landmark
+Detection in Dental Data, Held in Conjunction with the Interna-
+tional Conference on Medical Image Computing and Computer-
+Assisted Intervention, 3–12. Marrakesh, Morocco: Springer Nature
+Switzerland.
+Lumetti, L. 2026. RadFact-Lite, version 0.1.0. Python package.
+Accessed June 20, 2026.
+Lumetti, L.; Di Bartolomeo, M.; Pellacani, A.; Anesi, A.; Grana, C.;
+and Bolelli, F. 2026. Ontology-grounded structured prediction for
+dental CBCT reporting. In Proceedings of the International Con-
+ference on Medical Image Computing and Computer-Assisted Inter-
+vention, 408–417. Strasbourg, France: Springer Nature Switzerland.
+Miura, Y.; Zhang, Y.; Tsai, E.; Langlotz, C.; and Jurafsky, D. 2021.
+Improving factual completeness and consistency of image-to-text
+radiology report generation. In Proceedings of the Conference of
+the North American Chapter of the Association for Computational
+Linguistics: Human Language Technologies, 5288–5304. Online:
+Association for Computational Linguistics.
+OpenAI. 2024. GPT-4o system card. arXiv:2410.21276.
+Pandharipande, P. V.; Herts, B. R.; Gore, R. M.; Mayo-Smith, W. W.;
+Harvey, H. B.; Megibow, A. J.; and Berland, L. L. 2016. Rethinking
+normal: Benefits and risks of not reporting harmless incidental
+findings. Journal of the American College of Radiology, 13(7):
+764–767.
+Papineni, K.; Roukos, S.; Ward, T.; and Zhu, W.-J. 2002. BLEU: A
+method for automatic evaluation of machine translation. In Proceed-
+ings of the Annual Meeting of the Association for Computational
+Linguistics, 311–318. Philadelphia, Pennsylvania, USA: Associa-
+tion for Computational Linguistics.
+Reddy, K. S.; Guttal, K. S.; Nandimath, K.; and Voora, T. 2024. In-
+tegration of cone beam computed tomography for interdisciplinary
+diagnosis and treatment planning. Journal of Orofacial and Health
+Sciences, 11(4): 186–191.
+Shi, P.; Zhang, M.; Song, K.; Liu, J.; Gu, Y.; and Zhang, X. 2026.
+U-VLM: Hierarchical Vision Language Modeling for Report Gen-
+eration. arXiv:2603.00479.
+Tan, Z. Q.; Zhu, X.; Addison, O.; and Li, Y. 2025. U-Mamba2: Scal-
+ing state space models for dental anatomy segmentation in CBCT.
+In Proceedings of the International Workshop on Oral and Dental
+Image Analysis and Associated Challenges, Held in Conjunction
+with the International Conference on Medical Image Computing
+and Computer-Assisted Intervention, 122–132. Daejeon, South Ko-
+rea: Springer Nature Switzerland.
+Tanida, T.; Müller, P.; Kaissis, G.; and Rueckert, D. 2023. Inter-
+active and explainable region-guided radiology report generation.
+In Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, 7433–7442. Vancouver, British Columbia,
+Canada: IEEE.
+Vosshenrich, J.; Nesic, I.; Boll, D. T.; and Heye, T. 2023. Investigat-
+ing the impact of structured reporting on the linguistic standardiza-
+tion of radiology reports through natural language processing over
+a 10-year period. European Radiology, 33(11): 7496–7506.
+Wang, X.; Peng, Y.; Lu, L.; Lu, Z.; Bagheri, M.; and Summers, R. M.
+2018. TieNet: Text-image embedding network for common thorax
+disease classification and reporting in chest X-rays. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, 9049–9058. Salt Lake City, Utah, USA: IEEE.
+Wang, Z.; Liu, L.; Wang, L.; and Zhou, L. 2023. R2GenGPT:
+Radiology report generation with frozen LLMs. Meta-Radiology,
+1(3): 100033.
+Wang, Z.; Sun, Y.; Li, Z.; Yang, X.; Chen, F.; and Liao, H. 2025.
+LLM-RG4: Flexible and factual radiology report generation across
+diverse input contexts. In Proceedings of the AAAI Conference on
+Artificial Intelligence, 8, 8250–8258. Philadelphia, Pennsylvania,
+USA: AAAI Press.
+Xiao, T.; Shi, L.; Liu, P.; Wang, Z.; and Bai, C. 2025. Radiology
+report generation via multi-objective preference optimization. In
+Proceedings of the AAAI Conference on Artificial Intelligence, 8,
+8664–8672. Philadelphia, Pennsylvania, USA: AAAI Press.
+Yang, A.; Li, A.; Yang, B.; Zhang, B.; Hui, B.; Zheng, B.; Yu, B.;
+Gao, C.; Huang, C.; Lv, C.; et al. 2025. Qwen3 technical report.
+arXiv:2505.09388.
+
+
+Supplementary Material of EviDent-CBCT
+A
+Scope of the Report-Derived Supervision
+EviDent-CBCT starts from the clinical reports available in Tooth-
+Fairy4. We do not interpret these reports as exhaustive image an-
+notations or construct an independently adjudicated medical gold
+standard. A non-mention may reflect true absence, report-specific
+omission, habitual non-reporting, oversight, or disagreement across
+readers. These mechanisms are not adjudicated and cannot be dis-
+tinguished from the observed reports alone. Explicit report inaccu-
+racies are also possible, but their prevalence is not measured in this
+study.
+The three policies in the main paper apply only to eligible tooth-
+level non-mentions. explicit excludes these entries from the
+loss, hard assigns them unit negative weight, and pu-weak as-
+signs class-dependent reduced negative weights. Unreported global
+and tooth-IAC categories remain unknown and are excluded from
+supervision because their positive labels are sparse. None of these
+policies adjudicates explicit report inaccuracies, and our experi-
+ments do not estimate their prevalence. Accordingly, the reported
+Stage 2 metric measures structured agreement with the reports
+rather than clinical accuracy against an external standard.
+B
+Reference Evidence Construction and
+Coverage Audit
+Construction and independent verification
+The full reference evidence JSON is produced before Stage 2 pre-
+processing. GPT-5.5 (medium effort) receives the original report
+and a dental-specific extraction prompt covering FDI notation, arch
+and quadrant expressions, missing and treated teeth, prostheses and
+implants, bone findings, scan coverage, and tooth-IAC relations.
+It returns structured sections for coverage, tooth labels, relation
+labels, additional clinical facts, and normal or explicitly negative
+statements. Every item includes the report text that supports it, so
+the normalized entry remains traceable to the observed wording.
+A second agent implemented through Claude Opus4.8 indepen-
+dently reviews each JSON against the report. The reviewer checks
+support, polarity, tooth identity, anatomical assignment, complete-
+ness, and the correspondence of each attached span; it either accepts
+the entry or requests calibration. The reported 98.3% first-pass con-
+firmation rate is the proportion of entries that this Opus4.8 reviewer
+accepted without requesting calibration. The remaining 1.7% are
+flagged and corrected before constructing Stage 2 labels. This is
+agent-review agreement with the report, not dentist validation or
+correctness against an independently read CBCT volume.
+Full JSON versus the prediction schema
+Two representations should not be conflated. The full evidence
+JSON preserves categorical fields, free-form facts, normal/negative
+statements, and verbatim source evidence. The Stage 2 interface is
+a task-oriented projection containing 11 tooth-level, 12 global, and
+eight relation categories. Rare details can therefore remain auditable
+in the full JSON without becoming dedicated output classes for
+image-based prediction. The ceiling row “verbatim source clues”
+evaluates the former; the template and Qwen ceiling rows evaluate
+the latter after projection and realization.
+Complete Stage 2 evidence schema
+Tables 5-7 enumerate the complete prediction schema. Counts are
+positive reference-derived labels pooled across the fixed train-
+ing and validation partitions. Tooth counts denote FDI-position-
+category instances; global and relation counts denote case-category
+instances. They are label frequencies in the observed reports, not es-
+timates of clinical prevalence. For sparse global and relation labels,
+an unreported category remains unknown. For tooth labels, non-
+mentions eligible for positive-unlabeled supervision are assigned
+the reliability weights in Table 5; explicit positive and negative
+statements receive weight 1, while unavailable positions and con-
+tradictory statements receive weight 0.
+Coverage protocol
+For each evaluation case, we recursively collect the attached text
+fields from the coverage, tooth-label, relation-label, free-form fact,
+and normal/negative sections. After whitespace normalization, du-
+plicate clues and shorter clues wholly contained in longer ones are
+removed, and the retained spans are restored to their order in the
+original report. This yields 555 unique clues. Every retained clue is
+an exact substring after whitespace normalization.
+We report two complementary coverage measures. Literal cov-
+erage is the fraction of alphanumeric report characters contained
+in the union of retained source spans; its case-averaged value is
+96.5% and its median is 100%. Semantic coverage concatenates the
+retained clues and compares them with the report using RadFact-
+Lite-Dental. The resulting logical precision, recall, and F1 are 0.986,
+0.929, and 0.957, respectively. Literal coverage measures retained
+wording, whereas logical recall measures whether the selected spans
+support the propositions recovered from the report.
+Residual content
+We inspect report text outside the union of all retained source
+spans after excluding section headers, punctuation, and connective
+fragments. Table 8 summarizes the substantive residuals. They are
+concentrated in low-frequency metadata, classifications, and broad
+normal statements rather than recurring core dental findings.
+The audit supports a precise interpretation: major report con-
+tent is comprehensively captured, and the supporting text preserves
+most fine detail verbatim, but the normalized structured fields inten-
+tionally emphasize macroscopic, recurrent concepts. The residual
+concepts are too sparse in this corpus to justify separate super-
+vised classes. The decrease from 0.957 for source clues to 0.597
+for reference-derived evidence after template rendering and Qwen
+rewriting should therefore be attributed primarily to post-extraction
+projection and realization, rather than to wholesale failure of the
+initial evidence extraction.
+Coverage-to-ceiling interpretation
+The coverage audit and ceiling study examine successive repre-
+sentations of the same observed reports. Source spans retained in
+the full evidence JSON preserve fine-grained statements verbatim,
+reaching 96.5% mean literal coverage and 0.957 logical-F1 when
+reassembled. Together with the two-pass verification results, this
+indicates that the extraction workflow captures the major content of
+the observed reports.
+The largest decrease occurs when this rich representation is pro-
+jected into the compact 31-category prediction schema and deter-
+ministically rendered, reducing logical-F1 from 0.957 to 0.589. This
+projection preserves recurrent findings but intentionally collapses
+details that are not modeled as dedicated labels, including the pre-
+cise distribution and degree of atrophy, treatment quality, bridge
+topology, and lesion morphology or size. Rare free-form findings
+and normal statements outside the schema are likewise unavail-
+able to the renderer. The decrease therefore reflects the combined
+
+
+Schema field
+Meaning
+Total n+
+Observed w−
+Report-level w−
+missing
+Tooth absent at the indexed FDI position
+924
+.95
+.95
+implant
+Endosseous implant at the indexed position
+256
+.80
+.50
+crown
+Prosthetic crown at the indexed position
+695
+.60
+.40
+restoration
+Coronal restoration or filling, distinct from a
+crown
+1,792
+.50
+.30
+endodontic_treatment
+Root-canal or other endodontic treatment
+766
+.70
+.40
+prosthesis_related
+Bridge, pontic, or other prosthetic involvement
+1,305
+.50
+.30
+impacted_or_
+disodontiasis
+Impaction or disodontiasis
+365
+.80
+.50
+caries
+Dental caries
+233
+.20
+.10
+root_remnant
+Retained root or root remnant
+61
+.70
+.40
+root_fracture
+Root fracture
+11
+.20
+.10
+lesion_related
+Tooth-associated lesion finding
+388
+.30
+.15
+Table 5: Complete tooth-level prediction schema, positive sample counts, and class-dependent pu-weak weights. Observed
+denotes a non-mention for a tooth observed elsewhere in the report; report-level denotes an otherwise eligible non-mention
+inferred only from report silence.
+Schema field
+Meaning
+Total n+
+maxilla_partially_included
+Maxilla only partly included in the scan field
+236
+maxilla_not_included
+Maxilla excluded from the scan field
+234
+maxillary_sinuses_not_
+included
+Maxillary sinuses excluded from the scan field
+173
+mandibular_condyles_not_
+included
+Mandibular condyles excluded from the scan field
+588
+periodontitis_present
+Reported periodontal disease
+207
+atrophy_maxilla
+Maxillary alveolar atrophy
+53
+atrophy_mandible
+Mandibular alveolar atrophy
+312
+atrophy_severe
+Severe or marked atrophy in either arch
+113
+osteolytic_lesion_present
+Osteolytic or radiolucent osseous lesion
+200
+osteosclerotic_lesion_present
+Osteosclerotic or osteocondensing lesion
+38
+sinus_pathology_present
+Pathological finding in a maxillary sinus
+58
+poor_quality_or_artifact
+Poor image quality or acquisition/reconstruction artifact
+22
+Table 6: Complete global prediction schema and positive sample counts.
+granularity of the prediction schema and its deterministic realiza-
+tion, rather than a failure to identify those statements during initial
+extraction.
+Qwen realization raises logical-F1 from 0.589 to 0.597 for
+reference-derived evidence by restoring narrative organization, ag-
+gregation, and clinically familiar phrasing. Because the rewriter
+receives only the deterministic draft, it cannot systematically re-
+cover information removed during schema projection. The 0.597
+reference-derived result is therefore an operational ceiling for the
+compact schema-to-report pathway, not for the richer evidence
+JSON. Replacing reference-derived evidence with predicted ev-
+idence lowers the rewritten score to 0.398 ± 0.001, isolating
+the remaining effect of Stage 2 evidence prediction. For pre-
+dicted evidence, rewriting raises mean F1 from 0.389 ± 0.006 to
+0.398 ± 0.001, primarily through improved precision.
+C
+Implementation Details
+Stage 1.
+The 46-class nnU-Net-v2-style U-Mamba2 segmenter
+uses 128 × 256 × 256 patches and a 1,500-epoch schedule. In ad-
+dition to segmentation masks, it exposes 1,408-dimensional pooled
+encoder tokens for individual teeth and anatomical structures.
+Stage 2.
+The fixed tooth configuration performs label-wise sam-
+pling at the tooth-instance level. For every class and epoch, all
+supervised positives are retained and eligible negatives are sam-
+pled without replacement. The target negative-to-positive ratio is
+0.5 ≤n−/n+ < 2 when enough negatives are available; otherwise
+all available negatives are retained. Sampling determines the active
+label-instance pairs, while their explicit or pu-weak reliability
+weights remain in the loss. The PU-weak weights are predefined
+reliability weights under the guidance of the clinical routine, not
+learned or tuned on validation data. Unmentioned negatives receive
+class-dependent weights reflecting how reliably non-mention im-
+plies absence. For example, if a mask-present tooth is not reported
+as missing, it is highly likely to be present, so missing receives a
+high weak-negative weight. In contrast, non-mention of caries is
+less reliable because subtle caries may be overlooked or selectively
+omitted, so caries receives a lower weight.
+For positions with a Stage 1 tooth mask, the mask center and
+principal axes define the oriented crop. Mask-absent positions re-
+ceive only a fixed crop centered by interpolation from teeth in the
+same quadrant and no tooth-branch supervision; their missing status
+is inherited directly from the Stage 1 mask during branch merging.
+For a classifiable position with tooth feature u, the missing proba-
+bility m = σ(hm(u)) conditions the remaining attributes through
+[u; mdetachϕ(u)], allowing missingness to coexist with residual
+or prosthetic findings without propagating attribute loss into the
+missing head. Each branch is trained independently. The main con-
+
+
+Schema field
+Meaning
+Total n+
+38_close_to_left_IAC
+Tooth 38 close to the left IAC
+168
+48_close_to_right_IAC
+Tooth 48 close to the right IAC
+168
+any_tooth_close_to_IAC
+Any reported tooth-IAC proximity
+219
+lesion_close_to_IAC
+Lesion close to an IAC
+14
+left_IAC_predominantly_lingual
+Predominantly lingual course of the left IAC
+236
+left_IAC_predominantly_buccal
+Predominantly buccal course of the left IAC
+60
+right_IAC_predominantly_lingual
+Predominantly lingual course of the right IAC
+243
+right_IAC_predominantly_buccal
+Predominantly buccal course of the right IAC
+61
+Table 7: Complete relation prediction schema and positive sample counts. IAC denotes the inferior alveolar canal.
+Residual category
+Cases
+Image orientation, laterality discrepancy, or acquisi-
+tion note
+3
+Low-frequency dental classification (Kennedy class)
+1
+Explicit complete-dentition or complete-arch state-
+ment
+2
+Recurring omission of common dental findings
+0
+Table 8: Substantive report content not fully represented by
+retained evidence spans. Counts denote affected evaluation
+cases; categories may overlap within a case.
+figuration uses a scratch global branch, a hybrid relation branch,
+and the gated hybrid tooth branch with the metal-sensitive channel
+and pu-weak supervision.
+Table 9 specifies the actual tensors and encoders used by the main
+configuration. Dimensions and physical extents follow (z, y, x).
+The global view covers the complete available scan and is resized
+to a fixed grid, so its effective spacing varies with the acquired field
+of view. For each tooth, PCA is applied to the 3D coordinates of
+its segmentation mask to define a tooth-centered local coordinate
+system; PCA is used only to estimate crop orientation, not for di-
+mensionality reduction. An oriented bounding box enclosing the
+complete tooth is then expanded by 6 mm in all directions and
+resized to the fixed network input size. Because tooth dimensions
+vary across cases, this operation produces tooth-dependent effective
+voxel spacing. Relation crops instead use a fixed 80 × 96 × 64-mm
+field of view; resizing it to 80 × 128 × 128 gives an effective
+resolution of 1.0 × 0.75 × 0.5 mm.
+Stage 3.
+Before rendering, the selected record is mapped through
+the deterministic dental-logic projection eE = Πdent( bE). A tooth-
+specific IAC-proximity tuple for position 38 or 48 is omitted when
+that position is marked missing, except when impaction or root-
+remnant evidence at the same position indicates residual dental
+structure. When predominantly lingual and predominantly buccal
+canal-course tuples are both selected on one side, the tuple with
+the higher predicted probability is retained. The projection uses
+only Stage 2 tuples and confidence values, and it never introduces
+a positive finding absent from bE. GPT-4o rewrites 561 training
+drafts constructed from consistency-projected predicted evidence.
+Qwen2.5-7B is adapted with LoRA rank 16 for three epochs using
+completion-only loss, and inference uses greedy decoding. The
+rewriter receives only the deterministic draft.
+D
+Rewrite Content-Preservation Audit
+An author manually reviewed 30 evaluation cases selected by sim-
+ple random sampling from the primary EviDent-CBCT run. For
+each case, the deterministic template and Qwen rewrite were com-
+pared proposition by proposition for additions, omissions, polarity
+changes, FDI reassignment, anatomical-side reassignment, finding-
+type substitutions, and redundant statements. The rewrite preserved
+all template propositions in 28 of 30 cases (93.3%). Table 10 sum-
+marizes the observed deviations.
+Both substantive departures moved the output toward the refer-
+ence report rather than introducing an unsupported reference-level
+finding. In case A014, the rewrite omitted a predicted prosthetic
+crown at tooth 24 and redundantly repeated endodontic treatment at
+tooth 36; the reference described a coronal restoration rather than
+a crown at tooth 24. In case A067, the rewrite changed a predicted
+coronal restoration at tooth 43 to a prosthetic crown, matching the
+reference. These observations indicate that rewriting is not strictly
+lossless and can occasionally regularize imperfect predicted evi-
+dence, consistent with its modest mean F1 improvement. The re-
+tained deterministic template provides an auditable fallback and
+exposes such changes directly.
+E
+Controlled Direct Generation Suite
+Controlled interfaces and supervision
+We instantiate the direct generators with general-purpose Qwen3-
+8B (Yang et al. 2025) and clinically aligned Llama3-Med42-8B
+(Christophe et al. 2024). Both use LoRA rank 16, completion-only
+loss for 12 epochs, deterministic decoding, and the training and
+evaluation split defined in the main paper. Two targets are used
+throughout: raw denotes the observed report, and canonical de-
+notes the report obtained from reference-derived evidence through
+deterministic rendering and the frozen rewriter.
+Direct 1 projects 72 frozen Stage 1 structure tokens into the lan-
+guage model. Direct 2 recomputes those tokens from the fixed-size
+CBCT input and updates encoder levels 2-4. Direct 3 uses the same
+global, relation, and tooth views and branch architectures as Stage 2
+and initializes them from the corresponding primary Stage 2 check-
+points. During direct SFT, these visual modules and their feature
+adapter remain trainable, and their continuous output is supplied
+directly to the language decoder without a discrete evidence inter-
+face.
+Direct 4 retains the complete Direct 3 pathway and adds evidence
+prediction heads. Its training objective is
+Ldirect+aux = Lreport + λ
+3 (Lglobal + Lrelation + Ltooth) , (5)
+with λ = 1. Global and relation terms are masked BCE losses;
+the tooth term uses the same PU-weighted reliability values as the
+Stage 2 tooth labels. Ground-truth evidence is used only to form
+this training loss and is not supplied at inference.
+Direct 5 retains the Direct 3 continuous-feature interface but
+freezes all Stage 2 branch parameters at their evidence-trained
+checkpoints. Only the feature adapter and language-model LoRA
+
+
+Branch
+View and tensor size
+Resolution/channels
+Encoder and fusion
+Global
+Whole available scan; 96×192×192
+Case-dependent effective spac-
+ing; 1 normalized CT + 5 se-
+mantic channels
+Seven-stage
+3D
+residual
+encoder
+with
+widths
+[32, 64, 128, 256, 320, 320, 320],
+block
+counts
+[1, 3, 4, 6, 6, 6, 6],
+and
+strides [1, 2, 2, 2, 2, 2, 1]; terminal 320-channel MambaLayer2, global average
+pooling, and a 12-label MLP. This branch is trained scratch-only.
+Tooth
+One PCA-aligned crop per FDI posi-
+tion; 64 × 64 × 96, with the tooth
+long axis mapped to x
+Tooth-dependent spacing after
+adding 6 mm on each crop
+axis; 1 anatomical CT + 1
+metal-sensitive CT + 8 seman-
+tic channels
+SmallCropEncoder: three 3 × 3 × 3 convolutions with 12, 24, and 48 channels,
+instance normalization and LeakyReLU, pooling after the first two blocks, global
+pooling, and a 192-D projection. The crop feature is gated with a 192-D projection
+of the 1,408-D Stage 1 tooth token and a 16-D ten-region embedding, yielding a
+256-D feature for label-specific heads; the missing head conditions the remaining
+attributes.
+Relation
+Paired left/right posterior-mandibular
+crops; each 80 × 128 × 128 from an
+80 × 96 × 64-mm FOV
+1.0 × 0.75 × 0.5 mm; 1 nor-
+malized CT + 5 semantic chan-
+nels
+The same 12-24-48 SmallCropEncoder produces a 192-D feature per side.
+Left/right features and 16-D side embeddings are combined with projected Stage 1
+relation tokens by gated fusion into 384 dimensions, followed by an eight-label
+MLP.
+Table 9: Stage 2 input geometry and encoder architecture in the primary configuration. CT and semantic-mask channels are
+concatenated before the branch encoder.
+Audit outcome
+Cases
+All template propositions preserved
+28
+Any substantive content change
+2
+Omission
+1
+Finding-type substitution
+1
+Polarity reversal
+0
+FDI reassignment
+0
+Anatomical-side reassignment
+0
+Redundant repetition
+1
+Table 10: Author audit of content changes introduced by
+Qwen rewriting. Categories can overlap within a case.
+parameters are optimized. This control separates the effect of pre-
+serving the Stage 2 representation from the effect of exposing a
+thresholded, discrete evidence record to the report generator.
+Run-level results
+The main paper reports logical precision, recall, F1, BLEU-4, and
+METEOR for the complete comparison. Table 11 provides logical-
+F1 for each model run. Canonical targets improve all ten decoder-
+interface pairs. Med42 improves the strongest direct result from
+.331 with Qwen3 to .371. Direct 5 reaches .327 with Qwen3 and
+.360 with Med42, and does not improve on trainable Direct 3 with
+either decoder.
+Case-level paired bootstrap
+We compare the final consistency-projected, locally rewritten
+EviDent-CBCT reports with the strongest direct configuration by
+unrounded mean logical-F1, Med42 Direct 2 with canonical su-
+pervision. For each system, case-level RadFact-Lite-Dental logical
+precision and recall are first averaged across its three model runs.
+Using random seed 2027, we jointly resample the matched case
+indices with replacement 100,000 times. Within every replicate,
+corpus-level precision and recall are averaged over the sampled
+cases and logical-F1 is recomputed as their harmonic mean. The
+percentile 95% interval is taken from the resulting paired differ-
+ences, F1EviDent −F1Direct.
+Using the final consistency-projected outputs and unrounded
+case-averaged values, the direct and EviDent-CBCT aggregate
+logical-F1 scores are .3706 and .4023, respectively. Their paired
+difference is .0317, with a 95% bootstrap confidence interval of
+[.0047, .0586]. This interval quantifies case-sampling uncertainty
+after averaging model runs; it is not a confidence interval over
+training seeds.
+The comparison between Direct 3 and Direct 4 separates auxil-
+iary evidence supervision from an evidence bottleneck. Adding the
+auxiliary objective changes Qwen3 logical-F1 from .236 to .244
+for raw targets and from .331 to .331 for canonical targets; the
+corresponding Med42 changes are .280 to .271 and .362 to .365.
+Freezing the Stage 2 encoders in Direct 5 yields .234 and .327 with
+Qwen3, and .262 and .360 with Med42. Neither auxiliary supervi-
+sion nor preservation of continuous Stage 2 features reproduces the
+.402 obtained when the consistency-projected discrete record is the
+required report input.
+Sensitivity to multiple reports per volume
+The fixed-reference evaluation selects the report with the lexico-
+graphically smallest identifier for each volume. As an additional
+robustness analysis, we evaluate each candidate against every re-
+port associated with its volume; 39 of the 63 validation volumes
+have two reports and 24 have one (102 reports in total). If Pij and
+Rij are the logical precision and recall for candidate i against its
+j-th reference, we first compute
+¯Pi = 1
+mi
+mi
+X
+j=1
+Pij,
+¯Ri = 1
+mi
+mi
+X
+j=1
+Rij,
+(6)
+then average ¯Pi and ¯Ri over the 63 volumes and compute their
+harmonic mean. Thus, every volume retains equal weight regardless
+of its number of reports.
+Under mean-over-references evaluation, both EviDent-CBCT re-
+alizations round to .374 logical-F1, compared with .333 for the
+strongest direct generator. For the final locally rewritten output, the
+unrounded paired advantage over direct generation is .0402, with a
+95% bootstrap confidence interval of [.0170, .0637] using the same
+100,000 volume-level resamples. The rewrite–template difference
+is negligible (−.0004, 95% CI [−.0074, .0065]), indicating that the
+advantage over direct generation persists independently of the local
+realizer and reference selection.
+F
+Global and Relation Fusion Sweep
+The main paper fixes the global branch to scratch and the relation
+branch to hybrid (g_scratch_r_hybrid). All rows share the
+
+
+Family
+Visual interface
+Auxiliary evidence
+Target
+Run 1
+Run 2
+Run 3
+Direct Qwen3-8B
+Direct 1: frozen Stage 1
+No
+Raw
+.235
+.242
+.209
+Direct 1: frozen Stage 1
+No
+Canonical
+.325
+.258
+.297
+Direct 2: fine-tuned Stage 1
+No
+Raw
+.244
+.265
+.251
+Direct 2: fine-tuned Stage 1
+No
+Canonical
+.283
+.355
+.327
+Direct 3: continuous Stage 2 features
+No
+Raw
+.240
+.258
+.210
+Direct 3: continuous Stage 2 features
+No
+Canonical
+.328
+.330
+.337
+Direct 4: Direct 3 + auxiliary evidence
+Yes
+Raw
+.239
+.214
+.281
+Direct 4: Direct 3 + auxiliary evidence
+Yes
+Canonical
+.341
+.315
+.338
+Direct 5: frozen Stage 2 encoder
+No
+Raw
+.240
+.239
+.223
+Direct 5: frozen Stage 2 encoder
+No
+Canonical
+.326
+.325
+.330
+Direct Med42-8B
+Direct 1: frozen Stage 1
+No
+Raw
+.249
+.240
+.241
+Direct 1: frozen Stage 1
+No
+Canonical
+.341
+.358
+.334
+Direct 2: fine-tuned Stage 1
+No
+Raw
+.275
+.304
+.256
+Direct 2: fine-tuned Stage 1
+No
+Canonical
+.375
+.351
+.386
+Direct 3: continuous Stage 2 features
+No
+Raw
+.283
+.260
+.296
+Direct 3: continuous Stage 2 features
+No
+Canonical
+.358
+.360
+.370
+Direct 4: Direct 3 + auxiliary evidence
+Yes
+Raw
+.270
+.271
+.274
+Direct 4: Direct 3 + auxiliary evidence
+Yes
+Canonical
+.358
+.364
+.372
+Direct 5: frozen Stage 2 encoder
+No
+Raw
+.266
+.269
+.251
+Direct 5: frozen Stage 2 encoder
+No
+Canonical
+.363
+.345
+.371
+EviDent-CBCT
+Consistency-projected evidence record
+–
+Template
+.401
+.393
+.401
+Consistency-projected evidence record
+–
+Local rewrite
+.405
+.399
+.403
+Table 11: Run-level RadFact-Lite-Dental logical-F1 for the controlled report-generation comparison.
+Reference protocol
+Candidate output
+Logical P
+Logical R
+Logical F1
+Fixed lexicographic
+Med42 Direct 2, canonical (direct best)
+.388 ± .019
+.354 ± .017
+.371 ± .018
+EviDent-CBCT template
+.372 ± .002
+.428 ± .008
+.398 ± .004
+EviDent-CBCT local rewrite
+.384 ± .002
+.423 ± .004
+.402 ± .003
+Mean over all references
+Med42 Direct 2, canonical (direct best)
+.361 ± .013
+.310 ± .013
+.333 ± .013
+EviDent-CBCT template
+.369 ± .007
+.379 ± .012
+.374 ± .009
+EviDent-CBCT local rewrite
+.374 ± .003
+.373 ± .011
+.374 ± .006
+Table 12: Sensitivity of the final comparison to the reference protocol, reported as mean±std over three model runs. Under
+mean-over-references evaluation, logical precision and recall are averaged within each volume before corpus aggregation.
+Global
+Relation
+Logical P
+Logical R
+Logical F1
+hybrid
+hybrid
+.653
+.692
+.672
+hybrid
+scratch
+.651
+.691
+.670
+hybrid
+visual
+.651
+.695
+.672
+scratch
+hybrid
+.652
+.696
+.673
+scratch
+visual
+.650
+.699
+.674
+visual
+hybrid
+.655
+.702
+.678
+Table 13: Global/relation interface sweep using merged
+Stage 2 exact-tuple agreement. The narrow range does not
+support a claim that one fusion choice is intrinsically supe-
+rior.
+tooth-base branch. Table 13 reports a single-run architecture sweep
+using the LLM-free merged Stage 2 logical set metric.
+The observed logical-F1 range is 0.670-0.678. We retain
+g_scratch_r_hybrid as the predefined base for the tooth ab-
+lations and do not treat this narrow sweep as evidence for a general
+fusion mechanism.
+G
+Evaluation Semantics
+Merged Stage 2 logical set-F1
+For case k, let Ck be the set of predicted positive tuples and Rk
+the positive tuples derived from its reference report, pooled across
+tooth, global, and relation branches within the evaluation mask.
+Exact structured matching gives
+Pk = |Ck ∩Rk|
+|Ck|
+,
+Rrec
+k
+= |Ck ∩Rk|
+|Rk|
+.
+(7)
+Zero denominators contribute zero, matching the RadFact-Lite ag-
+gregation convention. The reported logical precision and recall are
+the means of Pk and Rrec
+k
+over cases; logical set-F1 is the harmonic
+mean of those two corpus-level quantities. This is an LLM-free
+structured-agreement metric. It is not branch macro-F1 and is not
+the report-level RadFact score.
+RadFact-Lite-Dental
+RadFact-Lite-Dental is a dentist-guided evaluation extension built
+from RadFact-Lite v0.1.0 (Lumetti 2026), a lightweight implemen-
+tation of the text-only RadFact procedure (Bannur et al. 2024). It
+retains RadFact’s bidirectional proposition-entailment protocol and
+
+
+corpus aggregation while adapting proposition construction and en-
+tailment assessment to dento-maxillofacial reports. GPT-5.6-Luna
+first parses each report into complete, image-verifiable dental propo-
+sitions. The parser atomizes tooth lists but preserves qualifiers such
+as laterality, severity, extent, uncertainty, visibility, treatment status,
+and anatomical relations; bridge spans remain relational proposi-
+tions rather than independent tooth labels.
+Before LLM assessment, conservative normalization maps
+equivalent dotted and undotted FDI notation to a common form,
+removes semantic duplicates, and resolves exact or closed-form
+positive entailments. The deterministic layer never rejects an unre-
+solved comparison. Remaining hypotheses are assessed jointly for
+each case and direction with dental-specific instructions that require
+agreement in tooth position, anatomy, side, finding type, polarity,
+and clinically meaningful qualifiers. Parsing and entailment outputs
+are cached for identical normalized inputs, and this final RadFact-
+Lite-Dental configuration is used for all report-level evaluations.
+For report-level evaluation, the report with the lexicographically
+smallest identifier was fixed as the reference for each volume and
+used across all systems and evaluator runs.
+Official ODIN hidden-test RadFact uses a different evaluation
+protocol and is therefore reported separately without direct numer-
+ical comparison to RadFact-Lite-Dental.
+Author audit of RadFact-Lite-Dental.
+We conducted an
+author audit of 30 candidate-reference report pairs, sampling ten
+cases from each tertile of total proposition count. For each pair, the
+complete reports, proposition boundaries, and every bidirectional
+entailment decision were reviewed to establish author-audited gold
+scores. Table 14 compares these scores with the original RadFact-
+Lite v0.1.0 implementation using GPT-4o without dental FDI nor-
+malization and with the final RadFact-Lite-Dental evaluator. Un-
+der the same corpus-level aggregation, RadFact-Lite-Dental differs
+from the author-audited logical-F1 by −.009, with a paired case-
+bootstrap 95% confidence interval of [−.030, .012].
+The original evaluator nearly reproduces the gold cohort-level
+F1 (.410 versus .410), but this agreement does not extend to indi-
+vidual cases: its case-level MAE is .091, Pearson r = .587, and
+maximum absolute error is .307. Its 19 overestimates and 11 under-
+estimates largely cancel in the aggregate. The final dental evaluator
+reduces MAE by 52.7% to .043, increases Pearson correlation to
+.881, and reduces the maximum absolute error to .140. Its Spear-
+man correlation is ρ = .861, and 20 of 30 cases fall within .05 F1
+and 26 within .10, compared with 12 and 19 cases for the origi-
+nal evaluator. Across 1,375 fixed-proposition entailment decisions,
+the final evaluator reaches .949 accuracy, .941 balanced accuracy,
+.931 entailment F1, and Cohen’s κ = .891 against the author audit.
+Thus, its small aggregate offset accompanies substantially closer
+case-level agreement and more faithful case ordering.
+H
+Class-wise Stage 2 Branch Analysis
+The three supervision policies alter only the tooth branch; the crop
+geometry, gated hybrid encoder, metal-sensitive channel, global
+branch, and relation branch are otherwise fixed. We therefore com-
+pare pu-weak, explicit, and hard directly at the tooth inter-
+face. For a tooth category, a tuple is defined by its FDI position
+and finding label. Table 15 reports exact-tuple precision, recall, and
+F1 on the strict evaluation mask, with unmentioned eligible tooth
+attributes treated as negatives.
+The branch-level ordering matches the aggregate tooth-branch
+ablation in the main paper: pu-weak gives the highest tooth logical
+set-F1, followed by hard and then explicit. Its advantage is not
+uniform across every rare label, but it obtains the highest class F1 for
+six of the 11 categories, including missing teeth, crowns, endodontic
+treatment, prosthesis-related findings, impaction/disodontiasis, and
+caries. The explicit model often retains recall while losing pre-
+cision under the strict mask, most visibly for restorations (P=.161,
+R=.943) and caries (P=.014, R=.667), showing that ignored non-
+mentions leave many unsupported positives unconstrained. Full-
+weight negatives recover much of this precision, while reduced-
+reliability negatives provide a better aggregate balance. Root frac-
+ture, caries, and root remnant have only 1, 10, and 12 positive vali-
+dation instances, respectively; their policy-specific ordering should
+therefore be interpreted as descriptive rather than as a stable rank-
+ing.
+Table 16 completes the branch view for the fixed base system.
+Known is the number of eligible supervised entries and Positive is
+the number of reference-derived positives within those entries.
+The global branch is strongest for common coverage and atro-
+phy statements, reaching .884 branch logical set-F1. Osteosclerotic
+lesions remain precision-limited, while the perfect scores for pe-
+riodontitis and poor-quality scans are supported by no observed
+negatives and only 19 and two positives, respectively. In the rela-
+tion branch, tooth-IAC proximity and lingual-course labels are re-
+covered reliably on their eligible entries, whereas the less frequent
+buccal-course categories remain precision-limited. The lower re-
+lation logical set-F1 (.537) reflects case-level agreement over the
+complete predicted relation set and is therefore more demanding
+than the high pooled F1 of several individual, positive-heavy cate-
+gories.
+I
+Qualitative Report Comparisons
+Figures 3–6 compare representative EviDent-CBCT predictions
+with those of the best direct model. In each composite, the upper-left
+and upper-right panels show the respective predictions, while the
+lower panels repeat the reference report with annotations relative to
+the prediction above. Dark green denotes a supported match, light
+green a partially correct or underspecified statement, blue an un-
+supported or contradictory prediction, and red a reference fact not
+recovered by the corresponding prediction. Uncolored text provides
+linguistic context.
+
+
+Evaluation
+Logical P
+Logical R
+Logical F1
+F1 MAE
+Pearson r
+Author-audited gold
+.364
+.468
+.410
+–
+–
+RadFact-Lite v0.1.0
+.371
+.458
+.410
+.091
+.587
+RadFact-Lite-Dental
+.366
+.444
+.401
+.043
+.881
+Table 14: Agreement with author-audited gold scores on 30 stratified report pairs. MAE and Pearson correlation are computed
+over case-level logical-F1.
+pu-weak (base)
+explicit
+hard
+Finding
+Logical P
+Logical R
+Logical F1
+Logical P
+Logical R
+Logical F1
+Logical P
+Logical R
+Logical F1
+Missing tooth
+.412 ± .021
+.622 ± .087
+.494 ± .025
+.346 ± .027
+.524 ± .075
+.413 ± .016
+.368 ± .024
+.694 ± .084
+.478 ± .002
+Implant
+.325 ± .013
+.617 ± .021
+.426 ± .014
+.432 ± .092
+.543 ± .057
+.473 ± .046
+.338 ± .037
+.580 ± .057
+.426 ± .035
+Crown
+.452 ± .013
+.646 ± .065
+.530 ± .012
+.233 ± .101
+.646 ± .053
+.331 ± .111
+.427 ± .031
+.663 ± .079
+.516 ± .005
+Restoration
+.360 ± .018
+.665 ± .026
+.466 ± .011
+.161 ± .002
+.943 ± .010
+.275 ± .004
+.424 ± .030
+.542 ± .048
+.474 ± .016
+Endodontic treatment
+.413 ± .036
+.595 ± .097
+.482 ± .010
+.385 ± .083
+.356 ± .035
+.367 ± .049
+.382 ± .042
+.595 ± .043
+.464 ± .035
+Prosthesis-related
+.604 ± .024
+.789 ± .029
+.683 ± .005
+.611 ± .167
+.513 ± .042
+.549 ± .065
+.649 ± .042
+.693 ± .054
+.668 ± .007
+Impacted/disodontiasis
+.750 ± .035
+.920 ± .040
+.826 ± .037
+.685 ± .071
+.853 ± .023
+.759 ± .052
+.756 ± .046
+.893 ± .046
+.817 ± .009
+Caries
+.149 ± .160
+.467 ± .321
+.121 ± .029
+.014 ± .001
+.667 ± .153
+.027 ± .001
+.051 ± .019
+.433 ± .115
+.089 ± .026
+Root remnant
+.095 ± .064
+.111 ± .048
+.090 ± .028
+.104 ± .032
+.361 ± .096
+.159 ± .043
+.045 ± .016
+.306 ± .048
+.078 ± .025
+Root fracture
+.002 ± .002
+.667 ± .577
+.004 ± .004
+.004 ± .001
+1.000 ± .000
+.009 ± .003
+.001 ± .002
+.333 ± .577
+.002 ± .004
+Lesion-related
+.105 ± .017
+.444 ± .030
+.170 ± .024
+.045 ± .014
+.427 ± .339
+.074 ± .009
+.127 ± .024
+.325 ± .039
+.180 ± .020
+Branch logical set
+.434 ± .028
+.538 ± .022
+.480 ± .007
+.405 ± .057
+.328 ± .035
+.359 ± .018
+.408 ± .017
+.548 ± .030
+.467 ± .017
+Table 15: Class-wise tooth-branch Stage 2 performance under the three non-mention policies, reported as mean±std over three
+model runs. The final row is the case-grouped branch logical set score over all tooth categories.
+Branch
+Finding
+Known
+Positive
+Logical P
+Logical R
+Logical F1
+Global
+Partial maxilla coverage
+54
+27
+.579
+.815
+.677
+Maxilla excluded
+57
+21
+.654
+.810
+.723
+Maxillary sinuses excluded
+30
+14
+.933
+1.000
+.966
+Mandibular condyles excluded
+59
+58
+.983
+1.000
+.991
+Periodontitis
+19
+19
+1.000
+1.000
+1.000
+Maxillary atrophy
+8
+6
+1.000
+.833
+.909
+Mandibular atrophy
+39
+34
+.944
+1.000
+.971
+Severe atrophy
+32
+12
+.750
+.750
+.750
+Osteolytic lesion
+33
+17
+.778
+.824
+.800
+Osteosclerotic lesion
+23
+2
+.286
+1.000
+.444
+Sinus pathology
+16
+6
+.750
+1.000
+.857
+Poor quality/artifact
+2
+2
+1.000
+1.000
+1.000
+Global logical set
+–
+–
+.890
+.878
+.884
+Relation
+Tooth 38 close to left IAC
+19
+18
+.947
+1.000
+.973
+Tooth 48 close to right IAC
+13
+13
+1.000
+1.000
+1.000
+Any tooth close to IAC
+20
+20
+1.000
+1.000
+1.000
+Lesion close to IAC
+1
+1
+1.000
+1.000
+1.000
+Left IAC predominantly lingual
+29
+22
+.786
+1.000
+.880
+Left IAC predominantly buccal
+27
+6
+.263
+.833
+.400
+Right IAC predominantly lingual
+26
+19
+.760
+1.000
+.864
+Right IAC predominantly buccal
+25
+5
+.364
+.800
+.500
+Relation logical set
+–
+–
+.512
+.563
+.537
+Table 16: Class-wise Stage 2 performance of the base global and relation branches. Counts expose the support available for each
+category; branch logical-set rows are case-grouped and are not averages of the class rows.
+
+
+Reference ToothFairy4 Report
+The MANDIBLE is included in the scan volume.  
+The following teeth are missing: 38, 36. Implant - prosthetic 
+rehabilitation of tooth 36; post-and-core restorations and related 
+prosthetic crowns on teeth 35, 45, 46; endodontic treatment on 
+teeth 37, 46 with prosthetic reconstruction of the respective 
+crowns; reconstruction of the crown of tooth 34. Conservative 
+dental treatments also on teeth 47, 48.
+The UPPER MAXILLA is partially included in the scan volume.  
+The following teeth are missing: 28, 25, 14, 15, 18. Implant - 
+prosthetic rehabilitation of tooth 15; post-and-core restorations 
+and respective prosthetic crowns on teeth 26, 24; crown 
+reconstruction of tooth 27 (it is not well definable whether there is 
+a fixed prosthetic bridge involving 27, 26, 24). Incongruous 
+endodontic treatment on teeth 26, 24, 14, 16.
+The MAXILLARY SINUSES are partially included in the scan 
+volume and are aerated.  
+The MANDIBULAR CONDYLES are not included in the scan 
+volume.
+Reference ToothFairy4 Report
+The MANDIBLE is included in the scan volume.  
+The following teeth are missing: 38, 36. Implant - prosthetic 
+rehabilitation of tooth 36; post-and-core restorations and 
+related prosthetic crowns on teeth 35, 45, 46; endodontic 
+treatment on teeth 37, 46 with prosthetic reconstruction of the 
+respective crowns; reconstruction of the crown of tooth 34. 
+Conservative dental treatments also on teeth 47, 48.
+The UPPER MAXILLA is partially included in the scan volume.  
+The following teeth are missing: 28, 25, 14, 15, 18. Implant - 
+prosthetic rehabilitation of tooth 15; post-and-core 
+restorations and respective prosthetic crowns on teeth 26, 24; 
+crown reconstruction of tooth 27 (it is not well definable whether 
+there is a fixed prosthetic bridge involving 27, 26, 24). 
+Incongruous endodontic treatment on teeth 26, 24, 14, 16.
+The MAXILLARY SINUSES are partially included in the scan 
+volume and are aerated.  
+The MANDIBULAR CONDYLES are not included in the scan 
+volume.
+EviDent-CBCT Prediction
+The CT scan encompasses the mandible, excluding the 
+condylar and coronoid processes bilaterally, and includes the 
+maxilla with the caudal portions of the maxillary sinuses 
+bilaterally.
+In the mandible, the right and left mandibular canals exhibit a 
+regular course, predominantly lingual, and are in close 
+proximity to teeth 48. There is notable atrophy of the alveolar 
+processes in the edentulous regions of both the maxilla and 
+mandible. Teeth 36, 37, and 38 are absent. Prosthetic 
+rehabilitation, including bridge and pontic structures, involves 
+teeth 34, 35, 36, 45, and 46, with prosthetic crowns present on 
+teeth 35, 36, 37, 45, and 46. Coronal restorations are noted on 
+teeth 34 and 47. Endodontic treatment has been performed on 
+teeth 35, 37, 45, and 46. Periodontal disease affects the existing 
+teeth. There are no definitive osteolytic or osteocondensing 
+lesions observed.
+In the maxilla, teeth 15, 18, and 28 are absent. Prosthetic 
+rehabilitation, including bridge and pontic structures, involves 
+teeth 15, 16, 24, and 26, with prosthetic crowns on teeth 15, 16, 
+24, and 26. Coronal restorations are present on teeth 17 and 25. 
+Endodontic treatment has been conducted on teeth 14, 16, 25, 
+and 26. The maxillary sinuses are normally pneumatized.
+The mandibular condyles are excluded from the acquisition 
+and are not visible.
+Best Direct Model Prediction
+The CT scan encompasses the mandible, excluding the 
+condylar and coronoid processes bilaterally, with partial 
+inclusion of the maxilla.
+In the mandibular region, both the right and left mandibular 
+canals exhibit a regular course. There is noted atrophy of the 
+alveolar processes in the edentulous areas. Teeth 36, 37, 38, 
+46, 47, and 48 are absent. Prosthetic rehabilitation, including 
+bridge or pontic structures, involves teeth 35, 44, and 45, which 
+have prosthetic crowns. Periodontal disease affects the 
+remaining teeth, and areas of osteolysis are observed.
+Regarding the maxilla, it is partially included in the scan. Tooth 
+16 is absent, and tooth 23 has undergone endodontic 
+treatment. Periapical lesions are present in teeth 12, 17, 23, 24, 
+and 25. The maxillary sinuses appear normally pneumatized.
+The mandibular condyles are excluded from the acquisition 
+and are not visible.
+.
+Figure 3: A treatment-rich case with partial maxillary coverage. EviDent-CBCT recovers broader reference-supported tooth-
+status, restorative, and endodontic findings than the best direct model, although both predictions contain unsupported or
+mismatched details. In each composite, predictions appear above their annotated references. Dark green indicates a match, light
+green a partial or underspecified match, blue an unsupported or contradictory prediction, and red an unrecovered reference fact.
+
+
+Reference ToothFairy4 Report
+Moderate atrophy of the mandibular bone at the level of the molar 
+and premolar sectors bilaterally. Absence of teeth 33-35-36-37-
+38-44-45-46-47-48. Adequate endodontic treatments involving 
+teeth 34 and 43. Teeth 34 and 43 have prosthetic crowns. 
+Regular course of the mandibular canal. The maxillary bone is 
+partially included in the scan volumes, with a moderate pattern of 
+bilateral bone atrophy. Absence of teeth 12-14-16-17-18-24-25-26-
+27-28. Presence of root remnants in positions 11-13-15 
+(containing endodontic filling material)-21-22. Presence of a 
+prosthetic crown on tooth 23 with endodontic treatment. 
+Mandibular condyles not included in the scan volumes.
+Reference ToothFairy4 Report
+Moderate atrophy of the mandibular bone at the level of the molar 
+and premolar sectors bilaterally. Absence of teeth 33-35-36-37-
+38-44-45-46-47-48. Adequate endodontic treatments involving 
+teeth 34 and 43, Teeth 34 and 43 have prosthetic crowns. 
+Regular course of the mandibular canal. The maxillary bone is 
+partially included in the scan volumes, with a moderate pattern of 
+bilateral bone atrophy. Absence of teeth 12-14-16-17-18-24-25-
+26-27-28. Presence of root remnants in positions 11-13-15 
+(containing endodontic filling material)-21-22. Presence of a 
+prosthetic crown on tooth 23 with endodontic treatment. 
+Mandibular condyles not included in the scan volumes.
+EviDent-CBCT Prediction
+The CT scan encompasses the mandible, excluding the 
+condylar and coronoid processes bilaterally, and includes the 
+maxilla with the caudal portions of the maxillary sinuses 
+bilaterally.
+In the mandible, both the right and left mandibular canals exhibit 
+a regular course. There is notable atrophy of the alveolar 
+processes in the edentulous regions. Teeth 33, 35, 36, 37, 38, 
+44, 45, 46, 47, and 48 are absent. Prosthetic rehabilitation, 
+including bridge or pontic structures, involves teeth 34, 42, and 
+43, with a prosthetic crown on tooth 34 and a coronal 
+restoration on tooth 43. Both teeth 34 and 43 have undergone 
+endodontic treatment. Periodontal disease affects the 
+remaining teeth, and areas of osteolysis are observed.
+In the maxilla, teeth 12, 13, 14, 15, 16, 17, 18, 22, 24, 25, 26, 27, 
+and 28 are absent. Prosthetic rehabilitation, including bridges 
+or pontics, involves teeth 21 and 22, with prosthetic crowns on 
+these teeth. Endodontic treatment has been completed on teeth 
+14, 21, 22, 23, and 24. The maxillary sinuses are normally 
+pneumatized.
+The mandibular condyles are excluded from the acquisition 
+and are not visible.
+Best Direct Model Prediction
+The CT scan encompasses the mandible, excluding the 
+condylar and coronoid processes bilaterally, with partial 
+inclusion of the maxilla.
+In the mandibular region, both the right and left mandibular 
+canals exhibit a regular course. There is severe atrophy of the 
+alveolar processes in the edentulous areas of both the maxilla 
+and mandible. Teeth 35, 36, 37, 38, 45, 46, 47, and 48 are 
+absent. Prosthetic rehabilitation, including bridge or pontic 
+structures, involves teeth 34, 44, and 54, with prosthetic crowns 
+present on these teeth. Tooth 33 has undergone endodontic 
+treatment. Caries are noted on tooth 44. Periodontal disease 
+affects the remaining teeth, and areas of osteolysis are 
+observed.
+Regarding the maxilla, it is partially included in the scan. Teeth 
+15, 16, 17, 18, 25, 26, 27, and 28 are absent. A root remnant is 
+present for tooth 23. The maxillary sinuses are normally 
+pneumatized.
+The mandibular condyles are excluded from the acquisition 
+and are not visible.
+Figure 4: A heavily edentulous case with a complex treatment history. EviDent-CBCT recovers the complete set of mandibular
+missing teeth and correctly localizes several restorative and endodontic findings. The direct model omits or misclassifies more
+tooth-level findings, while both models remain challenged by maxillary root remnants. In each composite, predictions appear
+above their annotated references. Dark green indicates a match, light green a partial or underspecified match, blue an unsupported
+or contradictory prediction, and red an unrecovered reference fact.
+
+
+Reference ToothFairy4 Report
+Mandible: tooth 3.8 and 4.8 are in complete bony impaction. The
+mandibular canal has a regular course and is in close relationship 
+with tooth 3.8 and 4.8. The maxilla is not included in the 
+acquisition and is not assessable. The mandibular condyles are 
+not included in the scan.
+Reference ToothFairy4 Report
+Mandible: tooth 3.8 and 4.8 are in complete bony impaction. The 
+mandibular canal has a regular course and is in close relationship 
+with tooth 3.8 and 4.8. The maxilla is not included in the 
+acquisition and is not assessable. The mandibular condyles are 
+not included in the scan.
+EviDent-CBCT Prediction
+The CT scan encompasses the mandible, excluding the condylar 
+and coronoid processes bilaterally.
+In the mandibular region, the right and left mandibular canals 
+exhibit a regular course, predominantly lingual. Notably, the 
+mandibular canal is in close proximity to teeth 38 and 48. There 
+is evidence of mandibular atrophy in the alveolar processes of 
+the edentulous areas. Teeth 38 and 48 are impacted. Periodontal 
+disease is present in the existing teeth, and areas of osteolysis 
+are observed.
+The maxilla is not included in the scan volume.
+The mandibular condyles are excluded from the acquisition and 
+are not visible.
+Best Direct Model Prediction
+The CT scan encompasses the mandible, excluding the 
+condylar and coronoid processes bilaterally.
+In the mandibular region, the right and left mandibular canals 
+exhibit a regular course. Notably, the mandibulargia is in close 
+proximity to tooth 38. Tooth 48 is absent, while teeth 38 and 43 
+are impacted. Tooth 38 shows evidence of an periapical lesion, 
+and areas of osteolysis are observed.
+The maxilla is not included in the scan volume.
+The mandibular condyles are excluded from the acquisition and 
+are not visible.
+Figure 5: A mandibular-only case with bilateral complete bony impaction of teeth 38 and 48. EviDent-CBCT captures both
+impacted teeth and their relationships with the mandibular canal, but omits the complete-bony qualifier and introduces several
+unsupported findings. The direct model misclassifies tooth 48 as absent and adds unsupported tooth-level abnormalities. In
+each composite, predictions appear above their annotated references. Dark green indicates a match, light green a partial or
+underspecified match, blue an unsupported or contradictory prediction, and red an unrecovered reference fact.
+
+
+Reference ToothFairy4 Report
+Mandible:
+The right mandibular canal is in close relationship with 
+impacted tooth 48.
+The left mandibular canal is in close relationship with impacted 
+tooth 38.
+No definite osteolytic or osteosclerotic lesions.
+Maxilla:
+The maxilla is partially included in the acquisition.
+Mandibular condyles:
+Excluded from the acquisition and not visible.
+Reference ToothFairy4 Report
+Mandible:
+The right mandibular canal is in close relationship with 
+impacted tooth 48.
+The left mandibular canal is in close relationship with impacted 
+tooth 38.
+No definite osteolytic or osteosclerotic lesions.
+Maxilla:
+The maxilla is partially included in the acquisition.
+Mandibular condyles:
+Excluded from the acquisition and not visible.
+EviDent-CBCT Prediction
+The CT scan encompasses the mandible, excluding the 
+condylar and coronoid processes bilaterally, with partial 
+inclusion of the maxilla.
+In the mandibular region, the right and left mandibular canals 
+exhibit a regular course, predominantly lingual. Notably, the 
+mandibular canal is in close proximity to teeth 38 and 48, both 
+of which are impacted. Periodontal disease is present among the 
+existing teeth. There are no definitive osteolytic or 
+osteocondensing lesions observed.
+Regarding the maxilla, it is only partially captured in the scan. 
+Teeth 11 and 21 are absent. The maxillary sinuses are not 
+included in the acquisition.
+The mandibular condyles are excluded from the scan and are 
+not visible.
+Best Direct Model Prediction
+The CT scan encompasses the mandible, excluding the 
+condylar and coronoid processes bilaterally.
+In the mandibular region, the right and left mandibular canals 
+exhibit a regular course. Teeth 38 and 48 are impacted. There 
+are no definite osteolytic or osteocondensing lesions observed.
+The maxilla is not included in the scan volume.
+The mandibular condyles are excluded from the acquisition and 
+are not visible.
+Figure 6: A case with bilateral canal–impacted-third-molar relationships and partial maxillary inclusion. EviDent-CBCT covers
+all core reference propositions, including both canal relationships, the negative osseous finding, and the acquisition coverage.
+The direct model identifies the impactions but omits their canal relationships and incorrectly reports that the maxilla is not
+included. In each composite, predictions appear above their annotated references. Dark green indicates a match, light green a
+partial or underspecified match, blue an unsupported or contradictory prediction, and red an unrecovered reference fact.
