@@ -1,0 +1,456 @@
+Title: Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks
+
+URL Source: https://arxiv.org/pdf/2610.09267v1
+
+Published Time: Thu, 08 Oct 2026 00:29:49 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 
+
+JUNTAO CHEN, The University of Melbourne, Australia 
+
+TINGTING BI ∗, The University of Melbourne, Australia 
+
+YANLIN WANG, Sun Yat-sen University, China 
+
+PATANAMON THONGTANUNAM, The University of Melbourne, Australia Dependency upgrades can break downstream projects without changing the library interface. Such behavioral breaking changes are difficult for developers to fix, because the failing test does not always point to the 
+
+root API , the upstream API that causes the break. Existing LLM-based repair methods obtain evidence for the repair from compiler feedback or library documentation. However, a behavioral break produces no compiler feedback and is often undocumented. Agents that receive no upgrade evidence also usually do not retrieve upstream evidence themselves, and most of their failed repairs do not identify the root API. The library diff provides useful upstream evidence, but the root API must first be identified to select the relevant part of the diff. We present BBCFixer, a repair method that runs the failing test under the old and new library versions, ranks the calls whose return value differs to identify a candidate root API, and filters the library diff with that candidate. To evaluate repairs of behavioral breaks, we further introduce BBCBench, a benchmark of 100 behavioral dependency breaks in Python and JavaScript. We compare BBCFixer on BBCBench with two baselines: (1) Pure Agent, an agent that receives no upgrade evidence, and (2) BDUpdater, a method that mines library documentation. BBCFixer raises the average pass rate by up to 17% relative to Pure Agent and needs up to 27% fewer agent steps per successful repair. BBCFixer thus provides a way to select the upstream evidence behind a behavioral break, so that an LLM agent can repair behavioral breaking changes more effectively and efficiently. CCS Concepts: • Software and its engineering → Software maintenance tools .Additional Key Words and Phrases: breaking changes, software supply chain, software evolution, large language models, LLM agents, automated program repair 
+
+1 Introduction 
+
+Modern software depends heavily on third-party libraries, whose upgrades deliver security fixes, bug fixes, and new functionality. Yet developers often postpone these upgrades: 81.5% of the systems studied by Kula et al. [14] retain outdated dependencies. One reason is that a new library version can introduce breaking changes that cause existing downstream code to fail [2, 3]. Breaking changes are commonly categorized as syntactic or behavioral [3, 11]. A syntactic breaking change alters the library interface, for example by removing an API or changing its signature. Such changes produce compiler or import errors that identify the affected symbol and direct developers toward the upgrade [23]. A behavioral breaking change is more implicit and harder to diagnose: the interface remains intact, but the run-time behavior changes . The downstream project still builds, but the break instead appears as a failing test whose error may not point to the library or API that causes the break. Such breaks are difficult for developers to fix in practice. In the real-world bug reports studied by Mostafa et al., 18% of the client bugs caused by behavioral backward incompatibilities remain unfixed, although most developers try to fix them [23]. Therefore, this paper focuses on the repair of these behavioral dependency breaks.                      
+
+> ∗Corresponding author. Authors’ Contact Information: Juntao Chen, The University of Melbourne, Melbourne, Australia, jun-tao.chen@student.unimelb.edu.au; Tingting Bi, The University of Melbourne, Melbourne, Australia, tingt-ing.bi@unimelb.edu.au; Yanlin Wang, Sun Yat-sen University, Guangzhou, China, wangylin36@mail.sysu.edu.cn; Patanamon Thongtanunam, The University of Melbourne, Melbourne, Australia, patanamon.t@unimelb.edu.au. arXiv:2610.09267v1 [cs.SE] 7 Oct 2026 2Chen et al.
+
+Recent work repairs breaking changes either with single-call LLM pipelines [19, 30, 39] or with LLM agents [6, 28, 33, 36]. Both pipelines and agents need evidence that connects the downstream failure to the upstream change, and obtain it from compiler feedback or library documentation. For example, Byam prompts the LLM with the compilation errors of the broken build [30], and BDUpdater mines breaking change records from the upstream repository [36]. Neither source works for a behavioral break. Compiler feedback is absent in behavioral breaks, and documentation is unreliable: Mostafa et al. find that only 27.7% of the behavioral backward incompatibilities they detect are documented [23]. 
+
+Challenge 1 : in repairing breaking changes with LLM agents, cost matters in practice . One library update breaks many downstream projects, and each must be repaired separately [28]. At this scale, the cost of each agent run dominates the total cost [12], so low-priced models are the practical choice. Higher-priced models also do not consistently give better cost-efficiency in LLM-based program repair [16]. Mining documentation adds to this cost. In our experiments (Section 4.2), BDUpdater raises the cost of each successful repair by up to 132%. The search for documentation consumes the agent steps that the repair itself needs. As a result, recent work either lacks the evidence that a behavioral break requires, or searches for it at a high cost. 
+
+Challenge 2 is not merely generating a patch, but selecting the evidence that makes the required adaptation apparent . This evidence must be condensed before the agent begins, rather than mined by the agent during the run. The failure is observed in a downstream test, whereas its explanation resides in the upstream version history. We call this separation the evidence-selection gap . In our Pure Agent setting (Section 3.3), the agent receives no upgrade evidence but can inspect the repository and the installed library. However, most agent runs consult neither textual nor code-level information about the upgraded library, and failure to identify the relevant upstream behavioral change is the dominant failure pattern (Section 4.1). The library diff provides a direct source of upstream evidence but requires selection, because the full diff is far too large for an agent to read (Section 2.2). The diff covers changes to many library APIs, and a failing downstream test often reaches several of them. However, the break is caused by the behavior change of one of them, the root API . The root API is hard to identify, because the failing test makes many calls into the library and the error message often does not name the API. Our key insight is therefore to use differential execution as a selector for upstream evidence . Differential execution runs the same failing test under the old and new library versions and reveals the library calls whose return value differs. Prior work uses differential execution to detect incompatibilities [21, 25, 35, 41], whereas we use it to select evidence for repair. We propose BBCFixer, which ranks these diverging calls, takes the highest-ranked one as the first divergence ,and uses its API as a candidate root API . BBCFixer then filters the library diff with that candidate and gives the repair agent the first divergence and the filtered library diff as evidence. BBCFixer turns a large upstream version change into compact, downstream-specific repair evidence before the agent begins its search. In this way, the agent can spend its steps on the repair itself and keep its context small. BBCFixer therefore lowers the cost of each successful repair compared with mining documentation. Furthermore, evaluating repairs of behavioral breaks also requires a suitable benchmark. Existing dependency-upgrade benchmarks contain few confirmed behavioral breaks (Section 3.2.1), and most of them also lack either reference fixes or a public harness that reproduces each case. A reference fix serves as the oracle: its test changes encode the correct new behavior, so they can check an agent’s repair. We therefore construct BBCBench to address these problems. BBCBench contains 100 behavioral dependency breaks in real Python and JavaScript projects, each with a reference fix and a reproducible harness for the repair task. Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 3
+
+We then compare BBCFixer with two baselines (i.e., Pure Agent and BDUpdater) (Section 3.3) on BBCBench, using two budget models, qwen3-coder and GLM-4.5-Air, over three rounds. We run three rounds because the outcome of a single run varies between repetitions. BBCFixer raises the pass rate above both settings under both models in every round. BBCFixer raises the average pass rate by up to 17 % over Pure Agent and by up to 53 % over BDUpdater. BBCFixer also needs fewer agent steps per successful repair: up to 27 % fewer than Pure Agent and up to 58 % fewer than BDUpdater. In summary, this paper makes the following contributions: 
+
+Problem formulation and empirical finding . We characterize the repair of behavioral break-ing changes as an evidence-selection problem. Our trajectory analysis shows that repository access alone does not lead the agent to retrieve the necessary upstream evidence and most failing runs never identify the root API. 
+
+Approach . We propose BBCFixer, a repair method that uses differential execution to rank the calls whose return value differs, identify a candidate root API, and filter the library diff with that candidate. The first divergence and the filtered library diff then serve as repair evidence for the agent. 
+
+Benchmark . We construct BBCBench, a benchmark of 100 confirmed behavioral dependency breaks in real Python and JavaScript projects. Each case includes a reproducible harness and a reference fix whose test changes encode the intended post-upgrade behavior. 
+
+Evaluation and implications . We evaluate BBCFixer on BBCBench against Pure Agent and BDUpdater. BBCFixer achieves a higher average pass rate under both models, with fewer agent steps and lower cost per successful repair. The gain of BBCFixer depends on how the evidence is built and concentrates on the cases whose evidence points to the labeled root API. The evaluation indicates that building failure-specific evidence is a useful complement to improving the agent itself. 
+
+2 Background and Motivation 
+
+In this section, we discuss the background and the motivation of this study. Section 2.1 defines behavioral breaking changes and the repair task. Section 2.2 shows that the library diff of the upgrade carries the evidence but is too large to use without filtering. 
+
+2.1 Behavioral Breaking Changes and the Repair Task 
+
+A behavioral breaking change leaves the interface intact but alters the library behavior, such as the type of a return value or a default setting. Figure 1 shows an example, in which the downstream project hubot-coffeepoll, a chat-bot plugin for coffee-shop polls, upgrades lodash from 3.10.1 to 4.17.21. In 3.10.1, _.sample() called with a count of 3 returns an array of three random elements. In 4.17.21, _.sample() ignores the count and returns a single element, and the new function 
+
+_.sampleSize() returns the three elements instead. The downstream call still runs, since JavaScript does not check the number of arguments. The plugin, however, now receives one object instead of an array, stores an empty list of candidate venues, and fails six tests. The case shows two properties of behavioral breaking changes. First, the change is hidden, since the failing assertions and their stack traces name only the test file, not lodash. Second, the repair needs information that the failure does not carry: the developer must find that _.sample() no longer returns an array and that _.sampleSize() now does, before rewriting the call. The repair task for the agent is defined as follows. The agent receives a downstream repository that breaks after one dependency is upgraded to a target version v_new . The agent modifies the downstream source code so that the repository builds and passes its tests on v_new . Downgrading 4 Chen et al. Upstream library version upgrade: lodash 3.10.1 → 4.17.21 1 Upstream change lodash.js _.sample() ← root API                                                                                        
+
+> Changelog v4.0.0: Split _.sample into _.sampleSize
+> 6929 -function sample(collection, n, guard) {
+> 6948 -result.length =n;
+> 6949 -return result; // nrandom elements in an array
+> 9834 +function sample(collection) {
+> 9836 +return func(collection); // one random element
+> 9859 +function sampleSize(collection, n, guard) {
+> same call, the count is ignored, one object instead of an array
+> Downstream project: hubot-coffeepoll 2 Downstream call site src/coffeepoll.js
+> 174 searchVenues(params)
+> 175 .then(payload => handleVenues(
+> 176 _.sample(payload.response.venues, 3), res) // <--call of the root API
+> the poll stores no candidate venues, six tests fail
+> 3 Downstream failure mocha npm test 6 failing
+> 1) coffeepoll with apoll started saves 3location samples:
+> AssertionError: expected 0to deeply equal 3
+> at Context.<anonymous> (test/coffeepoll.js:148:44)
+> 148 >expect(this.brain.options.length).to.eql(3);
+> 2) ... 6) five more failures in test/coffeepoll.js
+
+Fig. 1. An example of a behavioral breaking change and its manifestation in a downstream project. 
+
+the dependency, removing it, or switching to another version is not allowed. Section 3.3 lists the full constraints and budgets. 
+
+2.2 Filtering the Library Diff 
+
+Because documentation often leaves a behavioral change unrecorded, the library diff provides an alternative source of evidence that comes from the two library versions. The diff records how the implementation changed and may also contain revised library tests that specify the new behavior. The library diff, however, is far too large for an agent to read. Across the 100 benchmark cases (Section 3.2), the diff between the two library versions has a median of 115,866 lines, spread over a median of 168 files. Feeding the whole diff to the agent buries the few relevant lines, so the diff must be filtered down to the fragment that explains the break. Effective filtering keeps the root API, and identifying that API is difficult. One failing test touches several upstream APIs, the interface stays unchanged, and the error message names none of them. Figure 2 shows how the candidates narrow on an illustrative failing test. Across the benchmark cases, one failing test touches a median of 5 distinct upstream APIs, of which the library diff changes a median of 3. Keeping only the changed APIs therefore still leaves several candidates, and selecting among them needs evidence that depends on how the downstream actually uses the library. In the figure, only lib.load() 
+
+returns a different value under the two versions, and this difference singles it out as the root API. 
+
+3 Research Design 
+
+Our research design connects three components. First, BBCFixer transforms the behavioral differ-ence observed in a downstream test into compact upstream repair evidence (Section 3.1). Second, BBCBench provides 100 behavioral dependency breaks in real downstream projects, each with reproducible intact, broken, and fixed states and an automated evaluation script (Section 3.2). Third, the experimental setup evaluates the complete repair workflow and its evidence configurations under two models (Section 3.3). Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 5Touched by the failing test Changed in the library diff First call whose behavior differs                                       
+
+> lib.open()
+> f=lib.open(path)
+> lib.open()
+> not in the diff
+> lib.Parser()
+> p=lib.Parser(strict=True)
+> lib.Parser()
+> -def __init__(self, strict=False): +def __init__(self, *, strict=False):
+> lib.Parser() same behavior
+> v_old v_new →Parser(strict=True) →Parser(strict=True)
+> lib.load()
+> data =lib.load(p, f)
+> lib.load()
+> -return (data, errors) +return data
+> lib.load() root API different behavior
+> v_old v_new →(data, errors) →data
+> lib.dump()
+> out =lib.dump(data)
+> lib.dump()
+> -dumps(obj, ensure_ascii=True) +dumps(obj, ensure_ascii=False)
+> lib.dump() same behavior
+> v_old v_new →'{"id": 1}' →'{"id": 1}'
+> lib.close()
+> lib.close(f)
+> lib.close()
+> not in the diff
+
+Fig. 2. Narrowing the upstream APIs touched by one failing test to the root API. 
+
+3.1 Our Approach: BBCFixer 
+
+BBCFixer addresses the evidence-selection gap identified in Section 1. Its goal is not to ask the repair agent to inspect the entire upstream version history, but to construct a compact explanation of the observed downstream failure before repair begins. As Figure 3 shows, the pipeline has three stages. It first compares the failing test under the intact and broken dependency versions to prioritize a candidate upstream API (Section 3.1.1). It then uses this candidate and the failure symptoms to extract relevant fragments from the library diff (Section 3.1.2). Finally, it presents the first divergence and the filtered library diff to the repair agent as failure-specific evidence (Section 3.1.3). 
+
+3.1.1 Differential Execution. Panel a of Figure 3 shows this step. BBCFixer runs the failing test twice, once in the intact state with the old library version and once in the broken state with the upgraded version. During each run, BBCFixer records every call that enters the upgraded library from outside it, with its arguments and its return value. It then aligns the recorded calls across the two executions and compares their observed return values. A call is a divergence when its return value differs between the old and new library versions. Multiple calls may diverge during one test execution, so BBCFixer ranks these divergences to select the one most likely to be relevant to the downstream failure. Calls originating in downstream code rank above calls originating in other libraries. Among downstream calls, those from files appearing in the failing stack trace rank higher; remaining ties are resolved by execution order. We call the highest-ranked divergence the first divergence and use its API as a candidate root API. Figure 3 also carries a running example. The failing test first calls parse_cfg , which returns the same value in both executions. The two later calls, format_date and render , both diverge. The call to format_date returns ’2026-08-11’ with the old library version and ’11/08/2026’ with the new version, and render then returns a different value because it receives this changed date string as input. Both diverging calls originate in the same downstream file, so the ranking resolves by execution order and BBCFixer selects the earlier divergence, format_date , as the candidate root API. 
+
+3.1.2 Library Diff Filtering. Panel b of Figure 3 shows this step. The library diff includes changes to both library source files and library tests. BBCFixer next reduces this diff to repair-relevant 6 Chen et al. Running example: the downstream project app upgrades lib, the upgraded library, from 1.0 to 2.0, and the test_report test in app now fails 
+
+a · Differential execution 
+
+> in the downstream project
+
+Intact state 
+
+> lib 1.0 · tests pass
+
+Broken state             
+
+> lib 2.0 · tests fail
+> Record every call from app into lib
+> 1 lib.parse_cfg(p) 2 lib.format_date(d) 3 lib.render(date)
+> Compare return values, call by call
+> lib.parse_cfg(p) →same in both runs lib.format_date(d) →differs '2026-08-11' vs '11/08/2026'
+> lib.render(date) →differs
+
+First divergence 
+
+> lib.format_date(d)
+> candidate root API
+
+b · Library diff filtering 
+
+> in the upgraded library
+
+Library diff (1.0 → 2.0)                       
+
+> def parse_cfg(p): -strict =False +strict =True def format_date(d, fmt=None): -DEFAULT_FMT ='%Y-%m-%d' +DEFAULT_FMT ='%d/%m/%Y' lib tests: -assert format_date(d) == '2026-08-11' +assert format_date(d) == '11/08/2026'
+
+Filter 
+
+> key: candidate root API
+
+Filtered library diff 
+
+c · Evidence-guided repair 
+
+> in the downstream project
+
+Evidence first divergence error message filtered library diff Downstream project LLM Agent 
+
+Proposed Fix    
+
+> report_path(): -lib.format_date(d) +lib.format_date(d, fmt='%Y-%m-%d')
+> mechanical steps LLM agent step
+
+Fig. 3. Overview of BBCFixer. 
+
+fragments, using the candidate root API as the primary filter key. BBCFixer also extracts symptom symbols from the broken-state error message, including exception names, failed assertion values, and library frames in the stack trace, and adds them as further filter keys. When differential execution reports no divergence, the primary key falls back to the upstream symbols that the downstream code uses. The filtering keeps changed lines containing a filter key, each with a few lines of surrounding context. In the running example, filtering with the key format_date keeps two fragments: the changed default-format implementation, and the revised library assertion that specifies the new ex-pected output. The resulting filtered library diff provides both an implementation-level explanation of the change and, when available, an executable specification of the new behavior. 
+
+3.1.3 Evidence-Guided Repair. Panel c of Figure 3 shows this step. Before repair begins, BBCFixer writes the generated evidence to read-only files and mounts them in the agent container. The evidence consists of the broken-state error message, the first divergence when one is available, and the filtered library diff. The opening prompt presents the first divergence together with selected fragments of the filtered library diff. To choose these fragments, BBCFixer scores each fragment of the filtered library diff by the symptom symbols that it contains, and a match in a library-test fragment counts twice as much as a match in a library-source fragment. The remaining evidence stays in the mounted files, and the agent decides whether to inspect it. The agent then repairs the downstream project using the repository and the supplied evidence. Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 7                                     
+
+> Table 1. Existing Dependency-Upgrade Benchmarks.
+> Benchmark Ecosystem Cases Behavioral cases Reference fix Public harness BUMP [29] Java 571 not labeled no yes
+> CompSuite [37] Java 123 not labeled no yes
+> BDUpdater [36] JavaScript 84 not labeled 24 of 84 yes
+> RepoRescue [15] Python 146 not labeled yes no
+> DepBench [39] Java, JavaScript, Rust, Python 95 excluded yes no
+> TimeMachine-bench Verified [7] Python 100 19 (our audit) yes yes
+
+3.2 BBCBench 
+
+Evaluating a repair method for behavioral breaks requires more than a downstream project that fails after an upgrade. Because the upstream behavioral change may be intentional, tests that encode the old behavior can reject an otherwise correct adaptation. BBCBench is designed around this oracle problem, and every case provides a confirmed behavioral break, a reproducible three-state harness, and a reference fix whose test changes encode the intended post-upgrade behavior. We first explain why existing benchmarks do not meet these requirements (Section 3.2.1), then describe how BBCBench is constructed and what it contains (Section 3.2.2), and finally explain how an agent works on BBCBench and how its repair is evaluated (Section 3.2.3). 
+
+3.2.1 Why Existing Benchmarks Are Insufficient. The repair task defined in Section 2.1 places three requirements on a benchmark. First , a case must contain a confirmed behavioral break in a real downstream project. Second , the case must provide a reference fix whose test changes encode the intended post-upgrade behavior, because an intentional behavioral change may invalidate tests that encode the old library behavior. Third , the case must include a public harness that replays the intact, broken, and repaired states consistently. Table 1 compares six existing dependency-upgrade benchmarks on these requirements. None of them focuses on behavioral breaking changes, and only TimeMachine-bench Verified has a confirmed behavioral subset, in which our audit finds 19 cases. In addition, BUMP and CompSuite provide no reference fixes, BDUpdater provides them for a minority of its cases, and DepBench and RepoRescue release no public harness. As of August 2026, no existing benchmark therefore meets all three requirements, so we construct BBCBench, whose size matches the three benchmarks that provide a reference fix for every case. 
+
+3.2.2 BBCBench Construction and Composition. Figure 4 summarizes how BBCBench is built. We collect real-world cases and their reference fixes from three sources, and we audit, package, and review every case. We follow two steps below. 
+
+Cases and Reference Fixes from Three Sources. Every candidate is a real downstream project on GitHub that a behavioral breaking change in a third-party dependency breaks. We collect candidates from three sources, and each source also provides the reference fix of its candidates in its own way. First, benchmark authors produce and verify fixes for their own cases. We read the golden patch of each of the 100 TimeMachine-bench Verified cases, and the golden patch serves as the reference fix of the case. Second, downstream maintainers write fixes when they adapt their projects to a new library version. We search GitHub for commits, pull requests, and issues of this kind, with queries such as compatibility with numpy 2 , adapt to pandas 2.0 , and fix for <library> <version> . We take the parent of such an adaptation commit as the project before the fix, and the edits of the commit to production code and tests form the reference fix. Third, library documentation 8 Chen et al. Cases and reference fixes from three sources  
+
+> Benchmark authors
+> TimeMachine-bench Verified · 11 cases reference fix: golden patch
+> Downstream maintainers
+> GitHub commits · 29 cases reference fix: adaptation commit
+> Library documentation
+> migration guides · 60 cases reference fix: documented fix
+> Audit, harness, and review
+> Shared audit fix in production code error far from the edit site Three-state harness
+> Intact
+> old version
+> Broken
+> upgrade only
+> Fixed
+> reference fix
+> Independent review
+> Two reviewers · 94% agreement · κ = 0.81
+> BBCBench 100 cases
+> Python 41 JavaScript 59
+
+Fig. 4. The construction pipeline of BBCBench. 
+
+records the standard fix for a behavioral change in the migration guide, changelog, or release notes. For each such change, we use GitHub code search and the dependents list of the npm registry to find downstream projects that call the changed API. We check out a commit at which the project still pins the old library version, upgrade only that library, and confirm that the test suite fails. We then apply the documented fix at the actual call sites as the reference fix. None of these sources tells whether a candidate is behavioral, so we decide admission manually for every candidate from two observations. First, we read how the reference fix repairs the break. A fix that restores the old behavior or adapts the code to the new semantics indicates a behavioral breaking change, for example setting a default value explicitly. A fix that only renames an API, moves an import, or replaces a removed symbol indicates a syntactic breaking change, and we drop such candidates. Second, we run the tests after the upgrade. At least one test must fail on a wrong value or a runtime error that the changed behavior causes, not on a missing API. If the upgrade also removes or renames APIs, we first fix only those APIs and rerun the tests. 
+
+Audit, Harness, and Review. Every candidate then passes one shared audit with two criteria. First, the reference fix modifies production code, not only tests. Second, the error message must not point to the place that must be edited. We drop a case when the error trace points to a downstream line that the reference fix edits and one mechanical edit there repairs the break. Every admitted case is packaged as a reproducible harness that replays three states. In the intact state, the project passes its tests with the old dependency version. In the broken state, only the dependency is upgraded and at least part of the test suite fails. In the fixed state, the reference fix is applied and the tests pass. The reference fix includes the test edits that encode the intended post-upgrade behavior. A container image fixes the runtime, and a prebuilt image or a saved lockfile fixes the package versions of each state. Automated gates then scan logs and code comments for text that leaks the fix, reject reference fixes that touch no production file, and flag test runs in which no test executes. Two reviewers who did not build the case also re-run the gates and the three states, and each independently judges whether the case is behavioral and meets the two criteria. The two reviewers initially agree on 94% of the cases (Cohen’s kappa 0.81) and resolve the remaining disagreements by discussion. 
+
+BBCBench. BBCBench consists of 100 cases in two ecosystems, 41 in Python and 59 in JavaScript. Each case packages the downstream project, the two library versions, the tests that fail after the upgrade, and the reference fix that adapts the downstream production code. By source, 11 cases come from the benchmark authors of TimeMachine-bench Verified, 29 from adaptation commits of Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 9
+
+downstream maintainers on GitHub, and 60 from library documentation, with the documented fix applied to real broken downstreams. 
+
+3.2.3 How BBCBench Works. BBCBench provides a workspace for the agent to work in and an automated evaluation script that judges the result. The workspace is the broken state of a case: the downstream project before the fix, with the target dependency upgraded to v_new , where at least one test fails on a wrong value or a runtime error that the changed behavior causes. In this workspace, the agent can read, run, and edit the project and its tests, and it can inspect the installed library. The evaluation script then decides whether the repair passes. At the end of a run, the script retains the agent’s production-code changes but discards all changes to test files, preventing a run from passing by weakening or removing tests. The script then applies only the test changes from the reference fix. These tests encode the intended post-upgrade behavior, while the reference production-code changes remain hidden and unapplied, allowing the agent to produce an alternative valid repair. All tests execute in the broken state, with the dependency pinned to 
+
+v_new ; a separate version check rejects any run that downgrades, removes, or replaces the target dependency. A run passes only if the version check succeeds, the project builds, and the complete post-upgrade test suite passes within the judging budget. 
+
+3.3 Experimental Setup 
+
+We evaluate BBCFixer on BBCBench comparing Pure Agent, BDUpdater, and two ablation settings. The following paragraphs describe the agent, models, environment, and budgets; the baseline and ablation settings; the root-API labels; and the runs, metrics, and statistical tests. 
+
+Agent, Models, and Environment. Every experiment uses the same agent, mini-swe-agent 2.4.6 [34, 38], a minimal agent framework whose only tool is the shell. The agent drives two open models, qwen3-coder [26] and GLM-4.5-Air [9], through the OpenRouter API. Both models run at the default sampling temperature of 0.7 and keep the default values of all other sampling parameters. Each model call returns at most 4,096 tokens. All runs execute on one Linux virtual machine with 16 virtual CPUs and 62 GB of memory, and every run works in its own Docker container that holds the downstream project with the upgraded library. The agent may not consult online resources about the downstream project itself, because the real fix of every case is public. Each shell command times out after 10 minutes. Every setting uses the same two models and the same budget: each run stops at 100 steps, 30 minutes, or US$4, whichever the run reaches first, and cost is taken from the actual billing. 
+
+Baseline Settings. We compare BBCFixer with two settings. (1) The Pure Agent setting, which shows what the agent repairs on its own, without added instructions. In this setting, the agent receives only the broken downstream repository and its error message. The agent can inspect the repository and the installed library but receives no upgrade evidence. (2) The BDUpdater 
+
+setting, which replicates the method design of the original tool [36], adapted to BBCBench by mounting the released sources of both library versions and the upstream repository instead of network lookups and by dropping its dependency-bump step. In this setting, the agent itself mines changelogs, release notes, and commit messages into a list of breaking changes, verifies each entry against the source, and adapts the affected call sites. 
+
+Ablation Settings. Two further settings serve the ablation study and keep the repair procedure of BBCFixer (Section 3.1.3). Each ablation setting keeps one of the two evidence items and removes the other. BBCFixer (without first divergence) filters the library diff with the keys that BBCFixer uses when no divergence is available (Section 3.1.2) and gives the agent that filtered library diff. BBCFixer (without library diff) gives the agent the first divergence but no library diff. The agent 10 Chen et al. 
+
+therefore learns which API changed and how its return value changed, but not what the library changed inside that API. 
+
+Root-API Labels. Every case carries a labeled root API, the upstream API whose behavioral change causes the break. We label it from the reference fix and the upstream change of each case. An LLM assigns the label under a written protocol, two authors then independently label every case, and they agree on 92.0% of the cases (Cohen’s kappa 0.83). This LLM is Claude Haiku 4.5 [1], and the same model proposes every other LLM-assigned label in the paper. Section 4 uses this label to judge whether a run identifies the root API and whether the evidence points to it. 
+
+Runs, Metrics, and Statistical Tests. Each setting repeats the full benchmark three times, because the outcome of a single run varies between repetitions of the same case. A round is one repetition over all 100 cases, and a run is one case in one round, so each setting produces 300 runs per model. The primary metric is the average pass rate over the three rounds, and the cases passing in all three runs, in the best round, in at least two runs, and in any run (pass@3) give robustness views. We test each difference between two settings at the case level and treat the three runs of a case as one unit. A paired bootstrap over the 100 cases gives the 95% confidence interval of the pass-rate difference in percentage points, a Wilcoxon signed-rank test compares the per-case pass counts, and an exact McNemar test compares the cases that only one setting repairs in all three runs. The result tables report these two McNemar counts as the A only and B only columns. Within each model, the 𝑝 -values of each result table are Holm-corrected over its two comparisons of BBCFixer. 
+
+4 Results 
+
+We answer four research questions to evaluate our approach: 
+
+• RQ1 (Pure Agent Behavior and Failure Patterns): What upstream information do LLM-based agents consult when they repair a behavioral breaking change under the Pure Agent setting, and what failure patterns do their trajectories present? 
+
+• RQ2 (Effectiveness of BBCFixer): To what extent does BBCFixer improve the repair performance of agents on behavioral breaking changes compared with two baselines (i.e., Pure Agent and BDUpdater), and at what cost in agent effort? 
+
+• RQ3 (Effect of Different Evidence Configurations): How does the repair performance of BBCFixer change when the library diff is filtered without the first divergence, or when the first divergence is supplied without the library diff? 
+
+• RQ4 (Root-API Identification and Repair Outcomes): How often does each setting identify the root API (RQ4.1), does identifying it predict a successful repair (RQ4.2), and does the gain of BBCFixer concentrate on the cases whose evidence points to the labeled root API (RQ4.3)? 
+
+4.1 RQ1: Pure Agent Behavior and Failure Patterns 
+
+RQ1 examines how the agent behaves under the Pure Agent setting (Section 3.3), in which it repairs a behavioral break without upgrade-specific evidence. 
+
+Use of Upgrade-Specific Information. We classify the shell commands of all 300 trajectories per model with a fixed rule, which counts only the commands that read materials of the upgraded library, and record two types of consulted information: textual information (README, changelog, and migration guides) and code-level information (the installed upstream source and its tests). On a random sample of 100 trajectories, the rule agrees with the manual labels on an average of 87.0% of them (Cohen’s kappa 0.83). Table 2 reports the distribution. Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 11                   
+
+> Table 2. Distribution of Information Consultation Behavior over the Pure Agent Runs.
+> Consulted information qwen3-coder GLM-4.5-Air Both types 7.3 6.3
+> Code-level only 26.0 7.7
+> Textual only 5.3 3.0
+> Neither 61.3 83.0
+> Table 3. Distribution of Failure Patterns over the Fail-ing Pure Agent Runs.
+> Failure pattern qwen3-coder GLM-4.5-Air Root API not identified 66.9 69.2
+> Incorrect adaptation 27.8 29.2
+> Execution failure 5.3 1.7
+
+Under both models, the most common behavior is to consult neither type of information, at 61.3% of qwen3-coder runs and 83.0% of GLM-4.5-Air runs; these runs rely only on the error message and trial-and-error edits. The runs that do consult something read code more often than text. Even these runs stop short of comparing the two library versions: no qwen3-coder run does so through source code or tests. Pure Agent runs therefore rarely obtain the upgrade-specific evidence that connects the downstream failure to the upstream change. 
+
+Failure Patterns. We classify every failing run of the Pure Agent setting by where the repair breaks down. The classification asks whether the trajectory shows that the agent identifies the labeled root API of the case (Section 3.3) and understands how its behavior changes in the upgrade. An LLM judge assigns the category from the commands of the trajectory under a written protocol, with the contents of every edit hidden. Two authors then label every failing run independently, agree on 92.6% of the runs (Cohen’s kappa 0.85), and resolve the disagreements by discussion. The three categories are: 
+
+• Root API not identified. The run never identifies the root API, and instead patches at the error site, tries unrelated options, or attributes the failure to the downstream code. 
+
+• Incorrect adaptation. The run identifies the root API but writes a wrong fix. 
+
+• Execution failure. The run identifies the root API but introduces syntax errors or violates a task constraint of Section 2.1. Table 3 reports the distribution over the 151 failing Pure Agent runs of qwen3-coder and the 120 of GLM-4.5-Air. Not identifying the root API is the dominant failure category under both models, at 66.9% and 69.2%, so the repair of Pure Agent breaks down mainly at the diagnosis rather than at the edit. Incorrect adaptation accounts for most of the remaining runs, and execution failures are rare. The model that consults less, GLM-4.5-Air, also has a larger share of failures in diagnosis. 
+
+Summary of RQ1 
+
+• Repository access does not ensure evidence retrieval. Most Pure Agent runs consult neither textual nor code-level information about the upgraded library. 
+
+• Diagnosis is the dominant observed failure pattern. Failure to identify the labeled root API accounts for the majority of failing runs under both models. 
+
+4.2 RQ2: Effectiveness of BBCFixer 
+
+To answer this RQ, we compare the repair performance of BBCFixer with that of Pure Agent and BDUpdater [36], test the differences for significance, and compare the agent effort that each setting spends per successful repair. Table 4 compares the repair outcomes of the three settings. BBCFixer outperforms Pure Agent under every view with both models, raising the average pass rate by 17% with qwen3-coder and by 12 Chen et al. 
+
+Table 4. Repair Outcomes over Three Rounds.                                               
+
+> qwen3-coder GLM-4.5-Air Metric BBCFixer BDUpdater Pure Agent Gain BBCFixer BDUpdater Pure Agent Gain Average pass rate 58.0 38.0 49.7 +8.3 ( ↑17%) 67.3 61.7 60.0 +7.3 ( ↑12%) Pass in all 3 runs 42 15 33 +9 ( ↑27%) 56 47 42 +14 ( ↑33%) Pass in the best round 63 46 52 +11 ( ↑21%) 71 64 64 +7 ( ↑11%) Pass in ≥2 runs 58 35 48 +10 ( ↑21%) 70 60 63 +7 ( ↑11%) Pass in any run (pass@3) 74 64 68 +6 ( ↑9%) 76 78 75 +1 ( ↑1%)
+
+Table 5. Statistical Tests of the Pass-Rate Gains of BBCFixer.                          
+
+> Model A vs. B 95% CI Wilcoxon 𝑝 A only / B only McNemar 𝑝
+> qwen3-coder BBCFixer vs. Pure Agent [+1.7, +15.3] 0.020 13 / 4 0.049
+> BBCFixer vs. BDUpdater [+12.7, +27.3] <0.001 31 / 4 <0.001
+> GLM-4.5-Air BBCFixer vs. Pure Agent [+1.3, +13.7] 0.072 19 / 5 0.014
+> BBCFixer vs. BDUpdater [−2.3, +13.7] 0.130 22 / 13 0.175
+
+Table 6. Budget Use over 300 Runs per Model.                                   
+
+> Model BBCFixer vs. BDUpdater vs. Pure Agent BDUpdater Pure Agent qwen3-coder Agent steps / successful repair 91.9 ↓58% ↓27% 219.7 125.3 Cost / successful repair (cents) 9.6 ↓58% ↓2% 22.7 9.8 Budget-exhausted runs (%) 27.9 ↓51% ↓19% 57.3 34.3
+> GLM-4.5-Air Agent steps / successful repair 84.0 ↓29% ↓15% 117.6 98.8 Cost / successful repair (cents) 5.4 ↓27% ↓7% 7.4 5.8 Budget-exhausted runs (%) 26.6 ↓28% ↓21% 36.7 33.7
+
+12% with GLM-4.5-Air. The size of the gain follows the strictness of the view. Under the strictest view, the cases that pass in all three runs, the gain grows to 27% and 33%. These results show that BBCFixer improves repair robustness at scale: its advantage lies not primarily in reaching cases that Pure Agent never repairs, but in repairing the same cases consistently across repeated runs. Under both models, BBCFixer also passes more cases than both Pure Agent and BDUpdater in each of the three rounds, further demonstrating the consistency of its improvement rather than an average driven by a single strong round. BDUpdater never exceeds BBCFixer in average pass rate. With qwen3-coder it stays below even Pure Agent under every view, and with GLM-4.5-Air it stays close to Pure Agent and passes BBCFixer only under pass@3. BDUpdater repairs many cases in at least one run but few of them in all three, which makes it the least stable of the three settings. A reading of the 54 failing runs of this setting in the first round under qwen3-coder shows two causes, and neither is missing documentation. About half of the runs spend most of the shared budget on mining and end with no repair action or with edits only in the final steps. About a third of the runs see the text that documents the root API yet edit the wrong file or apply a wrong fix, because documentation records what changes in the library, not how the downstream code must change. Table 5 tests the gains of Table 4. In the McNemar test, BBCFixer is significantly better than Pure Agent under both models and better than BDUpdater with qwen3-coder. The confidence interval of Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 13 
+
+Table 7. Ablation of BBCFixer over Three Rounds under Both Models.                                            
+
+> qwen3-coder GLM-4.5-Air Metric BBCFixer BBCFixer (without first divergence) BBCFixer (without library diff) Pure Agent BBCFixer BBCFixer (without first divergence) BBCFixer (without library diff) Pure Agent Average pass rate 58.0 53.7 51.3 49.7 67.3 61.0 62.7 60.0
+> Pass in all 3 runs 42 34 38 33 56 48 47 42
+> Pass in the best round 63 56 53 52 71 62 66 64
+> Pass in ≥2 runs 58 56 52 48 70 61 65 63
+> Pass in any run (pass@3) 74 71 64 68 76 74 76 75
+
+the pass-rate difference over Pure Agent excludes zero under both models, and with qwen3-coder the Wilcoxon test agrees for both comparisons. Table 6 reports how the three settings use the same per-run budget. We compute agent steps and cost per successful repair as the total over all 300 runs divided by the number of passing runs. A run counts as budget-exhausted when it reaches the step cap. BBCFixer improves the pass rate while using less of the budget. It needs 15% to 27% fewer agent steps per successful repair than Pure Agent and exhausts the step budget less often under both models. Against BDUpdater, BBCFixer needs 29% to 58% fewer agent steps and 27% to 58% less cost per successful repair. BDUpdater also raises the cost per successful repair above Pure Agent, by 132% with qwen3-coder and by 28% with GLM-4.5-Air. Mining and repair share one budget, and BDUpdater reaches the step cap in 57.3% of its runs under qwen3-coder, so documentation search consumes the budget that the repair needs. The case hubot-coffeepoll in Figure 1 shows how the evidence obtained by BBCFixer changes a run. During the repair process of BBCFixer, the first divergence shows that _.sample() returns three elements under the old version and one object under the new version. The agent names it as the cause within five steps and applies the one-line reference fix after 26 steps. Pure Agent instead keeps editing pickWinner , the function that the failing assertions point to, and reaches the step cap without changing the _.sample() call. BDUpdater finds only a link to the online changelog, never reads the _.sample() call, and also reaches the cap. 
+
+Summary of RQ2 
+
+• BBCFixer outperforms both Pure Agent and BDUpdater. It also passes more cases than both in every round and the gain is significant. 
+
+• BBCFixer can reduce the Agent cost and budget-exhausted runs per successful repair. 
+
+• BDUpdater brings no consistent gain over Pure Agent and consumes more agent cost. 
+
+4.3 RQ3: Effect of Different Evidence Configurations 
+
+To answer this RQ, we compare BBCFixer with Pure Agent and with the two ablation settings defined in Section 3.3, BBCFixer (without first divergence) and BBCFixer (without library diff). Table 7 shows that BBCFixer achieves a higher average pass rate than both ablation settings under each model. It also matches or exceeds both ablation settings across all five views. In contrast, neither ablation setting consistently improves on Pure Agent, and each falls below it under at least one view. These results suggest that both components contribute to BBCFixer’s effectiveness. 14 Chen et al. 
+
+Table 8. Statistical Tests of BBCFixer against Each Ablation Setting.                      
+
+> Model A vs. B 95% CI Wilcoxon 𝑝 A only / B only McNemar 𝑝
+> qwen3-coder BBCFixer vs. BBCFixer (without first divergence)
+> [−1.7, +10.3] 0.189 16 / 8 0.304
+> BBCFixer vs. BBCFixer (without library diff)
+> [+1.3, +12.3] 0.044 9 / 5 0.424
+> GLM-4.5-Air BBCFixer vs. BBCFixer (without first divergence)
+> [+0.0, +12.7] 0.090 18 / 10 0.185
+> BBCFixer vs. BBCFixer (without library diff)
+> [+0.0, +9.7] 0.090 14 / 5 0.128
+
+Table 9. Rate at Which Agents Identify the Labeled Root API.                  
+
+> qwen3-coder GLM-4.5-Air Setting Identified Gain Identified Gain Pure Agent 50.0 –51.0 –
+> BDUpdater 60.3 +10.3 ( ↑21%) 61.0 +10.0 ( ↑20%)
+> BBCFixer 61.0 +11.0 ( ↑22%) 62.0 +11.0 ( ↑22%)
+
+Table 8 tests the gain of BBCFixer over each ablation setting. The gain over BBCFixer (without library diff) is significant under qwen3-coder ( 𝑝 = 0.044), and the other three comparisons point in the same direction. 
+
+Summary of RQ3 The gain comes from how the evidence is built. A library diff filtered without the first divergence, and the first divergence without any library diff, both stay close to Pure Agent. Only BBCFixer, where the first divergence keys the filtered library diff and both reach the agent, lifts both models above Pure Agent under every view. 
+
+4.4 RQ4: Root-API Identification and Repair Outcomes 
+
+To answer RQ4, we examine when the evidence generated by BBCFixer is most useful for repair. RQ4.1 measures how often each setting enables the agent to identify the relevant upstream API. RQ4.2 examines the association between identifying that API and successful repair. RQ4.3 compares the improvement of BBCFixer on the cases whose generated evidence points to the labeled root API and on all cases. 
+
+4.4.1 RQ4.1: Agent Identification of the Root API. Section 4.1 labels whether a run identifies the root API only for the failing runs of Pure Agent. We extend this identification label to every run of the three settings of RQ2 under the same protocol, and two authors again review every run independently (95.5% agreement, Cohen’s kappa 0.85). Table 9 reports the results. Pure Agent identifies the root API in about half of its runs under both models. Both evidence-based settings raise that rate by 20% to 22% relative to Pure Agent. BBCFixer raises it by 22% under both models, and BDUpdater raises it slightly less under both models. Both forms of upstream evidence therefore help the agent identify the upstream behavior. Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 15 
+
+Table 10. Identifying the Root API and Repair Outcome under Both Models.                               
+
+> qwen3-coder GLM-4.5-Air Pure Agent BDUpdater BBCFixer Pure Agent BDUpdater BBCFixer
+> Pass rate by whether the run identifies the root API
+> Identified 66.7 ( ↑104%) 53.0 ( ↑251%) 70.5 ( ↑83%) 75.8 ( ↑74%) 77.6 ( ↑111%) 77.4 ( ↑52%)
+> Not identified 32.7 15.1 38.5 43.5 36.8 50.9
+> Rate of identifying the root API by outcome
+> Passing runs 67.1 84.2 74.1 64.4 76.8 71.3
+> Failing runs 33.1 45.7 42.9 30.8 35.7 42.9
+
+Table 11. Gain of BBCFixer over Pure Agent on the Cases Whose Evidence Points to the Root API, under Both Models.                     
+
+> qwen3-coder GLM-4.5-Air Case set n
+> Pure Agent BBCFixer Gain Pure Agent BBCFixer Gain Evidence points to the root API 51 53.6 64.1 +10.5 ( ↑20%) 61.4 71.2 +9.8 ( ↑16%)
+> All cases 100 49.7 58.0 +8.3 ( ↑17%) 60.0 67.3 +7.3 ( ↑12%)
+
+Table 12. Reasons Why the Evidence Does Not Point to the Labeled Root API.       
+
+> Reason Definition %Call not recorded The two runs do not both record the call to the root API, e.g., because the test runner loads the library through its own module loader or a wrapper hides the call. 55.1
+> Divergence ranked lower The call to the root API diverges, but another divergence ranks higher. 22.4
+> Change not in return values The behavior change alters no recorded return value, e.g., it acts through an operator, a setting, or a callback. 22.4
+
+4.4.2 RQ4.2: Association between Root-API Identification and Repair. Table 10 splits the runs of each setting by whether the run identifies the root API and whether it passes. The upper half reports the pass rate by whether the run identifies the root API, with the relative increase of the identified runs over the not identified runs in parentheses. The lower half reports the rate of identifying the root API by outcome, separately for the passing runs and the failing runs. The runs that identify the root API pass far more often in all six groups, by 52% to 251% relative to the runs that do not identify it. Passing runs also identify it more often than failing runs, in Pure Agent as well. Identifying the root API is therefore associated with a higher pass rate in every setting, not only where BBCFixer supplies the evidence. BBCFixer also has the highest pass rate among the runs that do not identify the root API under both models. The evidence of BBCFixer carries the old and the new behavior, so an agent that never completes the diagnosis can still repair from it. 
+
+4.4.3 RQ4.3: Gain on Cases Whose Evidence Points to the Root API. We next examine whether the gain of BBCFixer concentrates on the cases whose evidence points to the labeled root API. The 
+
+evidence points to the labeled root API when either the first divergence or the filtered library diff identifies that API. We label each case for this property (Section 3.3) from the calls recorded in the two runs. An LLM assigns the label under a written protocol, two authors then independently 16 Chen et al. 
+
+label every case, and they agree on 95.0% of the cases (Cohen’s kappa 0.89). The evidence points to the labeled root API in 51 of the 100 benchmark cases. Table 11 compares the average pass rate of BBCFixer and Pure Agent on those 51 cases and on all 100. Under both models, BBCFixer passes more often on the 51 cases, and its gain over Pure Agent is larger there: 20% instead of 17% under qwen3-coder and 16% instead of 12% under GLM-4.5-Air. Section 5 analyzes why the evidence misses the labeled root API in the remaining 49 cases. 
+
+Summary of RQ4 
+
+• BBCFixer raises the rate of identifying the root API, and identification is associated with repair success. BBCFixer identifies the labeled root API more often than Pure Agent under both models, and identified runs pass more often under every setting. 
+
+• BBCFixer gains most on the cases whose evidence points to the labeled root API. 
+
+Under both models, the gain over Pure Agent is larger on these cases than on the full benchmark. 
+
+5 Discussion 
+
+The results raise two implications beyond the RQs. The first is why the evidence sometimes misses the root API, and the second is what the findings imply for supplying evidence to agents. 
+
+Why the Evidence Sometimes Misses the Root API. In RQ4.3, the evidence of BBCFixer points to the labeled root API in 51 of the 100 cases. To find out why the evidence misses the root API in the other 49 cases, we label each of these cases with a reason, based on the calls recorded in the two runs. An LLM assigns the reason under a written protocol, two authors then independently label every case, and they agree on 91.8% of the cases (Cohen’s kappa 0.86). Table 12 lists the three reasons. In more than half of the 49 cases, the two runs do not both record the call to the root API. The other cases split evenly between two reasons: another divergence ranks higher than the call to the root API, or the behavior change alters no recorded return value. The three reasons differ in whether differential execution can observe the break. BBCFixer compares the return values of calls that enter the library, so it can observe a behavioral change that alters the result of an API call. In the cases with the first two reasons, the change still alters the result of a call, but the recorder does not record that call or the ranking rule does not rank it first. Therefore, two directions can help the evidence point to the root API in more cases: capturing calls that pass through the module loaders of test runners or through wrappers, and improving the ranking rule. In the cases with the third reason, a behavioral change modifies a general library rule, such as the type promotion rule of numpy 2, and takes effect through operators, settings, or callbacks that the recorder does not observe. Extending the recorder to operator results and attribute reads is a direction for covering part of these cases. 
+
+Showing the Behavior Change Helps beyond Identifying the Root API. Among the runs that never identify the root API, BBCFixer still has the highest pass rate under both models (RQ4.2). The gain of BBCFixer therefore does not come only from identifying the root API. The first divergence also shows how the behavior of the call changes, because it records the return value of the call under the old and the new library version. In the running example of Figure 3, the first divergence shows that 
+
+format_date returns ’11/08/2026’ instead of ’2026-08-11’ after the upgrade. This behavior change suggests the adaptation that the downstream code needs, even in a run that never identifies the root API. Evidence for repair agents should therefore show the old and the new behavior of the Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 17 
+
+root API, not only its name. A tool that prepares such evidence also fits into continuous integration, because both inputs of differential execution, the project before and after the upgrade and the failing test, exist in every dependency-upgrade pull request. 
+
+6 Threats to Validity 
+
+Construct Validity. The pass rate is an upper bound on repair correctness, because the tests of the reference fix do not cover every behavior. All settings share the same evaluation script, so the differences between settings are less affected than the absolute rates. The failure categories of RQ1 and the identification labels of RQ4.1 come from an LLM judge that follows a written protocol, and two authors review every label independently. The root-API labels are heuristic candidates rather than guaranteed root causes, so RQ4 measures whether the evidence points to the labeled root API and how that relates to the repair outcome, not the accuracy of root-cause localization. 
+
+Internal Validity. The outcome of a single run varies between repetitions of the same setting, so every number in the paper is a three-round average. With 100 cases the statistical tests have limited power, the McNemar test for BBCFixer against Pure Agent rests on 17 to 24 discordant cases, and the ablation has less power still. The evidence of BBCFixer is generated once before the repair starts, so the agent cannot rerun differential execution or re-filter the library diff during the repair. Because BBCFixer packages its evidence with an evidence-consumption procedure, the comparison with Pure Agent estimates the effect of the complete workflow rather than the isolated effect of the two evidence artifacts. A controlled comparison under an identical prompt remains necessary to attribute the gain solely to evidence selection. 
+
+External Validity. BBCBench contains 41 Python and 59 JavaScript cases, and the evaluation uses one agent framework and two open models, so results by library, language, or model rest on small samples. We choose open, low-priced models because realistic deployment repairs many projects at every upgrade (Section 1). The gains of BBCFixer are therefore not measured on higher-priced proprietary models. Differential execution records only the calls that enter the library from outside it, so when it reports no divergence, the filtered library diff carries the diagnosis alone. That filtered library diff states the new expected value only when the library revises its own tests, which Mostafa et al. find for 90.2% of the behavioral backward incompatibilities they detect [23]. This share is an upper bound for our setting, because those incompatibilities are found by running the library tests themselves, which cover them by construction. Some reference fixes come from public repositories and may have appeared in model training data, although agents cannot access online resources during repair and never see the reference fix. Future work should evaluate on temporally held-out upgrades and newly collected cases. 
+
+7 Related Work 
+
+This work builds on two areas of prior research, empirical studies and detection tools for behavioral breaking changes (Section 7.1), and methods that repair breaking changes (Section 7.2). 
+
+7.1 Behavioral Breaking Changes 
+
+Empirical studies measure how often behavioral breaking changes occur and how they reach the downstream project. Mostafa et al. inspect 126 behavioral backward incompatibilities in 15 Java libraries [23]. Kong et al. find that behavior changes are the largest category of breaking changes marked by npm maintainers, at 68.1% [13]. Jayasuriya et al. find that behavioral breaking changes reach client test suites as exceptions or assertion failures [11]. Montandon et al. find that changed default argument values in Scikit-Learn affect 35% of the clients they analyze [22]. 18 Chen et al. 
+
+Detection tools report the changed APIs. Static tools compare the two library versions without executing them. Sembid compares the semantic graphs of APIs whose signatures are unchanged and, as its authors report, misses changes that are only triggered dynamically [40], UnCheckGuard lists the unchecked exceptions that a new version adds [32], and Uppdatera reports the changed functions that the client reaches in a static call graph [10]. Dynamic tools execute code to observe the change. DeBBI runs the test suites of client projects against the new version [4], and GILESI, the closest to differential execution, records the inputs and outputs of every library call during client test execution and compares them across versions [21]. SENSOR and CompCheck generate tests that reveal semantic differences between two library versions [35, 41], and Testora does the same for the two sides of one pull request [25]. All of these tools stop at detection, whereas BBCFixer filters the library diff with the first divergence and gives both items to the repair agent. 
+
+7.2 Repairing Breaking Changes 
+
+Before LLMs, repair methods apply transformation rules from different sources. SemDiff recom-mends the adaptation that the framework makes to its own code [5], APIfix synthesizes rules from adaptations of other clients [8], MELT mines rules from merged library pull requests [27], and JSFIX applies semantic patches written for the change [24]. All four need an existing adaptation or a written description, and a behavioral change that no one has adapted or described gives neither. LLM-based methods form three lines by their source of evidence. The first line starts from the compile error of the broken build. Byam rewrites each failing file in one LLM call with the interface diff of the upgrade in the prompt [30], Fruntke and Krinke let an agent read the repository and revise patches on build feedback [6], BigBag generates a reusable AST transformation program [28], and DependaFix packages Byam as a GitHub App [19]. All four handle only updates that fail at compilation, and Byam reports that semantic failures appear once compilation is restored. The second line repairs from what the maintainers of the library write. Tawosi et al. drive a multi-agent framework with migration documentation [33], BDUpdater, which we replicate in our evaluation, mines breaking change records from the upstream repository [36], and DepRepair distills release notes into a rule table [39]. The third line reads the library diff. AIMigrate prompts the LLM once per project file with the diff between the two library versions [31]. The tool does not run the project, so the diff is neither cut down to the break nor checked against it. Benchmarks accompany these methods. Section 3.2 evaluates BUMP [29], CompSuite [37], TimeMachine-bench [7], and RepoRes-cue [15] against the requirements of the repair task. MigrationBench [17] and FreshBrew [18] target migration away from Java 8, and GitChameleon 2.0 poses version-conditioned Python completion problems [20], so all three test whether the model writes code for a given version, not whether it repairs a broken downstream project. In sum, prior methods start from a compile error, a writ-ten description, or an unfiltered library diff, whereas BBCFixer starts from the behavior change observed by running the failing test under both versions. 
+
+8 Conclusion 
+
+This paper finds that existing LLM-based repair methods and Pure Agent often fail to obtain the upstream evidence that a successful and efficient repair of a behavioral breaking change requires. Based on this finding, we propose BBCFixer, a repair method that runs the failing test under the old and new library versions, ranks the calls whose return value differs to identify a candidate root API, and filters the library diff with that candidate. The paper also contributes BBCBench, a benchmark of 100 behavioral dependency breaks in Python and JavaScript. On BBCBench, BBCFixer raises the average pass rate by up to 17% relative to Pure Agent and needs up to 27% fewer agent steps per successful repair. These results show that BBCFixer repairs behavioral breaking changes more effectively and efficiently. Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 19 
+
+9 Data Availability 
+
+The replication package contains the implementation of BBCFixer and BBCBench, so the results can be reproduced directly. The package is available at https://github.com/Elendil3703/BBCFixer. 
+
+References 
+
+[1] Anthropic. 2025. Introducing Claude Haiku 4.5. https://www.anthropic.com/news/claude-haiku-4-5. Accessed 28 September 2026. [2] Gabriele Bavota, Gerardo Canfora, Massimiliano Di Penta, Rocco Oliveto, and Sebastiano Panichella. 2015. How the Apache community upgrades dependencies: an evolutionary study. Empirical Softw. Engg. 20, 5 (Oct. 2015), 1275–1317. doi:10.1007/s10664-014-9325-9 [3] Juntao Chen, Tingting Bi, Yanlin Wang, and Patanamon Thongtanunam. 2026. Breaking Changes in Software Ecosystems: A Systematic Literature Review. arXiv:2605.24397 [cs.SE] https://arxiv.org/abs/2605.24397 [4] Lingchao Chen, Foyzul Hassan, Xiaoyin Wang, and Lingming Zhang. 2020. Taming Behavioral Backward Incompatibil-ities via Cross-Project Testing and Analysis. In 2020 IEEE/ACM 42nd International Conference on Software Engineering (ICSE) . 112–124. doi:10.1145/3377811.3380436 [5] Barthélémy Dagenais and Martin P. Robillard. 2008. Recommending adaptive changes for framework evolution. In 
+
+2008 ACM/IEEE 30th International Conference on Software Engineering . 481–490. doi:10.1145/1368088.1368154 [6] Lukas Fruntke and Jens Krinke. 2025. Automatically Fixing Dependency Breaking Changes. Proc. ACM Softw. Eng. 2, FSE, Article FSE096 (July 2025), 23 pages. doi:10.1145/3729366 [7] Ryo Fujii, Makoto Morishita, Kazuki Yano, and Jun Suzuki. 2026. TimeMachine-bench: A Benchmark for Evaluating Model Capabilities in Repository-Level Migration Tasks. In Proceedings of the 19th Conference of the European Chapter of the Association for Computational Linguistics (Volume 1: Long Papers) , Vera Demberg, Kentaro Inui, and Lluís Marquez (Eds.). Association for Computational Linguistics, Rabat, Morocco, 8233–8264. doi:10.18653/v1/2026.eacl-long.385 [8] Xiang Gao, Arjun Radhakrishna, Gustavo Soares, Ridwan Shariffdeen, Sumit Gulwani, and Abhik Roychoudhury. 2021. APIfix: output-oriented program synthesis for combating breaking changes in libraries. Proc. ACM Program. Lang. 5, OOPSLA, Article 161 (Oct. 2021), 27 pages. doi:10.1145/3485538 [9] GLM-4.5 Team. 2025. GLM-4.5: Agentic, Reasoning, and Coding (ARC) Foundation Models. arXiv:2508.06471 [cs.CL] https://arxiv.org/abs/2508.06471 [10] Joseph Hejderup and Georgios Gousios. 2022. Can we trust tests to automate dependency updates? A case study of Java Projects. Journal of Systems and Software 183 (2022), 111097. doi:10.1016/j.jss.2021.111097 [11] Dhanushka Jayasuriya, Valerio Terragni, Jens Dietrich, and Kelly Blincoe. 2024. Understanding the Impact of APIs Behavioral Breaking Changes on Client Applications. Proc. ACM Softw. Eng. 1, FSE, Article 56 (July 2024), 24 pages. doi:10.1145/3643782 [12] Sayash Kapoor, Benedikt Stroebl, Zachary S. Siegel, Nitya Nadgir, and Arvind Narayanan. 2024. AI Agents That Matter. arXiv:2407.01502 [cs.LG] https://arxiv.org/abs/2407.01502 [13] Dezhen Kong, Jiakun Liu, Lingfeng Bao, and David Lo. 2025. Toward Better Comprehension of Breaking Changes in the NPM Ecosystem. ACM Trans. Softw. Eng. Methodol. 34, 4, Article 111 (April 2025), 23 pages. doi:10.1145/3702991 [14] Raula Gaikovina Kula, Daniel M. German, Ali Ouni, Takashi Ishio, and Katsuro Inoue. 2018. Do developers update their library dependencies? Empirical Softw. Engg. 23, 1 (Feb. 2018), 384–417. doi:10.1007/s10664-017-9521-5 [15] Zhihao Lin, Mingyi Zhou, Zhensu Sun, Yizhuo Yang, Renyu Yang, David Lo, and Li Li. 2026. RepoRescue: An Empirical Study of LLM Agents on Whole-Repository Compatibility Rescue. arXiv:2607.01213 [cs.SE] https://arxiv.org/abs/2607. 01213 [16] Junchi Liu, Ali Bigdeli, Roya Daneshi, Atu Ambala, Sudipto Ghosh, and Fabio Santos. 2026. Rethinking Automated Program Repair: The Impact of Bug Complexity, Fault Localization, and LLM Cost-efficiency. arXiv:2608.14065 [cs.SE] https://arxiv.org/abs/2608.14065 [17] Linbo Liu, Xinle Liu, Qiang Zhou, Lin Chen, Yihan Liu, Hoan Nguyen, Behrooz Omidvar Tehrani, Xi Shen, Jun Huan, Omer Tripp, and Anoop Deoras. 2026. MigrationBench: Repository-Level Code Migration Benchmark from Java 8. In 
+
+Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2 (Republic of Korea) 
+
+(KDD ’26) . Association for Computing Machinery, New York, NY, USA, 9427–9438. doi:10.1145/3770855.3817526 [18] Victor May, Diganta Misra, Yanqi Luo, Anjali Sridhar, Justine Gehring, and Silvio Soares Ribeiro Junior. 2025. FreshBrew: A Benchmark for Evaluating AI Agents on Java Code Migration. arXiv:2510.04852 [cs.SE] https://arxiv.org/abs/2510. 04852 [19] Enock Mecheo, May Mahmoud, and Sarah Nadi. 2026. DependaFix: A GitHub App for Fixing Breaking Dependency Updates in CI Build for Java Projects . Association for Computing Machinery, New York, NY, USA, 127–131. https: //doi.org/10.1145/3803437.3806404 20 Chen et al. 
+
+[20] Diganta Misra, Nizar Islah, Victor May, Brice Rauby, Zihan Wang, Justine Gehring, Antonio Orvieto, Muawiz Chaudhary, Eilif B. Muller, Irina Rish, Samira Ebrahimi Kahou, and Massimo Caccia. 2025. GitChameleon 2.0: Evaluating AI Code Generation Against Python Library Version Incompatibilities. arXiv:2507.12367 [cs.SE] https://arxiv.org/abs/2507.12367 [21] Gustave Monce, Thomas Degueule, Jean-Rémy Falleri, and Romain Robbes. 2025. Client–Library Compatibility Testing with API Interaction Snapshots. In 41st IEEE International Conference on Software Maintenance and Evolution (ICSME 2025) (Auckland, New Zealand). 791–796. doi:10.1109/ICSME64153.2025.00081 [22] João Eduardo Montandon, Luciana Lourdes Silva, Cristiano Politowski, Daniel Prates, Arthur de Brito Bonifácio, and Ghizlane El Boussaidi. 2025. Unboxing Default Argument Breaking Changes in 1 + 2 data science libraries. J. Syst. Softw. 229, C (Nov. 2025), 16 pages. doi:10.1016/j.jss.2025.112460 [23] Shaikh Mostafa, Rodney Rodriguez, and Xiaoyin Wang. 2017. Experience paper: a study on behavioral backward incompatibilities of Java software libraries. In Proceedings of the 26th ACM SIGSOFT International Symposium on Software Testing and Analysis (Santa Barbara, CA, USA) (ISSTA 2017) . Association for Computing Machinery, New York, NY, USA, 215–225. doi:10.1145/3092703.3092721 [24] Benjamin Barslev Nielsen, Martin Toldam Torp, and Anders Møller. 2021. Semantic Patches for Adaptation of JavaScript Programs to Evolving Libraries. In 2021 IEEE/ACM 43rd International Conference on Software Engineering (ICSE) . 74–85. doi:10.1109/ICSE43902.2021.00020 [25] Michael Pradel. 2026. Testora: Using Natural Language Intent to Detect Behavioral Regressions. In 2026 IEEE/ACM 48th International Conference on Software Engineering (ICSE ’26) (Rio de Janeiro, Brazil). Association for Computing Machinery, New York, NY, USA, 13 pages. doi:10.1145/3744916.3764527 [26] Qwen Team. 2025. Qwen3-Coder. https://github.com/QwenLM/Qwen3-Coder. Accessed 29 August 2026. [27] Daniel Ramos, Hailie Mitchell, Inês Lynce, Vasco Manquinho, Ruben Martins, and Claire Le Goues. 2024. MELT: Mining Effective Lightweight Transformations from Pull Requests. In Proceedings of the 38th IEEE/ACM International Conference on Automated Software Engineering (Echternach, Luxembourg) (ASE ’23) . IEEE Press, 1516–1528. doi:10. 1109/ASE56229.2023.00117 [28] Frank Reyes, Benoit Baudry, and Martin Monperrus. 2026. Agentic Generation of AST Transformation Rules for Fixing Breaking Updates. arXiv:2606.24446 [cs.SE] https://arxiv.org/abs/2606.24446 [29] Frank Reyes, Yogya Gamage, Gabriel Skoglund, Benoit Baudry, and Martin Monperrus. 2024. BUMP: A Benchmark of Reproducible Breaking Dependency Updates . In 2024 IEEE International Conference on Software Analysis, Evolution and Reengineering (SANER) . IEEE Computer Society, Los Alamitos, CA, USA, 159–170. doi:10.1109/SANER60148.2024.00024 [30] Frank Reyes, May Mahmoud, Federico Bono, Sarah Nadi, Benoit Baudry, and Martin Monperrus. 2026. Byam: Fixing Breaking Dependency Updates with Large Language Models. Empirical Software Engineering 31, 4 (April 2026), 113. doi:10.1007/s10664-026-10835-1 [31] Katherine A. Rosenfeld, Cliff C. Kerr, and Jessica Lundin. 2025. What a diff makes: automating code migration with large language models. arXiv:2511.00160 [cs.SE] https://arxiv.org/abs/2511.00160 [32] Vinayak Sharma and Patrick Lam. 2025. Detecting Exception-Related Behavioural Breaking Changes with UnCheck-Guard. In 2025 IEEE International Conference on Source Code Analysis & Manipulation (SCAM) . 1–12. doi:10.1109/ SCAM67354.2025.00008 [33] Vali Tawosi, Salwa Alamir, Xiaomo Liu, and Manuela Veloso. 2025. LLM Agents for Automated Dependency Upgrades. arXiv:2510.03480 [cs.SE] https://arxiv.org/abs/2510.03480 [34] The SWE-agent team. 2025. mini-swe-agent: The minimal AI software engineering agent. https://github.com/SWE-agent/mini-swe-agent. Accessed 29 August 2026. [35] Ying Wang, Rongxin Wu, Chao Wang, Ming Wen, Yepang Liu, Shing-Chi Cheung, Hai Yu, Chang Xu, and Zhiliang Zhu. 2022. Will Dependency Conflicts Affect My Program’s Semantics? IEEE Transactions on Software Engineering 48, 7 (2022), 2295–2316. doi:10.1109/TSE.2021.3057767 [36] Yifan Xia, Chengwei Liu, Zifan Xie, Lyuye Zhang, Peiyu Liu, Kangjie Lu, Yang Liu, Wenhai Wang, and Shouling Ji. 2026. Break to Adapt: Knowledge-Based Updates of Breaking Dependencies in JavaScript. Proc. ACM Softw. Eng. 3, FSE, Article FSE109 (June 2026), 23 pages. doi:10.1145/3808116 [37] Xiufeng Xu, Chenguang Zhu, and Yi Li. 2024. CompSuite: A Dataset of Java Library Upgrade Incompatibility Issues. In Proceedings of the 38th IEEE/ACM International Conference on Automated Software Engineering (Echternach, Luxembourg) (ASE ’23) . IEEE Press, 2098–2101. doi:10.1109/ASE56229.2023.00127 [38] John Yang, Carlos E. Jimenez, Alexander Wettig, Kilian Lieret, Shunyu Yao, Karthik Narasimhan, and Ofir Press. 2024. SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering. arXiv:2405.15793 [cs.SE] https://arxiv.org/abs/2405.15793 [39] Shenghao Yang, Bo Lu, Yaochen Liu, Yu Kang, Qiongfang Zhang, Chetan Bansal, Saravan Rajmohan, and Minghua Ma. 2026. DepRepair: LLM-Based Source-Code Repair for Dependency Breaking Changes. arXiv:2607.17957 [cs.SE] https://arxiv.org/abs/2607.17957 Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks 21 
+
+[40] Lyuye Zhang, Chengwei Liu, Zhengzi Xu, Sen Chen, Lingling Fan, Bihuan Chen, and Yang Liu. 2022. Has My Release Disobeyed Semantic Versioning? Static Detection Based on Semantic Differencing. In Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering (Rochester, MI, USA) (ASE ’22) . Association for Computing Machinery, New York, NY, USA, 13 pages. doi:10.1145/3551349.3556956 [41] Chenguang Zhu, Mengshi Zhang, Xiuheng Wu, Xiufeng Xu, and Yi Li. 2023. Client-Specific Upgrade Compatibility Checking via Knowledge-Guided Discovery. ACM Trans. Softw. Eng. Methodol. 32, 4, Article 98 (May 2023), 31 pages. doi:10.1145/3582569
