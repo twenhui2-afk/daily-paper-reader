@@ -6,67 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-09
-- 运行时间：2026-10-10 07:26:05 UTC+8
+- 最新运行日期：2026-10-10
+- 运行时间：2026-10-11 06:37:30 UTC+8
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：4
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
-- 精读：《Separating comb inequalities is NP-hard》（8.5/10）, 《On Bonart's interpretation of the Square-Root Impact Law》（8.2/10）
-- 速读：《The full shadow of a polynomial I. The limiting core and the transient set》（7.5/10）, 《A Semiclassical Limit of Large-Colour State Sums for Semisimple Lie Algebras》（7.5/10）, 《When Does Inexact Matching Ensure Balance and Inference without Adjustment?》（7.4/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Symmetry and Invariant Theory of Quadratic Dynamics over Eight-Dimensional Composition Algebras》（6.6/10）, 《A combinatorial criterion for detecting roots of Bernstein-Sato polynomials》（6.5/10）, 《Shared Gaussianization: What Gaussian Regularizers Certify About Contrastive Learning, and What They Miss》（6.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/09/README](/202610/09/README)
+- 详情：[/202610/10/README](/202610/10/README)
 
 ### 精读区论文标签
-1. [Separating comb inequalities is NP-hard](/202610/09/2610.09065v1-separating-comb-inequalities-is-np-hard)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [On Bonart's interpretation of the Square-Root Impact Law](/202610/09/2610.10053v1-on-bonarts-interpretation-of-the-square-root-impact-law)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [A Fast and Stable Square-Root-Free Unitary Core-Chasing Algorithm](/202610/09/2610.12228v1-a-fast-and-stable-square-root-free-unitary-core-chasing-algorithm)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [Who Broke Me? Execution-Guided Repair of Behavioral Dependency Breaks](/202610/09/2610.09267v1-who-broke-me-execution-guided-repair-of-behavioral-dependency-breaks)  
-   标签：评分：8.0/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [The full shadow of a polynomial I. The limiting core and the transient set](/202610/09/2610.09602v1-the-full-shadow-of-a-polynomial-i-the-limiting-core-and-the-transient-set)  
-   标签：评分：7.5/10
+1. [Symmetry and Invariant Theory of Quadratic Dynamics over Eight-Dimensional Composition Algebras](/202610/10/2610.09544v1-symmetry-and-invariant-theory-of-quadratic-dynamics-over-eight-dimensional-composition-algebras)  
+   标签：评分：6.6/10
    evidence：检索回退候选
-2. [A Semiclassical Limit of Large-Colour State Sums for Semisimple Lie Algebras](/202610/09/2610.10269v1-a-semiclassical-limit-of-large-colour-state-sums-for-semisimple-lie-algebras)  
-   标签：评分：7.5/10
-   evidence：检索回退候选
-3. [When Does Inexact Matching Ensure Balance and Inference without Adjustment?](/202610/09/2610.10873v1-when-does-inexact-matching-ensure-balance-and-inference-without-adjustment)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-4. [TranScope: What the Software Hides About LLM Training Data, the Hardware Reveals at Scale, and Accelerators Magnify](/202610/09/2610.06848v1-transcope-what-the-software-hides-about-llm-training-data-the-hardware-reveals-at-scale-and-accelerators-magnify)  
+2. [A combinatorial criterion for detecting roots of Bernstein-Sato polynomials](/202610/10/2610.09982v1-a-combinatorial-criterion-for-detecting-roots-of-bernstein-sato-polynomials)  
    标签：评分：6.5/10
    evidence：检索回退候选
-5. [Skillful Data-Driven Subseasonal Soil Moisture Forecasting: Prospects and Limits for Flash Drought Prediction](/202610/09/2610.07060v1-skillful-data-driven-subseasonal-soil-moisture-forecasting-prospects-and-limits-for-flash-drought-prediction)  
+3. [Shared Gaussianization: What Gaussian Regularizers Certify About Contrastive Learning, and What They Miss](/202610/10/2610.10299v1-shared-gaussianization-what-gaussian-regularizers-certify-about-contrastive-learning-and-what-they-miss)  
    标签：评分：6.5/10
    evidence：检索回退候选
-6. [Debiased Machine Learning for Count Data: a Partially Linear Poisson Model Based on Neural Networks](/202610/09/2610.07500v1-debiased-machine-learning-for-count-data-a-partially-linear-poisson-model-based-on-neural-networks)  
+4. [$\exists \mathbb{R} \subseteq \textsf{CH}$](/202610/10/2610.10514v1-exists-mathbbr-subseteq-textsfch)  
    标签：评分：6.4/10
    evidence：检索回退候选
-7. [What a knot sees at a root of unity](/202610/09/2610.08242v1-what-a-knot-sees-at-a-root-of-unity)  
+5. [A Hawkes Microfoundation for Multitype Inverse Gaussian Subordinators](/202610/10/2610.10525v1-a-hawkes-microfoundation-for-multitype-inverse-gaussian-subordinators)  
    标签：评分：6.4/10
    evidence：检索回退候选
-8. [Positive Bidiagonal Factorizations and Mixed-Type Chebyshev Multiple Orthogonal Polynomials](/202610/09/2610.08568v1-positive-bidiagonal-factorizations-and-mixed-type-chebyshev-multiple-orthogonal-polynomials)  
+6. [Fourier quasicrystals with positive integer masses are sections of Lee-Yang cycles](/202610/10/2610.10652v1-fourier-quasicrystals-with-positive-integer-masses-are-sections-of-lee-yang-cycles)  
    标签：评分：6.3/10
    evidence：检索回退候选
-9. [The least prime with a given primitive root and a variant of the larger sieve](/202610/09/2610.08569v1-the-least-prime-with-a-given-primitive-root-and-a-variant-of-the-larger-sieve)  
+7. [BEANS-Next and ROOTS: Broadening Audio-Language Capabilities for Bioacoustics](/202610/10/2610.10663v1-beans-next-and-roots-broadening-audio-language-capabilities-for-bioacoustics)  
    标签：评分：6.3/10
    evidence：检索回退候选
-10. [Root systems and Minimal RG flows to c=1 CFTs](/202610/09/2610.08938v1-root-systems-and-minimal-rg-flows-to-c1-cfts)  
+8. [When Flaws Cascade: Understanding Vulnerabilities and Exploitation Chains in JavaScript Engines](/202610/10/2610.10844v1-when-flaws-cascade-understanding-vulnerabilities-and-exploitation-chains-in-javascript-engines)  
    标签：评分：6.2/10
    evidence：检索回退候选
-11. [Kuration SDK: Addressing the Virtual2Real Gap via Data Curation](/202610/09/2610.09305v1-kuration-sdk-addressing-the-virtual2real-gap-via-data-curation)  
+9. [From Video Clips to Creation Trajectory: Sora100K for AI-Native Video Creation](/202610/10/2610.11770v1-from-video-clips-to-creation-trajectory-sora100k-for-ai-native-video-creation)  
    标签：评分：6.2/10
+   evidence：检索回退候选
+10. [Short-Range Vector Spin Glasses: Parisi Hierarchies and Real-Space Ultrametricity](/202610/10/2610.12441v1-short-range-vector-spin-glasses-parisi-hierarchies-and-real-space-ultrametricity)  
+   标签：评分：6.1/10
+   evidence：检索回退候选
+11. [Parabolic induction for Takiff algebras and character formulas in Chari's category $\widetilde{\mathcal{O}}$](/202610/10/2610.02787v1-parabolic-induction-for-takiff-algebras-and-character-formulas-in-charis-category-widetildemathcalo)  
+   标签：评分：6.1/10
    evidence：检索回退候选
 
 
