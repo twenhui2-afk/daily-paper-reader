@@ -1,0 +1,579 @@
+Title: PonyTail: Profiling and Improving Service Tail Latency
+
+URL Source: https://arxiv.org/pdf/2610.04615v1
+
+Published Time: Tue, 06 Oct 2026 00:59:59 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# PonyTail: Profiling and Improving Service Tail Latency 
+
+## Roee Wodislawski 
+
+Tel Aviv University Tel Aviv, Israel 
+
+## Adam Morrison 
+
+Tel Aviv University Tel Aviv, Israel 
+
+## Abstract 
+
+Datacenter services must meet tight tail latency service-level objectives. Research on improving tail latency focuses on reducing queuing delay by approximating optimal request scheduling policies. As request scheduling nears optimality, the primary way to further improve tail latency is to reduce the service time of requests. Unfortunately, datacenter services lack obvious hotspots for general service time optimization. We point out a new optimization opportunity in targeting the tail service time of services with dispersive service times, which are common in datacenters. To show the feasibility and benefit of this approach, we present PonyTail, a performance analysis methodology and toolkit for analyzing service-level outlier behaviors associated with tail service time. PonyTail helps performance engineers identify control-flow and mi-croarchitectural patterns responsible for service time outliers, as well as their root causes. We apply PonyTail to analyze five latency-critical services, including an in-memory database system and an online search engine. Based on PonyTail’s analysis, we optimize some of the services, improving their 99th percentile service time and latency by 10.7%–46% and 21%–5 ×, respectively. 
+
+## 1 Introduction 
+
+Datacenter services, from storage and data retrieval systems to machine learning applications, increasingly face tight tail latency service-level objectives (SLOs), such as the 99.9th percentile latency being a few milliseconds [12, 18, 99] or microseconds [8, 47, 69, 109]. These services form the back-end of large-scale online platforms like social networks, web search, and e-commerce, which must respond to user requests quickly to improve user experience [18] and revenue [3, 31, 79]. Minimizing datacenter service tail latency is crucial, as each user request triggers hundreds of concurrent service calls [19, 76] and the slowest service response determines the request’s overall latency [9, 18, 26, 54, 70]. Tail latency is usually dominated not by the time it takes the service to process a request—its service time —but by queuing delay in the operating system or service runtime system [42, 52, 82]. Queuing delay occurs when the request arrival rate momentarily exceeds the service’s service rate, e.g., due to bursts of requests or service of a long-latency request blocking short-latency requests [21, 42, 47, 52, 82]. Most efforts to improve tail latency therefore target reduc-ing queuing delay. Queuing delay can be avoided by overpro-visioning servers so individual server load is kept low, but this approach is wasteful and not cost-effective [20, 66]. Tail latency can be minimized in a resource-efficient manner by effective request scheduling (queue management). Queuing theory has identified optimal work-conserving request sched-uling policies 1 for minimizing tail latency [102]. Systems research has explored efficient mechanisms for implementing (or approximating) these policies—even for microsecond-scale service times—using work stealing [80, 82] and request preemption [42, 47, 63]. Compared to alternative (non-work-conserving) policies that leverage knowledge of the service time distribution [21], the near-optimal policies sustain higher throughput for the same tail latency SLOs. With request scheduling subsystems tightly approximating optimal policies, however, the importance of improving ser-vice time grows. The primary way to further reduce queuing delay under an optimal scheduling policy is to reduce request service time, as the time a request spends enqueued depends on the service times of all other pending requests [34, 102]. The problem is that service performance is already heav-ily optimized, with hyperscale datacenter operators even per-forming automatic profile-guided optimization [14, 28, 58, 81, 111] based on datacenter-wide profiling [6, 48, 86]. Moreover, datacenter services typically do not have obvious hotspots that can be optimized to improve common-case service time [48]. Driving tail latency improvements by improving service time will thus entail new optimization strategies. 
+
+Opportunity: Tail optimization We point out a general op-timization opportunity in targeting the tail service time of services with dispersive (variable) service times, which are common in datacenters [10, 13, 54]. In such services, it is meaningful to distinguish slow from average service times and to optimize the slowest requests—rather than optimizing hotspots that broadly impact a large fraction of requests. Tail service time optimization is appealing for services with dis-persive service times, as improving just the tail service times can have an outsized impact on queuing delay (§ 3). Tail optimization targets service-level factors, not external factors such as (1) hardware behaviors, e.g., resource competi-tion from co-running programs [20, 53, 67, 107, 114], power limit-related throttling [37, 52, 66, 98], and energy manage-ment [72, 73, 103]; (2) operating system sources like inter-rupt management [25, 38, 61, 62, 80]; or (3) runtime system activities such as garbage collection [49, 104, 106]. While variability in service time is often attributed to such exter-nal factors, many latency-critical services exhibit dispersive service times even when external performance fluctuations   
+
+> 1In a work-conserving policy, servicing cores cannot be idle if there are pending requests. 1arXiv:2610.04615v1 [cs.PF] 3 Oct 2026
+
+are controlled for [54]. This indicates that their service time variability is due to service-level factors. This paper shows the feasibility and benefit of tail service time optimization. We make two main contributions. 
+
+1 PonyTail (§ 4) We present PonyTail, a performance anal-ysis methodology and toolkit for developers to explore tail service time optimization possibilities. PonyTail’s goal is to assist performance engineers in analyzing service-level out-lier behaviors responsible for tail service time in cases where hotspot-oriented profiling is less applicable. Because the out-lier behaviors behind tail service times occur infrequently (e.g., 1-in-1000 for the 99.9th percentile service time), a tradi-tional profiler would either miss them or rank them as insignif-icant. Example PonyTail use cases include analysis of service time variability in a specific request type and identification of slow requests in a mix of request types. 2
+
+PonyTail’s methodology seeks to attribute outlier service times to the following service-level causes, which together characterize all possible reasons for a tail request being slower than typical requests. The relevant requests might have a unique architectural (code) footprint —i.e., they take a distinct execution path, either statically (different code) or dynam-ically (e.g., executing more loop iterations than in average requests). Alternatively, outlier requests might have a distinct 
+
+microarchitectural footprint , such as a certain load instruction incurring a cache miss instead of a hit. PonyTail’s toolkit enables developers to identify outlier footprints and their root causes. It provides a familiar profiler workflow, consisting of online recording of every request’s footprints, followed by offline analysis that identifies unique aspects of slow request footprints. To help subsequent anal-ysis of these unique aspects’ root causes, PonyTail supports request-level collection of user-specified performance counter measurements with a similar workflow. PonyTail’s data collection leverages modern capabilities of Intel processors, such as Processor Trace [40] and top-down microarchitecture analysis performance counters [40]. It also requires minimal service source code modification to demarcate request boundaries by invoking PonyTail methods. Our evaluation (§ 6) shows that PonyTail’s data collection has moderate overhead—increasing mean service time by 9%–24%, depending on the service time scale—but does not change the shape of the service time distribution. While this overhead precludes datacenter-wide, 24/7 deployment of PonyTail data collection, we believe that it is acceptable for intermittent or manual data collection for performance analysis. PonyTail data collection can also be run on multiple server machines (i.e., service instances), thereby minimizing disruption to each individual instance while still collecting sufficient data to capture tail events. 
+
+> 2In contrast, if tail service time is a priori known to result from a specific slow request type (such as range scans vs. point queries in a key/value store [21]), it can usually be analyzed by profiling a workload with only slow requests.
+
+2 Case studies (§ 5) To demonstrate the merit of the Pony-Tail methodology and toolkit, we apply them to analyze the services from the TailBench suite [54], a collection of latency-critical services spanning a wide range of application domains and tail latency SLOs. Seven out of the eight services are C++ programs, of which we analyze the five services that exhibit dispersive service times. PonyTail successfully identifies that service time outliers in these services are correlated with distinct microarchitectural and code footprints (both static and dynamic). Based on in-sights obtained from examining these footprints and their root causes, we optimize some of the services, each in a different way—from low-level optimization to configuration tuning. Our tail optimizations improve the 99th percentile service time of TPC-C transactions in the in-memory database sys-tem silo [97] by 10% and its maximum service time by 4.3×. Impact on 99th percentile latency depends on workload queuing delay: it improves by 21% at low-to-moderate loads (where the baseline 99th percentile latency is at most 12 × the mean service time) and by up to 3 × at higher loads. For the real-time translation service moses [60], we find that tail ser-vice time is mainly due to misses in a service-internal cache. Improving the cache’s hit rate (e.g., via warmup) results in reductions of 53 × and 22 × in the 99th percentile service time and latency, respectively. In the online search engine xapian [105] and the speech recognition service sphinx [100], we find that tail service time is due to factors such as input-dependent loops which dominate service time, and thus cause service time outliers for certain inputs. In these cases, PonyTail’s unique tail-oriented analyses lead to discovery of optimizations that improve ser-vice times across the board. Some of these optimizations may be independently interesting, as they target under-explored microarchitectural mechanisms. Our optimizations improve 
+
+xapian and sphinx service times by 46% and 10.7%, re-spectively, yielding improvements of up to 5 × and 2 × in latency (across the board). Overall, this paper shows that opportunities to further re-duce tail latency exist and that tail service time optimization— facilitated by PonyTail—can unlock this potential, thereby complementing existing optimization approaches. 
+
+## 2 Background 
+
+This section provides background on performance analysis on Intel CPUs. Familiar readers can skip this section. 
+
+CPU structure Like all modern high-performance CPUs, In-tel CPUs employ a superscalar out-of-order (OoO) microar-chitectural design [89]. “Superscalar” means that the pro-cessor can initiate execution of multiple instructions (from a single instruction stream) per clock cycle [36, 45]. “Out-of-order” (or dynamic ) means that the processor determines instruction execution order according to the dynamic avail-ability of instruction inputs and hardware execution units [96], 
+
+> 2
+
+executing instructions possibly out of program order while retaining the appearance of a sequential execution. A pro-cessor core consists of a frontend , which fetches instructions from memory, and a backend , which executes instructions. The frontend decodes fetched instructions into internal micro-operations ( μ-ops), which are subsequently dispatched to the backend, where they await execution. The backend is respon-sible for executing a fixed-size sliding instruction window of the latest fetched μ-ops. μ-ops retire in program order, exiting the instruction window once they have executed and committing their results to architectural state. The backend computes dependencies between the μ-ops and schedules their execution (by issuing them to an execution unit) regard-less of their position in the instruction window, based only on availability of hardware execution resources and dependency constraints. The CPU relies on branch prediction [36] to avoid stalling instruction fetching when encountering a branch instruction. Once the branch executes, the prediction’s correctness is validated. If the prediction was correct, the branch instruc-tion can eventually retire. Otherwise, on a misprediction, the backend’s state is rolled back to its last known valid state (which was checkpointed upon making the prediction), thereby squashing the mispredicted branch and all subsequent (mispredicted) μ-ops in the instruction window 
+
+Top-down microarchitecture analysis [108] TMA is a method-ology for identifying hardware-related bottlenecks. It uses per-formance monitoring events to measure utilization of pipeline slots , which represent the CPU resources required to process a 
+
+μ-op. Each pipeline slot available during the program’s execu-tion is classified into one of four categories. If the slot is empty (stalled), it is classified according to the stall reason: (1) fron-tend (unable to fill the slot, e.g., due to an instruction cache miss) or (2) backend (unable to process the slot, e.g., due to an unavailable resource). If the slot is non-empty (utilized), it is classified according to whether it (3) was mispredicted or (4) eventually retired. TMA can further break down each category into finer-grained metrics. The following performance monitoring mechanisms are provided by the performance monitoring unit (PMU) in Intel CPUs. They can be enabled by a profiler without cooperation from the analyzed program. 
+
+Processor event-based sampling [40, § 20.9] PEBS enables efficient, precise sampling of hardware events. In contrast to traditional sampling, recording the execution context of each sample (e.g., timestamp and program counter) is done by the CPU. This information is recorded in an in-memory buffer, with an interrupt raised only when the buffer fills up. 
+
+Processor Trace [40, § 33] PT captures a control-flow trace of the program into an in-memory buffer in compact for-mat. For every executed branch (except unconditionally taken branches), it records whether the branch was taken or not, its target (for an indirect branch), and (optionally) a timestamp. 
+
+## 3 Motivation 
+
+Service tail latency SLOs are specified with respect to re-sponse time , which is the sum of a request’s queuing delay and service time. Queuing delay dominates response time un-less the system operates well below capacity, and is therefore the main target for optimization. As a result, implementa-tions of tail-optimal request scheduling policies have seen continuous efficiency improvements, to the point that further tail latency reductions will require improving service times— but at the same time, it is becoming harder to find software optimizations that broadly improve service times (§ 3.1). To address these trends, we argue for optimizing tail service time, as it can have an outsized impact on response time (§ 3.2). 
+
+3.1 Need for tail service time optimization 
+
+Queuing theory has established an optimal configuration for minimizing tail latency: a single request queue managed with a tail-optimal scheduling policy, which depends on the nature of the service time distribution [102]. For low-to-moderately dispersive service times, the optimal policy is first-come-first-served (FCFS) [84]. For highly dispersive distributions, an optimal policy is processor sharing (PS) [77], where each request receives an equal fraction of CPU capacity. Implementations of these optimal configurations must ad-dress problems that are abstracted away in the queuing theory model, such as multi-core synchronization of a global queue and how to time-share cores between requests in PS. Over time, implementations have steadily addressed the overheads caused by these problems [21, 25, 42, 47, 63, 80, 82]. State-of-the-art request schedulers can now efficiently implement (or closely approximate) the optimal configurations even for microsecond-scale service times. For example, the overhead of the Concord [42] preemptive scheduler (which approxi-mates PS) on 500 μs requests is only 1.5%–5% (depending on the hardware) even for a scheduling quantum of 2.5 μs. Overall, request scheduling overhead is now negligible, ex-cept perhaps for single- or double-digit μs requests. And even there, scheduling overhead is continuously decreasing. Given an optimal request scheduling policy implemented with minimal overhead, the primary way to further improve tail latency is by improving service times , as queuing delay depends on the service times of pending requests. In FCFS, a request’s queuing delay is the sum of the service times of the requests in front of it in the queue. Clearly, reducing the pending requests’ service times will reduce the request’s queuing delay. In PS, a request’s response time depends on the fraction of CPU capacity it receives, which depends on the number of pending requests. If some pending requests finish faster, the request’s CPU share will increase and it will complete sooner. 
+
+> 3
+
+While it would be ideal to improve service times across the board by speeding up a large fraction of requests, it is becoming harder and harder to find software optimizations with such an effect. Services often have no obvious hotspots to optimize, to the point that optimizing individual services is considered not cost-effective [48]—which has driven dat-acenter operators to perform automatic profile-guided op-timization [14, 28, 58, 81, 111]. Recent research on broad optimization of datacenter services has turned to proposing hardware-based optimizations [48, 55, 57, 91], which cannot be used today. We conclude that a new software optimiza-tion strategy is needed: tail service time optimization—i.e., optimizing the slowest requests instead of most or all requests. 
+
+3.2 Potential of tail service time optimization 
+
+To show the potential of optimizing tail service time, we simu-late the impact of hypothetical tail service time optimizations on the 99.9th percentile response time of a latency-critical ser-vice running on an ideal server. We consider the (dispersive) service time distributions of four latency-critical services: 
+
+xapian , silo , moses , and shore (described in § 5, Figure 3) whose service times range across different scales, from tens of microseconds to tens of milliseconds. We simulate a typical server with 16 worker cores using the optimal configuration of a single queue managed with a tail-optimal scheduling policy. We determine the optimal policy for each service by simulating both FCFS and PS, as which of them is optimal depends on the level of distribution dispersion [82]. We simulate the system until achieving 95% confidence intervals of 5% error in the obtained results. We compare each service to hypothetical tail-optimized versions of itself, denoted opt  ≥ p, −d%, in which the re-quests responsible for the p-th percentile (or worse) service times have been sped up by d%. We simulate opt  ≥ p, −d%
+
+by sampling an arriving request’s service time from the ser-vice’s baseline distribution and reducing it by d% if it exceeds the baseline p-th percentile. Figure 1 compares each service to its opt  ≥ p98 , −50% 
+
+and opt  ≥ p95 , −20%  versions, which model optimization levels similar to what our case studies (§ 5) achieve. We report results for FCFS (which is optimal for every service) and PS. The results for both are qualitatively similar. The figure compares the 99.9th percentile response time for Poisson request arrivals with the same mean request rate, λ , shown as a fraction of the baseline’s service rate of μ · w, where μ
+
+is the baseline’s single-worker mean service time and w = 16 is the number of workers. (A Poisson arrival process models the bursty, independent nature of datacenter traffic [74].) There are several takeaways from Figure 1: 1 Tail service time optimization can yield disproportionate improvements in tail response time and throughput. Although the mean response time of xapian , silo , and shore improves by ≤
+
+6.5% due to the tail service time optimizations, their 99.9th percentile response time at 95% load improves by 20%, 47%, 0% 20% 40% 60% 80% 100%                                      
+
+> 100 s
+> 1 ms 10 ms 100 ms
+> xapian silo 0% 20% 40% 60% 80% 100% 10 ms 100 ms
+> moses shore p99.9 response time (log) Load (percent of max) baseline opt( p98,-50%) opt( p95,-20%)
+> service time distributions baseline opt( p98,-50%) opt( p95,-20%)
+> service time distributions 0% 20% 40% 60% 80% 100%
+> 100 s
+> 1 ms 10 ms 100 ms
+> xapian silo 0% 20% 40% 60% 80% 100% 1 ms 10 ms 100 ms 1 sec
+> moses shore p99.9 response time (log) Load (percent of max) baseline opt( p98,-50%) opt( p95,-20%)
+> service time distributions baseline opt( p98,-50%) opt( p95,-20%)
+> service time distributions
+
+Figure 1. Tail service time impact on tail response time (including queuing delay) for an optimal FCFS scheduling policy (top) and a processor sharing scheduling policy (bottom). The figure shows how a hypothetical reduction of 50% or 20% of the 98th or 95th percentile service times, respectively, impacts the 99.9th percentile response time of four latency-critical services (with different service time scales) at various loads. 
+
+and 42%, respectively. Likewise, the optimized silo and 
+
+shore (respectively, xapian ) can handle 10 (respectively, 5) percentage points higher request rates with the same tail latency SLO as their baselines at 80% load. (We discuss 
+
+moses separately below.) 2 Moderate speedups can be effective. For xapian , silo ,and shore , the impact of speeding up the 5% slowest requests by 20% is comparable to that of speeding up the 2% slowest requests by an aggressive 50%. This is because optimizing the 98th percentile by 50% “shifts” lower percentiles upwards, making them the new tail. 3 Speeding up the long tail can be crucial . The tail of 
+
+moses ’ service time distribution is much heavier than that of the other services, with 30 ×–85 × greater outlier service times. Consequently, moses benefits significantly more from opt  ≥ p98 , −50%  than from opt  ≥ p95 , −20% . Despite improving mean response time by 16% and 7.5%, respec-tively, these hypothetical versions improve tail response time at low load by 50% and 20%, and at 95% load, by 70% and 40%. Both versions can thus sustain their baseline’s maximal load with a better tail latency SLO. This scenario motivates optimizing the far tail of the service time distribution. 
+
+## 4 PonyTail 
+
+PonyTail is a performance analysis methodology (§ 4.1) and toolkit (§§ 4.2–4.3) for assisting performance engineers in an-alyzing service-level outlier behaviors responsible for tail service time and exploring tail optimization possibilities. 
+
+> 4
+
+Hotspot-oriented profiling is less applicable for these tasks, because the relevant behaviors may occur infrequently (e.g., 1-in-1000 for the 99.9th percentile service time) and so get missed or ranked as insignificant. 
+
+4.1 Methodology and workflow 
+
+PonyTail’s methodology seeks to attribute outlier service times to one or more of the following three cases, which together characterize all possible reasons for a tail request being slower than typical requests. 
+
+1 Different static code ( STCO) In addition to typical code paths, a tail request might exercise other code paths whose execution slows request processing. Examples of this sce-nario include invocation of garbage collection code or distinct request types, some of which are slow. 
+
+2 Same static code, different dynamic behavior ( DYCO)
+
+Tail requests might execute exactly the same static code as average requests, but in a different dynamic way which slows down the request. An example of this case is a loop whose it-eration count depends on a request parameter x, which results in high service times for requests with high values of x.
+
+3 Same static and dynamic architectural behavior, dif-ferent microarchitectural behavior ( UARCH ) Tail requests might be slowed down by microarchitectural factors. For example, certain memory load instructions might hit in the last-level cache (LLC) in average requests but miss in tail requests. 
+
+Workflow PonyTail’s toolkit is designed to facilitate identi-fying which of the above cases affect the service and deter-mining their root cause using the manual workflow described in §§ 4.1.1–4.1.3. 
+
+4.1.1 Characterization. To determine which of S TCO, D YCO,and UARCH are present, we first characterize service times in terms of the code and microarchitectural footprints of their respective requests. A code footprint specifies which code lo-cations (basic blocks) a request executes and how frequently. A microarchitectural footprint is a request-level TMA break-down of pipeline slot usage. Comparing request footprints allows classifying requests into homogeneous groups of requests with similar footprints, i.e., similar code flow or microarchitectural bottlenecks. This classification reveals which of S TCO, D YCO, and UARCH oc-cur at each service time percentile range: S TCO occurs if the range is associated with a code footprint-defined group; other-wise, D YCO occurs. UARCH occurs if the range is associated with a microarchitectural footprint-defined group. PonyTail assists characterization by providing a graphi-cal representation of code and microarchitectural footprints across service times, which enables visually identifying re-quest groups ( 1 in § 4.2.2). PonyTail describes code foot-prints in terms of dynamic basic blocks (DBBLs). A DBBL is a sequence of consecutive retired instructions τ = i1, . . . , ik
+
+in a program execution E such that no branch in E jumps to any instruction in τ but i1 and no taken conditional branches occur in τ except for ik.3 These conditions are the dynamic analogues of the “no branches in” and “no branches out” defi-nition of a static basic block. PonyTail uses DBBLs because their boundaries can be efficiently extracted from Processor Trace data, whereas basic blocks require disassembling the service binaries (§ 4.3.2). PonyTail visualizes code footprints by plotting a heatmap of request-level (ordered by service time) DBBL hotness ,which is the fraction of time the request spends in this DBBL and any function it calls, with DBBLs identified by their location in the program’s address space (with black horizontal lines separating different modules). The user can plot only DBBLs with hotness of at least h% and that execute at least 
+
+n times in each request. We refer to such a plot as a ⟨h, n⟩-DBBL heatmap, or a ⟨h, n, k⟩-DBBL heatmap if it also zooms in on the slowest k requests. Figure 4a shows an example with several groups (e.g., below and above the 45th percentile). PonyTail visualizes microarchitectural footprints by plot-ting request-level TMA breakdowns, ordered by service time. Figure 4b shows an example, again with noticeable groups. 
+
+4.1.2 Exploration. This step aims to pinpoint the root causes of tail service time. If the relevant service time percentile range is uniquely associated with a request group identified above, we need to identify the reasons for software (S TCO) or hardware ( UARCH ) inefficiency. PonyTail assists this process by enabling standard performance analysis—such as sam-pling hardware events and identifying hot code locations—of only that group ( 5 in § 4.2.2). Limiting to a specific group sidesteps the problem a standard profiler would have. Its prob-lem is not that events in tail requests are not sampled—they are, albeit with lower probability. But because these samples are infrequent, they are ranked as insignificant. PonyTail’s zooming in only on relevant samples thus creates a request-level profile analysis. A different problem must be solved if tail service times are not defined by a group (D YCO). Here, we are not look-ing for bottlenecks but rather dynamic behaviors (typically loops) that cause slow service time. To this end, beyond Pony-Tail’s group-level performance analysis, PonyTail can also identify key DBBLs whose execution time or count is corre-lated with service time and their call stacks ( 2 in § 4.2.2), as well as generate plots depicting the correlation across all requests (see Figure 9 for an example). Exploring such DBBLs is typically prioritized by their call stack depth, to allow for root cause detection in higher code levels. PonyTail also helps to explore loop behavior by providing request-level loop iteration counts ( 4 in § 4.2.2).        
+
+> 3Instructions other than ikcan be branches, but in E, their execution always falls through (branch not taken).
+> 5PMU
+> PEBS
+> PT
+> LBR
+> CPU OS
+> KM UM
+> Kernel Module
+> app
+> 1
+> 2
+> ponyrun record
+> ponylib
+> ponyrun report
+> Control flow
+> Profiling data
+> Observations
+
+Figure 2. PonyTail design. 
+
+4.1.3 Optimization. Insights from the analysis hopefully lead to optimizations that improve tail latency. Importantly, optimizations made in the D YCO case might impact the en-tire request group (but not necessarily). If the optimization addresses a loop-related hardware bottleneck, for example, then every request in the group benefits. However, if the opti-mization parallelizes loop iterations only for certain request arguments, only that part of the group benefits. 
+
+4.2 Design 
+
+PonyTail’s toolkit provides a familiar profiler interface, con-sisting of online recording of performance monitoring data (§ 4.2.1) followed by offline analysis of the data to help the user iden-tify unique aspects of slow requests (§ 4.2.2). Figure 2 depicts the toolkit’s design. It consists of a profiler-like tool, ponyrun ,which can run in “record” mode for data collection or in “re-port” mode to analyze collected data. PonyTail data collection relies on request boundaries being dynamically demarcated by the service via calls into ponylib , a dynamically linked library. 
+
+4.2.1 Data collection ( record mode). Most of the data PonyTail collects is identical to that collected by existing pro-filers, such as the Linux perf tool [64] and Intel’s VTune [41]. Data collection has three standard modes: (1) tracing , which collects a control-flow trace using Processor Trace (PT); (2) sampling , which samples user-specified hardware events using processor event-based sampling (PEBS); and (3) statis-tics , which collects request-level performance counter data for user-specified counters, which can be useful during the exploration step (§ 4.1.2). PonyTail’s main unique aspect is its analysis, which breaks the program-level data into request-level data, even in sam-pling mode. To enable this, PonyTail requires the analyzed service to dynamically demarcate (with ponylib calls) the periods in which a request executes, i.e., when it starts/com-pletes and stops/resumes due to service-level scheduling, if any (Table 1). 4
+
+> 4Process preemption is handled automatically by the kernel performance monitoring interface.
+
+Operation Invoked when? 
+
+req_begin() Start of new request. Returns a unique req. id. 
+
+req_stop(id) Request id is preempted. 
+
+req_cont(id) Request id resumes. 
+
+req_done(id) Request id completes. 
+
+Table 1. Ponylib interface. 
+
+Ponylib serves several purposes. First, it collects request-level counts of performance counters by accumulating their difference before and after request activity periods. To col-lect TMA metrics, ponylib tracks special-purpose counters with TMA metrics available in recent Intel processors, which enable constructing a full TMA breakdown during analysis. (With the release of the Ice Lake microarchitecture, Intel introduced built-in support for highest-level metrics of the TMA method level. With Sapphire Rapids, the built-in sup-port was extended to include second-level metrics [40]. Until these additions, it was required to interpolate readings of different performance counters to estimate each metric. As the number of performance counters in use is limited, it was not possible to achieve an overall view of these levels in the same execution.) It also implements the request-level track-ing of user-specified performance counters option. Finally, 
+
+ponylib records each request’s activity time intervals. This data enables PonyTail’s analysis to associate samples with requests (§ 4.3.1). 
+
+4.2.2 Analysis ( report mode). PonyTail analysis takes col-lected data as input and produces one of the following user-specified reports. Crucially, reports can be limited to consider only a certain request group (instead of all requests). Groups are defined by specifying a DBBL, which means “consider only requests in which this DBBL executes.” A DBBL is spec-ified as a tuple of a dynamic shared program object (DSO) name and an offset inside it. Unless noted otherwise, the analyses process tracing data. 
+
+1 Characterization This report produces the visualizations of request code and microarchitectural footprints that are used in our workflow’s initial characterization step (§ 4.1.1). 
+
+2 DBBL-Info This report helps to identify DBBLs whose execution time or frequency is correlated with service time. It provides a list of all DBBLs in the desired request group whose hotness exceeds a user-specified threshold. Output in-formation includes hotness, average observed call stack depth, and execution count and time, for which PonyTail also dis-plays the squared Pearson correlation coefficient between the DBBL and request service time. See Table 3 for an example. 
+
+3 DBBL-Follow When a DBBL’s execution count or time is suspected to cause high service time in the request group, this report can be used to plot the correlation across all requests. 
+
+> 6
+
+4 Loop-Follow To understand the behavior of loops that cause high service time, this report displays the frequency with which a given loop performs i iterations. The followed loop is specified with a DSO and a list of tuples ⟨o,to, lo⟩,where o is an offset in the DSO, to indicates whether o is the address of a taken branch or its target, and lo indicates whether this jump indicates loop start, iteration, or termination. The analysis tracks the recorded control-flow. Every time the “start” taken branch is encountered, it starts counting “iteration” taken branches until the “termination” branch (if specified) or an unspecified branch is encountered. Note that an inherent limitation of the described implementation is that loops whose body include function calls or other branches are not supported. 
+
+5 Profile This analysis summarizes data recorded in sam-pling or statistics mode in the form of sampled event counts or per-request counts, respectively. It considers only data rele-vant to the specified request group (if any), i.e., samples taken during group requests or statistics collected for them. 
+
+4.3 Implementation 
+
+We implement ponyrun by extending Linux’s perf tool. For data collection, perf can essentially be used as-is. Recording with perf saves engineering effort, as it takes care of man-aging the PMU during context switches, decoding recorded events and augmenting them with timing information, map-ping addresses to symbols, etc. For efficient analysis, we use the dlfilter interface of perf , which allows processing the recorded data through a custom filter provided by a shared ob-ject file. PonyTail’s analyses are implemented as such a filter in C++ in 1450 lines of code (LOC). The rest of ponyrun is implemented in Python (2090 LOC). Ponylib is implemented in C++ (670 LOC), using the jevents library [59]. 
+
+4.3.1 Data collection. 
+
+Control-flow tracing PonyTail uses Intel PT (supported by 
+
+perf record ) to capture the service control-flow trace. We configure Intel PT to record all taken branches (both condi-tional and indirect branches) and to additionally log timing information, but at a reduced rate, so the overall recording rate is tens of MBs/second. To attribute control-flow events to specific requests, ponylib injects entries demarcating request activity into the PT log by issuing PTWRITE instructions. 
+
+Event-based sampling PonyTail uses PEBS via perf record 
+
+to sample CPU context and call stack for every predetermined number of occurrences of the specified hardware events. 
+
+4.3.2 Analysis. The analysis begins with DBBL extraction .This task is complicated by the fact that perf configures PT not to log non-taken branches, to curb the PT data volume. PonyTail uses the sources and targets of taken branches to “fill in the gaps”—i.e., to distinguish between a dynamic in-struction sequence forming one DBBL and a DBBL that falls through to another. § A shows the algorithm. Next, we describe key implementation aspects. 
+
+DBBL-Info PonyTail determines the hotness of DBBL τ for request r based on periodic samples of stack traces Sr captured during r’s execution, as follows: 
+
+Hτ,r = |{ s ∈ Sr : ∃a ∈ s.stack s.t. a ∈ τ}| |Sr|
+
+The analysis synthesizes the stack samples from the PT control-flow trace, as the trace contains the data required to obtain the call stack at any point in time. 
+
+Profile To enable the analysis to associate samples with re-quests, we match the monotonic timestamp and thread ID 
+
+perf provides for each sampled PEBS event with the infor-mation recorded by ponylib about request activity. 
+
+4.4 Limitations 
+
+PonyTail assists manual optimization instead of automatically addressing performance issues [14, 43, 56, 81, 111]. This is a conscious design choice, whose rationale is discussed in § 7. Due to the complex environment of datacenter services, it is difficult to profile their real-world behavior outside of the production deployment [14, 48, 56]. PonyTail’s control-flow tracing is not suitable for “always on” recording of production systems, due to its run-time overhead and data volume (§ 6.1). However, we believe the overhead is acceptable for inter-mittent or manual data collection over short time periods. Disruption due to data collection can be further reduced by recording on many machines for very short time periods. PonyTail’s tracing analysis takes about 4.5–6 minutes per single-core second of service execution (§ 6.2). Analysis time is mitigated by the fact that a few seconds of execution suffice for capturing tail events at microsecond-to-millisecond scale service times. It is also possible to implement a PonyTail “server” that analyzes data once and answers queries about it. Our PonyTail prototype targets C/C++ binaries and does not support services with self-modifying or just-in-time (JIT) compiled code (e.g., Java services). Supporting JITed code is a matter of engineering effort, as perf can support JIT symbols with cooperation from the JIT compiler [83]. 
+
+## 5 Case studies 
+
+To demonstrate the merit of PonyTail’s methodology and framework, this section presents several case studies in which we walk through applying PonyTail to analyze single-worker tail service time in five latency-critical services from the Tail-Bench [54] benchmark suite (§ 5.2). Unless noted otherwise, each described analysis is based on a single PonyTail tracing data collection pass from the service’s execution. PonyTail’s analysis reveals cases of S TCO and UARCH (§ 4.1) as reasons for service time outliers in some services and 
+
+> 7
+
+DYCO in others. Based on PonyTail’s analysis, we develop tail service time optimizations (§§ 5.3–5.4) and broad service time optimizations (§§ 5.5–5.6), and obtain other actionable insights (§ 5.7). Finally, we reflect on the aspects of PonyTail that facilitated our analysis compared to standard hotspot-based profiling (§ 5.8). 
+
+5.1 Experimental setup 
+
+Platform We use a server with an Intel Xeon Gold 6442Y (Sapphire Rapids) processor with 24 2.6 GHz cores, 256 GB DDR5-4800 memory, and a datacenter-class NVMe Samsung PM9A3 [88] solid-state drive. The server runs Ubuntu 20.04.3 (Linux kernel 6.4). Code is compiled with GCC 9.4.0. To control for external performance fluctuations, we (1) dis-able dynamic CPU frequency scaling, in both hardware (Turbo Boost) and the OS; (2) minimize hardware resource sharing by disabling hyper-threading, pinning the service to a core, and using an otherwise idle system. 
+
+Execution harness We use the common harness TailBench provides for statistically sound load testing of each service. The harness accepts parameters controlling the workload: (1) client requests per second (RPS); (2) number of warmup requests, to ensure only steady-state execution is measured; and (3) number of requests to measure (measurement pe-riod). PonyTail records only the measurement period. Except for sphinx , where we increase the measurement period to 20 requests, we use TailBench’s default parameters when ana-lyzing the services (Table 2). We use low loads for the analysis but evaluate optimization impact across all loads. Reported service/response times are the average of 3 runs. The harness supports a range of scenarios, from a net-worked configuration to a single-node integrated configura-tion, in which the client and service are combined in a single process. The client and server measure response and service time, respectively. For simplicity, we use the integrated config-uration, which was shown to accurately capture service time and latency characteristics [54]. We use one server (worker) thread. The server’s request queue is managed with an FCFS policy. Integrating PonyTail into TailBench requires changing fewer than a dozen LOC, to invoke PonyTail when the harness in-vokes the service and when the service responds. One service (shore ) uses an internal work queue in addition to the sys-tem’s request queue, so we invoke PonyTail from the service’s worker thread, which does the actual work. 
+
+Harness optimization We observe that the constructor of 
+
+Request and Response objects in the harness redundantly zeroes out the objects which are later overwritten before being used. This results in non-negligible overhead, particularly on services with low service time scales. We resolve the problem by removing the superfluous zeroing, which, e.g., improved 
+
+silo ’s and masstree ’s mean service time by ≈ 2×.                       
+
+> Description Analysis parameters Service Domain Service rate (RPS) # Warmup requests # Profiled requests
+> silo In-memory database 66.7 K 20,000 20,000
+> moses Statistical machine translation 654 500 500
+> xapian Online search 1388 1000 3000
+> sphinx Speech recognition 210 20
+> shore On-disk database 2860 10,000 2000
+> Table 2. Analyzed services. Description, single-core service rate ( μ), and analysis evaluation parameters.
+
+5.2 TailBench services 
+
+TailBench [54] provides a collection of eight latency-critical services. These services span a wide range of application domains and service times, from microseconds through mil-liseconds to seconds. Seven out of the eight services are C++ programs, of which we analyze the five services (Table 2) that exhibit dispersive service times. We provide more details on each service and its workload in the later sections describing their analyses. Figure 3 shows the service time cumulative distribution function (CDF) of the services, which visualizes their high dispersion. Except for one, all CDFs are similar in shape to those reported by TailBench [54], although the magnitude of service times can differ due to our faster hardware and hareness optimizations. The only exception is moses , whose significant tail service times are absent from the TailBench results. We explain this discrepancy in § 5.4. 
+
+5.3 Silo 
+
+Silo [97] is a fast in-memory transactional database system. Transactional databases are widely used in online transaction processing (OLTP) systems. TailBench drives silo using the TPC-C workload [15], a standard e-commerce model. 
+
+Characterization Figure 4 shows PonyTail’s characterization of silo requests, indicating that service time variability is associated with both S TCO and UARCH . The DBBL heatmap visualizing the code footprints (Figure 4a) exhibits signifi-cant differences in executed code (locations and frequency) between different percentiles. The TMA metrics (Figure 4b) show the same partition into groups, with each group having a distinct TMA breakdown. DBBLs of each group correspond to handling of different request types. For instance, STOCK_LEVEL and DELIV-ERY transactions have DBBLs that are prevalent in 90–95th percentile and > 95th percentile requests, respectively; over-all, despite each of these types being only 4% of all transac-tions, they are the majority of the > 90th percentile requests. This is consistent with prior work that modeled these two transactions as the slowest in the TPC-C mix [21]. However,                                     
+
+> 80.0 0.5 1.0 1.5 2.0 2.5 Service time (ms) 0.0 0.2 0.4 0.6 0.8 1.0 Cumulative probability
+> (a) xapian
+> 95th %ile 99th %ile 0100 200 300 400 500 600 Service time ( s)
+> 0.0 0.2 0.4 0.6 0.8 1.0 Cumulative probability
+> (b) silo 010 20 30 40 50 60 Service time (ms) 0.0 0.2 0.4 0.6 0.8 1.0 Cumulative probability
+> (c) moses 0.0 0.5 1.0 1.5 2.0 Service time (ms) 0.0 0.2 0.4 0.6 0.8 1.0 Cumulative probability
+> (d) shore 0250 500 750 1000 1250 Service time (ms) 0.0 0.2 0.4 0.6 0.8 1.0 Cumulative probability
+> (e) sphinx 020 40 60 80 Service time ( s)
+> 0.0 0.2 0.4 0.6 0.8 1.0 Cumulative probability
+> (f) masstree 0100 200 300 Service time ( s)
+> 0.0 0.2 0.4 0.6 0.8 1.0 Cumulative probability
+> (g) img-dnn
+
+Figure 3. Service time cumulative distribution function (CDF). Green circles and red diamonds mark 95th and 99th percentiles. The CDF of sphinx is obtained over a longer measurement period than used in its analysis (§ 5.6): 100 requests vs. 20 requests. The masstree and 
+
+img-dnn services are not analyzed in the paper due to their low-dispersion service times. We describe them briefly for completeness: masstree 
+
+is an in-memory key-value store and img-dnn is a C++ application that utilizes the OpenCV library to perform handwriting recognition. 5 15 25 35 45 55 65 75 85 95 Requests (ascending service time %ile) Dynamic basic blocks          
+
+> TOP 10 515 25 35 45 55 65 75 85 95 Requests (ascending service time %ile) 0.0 0.2 0.4 0.6 0.8 1.0 Cycle breakdown
+> Heavy ops Light ops Branch mispredictions Machine clears Fetch latency Fetch bandwidth Memory bound Core bound
+
+(a) ⟨35% , 10 , 10 ⟩-DBBL heatmap. (b) TMA metrics. 
+
+Figure 4. PonyTail analysis of silo requests. Distinct request groups are revealed (e.g., percentiles <45, 45–90, 90–95). 
+
+PonyTail’s analysis reveals this characterization naturally, in a workload-agnostic way. This can lead to finding “implicit” re-quest types, i.e., properties of a request that predict its service time (see §§ 5.5 and 5.6). Importantly, not all of silo ’s service time variability is due to different request types. Silo exhibits a long tail of requests whose service time exceeds the 99th percentile (Figure 3b). Figure 4a zooms in on the slowest 10 requests to show the code footprint of these long tail requests, which turns out to be part of silo ’s garbage collection (GC) mechanism. In the following, we determine some causes for silo ’s service time variability by analyzing the code footprint of the long tail requests (§ 5.3.1) and the microarchitectural footprint of STOCK_LEVEL requests (§ 5.3.2), where a sig-nificant fraction ( ≈ 35%) of pipeline slots is wasted due to branch misprediction. Figure 5 shows the impact of address-ing these root causes on response time. For instance, at 32% 0 10000 20000 30000 40000 50000 Requests per second (RPS) 10 2     
+
+> Mean response time (  s, log)  base avx gc avx+gc 010000 20000 30000 40000 50000 Requests per second (RPS) 10 2
+> 10 3
+> p99 response time (  s, log)  base avx gc avx+gc
+
+(a) Mean. (b) 99th percentile. 
+
+Figure 5. Response time speedups (log scale) of optimizations on 
+
+silo : gc and avx refer to § 5.3.1 and § 5.3.2, respectively. 
+
+load (22 KRPS) the mean, 95th, and 99th percentile response times improve by up to 43%, 12%, and 21%. 
+
+5.3.1 Code footprint exploration. Silo ’s DBBL heatmap (Fig-ure 4a) shows that the slowest 10 requests execute DBBL 
+
+τ=silo+0x106561 which is part of the clean_up_to_incl-uding method. We use PonyTail’s DBBL-Info report, re-stricted to requests that execute τ, to identify all DBBLs that have > 10% hotness in such requests. The result (Ta-ble 3) shows that in these requests, 81% of the time is spent in clean_up_to_including DBBLs. Moreover, request ser-vice times are highly correlated with both execution count (0.79) and time (0.93) of τ, which is also the hottest DBBL. The method clean_up_to_including is called by silo ’s garbage collection (GC) mechanism, which uses an epoch-based memory reclamation scheme in the style of Read-Copy Update (RCU) [24, 71]. This GC is invoked by silo worker threads periodically to reclaim unreferenced objects that have accumulated since the last GC. Increasing the GC’s frequency 
+
+9DSO Offset Depth # Execs Hot Time ( μs)                
+
+> silo 0x106561 318046.30 (0.79) 0.45 43.01 (0.93)
+> transaction_proto2_static::clean_up_to_including(...)+0x261 silo 0x106522 317250.30 (0.79) 0.25 24.49 (0.72)
+> silo 0x106658 3796.00 (0.75) 0.11 10.37 (0.88)
+
+Table 3. PonyTail DBBL-Info report (for silo requests where 
+
+clean_up_to_including() is invoked). Correlations with service time are shown in parentheses. The actual report includes symbol names for every line. 
+
+will cause more requests to be slowed down by GC, but each GC execution will be faster as it will find fewer objects to reclaim. We therefore hypothesize that this will improve tail service time. We increase GC frequency by 5 ×. This change reduces the maximum and 99th percentile service times at 32% load by 4 .3× and 1%, respectively. 
+
+5.3.2 Microarchitectural footprint exploration. We pin-point the sources of branch misprediction in STOCK_LEVEL transactions by running PonyTail’s data collection using sam-pling based on the TOPDOWN.BR_MISPREDICT_SLOTS perfor-mance counter and filtering the results by the existence of STOCK_LEVEL DBBLs in the sampled stack. We find that most branch mispredictions occur during searches in silo 
+
+indexes, which are based on Masstree [68]. Specifically, 32% of samples occur in the code that determines the next node on the search path. This code performs a binary search in the current node’s key array to locate the first key greater than or equal to the target key. We first attempt to replace the binary search branches with conditional move ( CMOV ) instructions, which set the left/right boundaries of the search based on the current key comparison. However, this change does not improve service time, and re-peating PonyTail’s characterization reveals that the bottleneck for this request group has shifted to the CPU backend. We therefore perform a different optimization. We use the fact that the key array contains 15 8-byte values to execute all comparisons with a constant number of AVX-512 [40, § 15] vector instructions. We load the array into two AVX-512 reg-isters, obtain a 15-bit mask indicating the comparison result of each index, and return the index of the first set bit (using the TZCNT instruction). As a result, the 95th percentile service time at 32% load improves by 12%. 
+
+5.4 Moses 
+
+The moses service performs statistical machine translation [60, 75], modeling the services underpinning online translation and speech-based applications [54]. It is queried on randomly chosen dialogue snippets from the opensubtitles.org English-Spanish corpus [95]. In the following, we identify the root cause of moses ’ long tail (beyond the 99th percentile) service times (Figure 3c). Addressing this cause (by modifying the benchmark configu-ration) reduces the maximum service and response times by 53 × and 22 ×, respectively. 5 15 25 35 45 55 65 75 85 95 Requests (ascending service time %ile) Dynamic basic blocks 
+
+> TOP 10
+
+Figure 6. PonyTail analysis of moses requests: ⟨20% , 1, 10 ⟩-DBBL heatmap. 
+
+Characterization Figure 6 shows PonyTail’s character-ization of moses requests. The code footprints are sim-ilar across almost all re-quests, except for the slow-est requests that exhibit a distinct pattern. The microar-chitectural footprints do not exhibit interesting trends and are omitted. Code inspection of the DBBLs associated with the slowest requests shows that they are related to failed lookups in a “translation cache” structure, which stores source and target phrases and is persistent across requests. Suspecting these failures are related to an insufficiently warmed-up cache, we re-analyze moses with 5000 warmup requests instead of 500. Consequently, the offending DBBLs disappear from PonyTail’s code footprint report. The max-imum service and response times are reduced by 53 × and 22 ×.This observation highlights the importance of the transla-tion cache in moses . It can also explain the difference between our service time CDF for moses and the TailBench CDF, if the default value in the TailBench code differs from the value used to generate the CDF in the TailBench paper. 
+
+5.5 Xapian 
+
+TailBench’s xapian service represents a node in an online search engine, using the Xapian open-source search engine library [105]. An online search engine spreads petabytes of index data across thousands of such nodes, each of which searches its portion of the index upon a user query. Xapian 
+
+indexes a dump of the English Wikipedia and is queried on English words and names chosen randomly from a Zipfian dis-tribution, which mirrors the patterns of online search queries. For each query term specified in a request, xapian responds with a set of results from its index. We identify control-flow (§ 5.5.1) reasons for service time variability in xapian and determine their root causes, and identify a subtle CPU bottleneck (§ 5.5.2). Addressing these issues improves xapian ’s service and response times across the board (Figure 7 and thus the maximal sustainable load as well. For instance, at 87% load (1200 RPS) the mean and 99th percentile response times improve by 5 .3× and 4 .6×,respectively. 
+
+Characterization Figure 8 shows PonyTail’s characterization of xapian requests. The DBBL heatmap (Figure 8a) exhibits       
+
+> 10 0500 1000 1500 Requests per second (RPS) 10 0
+> 10 1
+> 10 2
+> Mean response time (ms, log)  base reduce spec spec+reduce 0500 1000 1500 Requests per second (RPS) 10 1
+> 10 2
+> p99 response time (ms, log)  base reduce spec spec+reduce
+
+(a) Mean. (b) 99th percentile. 
+
+Figure 7. Response time speedups (log scale) of optimizations on 
+
+xapian : reduce and spec refer to § 5.5.1 and § 5.5.2, respectively. 5 15 25 35 45 55 65 75 85 95 Requests (ascending service time %ile) Dynamic basic blocks 5 15 25 35 45 55 65 75 85 95 Requests (ascending service time %ile) 0.0 0.2 0.4 0.6 0.8 1.0 Cycle breakdown 
+
+> Heavy ops Light ops Branch mispredictions Fetch latency Fetch bandwidth Core bound
+
+(a) ⟨10% , 1⟩-DBBL heatmap. (b) TMA metrics. 
+
+Figure 8. PonyTail analysis of xapian requests. 
+
+no significant difference in executed code (locations or fre-quency) between different percentiles (i.e., no S TCO). Like-wise, TMA metrics (Figure 8b) show no unique characteristics of high service times (i.e., little UARCH ), 5 15 25 35 45 55 65 75 85 95 Requests (ascending service time %ile) 0.0 0.5 1.0 1.5 2.0 2.5 3.0 Time (ms) 0200 400 600 800 Count Request service time DBBL exec time DBBL exec count trend 
+
+Figure 9. PonyTail DBBL-Follow report of xapian key DBBLs: Correlation between service time and execution count of DBBL. 
+
+except for a slight increase in the fraction of pipeline slots unutilized due to fetch bandwidth and branch mis-prediction. We therefore classify all requests into one group and conclude that 
+
+xapian ’s tail latency is due to D YCO, i.e., some request DBBLs execute more in tail requests. We use PonyTail’s DBBL-Info report to iden-tify the key DBBL —the high-est DBBL in the service call stack which (1) executes multiple times during request han-dling and (2) whose number of executions and time spent in its call stack are correlated with request service time. Figure 9 depicts the PonyTail DBBL-Follow report of the key DBBL, showing the correlation of its execution time and count with service time. 
+
+5.5.1 Code footprint exploration. We examine the source code associated with the key DBBL to understand its execu-tion context. The DBBL executes once per document found for the searched term, as part of a loop that iterates over a list of objects, each of which represents a document indexed by the searched term. For each such document, the loop invokes a get_weight() method, part of which looks up the docu-ment in xapian ’s database backend. The backend maintains fixed-size chunks , each of which describes a number of docu-ments, consecutive by their IDs. To retrieve information for a document, the backend first locates the relevant chunk and then traverses it to find the desired document’s data. Locating the relevant chunk consists of checking if the last inspected chunk is a match, and moving to the correct chunk otherwise. PonyTail’s DBBL-Info report shows that, on average, mov-ing to a different chunk is done for ≈ 166 documents out of the ≈ 230 scanned and takes 11% of service time, while locating the correct position inside the chunk takes 74% of service time. We hypothesize that it will be profitable to reduce the backend’s chunk size, as (1) searching inside a chunk is more expensive than locating a chunk, and (2) locating chunks is already done frequently. To test this hypothesis, we evaluate 
+
+xapian on the same database built with 1 KB chunks instead of the default 2 KB. This change reduces mean and tail service times by ≈ 30%, improving mean and tail response times at 87% load by ≈ 3×.
+
+5.5.2 Microarchitectural footprint exploration. Figure 8b shows that the majority of pipeline slot stalls in xapian re-quest handling are caused by CPU frontend issues: branch mispredictions (26%) and fetch bandwidth underutilization (31%), which refers to the frontend delivering fewer μ-ops to the backend than its capacity. Intel CPUs provide numerous performance counters for tracking events responsible for fetch bandwidth underutilization. To investigate, we run PonyTail data collection again, this time collecting the request-level deltas of these performance counters. The output points to an issue with utilization of the μ-op cache, also called the decoded stream buffer (DSB). The DSB is a set-associative cache that caches the μ-ops of decoded instructions, thereby allowing the frontend to skip decoding of DSB-cached instructions [39, § E2.2.2]. Compared to the standard instruction decoding path, μ-op delivery from the DSB improves throughput, saves power, and reduces latency. PonyTail’s report indicates that, on average per request, 
+
+< 3% of retired instructions experienced a DSB miss and that the DSB delivers μ-ops during most cycles—but for ≈ 47% of all cycles, the DSB delivers a suboptimal number of μ-ops. To observe this, we use the counters IDQ.DSB_CYCLES_ANY 
+
+and IDQ.DSB_CYCLES_OK , which count the cycles in which the DSB delivers any μ-ops and the optimal number of μ-ops,                                                           
+
+> 11 ... // Check the length of the encoded integer first . do {if ( rare ( ptr == end )) {// Out of data . *p =NULL ; return false ; }}while (* ptr ++ >= 128) ; ... if ( ptr == end ) {*p =NULL ; return false ; }else if (!(* ptr ++ >=128) ) {*p =ptr ; }else if ( ptr == end ) {*p =NULL ; return false ; }else if (!(* ptr ++ >=128) ) {*p =ptr ; }// ( repeat ptr check again twice ) // Original loop ( fallback ) ...
+
+(a) Original unpack_uint code. (b) Optimized code. 
+
+Figure 10. Optimization for better xapian μ-op cache through-put. 
+
+respectively. By running PonyTail’s data collection using sam-pling based on these performance counters, we pinpoint the problem to the chunk searching code of xapian ’s backend. As the relevant code scans the chunk looking for a spe-cific document ID, it frequently invokes an unpack_uint 
+
+method (Figure 10a), which decodes an unsigned integer from a string form in the chunk buffer. Out of the 8 most commonly sampled instructions, 6 are branch instructions related to this code. Now, according to Intel’s documentation [39], each DSB entry caches (up to 6) μ-ops of statically contiguous instructions within some 32-byte aligned region; at most two branches are allowed per entry; and a non-conditional branch terminates the cached sequence. These restrictions mean that DSB entries of branch-heavy contiguous code sequences will be underutilized. Using PonyTail’s Loop-Follow report on the unpack_uint 
+
+loop, we observe that at most 4 iterations of the loop are executed. This observation gives rise to the following opti-mization: unroll the first 4 iterations of the loop (Figure 10b), so that (1) basic blocks likely to execute sequentially are laid out contiguously in memory and (2) we avoid the while 
+
+branches of the original loop. This change improves the frac-tion of DSB-optimal delivery cycles by ≈ 4×. Consequently, mean and tail service times are reduced by ≈ 27%, which improves mean and tail response times at 87% load by 2 .9×
+
+and 2 .3×.
+
+5.6 Sphinx 
+
+The sphinx service is an accurate speech recognition sys-tem [2, 92, 100], which is a key component in speech-based applications. TailBench queries sphinx on random audio ut-terances from the CMU AN4 database [1] and the service re-sponds with the hypothesis text. Request handling is compute-intensive, with a mean service time of ≈ 0.5 seconds. We identify the root cause of sphinx ’s service time vari-ability, as well as a general optimization opportunity to alle-viate a microarchitectural bottleneck in all requests. Table 4 shows the optimization’s impact at 50% load, with across the board improvements of service and response times.                  
+
+> Time Latency Base Optimized
+> Service Mean 525 ms −10 .7% 95th percentile 948 ms −10% 99th percentile 1097 ms −10 .7% Response Mean 747 ms −15 .2% 95th percentile 1325 ms −16% 99th percentile 1700 ms −14 .5%
+
+Table 4. Impact of PonyTail-assisted optimization on sphinx 
+
+(1 RPS =50% load). 
+
+Characterization Similarly to xapian (§ 5.5), sphinx ’s code footprints and TMA metrics are similar across service times (so we omit them). We therefore classify all requests into a single group, again concluding that sphinx ’s tail latency is due to D YCO. As with xapian , we use PonyTail’s DBBL-Info report to identify the key DBBL that is correlated with tail service time. We find that correlation between the key DBBL’s execution time and service time exists for all requests, but correlation between its execution count and service time is most noticeable for tail requests. Code inspection shows that the execution count of the key DBBL is tied to the number of audio samples in the input utterance. Identifying such a request-level predictor of service time (an “implicit type”) is important, as it can be leveraged by request schedulers to improve overall tail latency [21]. 
+
+Optimization Using the same process as in silo ’s microar-chitectural footprint exploration (§ 5.3.2), we pinpoint the sources of branch misprediction in sphinx . The culprit is a loop evaluating a Gaussian Mixture Model (GMM) [23] which computes the likelihood that an observation vector belongs to one of several clusters represented as Gaussian distributions. The likelihood is computed incrementally over the vector dimensions, with the loop terminated early if the likelihood crosses some threshold. The resulting loop termi-nation condition requires multiple branches to evaluate. Each loop iteration computes over 4 dimensions, in an apparent attempt to encourage compiler vectorization. PonyTail’s Loop-Follow report shows that this loop iterates over at most 13 dimensions at run-time. We thus change the unrolling factor to 13. This change significantly reduces the number of branches (and mispredictions) during the loop and improves service time by ≈ 10%, despite performing more wasted work (as the early termination condition is now checked less frequently). 
+
+5.7 Shore 
+
+Shore [46] is an on-disk transactional database, which differs from silo in how it stores data. To avoid disk I/O bottle-necks, we use a solid-state drive for shore ’s database and logs. Similarly to silo , it is driven by TPC-C. 
+
+> 12
+
+Characterization Shore ’s code footprints reveal several re-quest groups, which all exhibit relatively similar microarchi-tectural footprints (we omit the figures). Similarly to silo , shore ’s request groups are caused by different transaction types. However, shore ’s service time trends differ from silo ’s. While most requests above the 95th percentile involve STOCK_LEVEL transactions, we observe NEW_ORDER transactions all across the 50th–96th percentiles and even in the slowest 10 requests. This phenomenon underscores the importance of under-standing service performance, as it can be a determining factor even for broadly used and well-understood workloads. 
+
+5.8 Reflections 
+
+Given that PonyTail records the same data as Linux’s perf ,it is natural to ask whether our optimization effort could be carried out using perf . Here, we pinpoint PonyTail’s unique aspects that enable the analyses. Improving service time in 
+
+silo and moses required identifying code and microarchitec-tural behaviors that occur only in outlier requests. These do not show up (or are ranked low) on a standard perf report. In contrast, in xapian and sphinx we improve service time across the board by addressing a global hotspot. However, successful optimization requires more than identifying the bottleneck. In xapian , PonyTail’s DBBL-Info report is nec-essary for the control-flow optimization (§ 5.5.1). It shows that locating chunks is already done for 72% of the docu-ments yet only takes 11% of request time, which leads to the conclusion that trading off more chunk-locating for fewer chunk-searches will improve service time. For the microar-chitectural optimization (§ 5.5.2), PonyTail’s Loop-Follow is crucial. It enables determining that each execution of the hot loop with poor DSB utilization runs for at most 4 iterations, which leads to the unrolling optimization. Loop-Follow is similarly crucial for the sphinx optimization (§ 5.6). We also consider Intel’s VTune Profiler [41]. It has recently introduced a preview Anomaly Detection analysis feature, which targets analyzing performance outliers—it allows the user to group requests by latency and observe their perfor-mance data for these groups. However, VTune’s analysis is orders of magnitude slower than PonyTail’s (§ 6.2), taking minutes per millisecond. In addition, data collection is limited to 5000 requests of at most 1 second each. This limitation restricts the scope of analysis, especially for services with high request volume and variety, such as silo and shore .PonyTail has no similar limitation. VTune only allows com-paring performance metrics of two specific requests at a time, which hinders broad characterization such as PonyTail’s code and microarchitectural footprint visualization. Finally, VTune cannot perform analysis at request group level, which is a PonyTail functionality heavily used in our analyses. Xapian Sphinx Silo 0510 15 20 25 30 Increase of mean req svc latency (%)    
+
+> 17.22 10.73 24.44 13.19 8.85 22.22
+> Tracing Sampling Sphinx Xapian Silo 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Request processing time (ms, log)
+> 153.9 s x270.8 4.68 s x1.7 308.0 ms x352.4 3.33 ms x4.1 5.14 ms x281.0 0.29 ms x16.4
+> DBBL Analysis Resolve Symbols Trace Load Samples Analysis
+
+Figure 11. Data collection over-head. 
+
+Figure 12. Per-request analysis time (absolute and relative to mean service time). 
+
+## 6 Evaluation 
+
+We evaluate PonyTail’s online overhead, during program ex-ecution (§ 6.1), and offline (analysis) efficiency (§ 6.2). We use the setup described in § 5.1. We report averages of 3 runs; if variance is not negligible, we include error bars showing the standard deviation. 
+
+6.1 Run-time overhead 
+
+Impact on service time Figure 11 shows the relative increase in mean service time of xapian , sphinx , and silo for each PonyTail data collection mode. For sampling mode, we sam-ple every 100 K cycles. PonyTail’s overhead varies across both services and modes, with tracing and sampling imposing a geometric average slowdown of 16.5% and 13.7%, respec-tively. Tracing overhead mainly consists of PT recording overhead (on all requests) and PT buffer-full interrupts (on interrupted requests). Similarly, sampling overhead consists of PEBS overhead and interrupts, whose frequency depends on the sampling parameters and program execution. For both modes, PonyTail’s relative overhead decreases with service time, but not in direct proportion. PonyTail’s relative overhead is only 2 .4× higher in silo than in sphinx ,despite silo requests being orders of magnitude faster than 
+
+sphinx requests. Because PonyTail uses perf ’s data collec-tion mechanism, its overheads are comparable to those of standard profiling with perf ’s analogous modes. 
+
+Impact on service time distribution We verify that service time distributions remain similar in shape (only shifted due to the overhead) when PonyTail data collection is running. This ensures that PonyTail does not misclassify non-tail requests as tail requests or vice versa. 
+
+6.2 Analysis efficiency 
+
+Time Figure 12 shows PonyTail’s per-request analysis time of both trace and sample data for xapian , sphinx , and silo .Tracing analysis time scales linearly with service time, reflect-ing a rate of 4.5–6 minutes per second of service execution. Total analysis time depends on the amount of data collected per request—so trace analysis is 60 × slower on average than sampling analysis—and on the number of requests recorded. 
+
+> 13
+
+For our parameters (Table 2), total trace analysis times are 12.6 minutes, 45 minutes, and 15 seconds, respectively.         
+
+> Service Tracing Sampling
+> Xapian 260 GB 2 GB Sphinx 469 GB 6 GB Silo 18 GB 2 GB
+
+Table 5. PonyTail analysis memory consumption. 
+
+Memory usage Table 5 re-ports PonyTail’s analysis peak virtual memory usage when analyzing trace or sampling data. Processing of trace data utilizes up to hundreds of GBs of virtual memory, while mem-ory usage during sample processing is on a smaller scale of a few GBs. 
+
+Takeaways PonyTail’s trace analysis is memory intensive and, depending on service times, can be time consuming as well. Fortunately, however, the more prevalent microsecond to millisecond service times result in negligible to moderate analysis time. Moreover, our experience is that analysis time is not the bottleneck in the service time optimization work flow—obtaining insights and developing optimizations based on them form the lion’s share of the work. 
+
+## 7 Related work 
+
+We first place PonyTail’s conceptual contribution in context and then discuss its technical aspects. 
+
+Profilers General-purpose profilers report performance prob-lems—such as execution hotspots [29, 41, 64], high data ac-cess latency [27, 113] and bandwidth [35], or useless work [90, 94]—but do not identify their root causes. Specialized pro-filers locate root causes of specific issues, e.g., slow exe-cution [101] or lock contention [5, 17, 112]. PonyTail sits midway between these approaches: it does not identify root causes, but has features to assist root-cause analysis. 
+
+Automated profile-guided service optimization Several sys-tems profile datacenter services in production to perform au-tomated profile-guided optimization, whether online [111] or offline [14, 28, 43, 56, 57, 65, 78, 81]. They do not target tail service time or performance outliers. More importantly, Pony-Tail is complementary to this line of work. The design of an automated optimization system starts with humans character-izing a class of performance issues and developing techniques to automatically fix them. PonyTail targets this first step for the novel problem of specifically improving tail service time. 
+
+Tail service time optimization Several works proposed tech-niques for improving tail service time in key-value stores [7, 22, 85]. PonyTail’s goal is to assist such manual, service-specific efforts. PonyTail is complementary to run-time sys-tems techniques for speeding up slow requests, e.g., using parallelism [32, 44] or voltage/frequency boosting [33, 37]. 
+
+Execution time variance Prior work on analyzing execution time variance does not target PonyTail’s more demanding problem of capturing any program- or CPU-level cause of tail service time. For example, Hindsight [110] traces high-level program-defined events to troubleshoot tail latency in distributed systems, and is therefore not appropriate for under-standing CPU or control-flow factors. FVSampler [93] and Akiyama et al. [4] synchronize profiling samples with func-tion or request boundaries to profile their execution time vari-ance, but they rely exclusively on performance counters and so cannot provide fine-grained control-flow data. NSight [30] reconstructs network-message lifetimes from CPU and NIC hardware traces. It targets network/OS latency, not tail service time, and cannot reveal intra-function factors. 
+
+Cross-execution comparisons Comparison of multiple recorded executions is done by many systems for root-cause diagno-sis or reproduction of software bugs [11, 50, 51, 115]. Per-spect [87] pinpoints the root cause of performance problems by comparing execution with and without the issue, but it reasons exclusively about control-flow and so cannot reveal hardware-related issues. Coz [16] pinpoints promising code locations for optimization by running performance experi-ments during program execution. However, while it supports average-latency as an optimization goal, it has no concept of tail optimization. 
+
+## 8 Conclusion 
+
+This paper shows the opportunity to improve datacenter ser-vice tail latency by improving tail service time. To unlock this potential, we present PonyTail, a performance analysis methodology and toolkit for analyzing service-level outlier behaviors associated with tail service time. PonyTail helps performance engineers to identify control-flow and microar-chitectural patterns responsible for service time outliers, as well as their root causes. We demonstrate PonyTail’s merit by optimizing several latency-critical services, improving their 99th percentile service time and latency by 10.7%–46% and 21%–5 ×, respectively. 
+
+## References            
+
+> [1] Alejandro Acero. 1992. Acoustical and Environmental Robustness in Automatic Speech Recognition . Ph. D. Dissertation. CMU. [2] Alejandro Acero and Richard Stern. Environmental Robustness in Automatic Speech Recognition. In ICASSP 1990. [3] Akamai. 2017. Akamai Online Retail Performance Report: Mil-liseconds Are Critical. https://www.akamai.com/newsroom/press-release/akamai-releases-spring-2017-state-of-online-retail-performance-report . (Accessed: May 2026). [4] Soramichi Akiyama, Takahiro Hirofuchi, and Ryousei Takano. Diag-nosing Performance Fluctuations of High-Throughput Software for Multi-core CPUs. In IPDPSW 2018. [5] Mohammad Mejbah ul Alam, Tongping Liu, Guangming Zeng, and Abdullah Muzahid. SyncPerf: Categorizing, Detecting, and Diagnos-ing Synchronization Performance Bugs. In EuroSys 2017. [6] Grant Ayers, Nayana Prasad Nagendra, David I. August, Hyoun Kyu Cho, Svilen Kanev, Christos Kozyrakis, Trivikram Krishnamurthy, Heiner Litz, Tipp Moseley, and Parthasarathy Ranganathan. AsmDB: Understanding and Mitigating Front-End Stalls in Warehouse-Scale Computers. In ISCA 2019.
+> 14
+
+[7] Oana Balmau, Florin Dinu, Willy Zwaenepoel, Karan Gupta, Rav-ishankar Chandhiramoorthi, and Diego Didona. 2020. SILK+: Pre-venting Latency Spikes in Log-Structured Merge Key-Value Stores Running Heterogeneous Workloads. ACM TOCS 36, 4 (2020). [8] Luiz Barroso, Mike Marty, David Patterson, and Parthasarathy Ran-ganathan. 2017. Attack of the Killer Microseconds. CACM 60, 4 (2017). [9] Luiz André Barroso, Jimmy Clidaras, and Urs Hölzle. 2018. The Dat-acenter as a Computer: An Introduction to the Design of Warehouse-Scale Machines (3rd ed.). Morgan & Claypool Publishers. [10] Luiz André Barroso, Jeffrey Dean, and Urs Hölzle. 2003. Web Search for a Planet: The Google Cluster Architecture. IEEE Micro 23 (2003). [11] Tim Blazytko, Moritz Schlögel, Cornelius Aschermann, Ali Abbasi, Joel Frank, Simon Wörner, and Thorsten Holz. AURORA: Statistical Crash Analysis for Automated Root Cause Explanation. In USENIX Security 2020. [12] Yoann Fouquet (Booking.com). SLOs for Data-Intensive Services. 
+
+https://www.usenix.org/sites/default/files/conference/protected-files/srecon19emea_slides_fouquet.pdf . In SREcon19 EMEA 2019. (Accessed: May 2026). [13] Sol Boucher, Anuj Kalia, David G. Andersen, and Michael Kaminsky. Putting the "Micro" Back in Microservice. In ATC 2018. [14] Dehao Chen, David Xinliang Li, and Tipp Moseley. AutoFDO: Auto-matic Feedback-Directed Optimization for Warehouse-Scale Applica-tions. In CGO 2016. [15] Transaction Processing Performance Council. [n. d.]. TPC-C. https: //www.tpc.org/tpcc/ . (Accessed: May 2026). [16] Charlie Curtsinger and Emery D. Berger. Coz: Finding Code that Counts with Causal Profiling. In SOSP 2015. [17] Florian David, Gael Thomas, Julia Lawall, and Gilles Muller. Con-tinuously Measuring Critical Section Pressure with the Free-Lunch Profiler. In OOPSLA 2014. [18] Jeffrey Dean and Luiz André Barroso. 2013. The tail at scale. CACM 
+
+56, 2 (2013). [19] Giuseppe DeCandia, Deniz Hastorun, Madan Jampani, Gunavardhan Kakulapati, Avinash Lakshman, Alex Pilchin, Swaminathan Sivasub-ramanian, Peter Vosshall, and Werner Vogels. Dynamo: Amazon’s Highly Available Key-Value Store. In SOSP 2007. [20] Christina Delimitrou and Christos Kozyrakis. Quasar: Resource-Efficient and QoS-Aware Cluster Management. In ASPLOS 2014. [21] Henri Maxime Demoulin, Joshua Fried, Isaac Pedisich, Marios Ko-gias, Boon Thau Loo, Linh Thi Xuan Phan, and Irene Zhang. When Idling is Ideal: Optimizing Tail-Latency for Heavy-Tailed Datacenter Workloads with Perséphone. In SOSP 2021. [22] Diego Didona and Willy Zwaenepoel. Size-aware Sharding For Im-proving Tail Latencies in In-memory Key-value Stores. In NSDI 2019. [23] Chris Fraley and Adrian E Raftery. 2002. Model-Based Clustering, Discriminant Analysis, and Density Estimation. J. Amer. Statist. Assoc. 
+
+97, 458 (2002). [24] Keir Fraser. 2004. Practical lock-freedom . Ph. D. Dissertation. Uni-versity of Cambridge, Computer Laboratory. [25] Joshua Fried, Zhenyuan Ruan, Amy Ousterhout, and Adam Belay. Caladan: Mitigating Interference at Microsecond Timescales. In OSDI 
+
+2020. [26] Yu Gan, Yanqi Zhang, Dailun Cheng, Ankitha Shetty, Priyal Rathi, Nayan Katarki, Ariana Bruno, Justin Hu, Brian Ritchken, Brendon Jackson, Kelvin Hu, Meghna Pancholi, Yuan He, Brett Clancy, Chris Colen, Fukang Wen, Catherine Leung, Siyuan Wang, Leon Zaruvinsky, Mateo Espinosa, Rick Lin, Zhongling Liu, Jake Padilla, and Christina Delimitrou. An Open-Source Benchmark Suite for Microservices and Their Hardware-Software Implications for Cloud & Edge Systems. In 
+
+ASPLOS 2019. [27] Alfredo Giménez, Todd Gamblin, Barry Rountree, Abhinav Bhatele, Ilir Jusufi, Peer-Timo Bremer, and Bernd Hamann. Dissecting On-Node Memory Access Performance: A Semantic Approach. In SC 
+
+2014. [28] Google. 2024. Propeller: A Profile Guided, Relinking Optimizer for Warehouse Scale Applications. https://github.com/google/llvm-propeller . (Accessed: May 2026). [29] Yuxin Guo, Alex W. Chadwick, Márton Erdós, Utpal Bora, Ilias Vou-gioukas, Giacomo Gabrielli, and Timothy M. Jones. OptiWISE: Com-bining Sampling and Instrumentation for Granular CPI Analysis. In 
+
+CGO 2024. [30] Roni Haecki, Radhika Niranjan Mysore, Lalith Suresh, Gerd Zell-weger, Bo Gan, Timothy Merrifield, Sujata Banerjee, and Timothy Roscoe. How to diagnose nanosecond network latencies in rich end-host stacks. In NSDI 2022. [31] James Hamilton. 2009. The Cost of Latency. https://perspectives. mvdirona.com/2009/10/the-cost-of-latency/ . (Accessed: May 2026). [32] Md E. Haque, Yong hun Eom, Yuxiong He, Sameh Elnikety, Ricardo Bianchini, and Kathryn S. McKinley. Few-to-Many: Incremental Par-allelism for Reducing Tail Latency in Interactive Services. In ASPLOS 
+
+2015. [33] Md E. Haque, Yuxiong He, Sameh Elnikety, Thu D. Nguyen, Ricardo Bianchini, and Kathryn S. McKinley. Exploiting Heterogeneity for Tail Latency and Energy Efficiency. In MICRO 2017. [34] Mor Harchol-Balter. 2013. Performance Modeling and Design of Computer Systems: Queueing Theory in Action (1st ed.). Cambridge University Press. [35] Christian Helm and Kenjiro Taura. PerfMemPlus: A Tool for Auto-matic Discovery of Memory Performance Problems. In HPC 2019. [36] John L Hennessy and David A Patterson. 2017. Computer Architec-ture: a Quantitative Approach . Morgan Kaufmann. [37] Chang-Hong Hsu, Yunqi Zhang, Michael A. Laurenzano, David Meis-ner, Thomas Wenisch, Jason Mars, Lingjia Tang, and Ronald G. Dres-linski. Adrenaline: Pinpointing and Reining in Tail Queries with Quick Voltage Boosting. In HPCA 2015. [38] Jack Tigar Humphries, Neel Natu, Ashwin Chaugule, Ofir Weisse, Bar-ret Rhoden, Josh Don, Luigi Rizzo, Oleg Rombakh, Paul Turner, and Christos Kozyrakis. ghOSt: Fast & Flexible User-Space Delegation of Linux Scheduling. In SOSP 2021. [39] Intel. 2023. Intel 64 and IA-32 Architectures Optimization Reference Manual (248966-046a ed.). (Accessed: May 2026). [40] Intel. 2023. Intel 64 and IA-32 Architectures Software Developerâ ˘ A ´ Zs Manual (325462-082us ed.). (Accessed: May 2026). [41] Intel. 2024. Intel VTune Profiler. https://www.intel.com/content/ www/us/en/developer/tools/oneapi/vtune-profiler.html . (Accessed: May 2026). [42] Rishabh Iyer, Musa Unal, Marios Kogias, and George Candea. Achiev-ing Microsecond-Scale Tail Latency Efficiently with Approximate Optimal Scheduling. In SOSP 2023. [43] Saba Jamilan, Tanvir Ahmed Khan, Grant Ayers, Baris Kasikci, and Heiner Litz. APT-GET: profile-guided timely software prefetching. In 
+
+EuroSys 2022. [44] Myeongjae Jeon, Yuxiong He, Hwanju Kim, Sameh Elnikety, Scott Rixner, and Alan L. Cox. TPC: Target-Driven Parallelism Combin-ing Prediction and Correction to Reduce Tail Latency in Interactive Services. In ASPLOS 2016. [45] Mike Johnson. 1991. Superscalar Microprocessor Design . Prentice Hall Englewood Cliffs, New Jersey. [46] Ryan Johnson, Ippokratis Pandis, Nikos Hardavellas, Anastasia Aila-maki, and Babak Falsafi. Shore-MT: A Scalable Storage Manager for the Multicore Era. In EDBT 2009. [47] Kostis Kaffes, Timothy Chong, Jack Tigar Humphries, Adam Be-lay, David Mazières, and Christos Kozyrakis. Shinjuku: Preemptive Scheduling for μsecond-scale Tail Latency. In NSDI 2019. 
+
+> 15
+
+[48] Svilen Kanev, Juan Pablo Darago, Kim Hazelwood, Parthasarathy Ran-ganathan, Tipp Moseley, Gu-Yeon Wei, and David Brooks. Profiling a warehouse-scale computer. In ISCA 2015. [49] Wonkyung Kang, Dongkun Shin, and Sungjoo Yoo. 2017. Reinforce-ment Learning-Assisted Garbage Collection to Mitigate Long-Tail Latency in SSD. ACM TECS 16, 5s (2017). [50] Baris Kasikci, Weidong Cui, Xinyang Ge, and Ben Niu. Lazy Diagno-sis of In-Production Concurrency Bugs. In SOSP 2017. [51] Baris Kasikci, Benjamin Schubert, Cristiano Pereira, Gilles Pokam, and George Candea. Failure Sketching: A Technique for Automated Root Cause Diagnosis of In-Production Failures. In SOSP 2015. [52] Harshad Kasture, Davide B. Bartolini, Nathan Beckmann, and Daniel Sanchez. Rubik: Fast Analytical Power Management for Latency-Critical Systems. In MICRO 2015. [53] Harshad Kasture and Daniel Sanchez. Ubik: Efficient Cache Sharing with Strict QoS for Latency-Critical Workloads. In ASPLOS 2014. [54] Harshad Kasture and Daniel Sanchez. TailBench: A Benchmark Suite and Evaluation Methodology for Latency-Critical Applications. In 
+
+IISWC 2016. [55] Tanvir Ahmed Khan, Nathan Brown, Akshitha Sriraman, Niranjan K Soundararajan, Rakesh Kumar, Joseph Devietti, Sreenivas Subra-money, Gilles A Pokam, Heiner Litz, and Baris Kasikci. Twig: Profile-Guided BTB Prefetching for Data Center Applications. In MICRO 
+
+2021. [56] Tanvir Ahmed Khan, Ian Neal, Gilles Pokam, Barzan Mozafari, and Baris Kasikci. DMon: Efficient Detection and Correction of Data Locality Problems Using Selective Profiling. In OSDI 2021. [57] Tanvir Ahmed Khan, Muhammed Ugur, Krishnendra Nathella, Dam Sunwoo, Heiner Litz, Daniel A. JimÃl’nez, and Baris Kasikci. Whis-per: Profile-Guided Branch Misprediction Elimination for Data Center Applications. In MICRO 2022. [58] Tanvir Ahmed Khan, Dexin Zhang, Akshitha Sriraman, Joseph De-vietti, Gilles Pokam, Heiner Litz, and Baris Kasikci. Ripple: Profile-Guided Instruction Cache Replacement for Data Center Applications. In ISCA 2021. [59] Andi Kleen. 2023. pmu-tools/jevents. https://github.com/andikleen/ pmu-tools/tree/master/jevents . (Accessed: May 2026). [60] Philipp Koehn, Hieu Hoang, Alexandra Birch, Chris Callison-Burch, Marcello Federico, Nicola Bertoldi, Brooke Cowan, Wade Shen, Chris-tine Moran, Richard Zens, Chris Dyer, Ondˇ rej Bojar, Alexandra Con-stantin, and Evan Herbst. Moses: Open Source Toolkit for Statistical Machine Translation. In ACL 2007. [61] Jacob Leverich and Christos Kozyrakis. Reconciling High Server Utilization and Sub-millisecond Quality-of-Service. In EuroSys 2014. [62] Jialin Li, Naveen Kr. Sharma, Dan R. K. Ports, and Steven D. Gribble. Tales of the Tail: Hardware, OS, and Application-level Sources of Tail Latency. In SoCC 2014. [63] Yueying Li, Nikita Lazarev, David Koufaty, Tenny Yin, Andy An-derson, Zhiru Zhang, G. Edward Suh, Kostis Kaffes, and Christina Delimitrou. LibPreemptible, Enabling Fast, Adaptive, and Hardware-Assisted User-Space Scheduling. In HPCA 2024. [64] Linux. 2024. perf : Linux profiling with performance counters. https: //perf.wiki.kernel.org/index.php/Main_Page . (Accessed: May 2026). [65] Heiner Litz, Grant Ayers, and Parthasarathy Ranganathan. CRISP: Critical Slice Prefetching. In ASPLOS 2022. [66] David Lo, Liqun Cheng, Rama Govindaraju, Luiz André Barroso, and Christos Kozyrakis. Towards Energy Proportionality for Large-Scale Latency-Critical Workloads. In ISCA 2014. [67] David Lo, Liqun Cheng, Rama Govindaraju, Parthasarathy Ran-ganathan, and Christos Kozyrakis. Heracles: Improving Resource Efficiency at Scale. In ISCA 2015. [68] Yandong Mao, Eddie Kohler, and Robert Tappan Morris. Cache Craftiness for Fast Multicore Key-Value Storage. In EuroSys 2012. [69] Michael Marty, Marc de Kruijf, Jacob Adriaens, Christopher Alfeld, Sean Bauer, Carlo Contavalli, Michael Dalton, Nandita Dukkipati, William C. Evans, Steve Gribble, Nicholas Kidd, Roman Kononov, Gautam Kumar, Carl Mauer, Emily Musick, Lena Olson, Erik Rubow, Michael Ryan, Kevin Springborn, Paul Turner, Valas Valancius, Xi Wang, and Amin Vahdat. Snap: A Microkernel Approach to Host Networking. In SOSP 2019. [70] Tony Mauro. 2015. Adopting Microservices at Netflix: Lessons for Architectural Design. https://www.nginx.com/blog/microservices-at-netflix-architectural-best-practices/ . (Accessed: May 2026). [71] Paul E. McKenney and John D Slingwine. Read-copy update: Using execution history to solve concurrency problems. In PDCS 1998. [72] David Meisner, Brian T. Gold, and Thomas F. Wenisch. PowerNap: Eliminating Server Idle Power. In ASPLOS 2009. [73] David Meisner and Thomas F. Wenisch. DreamWeaver: Architectural Support for Deep Sleep. In ASPLOS 2012. [74] Amirhossein Mirhosseini and Thomas F. Wenisch. 2019. The Queuing-First Approach for Tail Management of Interactive Services. IEEE Micro 39, 4 (2019). [75] Moses. 2017. Moses statistical machine translation system. https: //www2.statmt.org/moses/ . (Accessed: May 2026). [76] Rajesh Nishtala, Hans Fugal, Steven Grimm, Marc Kwiatkowski, Herman Lee, Harry C. Li, Ryan McElroy, Mike Paleczny, Daniel Peek, Paul Saab, David Stafford, Tony Tung, and Venkateshwaran Venkataramani. Scaling Memcache at Facebook. In NSDI 2013. [77] Misja Nuyens, Adam Wierman, and Bert Zwart. 2008. Preventing Large Sojourn Times Using SMART Scheduling. Operations Re-search 56, 1 (2008). [78] Deok-Jae Oh, Yaebin Moon, Eojin Lee, Tae Jun Ham, Yongjun Park, Jae W. Lee, and Jung Ho Ahn. MaPHeA: A Lightweight Mem-ory Hierarchy-Aware Profile-Guided Heap Allocation Framework. In 
+
+LCTES 2021. [79] Steve Olenski. 2016. Why Brands Are Fighting Over Millisec-onds. https://www.forbes.com/sites/steveolenski/2016/11/10/why-brands-are-fighting-over-milliseconds/?sh=3e2f4d354ad3 . Forbes 
+
+(2016). (Accessed: May 2026). [80] Amy Ousterhout, Joshua Fried, Jonathan Behrens, Adam Belay, and Hari Balakrishnan. Shenango: Achieving High CPU Efficiency for Latency-sensitive Datacenter Workloads. In NSDI 2019. [81] Maksim Panchenko, Rafael Auler, Bill Nell, and Guilherme Ottoni. BOLT: A Practical Binary Optimizer for Data Centers and Beyond. In 
+
+CGO 2019. [82] George Prekas, Marios Kogias, and Edouard Bugnion. ZygOS: Achieving Low Tail Latency for Microsecond-scale Networked Tasks. In SOSP 2017. [83] Alexey Ragozin. 2018. How to use perf to monitor Java perfor-mance. https://bell-sw.com/announcements/2022/04/07/how-to-use-perf-to-monitor-java-performance/ . (Accessed: May 2026). [84] Kavita Ramanan and Alexander L. Stolyar. 2001. Largest Weighted Delay First Scheduling: Large Deviations and Optimality. The Annals of Applied Probability 11, 1 (2001). [85] Waleed Reda, Marco Canini, Lalith Suresh, Dejan Kosti´ c, and Sean Braithwaite. Rein: Taming Tail Latency in Key-Value Stores via Multiget Scheduling. In EuroSys 2017. [86] Gang Ren, Eric Tune, Tipp Moseley, Yixin Shi, Silvius Rus, and Robert Hundt. 2010. Google-Wide Profiling: A Continuous Profiling Infrastructure for Data Centers. IEEE Micro 30, 4 (2010). [87] Xiang (Jenny) Ren, Sitao Wang, Zhuqi Jin, David Lion, Adrian Chiu, Tianyin Xu, and Ding Yuan. Relational Debugging — Pinpointing Root Causes of Performance Problems. In OSDI 2023. [88] Samsung. 2021. Datacenter SSD—PM9A3. https://semiconductor. samsung.com/ssd/datacenter-ssd/pm9a3/ . (Accessed: May 2026). [89] James E. Smith and Gurindar S. Sohi. 1995. The Microarchitecture of Superscalar Processors. Proc. IEEE 83, 12 (1995). 
+
+> 16
+
+[90] Linhai Song and Shan Lu. Performance Diagnosis for Inefficient Loops. In ICSE 2017. [91] Shixin Song, Tanvir Ahmed Khan, Sara Mahdizadeh Shahri, Ak-shitha Sriraman, Niranjan K Soundararajan, Sreenivas Subramoney, Daniel A. Jiménez, Heiner Litz, and Baris Kasikci. Thermometer: Profile-Guided BTB Replacement for Data Center Applications. In 
+
+ISCA 2022. [92] CMU Sphinx. 2023. CMUSphinx Open Source Speech Recognition. 
+
+https://cmusphinx.github.io/ . (Accessed: May 2026). [93] Pengfei Su, Shuyin Jiao, Milind Chabbi, and Xu Liu. Pinpointing Performance Inefficiencies via Lightweight Variance Profiling. In SC 
+
+2019. [94] Pengfei Su, Qingsen Wang, Milind Chabbi, and Xu Liu. Pinpointing Performance Inefficiencies in Java. In ESEC/FSE 2019. [95] Jörg Tiedemann. Parallel Data, Tools and Interfaces in OPUS. In 
+
+LREC 2012. [96] R. M. Tomasulo. 1967. An efficient algorithm for exploiting multiple arithmetic units. IBM J. Res. Dev. 11, 1 (1967). [97] Stephen Tu, Wenting Zheng, Eddie Kohler, Barbara Liskov, and Samuel Madden. Speedy Transactions in Multicore In-Memory Databases. In SOSP 2013. [98] Balajee Vamanan, Hamza Bin Sohail, Jahangir Hasan, and T. N. Vi-jaykumar. TimeTrader: Exploiting Latency Tail to Save Datacenter Energy for Online Search. In MICRO 2015. [99] Ashish Vulimiri, Philip Brighten Godfrey, Radhika Mittal, Justine Sherry, Sylvia Ratnasamy, and Scott Shenker. Low Latency via Re-dundancy. In CoNEXT 2013. [100] William Walker, Paul Lamere, Philip Kwok, Bhiksha Raj, Rita Singh, Evandro B. Gouvêa, Peter Wolf, and Joseph Woelfel. 2004. Sphinx-4: A Flexible Open Source Framework for Speech Recognition . Technical Report. Sun Microsystems, Inc. [101] Lingmei Weng, Yigong Hu, Peng Huang, Jason Nieh, and Junfeng Yang. Effective Performance Issue Diagnosis with Value-Assisted Cost Profiling. In EuroSys 2023. [102] Adam Wierman and Bert Zwart. 2012. Is Tail-Optimal Scheduling Possible? Operations Research 60, 5 (2012). [103] Daniel Wong and Murali Annavaram. KnightShift: Scaling the Energy Proportionality Wall through Server-Level Heterogeneity. In MICRO 
+
+2012. [104] Mingyu Wu, Ziming Zhao, Yanfei Yang, Haoyu Li, Haibo Chen, Binyu Zang, Haibing Guan, Sanhong Li, Chuansheng Lu, and Tongbao Zhang. Platinum: A CPU-Efficient Concurrent Garbage Collector for Tail-Reduction of Interactive Services. In USENIX ATC 2020. [105] xapian.org. 2024. The Xapian Project. https://xapian.org/ . (Accessed: May 2026). [106] Shiqin Yan, Huaicheng Li, Mingzhe Hao, Michael Hao Tong, Swami-nathan Sundararaman, Andrew A. Chien, and Haryadi S. Gunawi. Tiny-Tail Flash: Near-Perfect Elimination of Garbage Collection Tail Latencies in NAND SSDs. In FAST 2017. [107] Hailong Yang, Alex Breslow, Jason Mars, and Lingjia Tang. Bubble-Flux: Precise Online QoS Management for Increased Utilization in Warehouse Scale Computers. In ISCA 2013. [108] Ahmad Yasin. A Top-Down Method for Performance Analysis and Counters Architecture. In ISPASS 2014. [109] Irene Zhang, Amanda Raybuck, Pratyush Patel, Kirk Olynyk, Jacob Nelson, Omar S. Navarro Leija, Ashlie Martinez, Jing Liu, Anna Korn-feld Simpson, Sujay Jayakar, Pedro Henrique Penna, Max Demoulin, Piali Choudhury, and Anirudh Badam. The Demikernel Datapath OS Architecture for Microsecond-scale Datacenter Systems. In SOSP 
+
+2021. [110] Lei Zhang, Zhiqiang Xie, Vaastav Anand, Ymir Vigfusson, and Jonathan Mace. The Benefit of Hindsight: Tracing Edge-Cases in Distributed Systems. In NSDI 2023. [111] Yuxuan Zhang, Tanvir Ahmed Khan, Gilles Pokam, Baris Kasikci, Heiner Litz, and Joseph Devietti. OCOLOS: Online COde Layout OptimizationS. In MICRO 2022. [112] Fang Zhou, Yifan Gan, Sixiang Ma, and Yang Wang. wPerf: Generic Off-CPU Analysis to Identify Bottleneck Waiting Events. In OSDI 
+
+2018. [113] Jin Zhou, Steven (Jiaxun) Tang, Hanmei Yang, and Tongping Liu. CachePerf: A Unified Cache Miss Classifier via Hybrid Hardware Sampling. In SIGMETRICS/PERFORMANCE 2022. [114] Haishan Zhu and Mattan Erez. Dirigent: Enforcing QoS for Latency-Critical Tasks on Shared Multicore Systems. In ASPLOS 2016. [115] Gefei Zuo, Jiacheng Ma, Andrew Quinn, Pramod Bhatotia, Pedro Fonseca, and Baris Kasikci. Execution Reconstruction: Harnessing Failure Reoccurrences for Failure Reproduction. In PLDI 2021. 
+
+> 17
+
+## A DBBL extraction algorithm 
+
+# enters , exits - containers which keep track of request - level counters for offsets # ft_offsets - container of possible fall - through offsets 
+
+for ( request , source , insn_len , target , br_type ) in taken_branches : 
+
+if br_type in { CALL , JMP , JCC }:enters [ target ][ request ]++ 
+
+if br_type in { RET , JMP , JCC }:exits [ source + insn_len ][ request ]++ 
+
+if br_type is JCC : ft_offsets . append ( source + insn_len ) 
+
+for ft_offset in ft_offsets : enters [ ft_offset ] # add as an enter offset , without increasing the counter sort_descending ( enters ) sort_descending ( exits ) enter_idx = 0# dbbls - container of dynamic basic blocks # ft_count - container of request - level counters 
+
+for ( exit_offset , exit_count ) in exits : 
+
+while ( true ): ( enter_offset , enter_count ) = enters [ enter_idx ] 
+
+if ( enter_offset < exit_offset ): 
+
+break ;dbbls . append ( enter_offset , enters [ enter_idx - 1]. offset , ft_count ) enter_idx ++ ft_count -= enter_count 
+
+if ft_offsets . contains ( exit_offset ): dbbl_count = ( ft_count + exit_count ) 
+
+else :dbbl_count = exit_count dbbls . append ( enter_offset , exit_offset , dbbl_count ) enter_idx ++ ft_count -= enter_count 
+
+Figure 13. Algorithm for extracting DBBLs and their execution counts, at request-level, based on PT records of taken branches.
