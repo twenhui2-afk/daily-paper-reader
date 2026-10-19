@@ -1,0 +1,462 @@
+Title: LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions
+
+URL Source: https://arxiv.org/pdf/2610.15729v1
+
+Published Time: Wed, 14 Oct 2026 01:56:02 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 
+
+JUNMING LIU, MPI-SP, Germany 
+
+MARCEL BÖHME, CISPA, Germany When we see a null pointer check, we know that the developer believes that the pointer may not be initialized. If we see the same pointer later used without a null pointer check, we may consider this a violation of the developer’s belief and ultimately a bug. In this paper, we develop such a belief-guided program analysis for vulnerability detection (VD). For example, when an authentication function returns the same error for both, a wrong user name and a wrong password, a human auditor may infer that the developer believes that both cases are indistinguishable, mitigating a user enumeration attack. This belief is reasonable, as it follows standard security practice. Yet, a function call inducing a difference in response time for both cases, contradicts this belief. This contradiction uncovers a timing side-channel that syntactic analysis tools would miss. Existing static analysis tools struggle with this type of flaws because they require them to be expressible by syntactic patterns. Our belief-guided approach allows us to detect such domain-specific, high-level semantic security flaws that have so far remained elusive. Given a function, our approach, Creed, infers the developer’s security-related beliefs, evaluates how reasonable each one is, and derives the conditions under which it is violated. In contrast to existing ML-based VD techniques, Creed explains the root cause, the symptoms, and the conditions under which each issue is exploitable. To overcome the context-dependency problem in the evaluation , we introduce two measures of the performance of explanation-based VD: recall quantifies how effectively an approach correctly explains a known vulnerability, and overhead quantifies the effort of inspecting its reports. On a recent real-world vulnerability benchmark, Creed detects both semantic and syntactic vulnerabilities more effectively than the existing explanation-based VD tools, achieving the best trade-off between effectiveness and effort. Additional Key Words and Phrases: Vulnerability detection, static analysis, large language models 
+
+ACM Reference Format: 
+
+Junming Liu and Marcel Böhme. 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions. 1, 1 (October 2026), 21 pages. https://doi.org/10.1145/nnnnnnn.nnnnnnn 
+
+1 Introduction 
+
+Many types of security flaws require domain-specific, high-level semantic code understanding. For instance, in our random sample of 50 recent vulnerabilities collected by CVEfixes [3], developers forgot to consider a timing side-channel when mitigating user enumeration (CVE-2026-25222), forgot to check object-level authorization before canceling a payment (CVE-2026-2010), forgot to limit a path name only to the allowed directory (CVE-2026-28427), or forgot to verify a cryptographic signature (CVE-2026-22866). How can we discover these automatically and at scale? To detect such semantic security flaws manually, code auditors follow a process of identifying developer beliefs and locations where they are contradicted. Cognitive studies suggest [4, 9, 16]: Developers carry certain beliefs (i.e., implicit assumptions) that can be identified in the source code. Auditors iteratively infer the developer’s beliefs about the program’s behavior, form expectations 
+
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. © 2026 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM XXXX-XXXX/2026/10-ART https://doi.org/10.1145/nnnnnnn.nnnnnnn , Vol. 1, No. 1, Article . Publication date: October 2026. arXiv:2610.15729v1 [cs.CR] 11 Oct 2026 2 Junming Liu and Marcel Böhme 
+
+based on their domain knowledge, and identify bugs where the implementation deviates from these expectations. Existing attempts to automate this belief-guided analysis are based on traditional static analysis [8, 14, 19]. Beliefs and their violations are expressed and checked as general patterns on static code representations. For instance, a null-pointer check guarding a dereference implies the belief that the pointer may be null. The existence of a path along which that pointer is (not reassigned but) dereferenced without a null-pointer check is inconsistent with this belief. An analysis to detect such paths might use the program dependence graph (PDG). However, identifying general beliefs a priori and encoding them as patterns within a syntactic representation of the source code (e.g., PDG) fundamentally limits the types of bugs that can be found. Most of the recent security flaws, we have encountered, violate domain-specific, high-level beliefs that cannot be expressed as such patterns. For instance, Listing 1 shows the function patched to fix CVE-2026-25222. How can we expect a traditional static analysis to work for the TypeScript 
+
+language or to figure out, this function handles user authentication? How can we expect that it identifies "invcreds" as an error code or that the developer believes that returning the same error code after entering the wrong user or password would not leak that the user existed (to mitigate a user enumeration attack)? These are broad semantic facts specific to the authentication domain that can hardly be derived, e.g., from the (language-specific) PDG.              
+
+> 1export async function signInCredentials(
+> 2email: string, password: string): ... {
+> 3...
+> 4const user = await prisma.user.findUnique({ where: { email },});
+> 5if (!user) return "invcreds";
+> 6...
+> 7const hashedPassword = await hashPassword(password, user.salt);
+> 8if (user.password === hashedPassword) {
+> 9await createSession(user.id);
+> 10 return true;
+> 11 } else return ("invcreds");
+> 12 ...
+> 13 }
+> Listing 1. User enumeration vulnerability in PolarLearn (CVE-2026-25222)
+
+In this paper, we propose a belief-guided, language-agnostic, semantic static analysis for vulnerabil-ity detection that implements a general belief-guided approach using large language models (LLMs). Our approach, Creed, identifies what the given function tries to achieve (action), which assump-tions the developer made when implementing this action (belief), whether these assumptions are reasonable (sanity), and whether there are conditions under which they are violated (violation). The bugs thus detected can be as low-level and general as missing null pointer checks and as high-level and specific as unintended timing side channels. In Listing 1, the function returns the same error code "invcreds" if the user name or if the password is incorrect (action). The corresponding belief may be that a generic error response makes the two failure modes indistinguishable to attackers (belief). Doing so is standard security practice and prevents user enumeration (sanity). If the response time differs significantly between both failure modes, e.g., due to the additional function call, an attacker could still enumerate valid users (violation). This is CVE-2026-25222. How do we evaluate whether our belief-guided approach is effective? Unlike many existing vulnerability detection techniques, our approach does not classify a function as vulnerable or  
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 3
+
+not, but produces an explanation of why and under which conditions a function may cause a vulnerability. In fact, casting machine learning for vulnerability detection as a function-level binary classification problem is invalid [27] because in most cases whether or not a function causes a vulnerability depends on the context in which this function is called. This context-dependency problem is alleviated in our problem statement because i) we offer an explanation that a human auditor can check, and ii) the explanation is context-conditional. We suggest evaluating the recall of our approach as the proportion of vulnerabilities where our approach produces an explanation that is consistent with the available evidence (i.e., CVE description, patch commit message, and patch diff code). We cannot compute the precision of our approach automatically since many of Creed’s reports, beyond the one we expect to find, seem reasonable to us. Nevertheless, to get a handle on precision, we manually analyze the first report of each function. Moreover, we evaluate the overhead of our approach as the number of reports per expected vulnerability. We evaluate Creed on 50 recent CVEs spanning 10 programming languages, 40 of which are semantic flaws. Creed achieves the highest recall (0.78), correctly identifying and explaining the root cause of 39 of 50 vulnerabilities. Compared with the strongest baseline, it improves recall by 10 percentage points while lowering overhead from 11.3 to 7.9, about 30%. Even under a tight inspection budget, it surpasses the recall any baseline reaches with unlimited effort. It leads on both memory-related and semantic vulnerabilities, including 15 of 21 cases that cannot be expressed as general static-analysis patterns. In summary, we make the following contributions .
+
+• We propose Creed, a belief-guided, language-agnostic, semantic static analysis for vulnerability detection. 
+
+• We evaluate explanation-based detection with recall and overhead , addressing the context-dependency problem in function-level vulnerability detection. 
+
+• We demonstrate the effectiveness of Creed on both semantic and memory-related vulnerabilities. 
+
+2 Belief-Guided Static Analysis for Vulnerability Detection via Language Models Potential 
+
+> Vulnerability Report
+> Finding
+> Explanation
+
+…
+
+> Target Function
+> Belief Evaluation
+> Reasonable?
+> Sanity
+> Violation
+> Belief Breaks?
+> Belief Inference
+
+… 
+
+> Belief
+> Action Belief
+> …
+> Each
+> Belief
+> One LLM Call
+> - Cited Beliefs
+> Imply
+> Vuln?
+
+Fig. 1. Overview of Creed. 
+
+2.1 Overview 
+
+Figure 1 shows the overall workflow of Creed. Given a function, Creed makes explicit the devel-oper’s implicit beliefs about the action implemented in the function, evaluates them, and produces a vulnerability report . Specifically, Creed proceeds in three stages. During belief inference (Sec-tion 2.2), it identifies the actions the code performs and infers the beliefs the developer holds when performing them. During belief evaluation (Section 2.3), it evaluates each belief through                               
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. 4Junming Liu and Marcel Böhme
+> Task: Analyze the beliefs the developer holds when performing actions in the code, analyze their reasonableness, identify their violation conditions, and based on this analysis identify all potential vulnerabilities.
+> Reasoning Steps:
+> (1) Action Identification: Identify the operations performed by the code. §2.2 (2) Belief Inference: For each action, infer the beliefs that developers may hold. §2.2 (3) Sanity Analysis: Analyze the reasonableness of these beliefs. §2.3 (4) Violation-Condition Derivation: Identify the violation conditions for these beliefs. §2.3 (5) Potential Vulnerability Identification: Based on the belief analysis, identify all potential security vulnerabilities in the given code. §2.4
+> Definitions:
+> – Belief: A fact that the developer assumes to be true when performing an action. . . .
+> Function: {{function_code}}
+> Output Format: {{output_format}}
+
+Fig. 2. Prompt of Creed (condensed). Verbatim prompt and output schema are in the artifact. 
+
+two complementary checks: a sanity check that determines whether the belief is reasonable (i.e., consistent with established security standards), and a violation check that derives the conditions under which the belief may no longer hold. During vulnerability reporting (Section 2.4), Creed produces a report for each finding that explains the nature of the potential vulnerability, the root cause and the context under which it can be exploited. Creed realizes this workflow with a single prompt (Fig. 2) that guides an LLM through the three stages and returns a structured result.        
+
+> 1public boolean cancel(short siteId, long paymentId) {
+> 2TradePayment entity = getEntity(paymentId);
+> 3if (null != entity && siteId == entity.getSiteId()
+> 4&& entity.getStatus() == STATUS_PENDING_PAY) {
+> 5entity.setStatus(STATUS_CLOSE);
+> 6...
+> 7}
+
+Listing 2. Improper authorization in PublicCMS (CVE-2026-2010) 
+
+Examples. Table 1 walks through Creed on two functions, which together illustrate the two ways a belief can uncover a potential vulnerability. Listing 1 shows our first example from the introduction, a TypeScript function called signInCredentials fixed to patch CVE-2026-25222. Listing 2 shows our second example, a Java function called cancel fixed to patch CVE-2026-2010. For the signInCredentials function (Listing 1; Table 1.left), Creed identifies the action , which the function implements, as authentication, which returns the same generic error for both non-existent users and wrong passwords. It then infers the developer’s belief that the generic error makes the two cases indistinguishable which it evaluates as reasonable . However, when analyzing whether there are conditions under which this belief is violated , Creed finds that the additional call to hashPassword might induce a difference in response times causing a timing side-channel and thus facilitating the user enumeration vulnerability that the developer meant to prevent. For the cancel function (Listing 2, Table 1.right), Creed identifies the action , which the function implements, as canceling a pending payment, which checks only the siteId and the payment status before canceling a payment. It then infers the developer’s belief that a matching siteId is            
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 5
+> Table 1. Creed’s analysis of two example functions, signInCredentials() and cancel() .
+> Analysis signInCredentials() (CVE-2026-25222) cancel()
+> (CVE-2026-2010) Action Returns the same error for both missing-user and wrong-password cases. Validates the entity only against siteId and payment status. Belief A generic error response makes the two failure modes indistinguishable to attackers. A matching siteId is sufficient authorization to cancel this payment. Sanity [Reasonable] a standard practice to prevent user enumeration. [Unreasonable] site-level and payment-level authorization are different. Violation Response time differs significantly between two failure modes. A same-site user (matching siteId) cancels a payment they do not own.
+
+sufficient to authorize the cancellation of the payment. However, Creed finds this unreasonable on its own, since belonging to the same site does not imply the right to cancel that particular payment. The two cases show that Creed reports potential vulnerabilities both from a belief that is unrea-sonable and from a reasonable belief whose violation condition can be triggered. Both functions are written in different languages. 
+
+2.2 Belief Inference 
+
+A belief is an assumption the developer holds when implementing the code. Beliefs cannot be observed directly. Instead, they are inferred from the observable behaviors the code performs, which we refer to as actions .
+
+Action Identification. A function can be understood as a single action in itself (like the 
+
+signInCredential function implementing authentication). Yet, a function also comprises multiple finer-grained actions that together achieve its overall functionality (like the various checks during authentication). Fixing a specific granularity for identifying actions is therefore insufficient: low-level actions and the function’s overall purpose expose different classes of potential vulnerabilities. Creed thus performs a two-level action identification, letting the LLM identify actions at each level rather than imposing a fixed decomposition. First, it identifies low-level actions, such as dereferencing a pointer, which enables it to detect low-level vulnerabilities such as null-pointer dereferences. Second, it identifies what the function aims to achieve as a whole, such as canceling a payment, which enables it to detect domain-specific vulnerabilities such as improper authorization. 
+
+Belief Inference. For each identified action, Creed infers the beliefs the developer assumes to be true when performing it. A single action may provide evidence for multiple beliefs. For example, as shown in Table 1.right, the validation of the entity only against siteId and payment status ( action )embodies at least two distinct security assumptions ( beliefs ): ( B.1 ) that the user who wants to cancel payment paymentId is sufficiently authenticated by the siteId , and/or ( B.2 ) that the siteId is a trusted, server-side value that is not under attacker control. Creed infers each of them, since any of those may underlie a potential security flaw. 
+
+2.3 Belief Evaluation 
+
+Having inferred a set of beliefs, how can we use them to identify potential vulnerabilities? Recall that a belief is an assumption the developer holds while implementing the code. A potential vulnerability can therefore arise in two ways. The assumption itself may be unreasonable, or the assumption  
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. 6Junming Liu and Marcel Böhme
+
+may be reasonable yet not upheld by the implementation. Creed addresses these two cases with two complementary checks, a sanity check and a violation check .
+
+Sanity Check. The sanity check assesses whether a belief is reasonable, i.e., whether it aligns with standard security practice. If a belief does not align, no implementation built on it can be secure, and a potential vulnerability follows regardless of how carefully the code is written. Beyond a Reasonable or Unreasonable label, the sanity check also produces an explanation of which security practice the belief is compared against and why it is considered reasonable or not. For the 
+
+cancel function in Listing 2, the belief B.1 is unreasonable, because site-level and payment-level authorization are different. Note that vulnerabilities induced by such unreasonable beliefs are 
+
+context-independent : Any code that relies on them is vulnerable. 
+
+Violation Check. Even when a belief is reasonable, the implementation may fail to uphold it under certain conditions, and a potential vulnerability can still arise. Rather than simply judging whether such a condition exists, the violation check derives the specific conditions under which a belief no longer holds. Since Creed operates at the function level, a violation condition may be mitigated by upstream code, so Creed surfaces these conditions explicitly for further verification. For the signInCredentials function (Listing 1), the developer is aware of user enumeration and follows the standard practice of returning a generic error. However, the implementation overlooks a timing side-channel induced by an additional function call, under which the belief is violated and the vulnerability that was meant to be mitigated may still occur. Creed derives the violation conditions for every belief, including those already judged unreasonable, to fully characterize how each belief may fail. 
+
+2.4 Vulnerability Reporting 
+
+The sanity and violation checks together flag the beliefs that may lead to a potential vulnerability: a belief that is unreasonable, or one whose violation condition can be triggered, indicates a potential vulnerability. Based on these flagged beliefs, Creed produces a report of potential vulnerabilities .The report consists of a set of findings , each describing one potential vulnerability together with an explanation of its root cause and the context under which it can be exploited. Since a single potential vulnerability may be indicated by multiple beliefs, each finding is linked back to the beliefs that support it, and overlapping beliefs are consolidated into one finding. We call these vulnerabilities potential because the analysis is performed at the function level, and whether a potential vulnerability is real depends on the surrounding context. 
+
+3 Evaluating Function-Level Vulnerability Detection 3.1 Metrics for Function-Level Vulnerability Detection 
+
+To evaluate function-level vulnerability detection ability, we do not adopt the classic metrics based on binary classification, as recent work has shown that such an evaluation is fundamentally invalid for evaluating machine-learning-based vulnerability detection [27]. Specifically, whether a function causes a vulnerability in a program or not often depends on the context within which this function is called. For example, every caller of a given function may always make sure that a pointer points to allocated memory before it is dereferenced in the function (with a potential null-pointer-dereference vulnerability). Without knowing this context, it is not possible to decide whether the function causes the program to be vulnerable or not. However, our work addresses the context-dependency problem for function-level vulnerability detection using a context-conditional approach that offers explanations for multiple findings rather than a single binary decision. Creed reports each finding with an explanation of the root cause and the conditions under which a function may cause a security issue. 
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026.
+
+LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 7
+
+Matched finding. During experimental evaluation, we have access to substantial evidence for the given vulnerability, including the CVE description, the commit message explaining the vulnerability and how it is fixed, and the patch itself. Using this evidence, we can determine the context condition and its root cause. Since both the context condition and the root cause are explained by the finding, we can determine whether an auto-generated vulnerability finding is consistent with that evidence. We call such findings matched . By checking both the condition and the root cause, the context-dependency problem is thus addressed. The manipulation of the argument paymentId leads to improper authorization.  If the siteId and paymentId are arguments an attacker can manipulate, and are predictable or can be enumerated, an attacker can cancel any pending payment by supplying the correct siteId/paymentId combination.   
+
+> The only authorization check is that the caller-supplied siteId matches the entity's siteId.
+> - cancel(short siteId, long paymentId)
+> + cancel(short siteId, Long userId, long paymentId)
+> if (null != entity && siteId == entity.getSiteId()
+> + && (null == userId || entity.getUserId() == userId)
+> && entity.getStatus() == STATUS_PENDING_PAY)
+> CVE Description Finding: Insufficient Authorization
+> Explanation:
+> Context Condition
+> Root Cause
+> Patch
+
+Fig. 3. Matching a finding’s explanation (right) to the known evidence (left). 
+
+Measuring effectiveness (recall). We can measure the effectiveness of an explanation-based vulnerability detection approach using recall which is defined as the proportion of known vulner-abilities for which the approach reports at least one matched finding. Formally, the recall of an approach 𝐴 is defined as Recall (𝐴 ) = 𝑁 𝐴 
+
+match 
+
+𝑁 vuln 
+
+,
+
+where 𝑁 vuln is the total number of known vulnerabilities in the benchmark and 𝑁 𝐴 
+
+match is the number of reports for which approach 𝐴 reports at least one matched finding. Following PrimeVul [5], we also measure whether detections are specific to the defect by analyzing each vulnerable function together with its patched version, which differ only in the fix. We adapt the binary paired evaluation to explanations: an approach is correct on a pair if it reports a matched finding on the vulnerable function and none on the patched one ( P-C ). The other outcomes are a match on both ( P-V ), on neither ( P-B ), or only on the patched function ( P-R ). A high P-C count indicates that the vulnerability is reported because of the defect, not other features of the function. Recall remains our primary measure, as it directly captures whether an approach finds and explains known vulnerabilities, while the paired outcomes qualify it. This allows us to evaluate how well an approach detects known vulnerabilities. However, most approaches typically generate multiple findings per function. How do we estimate the human effort required to identify a known vulnerability by going through all these findings? 
+
+Measuring effort (overhead). We can measure the effort of an explanation-based vulnerability detection approach using overhead which is defined as the average number of findings to be examined before confirming one known vulnerability that we expect to find. By assuming all unmatched findings are incorrect, this worst-case human effort can be captured by the overhead of an approach. Formally, the overhead of an approach 𝐴 is defined as Overhead (𝐴 ) =
+
+𝑁 𝐴 
+
+finding 
+
+𝑁 𝐴 
+
+match 
+
+,
+
+where 𝑁 𝐴 
+
+finding is the total number of findings reported by 𝐴 .
+
+, Vol. 1, No. 1, Article . Publication date: October 2026. 8 Junming Liu and Marcel Böhme 
+
+Overhead is a pessimistic upper bound, as it treats every unmatched finding as a false alarm. In practice, some unmatched findings may still be plausible vulnerabilities, so the actual inspection effort can be lower than this worst-case overhead (see RQ-2). 
+
+3.2 Evaluation Procedure Manual Veri fi cation   
+
+> LLM-as-a-Judge
+> CVE desc
+> Commit desc
+> Known Evidence Report (Findings)
+> Finding - Explanation
+> Matched Findings Unmatched Findings
+> Sampling All
+> …
+> Patch
+> (code
+> diff)
+
+Fig. 4. Overview of our evaluation procedure 
+
+Figure 4 illustrates our evaluation procedure. We construct a benchmark from real CVEs, where each entry consists of a vulnerable function together with its known evidence: the CVE description, the commit message, and the patch. Each evaluated approach analyzes the function and produces a report, i.e., a list of findings, where each finding identifies a potential vulnerability with an explanation of the root cause and the condition under which it occurs. 
+
+LLM-as-a-Judge. Given such a report, how do we determine whether it explains the known vulnerability? Manually inspecting every report is expensive and hard to scale, so we employ an LLM-as-a-Judge [32, 38]. To avoid self-preference bias, where a model tends to favor outputs from its own family, we use a judge from a different model family than the evaluated approaches. The judge receives the known evidence and the report, and labels each finding as matched if its explanation is consistent with the known evidence, and as unmatched otherwise. 
+
+Manual check. To ensure the soundness of our results, we manually recheck the judge’s outputs. For every finding the judge marks as matched, we manually verify the match, so that the reported recall is not inflated by erroneous judgments (see RQ-5). For the unmatched findings, which are too numerous to inspect exhaustively, we sample a subset and manually assess whether each is plausible (see RQ-2). 
+
+4 Evaluation 
+
+We evaluate Creed by investigating how effectively it detects vulnerabilities, how much inspec-tion effort its reports demand, across which vulnerability types it succeeds, and how each of its components contributes to this performance. 
+
+• RQ-1 (Effectiveness). How effective is Creed at detecting vulnerabilities compared to state-of-the-art LLM-based auditing approaches? 
+
+• RQ-2 (Trade-off). How does Creed balance detection effectiveness against the effort of inspect-ing its reports? 
+
+• RQ-3 (Vulnerability Types).  
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 9
+
+– (a) How does the effectiveness of Creed and the other tools vary across different types of vulnerabilities? 
+
+– (b) How often can a vulnerability be expressed as a general pattern useful for traditional static analysis? 
+
+• RQ-4 (Component). How does each component of Creed contribute to its performance? 
+
+• RQ-5 (Judge Reliability). How reliable is the LLM-as-a-Judge at deciding whether a finding is matched? 
+
+4.1 Evaluation Setup 
+
+Benchmark. To mitigate data leakage from the LLM training set, we construct our benchmark from recently disclosed vulnerabilities (as of the time of writing). We use CVEfixes [3] to collect CVEs were disclosed between September 2025 and March 2026, yielding 2751 CVEs. We then extract the vulnerable functions modified in their fixing commits. Each instance consists of a vulnerable function, which serves as the input to each approach, together with its CVE description and fixing commit, which serve as the ground truth for evaluation. To ensure that a collected function is genuinely the one fixed by the CVE, we retain only CVEs where (1) the function is the only one changed by the commit, or (2) the CVE description explicitly names the function, or names its file and the function is the only one changed in that file. This yields 903 vulnerable functions spanning 622 CVEs. Since these heuristics do not guarantee that a function contains the defect logic of its CVE, we randomly sample functions and manually confirm that each function contains the root cause of its CVE, until we reach 50 confirmed functions. In total, we analyzed 60 sampled functions, 10 (17%) were discarded as merely co-modified or as callers of the defective function. The final benchmark spans 45 distinct projects, 10 programming languages, and 10 vulnerability types. Figure 6 shows the distribution of vulnerability types in our benchmark, of which the majority (40 of 50) are semantic vulnerabilities rather than memory-related ones. Many of these are also beyond what a general static-analysis pattern can express, which we analyze in detail in RQ-3 (Section 4.1). The distribution closely tracks that of the 622-CVE pool (percentages in parentheses in Figure 6), suggesting that the 50 functions are representative of recent CVEs. 1
+
+Tools and Techniques. We compare Creed with four baselines that span different paradigms of LLM-based vulnerability detection, none of which implement a belief-guided analysis. 
+
+• RepoAudit [10] represents the syntactic static-analysis paradigm, an LLM-assisted repository-level auditing tool that follows a traditional static-analysis workflow. 
+
+• PrimeVul-CoT exp [5] represents prompt-based chain-of-thought reasoning , where the LLM is declared an expert in static program analysis and asked to provide, if any, the vulnerabilities, reasons, as well as the context and finally a binary label (i.e., vulnerable or not). To give this baseline a fair advantage, we do not evaluate the label (as in the original PrimeVul-CoT work) but the entire explanation as our evaluation requires. 
+
+• LLM-Thinking enables the LLM’s thinking mode [2] and features a prompt similar to PrimeVul-CoT exp to find vulnerabilities like a security expert. 
+
+• VulTrial [35] represents the multi-agent paradigm, a framework that audits code through multiple cooperating agents. One agent works like PrimeVul-CoT exp and reports potential vulnerabilities while the three other agents debate and filter these reports. For VulTrial , PrimeVul-CoT exp , and LLM-Thinking what exactly constitutes a vulnerability remains undefined while for Creed a vulnerability is defined as an unreasonable or breakable belief.  
+
+> 1Pool types are mapped from NVD-assigned CWEs. On the benchmark, this mapping agrees with our manual labels in 96% of cases. , Vol. 1, No. 1, Article . Publication date: October 2026. 10 Junming Liu and Marcel Böhme
+
+Model and Settings. For all baselines, we use Claude Sonnet 4.6 (model ID claude-sonnet-4-6) as the backbone LLM so that performance differences can be explained by the approaches rather than the underlying model. The model’s thinking mode is enabled only for LLM-Thinking, with medium effort. We set the temperature to 0.0 to reduce randomness [10, 22, 35], except for LLM-Thinking, for which the temperature is not configurable in thinking mode [2]. As the model for our 
+
+LLM-as-a-judge , we use GPT-5.4 (model ID gpt-5.4-2026-03-05), which is from a different model family than the evaluated approaches. 
+
+RepoAudit Configuration . To support RepoAudit’s repository-level design, we provide it with the full repository for context. It also relies on user-specified source functions, which we manually identify and provide where applicable. 
+
+RQ-1: Effectiveness                                                                 
+
+> Table 2. Effectiveness on the 50 pairs of vuln./patched functions, and effort per function (Metrics in §3.1).
+> Method Effectiveness Effort
+> Matched Recall ↑P-C ↑P-V ↓P-B ↓P-R ↓#Findings Overhead ↓#Calls Tokens
+> RepoAudit 10.02 1048 188.0 5.2 54.6k VulTrial 21 0.42 20 129 069 3.3 4.0 17.3k PrimeVul-CoT exp 27 0.54 27 023 0141 5.2 1.0 2.7k
+> LLM-Thinking 34 0.68 26 814 2384 11.3 1.0 3.9k Creed 39 0.78 33 611 0310 7.9 1.0 8.5k
+> #Calls and Tokens are per-function averages; Tokens include input, output, and thinking tokens.
+
+Results. Table 2.left shows Creed’s effectiveness in terms of recall compared to the four baselines. Creed achieves the highest recall, successfully identifying and correctly explaining the root cause of 39 (78%) of the 50 vulnerabilities. On the paired evaluation, it also reaches the highest number reports for vulnerable functions that disappear on the patched counterparts (33 of 50 P-C), confirming that the reports are caused by the defect. Since all approaches share the same backbone model (Claude Sonnet 4.6), this improvement indeed reflects the effectiveness of our belief-guided reasoning approach rather than a difference in the strength of the model. In comparison, RepoAudit follows the (syntactic) static-analysis paradigm and supports only memory-related vulnerabilities in a subset of the benchmark’s languages. 2 It is therefore not capable of addressing the semantic vulnerabilities that dominate the benchmark. While VulTrial , the multi-agent framework, is language-agnostic and indeed capable of finding semantic vulnerabilities, it still fails to identify the expected vulnerability in the majority of cases. PrimeVul-CoT exp and LLM-Thinking reach higher recall, but they have no instructions that define what constitutes a vulnerability. So their findings focus on common issues and overlook root causes that depend on specific code context and implementation. 
+
+Explanation. The advantage of Creed comes from its belief-guided reasoning. Take the 
+
+signInCredentials function as an example (Listing 1; Table 1.left). The other techniques identify vulnerabilities generically and report a range of common authentication weaknesses, but none uncovers the timing-based root cause. Creed does not stop at recognizing the generic error as a mitigation of a potential user enumeration vulnerability. It infers the belief behind it (a generic error makes the two failure cases indistinguishable), and explicitly derives when this belief fails.  
+
+> 2Only 28 of the 50 functions are in languages RepoAudit supports, and only two of them (one use-after-free and one null-pointer dereference) fall within the memory-related types its checkers target. , Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 11
+
+It further reveals that the error messages are identical but the response times are not, so user enumeration remains possible. 
+
+RQ-1 . Creed achieves the highest recall, correctly identifying and explaining 39 of 50 root causes (78%), outperforming the strongest baseline by 10 percentage points. 
+
+RQ-2: Effort and the Effectiveness Trade-off 
+
+Results (Effort) . Table 2.right shows the effort required to go through all vulnerability findings for each function. The overhead and total number of findings show that to identify all 39 vulnerabilities which Creed can find, a security researcher would have to go through at most 310 findings, 3 i.e., about 8 findings for each of the 39 discovered vulnerabilities that we expect to find . Compared to LLM-Thinking, this is a reduction in overhead of about 30%. We note that due to an unmatched finding may still describe an unexpected vulnerability , we cannot treat all of them as false positives. We estimate their true share in the precision analysis below. On the machine side, Creed needs a single LLM call and about 8.5k tokens per function, three times PrimeVul-CoT exp and twice LLM-Thinking, but less than half of the multi-step approaches, which make four to five calls per function. In comparison, VulTrial has the least overhead with 3.3 findings for the security researcher to go through for each of the 21 discovered and expected vulnerabilities. This is due to the substantial additional effort by the three other agents in the multi-agent setup to debate and filter the findings reported by the first agent. To evaluate how the multi-agent approach would reduce the overhead for our belief-guided approach, we evaluated VulTrial where the security agent was replaced by Creed. Indeed, we find that the overhead for VulTrial(Creed) reduced to 2.8 findings per discovered vulnerability. However, recall also reduced to 0.36 (18/50). Approaches with higher recall also tend to come with higher overhead, while the approach with the lowest overhead misses almost half of the vulnerabilities that the approach with the best recall (Creed). In the following, we analyze the recall-overhead trade-off: Which approach finds the most vulnerabilities with the least inspection effort? 
+
+Presentation (Trade-off) . Figure 5 visualizes the trade-off between recall and overhead as we consider the top-𝑘 reports for every function for various values of 𝑘 . Higher recall and lower overhead (top-left) are better. None of the approaches has a ranking component. This first-𝑘 selection simply follows the common inspection order, in which a human reads the findings sequentially [11]. 
+
+Results (Trade-off) . Under a limited inspection budget, Creed recovers the most vulnerabilities. If a security researcher were to look through at most two findings per function (@2), they would attain the highest recall (0.68; 10 percentage points above the second-best) at an overhead of 2.9 for every discovered, expected vulnerability, placing it in the top-left-most corner of Figure 5. Increasing the inspection budget to 𝑘 = 3 (@3), the recall of Creed increases by four percentage points to 0.72 and already exceeds what any other technique can achieve even if the security researcher was ready to spend unlimited effort. 
+
+Results (Precision@1). Since an unmatched finding may still describe an unexpected but actual vulnerability , we manually inspect the first finding (@1) for every function of Creed which a human would read first when inspecting findings sequentially [11]. Based on this inspection, precision@1 is 0.74 (37/50), comprising 23 matched findings and 14 manually confirmed unexpected vulnerabilities .Eleven (11) of 14 were patched, and the remaining three we are preparing to responsibly disclose. The other 13 are false positives of two kinds: ten are inter-procedural , where Creed derives the violation conditions correctly but the issue is mitigated by the caller or a called guard API; the 
+
+> 3We note that 8 of the 310 findings were duplicates. , Vol. 1, No. 1, Article . Publication date: October 2026.
+
+12 Junming Liu and Marcel Böhme 0 2 4 6 8 10      
+
+> Overhead
+> 0.4 0.5 0.6 0.7 0.8
+> Recall
+> better
+> ↑Recall
+> ↓Overhead
+> Creed LLM-Thinking PrimeVul-CoT exp
+> VulTrial
+> RepoAudit: 0.02 @all (off-chart)
+> @1 @2 @4 @6 @8 @all @1 @2 @4 @6 @8 @all @1 @2 @all @1 @2 @all
+
+Fig. 5. Recall and overhead when only the top-𝑘 findings per function are inspected (@ 𝑘 ). The upper-left corner is better. Table 3. Recall (R) and overhead (O) when only the first 𝑘 findings of each report are inspected. 
+
+Method @1 @2 @3 R ↑ O ↓ R ↑ O ↓ R ↑ O ↓
+
+RepoAudit 0.02 8.0 – – – –VulTrial 0.38 1.8 0.40 2.9 0.40 3.4 
+
+PrimeVul-CoT exp 0.48 2.1 0.52 3.6 0.54 4.7 LLM-Thinking 0.54 1.9 0.58 3.5 0.60 5.0 Creed 0.46 2.2 0.68 2.9 0.72 4.1 
+
+other three are intra-procedural , where Creed overlooks an in-function constraint that prevents the risk. This suggests that the reported overhead is conservative, as many unmatched findings are real defects. 
+
+RQ-2 . Creed offers the best recall-overhead trade-off. Inspecting only three findings per function, it exceeds what any other technique reaches with unlimited effort. 
+
+RQ-3.a: Effectiveness across Vulnerability Types 
+
+Figure 6 shows the distribution of vulnerability types within our vulnerability dataset, and the recall for each vulnerability type. Creed has the highest recall on almost every type, and it is the only approach that is strong on both the memory-related and semantic vulnerability types. It detects 90% of the 10 memory-related and 75% of the 40 semantic vulnerabilities, which is the best in each. It improves on the strongest baseline LLM-thinking in all cases, except where the baseline already detects all vulnerabilities for that type. RepoAudit succeeds only when a case fits one of its predefined vulnerability patterns. VulTrial, PrimeVul-CoT exp , and LLM-Thinking can cover both memory-related and semantic vulnerabilities. PrimeVul-CoT exp and LLM-Thinking perform well on types with visible code patterns, such as memory issues and Path Traversal. VulTrial is less consistent on memory-related cases, likely due to filtering. These three techniques have lower recall on Input Validation, Access Control, and Resource Handling, where the root cause depends on the meaning of a specific check, permission, or resource. 
+
+RQ-3.a . Creed leads on both memory-related and semantic vulnerabilities, and is the only approach to detect the timing side channel. 
+
+RQ-3.b: Expressibility across Vulnerability Types 
+
+Traditional static analysis detects bugs by recognizing corresponding patterns on structural repre-sentations of the code, such as the abstract syntax tree (AST), the control-flow graph (CFG), or the program dependence graph (PDG). How often can those vulnerabilities in our dataset be expressed as general patterns or rules? 
+
+, Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 13 RepoAudit Vultrial PrimeVul-                                         
+
+> CoT exp
+> LLM-Thinking Creed
+> Out-of-bounds access NPD and UAF Integer overflow Injection Access control Path traversal Input validation Resource handling Crypto and side channel Unsafe deserialization
+> (12% | 14%) (4% | 7%) (4% | 4%) (20% | 21%) (18% | 18%) (18% | 10%) (10% | 7%) (6% | 11%) (4% | 5%) (4% | 4%)
+> MEMORY SEMANTIC
+> 0% 33% 50% 67% 83% 50% 50% 100% 100% 100% 0% 0% 50% 100% 100% 0% 20% 30% 40% 50% 0% 44% 56% 67% 78% 0% 78% 78% 100% 100% 0% 40% 60% 60% 80% 0% 33% 33% 33% 67% 0% 50% 50% 50% 100% 0% 50% 50% 100% 50%
+
+Fig. 6. Per-type recall of each approach. In parentheses: share of the type in the benchmark (colored) and in the 622-CVE pool it was sampled from (gray). Rows are grouped into memory and semantic vulnerabilities. 
+
+Presentation . For each vulnerability, we ask whether there exists a general pattern that could facilitate detection by an idealized static analysis. We call a vulnerability expressible if a general pattern exists. An expressible vulnerability can be detected by traditional static analysis using a general pattern. For instance, a use-after-free vulnerability can be detected if there exists a path in the PDG such that there is first a call to free on a pointer-type variable that is later used without being redefined in-between. An injection vulnerability can be detected in the PDG if there exists an information flow (i.e., a transitive control- or data-dependency) between a public source and a sensitive sink. We call an expressible vulnerability that requires user-provided annotations of the source and sink, like in the latter example, as custom . Otherwise, we call an expressible vulnerability as generic , like in case of the use-after-free. Cases that are not expressible depend on the application’s authorization policy, the meaning of a value or resource, or the adequacy of a check. Specifically, expressible vulnerability types cover all memory-related vulnerabilities, as well as information-flow-based semantic cases, such as classic injection or simple path traversal. 
+
+Results (expressibility) . Table 4 shows the results. Of the 50 cases, 29 are expressible, of which seven (7) need a user-provided annotation to identify a source or sink. For the remaining 21 vulnerabilities, the traditional, syntactic static-analysis paradigm falls short. For 42% of the benchmark, there exists no general pattern that would help us find them using a traditional static analysis. Even among those 29 that are expressible, a quarter need a user-provided annotation of the source or sink, which cannot be assumed to exist. 
+
+Results (language-specificity) . In our evaluation, we assume an idealized static analyzer. In practice, a real analyzer faces further limits, since it must support the relevant languages and implement a checker for each pattern. Our static-analysis baseline, RepoAudit, illustrates this. 
+
+, Vol. 1, No. 1, Article . Publication date: October 2026. 14 Junming Liu and Marcel Böhme                    
+
+> Table 4. Detected Vulnerabilities by Pattern-Expressibility
+> Method Expressible Not Expressible Generic (22) Custom (7) (21) RepoAudit 100VulTrial 849PrimeVul-CoT exp 14 49LLM-Thinking 16 612 Creed 18 615
+
+Among the 29 expressible vulnerabilities it recovers only one (1). RepoAudit supports just three memory defects across four languages, so only two (2) cases (one use-after-free, one null-pointer-dereference) are in scope. Of those, it catches the use-after-free (after we supply a user-specified source function) and misses the null-pointer-dereference, where the null pointer’s indirect use lies beyond its dataflow analysis. Creed has the highest recall for both groups of vulnerabilities: expressible and non-expressible. It finds 24 of the 29 expressible and 15 of the 21 non-expressible patterns, more than any of the other techniques. This dual strength follows from its design, whose two-level action identification covers both ends. Identifying low-level actions, such as how a value is used, lets Creed handle the low-level expressible bugs, including most memory-related vulnerabilities. Identifying the whole-function action, together with belief inference and evaluation, lets it reason about the remaining non-expressible cases. Such cases hinge on whether the developer’s assumption is reasonable and whether it holds, which is exactly what Creed’s sanity and violation checks evaluate. The timing side-channel of CVE-2026-25222 (Listing 1) is one such case, and only Creed detects it. 
+
+RQ-3.b . 42% of the benchmark vulnerabilities are not expressible as general static-analysis patterns. Creed performs best on both expressible and non-expressible cases. 
+
+RQ-4: Component contribution 
+
+Ablation . To study how each component of Creed contributes to its performance, we in turn remove each of its three components from the prompt (Fig. 2): action identification 4, the sanity check and the violation check. Table 5 shows all components are necessary: Removing any component lowers recall and raises overhead. Action identification matters the most: without it, the model infers beliefs directly from the code, and recall drops the most (0.78 to 0.60) while the report contains the fewest findings (269), since the actions are what ground the inferred beliefs. The sanity check and the violation check examine a belief from two angles, whether it is reasonable and under what conditions it breaks; removing either drops recall to 0.66, as each catches vulnerabilities the other misses. 
+
+Component output analysis . To better understand the intermediate quality of Creed, we manually examine the output of each component. For each of the 39 matched cases, we take their cited belief and check two properties of each component: i) its output is grounded in the output of the previous component, and ii) its output contributes to the matched finding. For the 11 missed cases, we identify the first component whose output fails to lead to the known vulnerability.                                          
+
+> 4Without action identification, Creed infers beliefs directly from the function code rather than from explicitly identified actions. , Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 15
+> Table 5. Ablation and component output analysis. Left: results without the step. Right: on matched cases, whether the step’s result is correct; on missed cases, the first step that fails.
+> Step Ablation (w/o step) Component output analysis
+> Matched Recall ↑#Findings Overhead ↓Holds Fails
+> Action 30 0.60 269 9.0 39 3Belief ––––37 1Sanity 33 0.66 304 9.2 38 1Violation 33 0.66 312 9.5 39 3Full Creed 39 0.78 310 7.9 39 11 *
+> *Three misses occur after these components: one is dropped at consolidation, two are misjudged.
+
+Table 5.right shows the results. For the 39 matched cases, every component’s output holds in 36. The three exceptions are two beliefs attached to a different action than the code they are grounded in, and one sanity judgment based on an assumption the belief does not state. For the 11 missed cases, the failure lies mostly in action identification and violation-condition derivation. In three cases Creed fails to extract the relevant action , so no belief is inferred or evaluated about it. Three cases arise when identifying an exploitable violation condition requires application-specific expertise. For CVE-2026-32761, recognizing the risk requires knowing that a user without download permission should not share a file, a rule of the application rather than of general security practice. Belief inference and the sanity check account for one missed case each. The remaining three occur after these components. For CVE-2026-23829, every component’s output is correct, but the finding is dropped from the final report, and two are misjudgments by the LLM-as-a-Judge, whose reliability we evaluate in RQ-5. 
+
+RQ-4 . Only if all components in Creed are enabled do we get the highest recall and the lowest overhead. And each component’s output holds in almost all matched cases. 
+
+RQ-5: Reliability of LLM-as-a-Judge 
+
+Since our results above rely on the LLM-as-a-Judge to decide whether a finding matches the known vulnerability evidence, we assess how reliably its judgment aligns with human experts. Two annotators (both PhD students in security) independently and blindly annotated a random sample of 50 findings drawn from all findings reported across the five methods, without access to the judge’s decisions. Both annotators reached complete agreement (100%). Against this human ground truth, the judge agreed on 48 of 50 findings (96%). The two disagreements (Creed, CVE-2025-11372; PrimeVul, CVE-2025-66563) were both findings that the annotators marked as matched but the judge rejected. Beyond this sample, we verified every finding the judge accepted as matched across the full evaluation, and found only one false acceptance (PrimeVul-CoT exp , CVE-2026-33985). 
+
+RQ-5. The LLM-as-a-Judge reliably aligns with human expert judgment, agreeing on 96% of sampled findings.  
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. 16 Junming Liu and Marcel Böhme
+
+5 Related Work 5.1 Belief-Guided Bug Detection 
+
+Inferring developer beliefs from code to find bugs has been explored for more than two decades in static analysis. Engler et al. [8] pioneered this view by extracting beliefs with manually designed templates and reporting statistical deviations as potential bugs. Later work extends this idea beyond hand-written templates by using automatic inference techniques to extract developer beliefs from code [1, 14, 19]. This idea has also been specialized to concrete bug domains, such as beliefs about API post-handling in API misuse [20], error-return conventions and recovery actions in error handling [13], as well as required validation or security checks [21, 24]. Although these works use different signals and target different bugs, they share the same pattern-based, syntactic view. They first turn developer beliefs into patterns, and then find bugs by checking deviations of them. We evaluate the prospects of this approach in RQ-3.b and discuss it further in Section 6. 
+
+5.2 LLM-assisted Static Bug Detection 
+
+At a high level, static bug detection typically proceeds in three steps: identifying bug-relevant program entities, constructing the analysis context around these entities, and applying bug detection rules to report bug candidates. Recent LLM-based approaches augment different stages of this workflow. One line of work uses LLMs for bug-relevant entity identification , leveraging their semantic understanding to locate suspicious APIs [31], sources and sinks [18], or key variables and statements [29]. Another line uses LLMs to assist analysis-context construction , for example, by generating graph queries for code property graphs [15] or guiding program slicing [28]. A third line uses LLMs for detection-rule construction . For example, KNighter [36] synthesizes static analysis checkers from historical bug-fixing patches, extending pre-defined human-written patterns with generated patterns. Finally, more recent end-to-end systems further employ LLMs to orchestrate the entire workflow [10, 17, 23]. Although these works reduce manual effort, they assume that bugs can be sufficiently captured by patterns. However, vulnerabilities often arise from semantic flaws, which patterns cannot completely capture. 
+
+5.3 Direct LLM-based Vulnerability Auditing 
+
+Prompt engineering. Recent works apply general prompt engineering techniques to vulnerability detection, including CoT for step-by-step vulnerability reasoning [5, 26], tree-of-thoughts for explor-ing multiple reasoning paths [30], and in-context learning for demonstration-based guidance [22]. Beyond these general techniques, some works tailor prompts with code-specific evidence, such as data flow, control flow or API call sequence [37]. While such prompt designs can improve LLMs’ reasoning, they mainly elicit generic reasoning steps rather than bug-detection-specific reasoning. 
+
+Role-based agents. Multi-agent approaches decompose the auditing process into different roles: one agent identifies potential vulnerabilities, while others critique or validate the findings. GPTLens [12] employs a collaboration between an auditor and a critic, and VulTrial [35] instantiates roles such as auditor, defender, and judge. Similar role specializations have been explored in specific fields, such as smart-contract analysis [25, 33]. A role specialization can better elicit LLMs’ semantic reasoning and improve the validation of candidates identified by the auditor agent. However, the initial auditing step still largely depends on a single agent’s heuristic reasoning. As a result, subtle or novel bugs may be missed before the debate or critique stage begins. We confirmed this finding in RQ-1 when we replaced the vulnerability-reporting agent in VulTrial with our Creed. 
+
+Knowledge-enhanced LLMs. Another line of work enhances LLMs with additional vulnerability knowledge. Fine-tuning-based approaches update the model’s parameters on labeled vulnerability data. VulLLM [6] adds vulnerability localization and interpretation as auxiliary tasks to capture  
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 17
+
+root causes, while R2Vul [34] distills structured, security-aware reasoning into small models via reinforcement learning. Such adaptation can improve accuracy, but fine-tuned models often learn surface patterns rather than real security logic, and generalize poorly to new code. RAG-based approaches augment LLMs with external vulnerability knowledge at detection time. Vul-RAG [7] retrieves relevant knowledge from historical cases, while VulInstruct [39] extracts security specifications from past vulnerabilities and retrieves them during detection. Such retrieval can supply domain-specific knowledge to the model, although irrelevant or incomplete retrieval can still bias it toward incorrect judgments. 
+
+Our belief-guided reasoning. Creed takes a different view of how LLMs should be used for vulnerability auditing. Instead of using LLMs as components in a static-analysis pipeline or directly prompting them to generate vulnerability reports, Creed reframes vulnerability auditing as the discovery of unreasonable or incorrect developer beliefs, guiding LLMs to reason about why code is buggy rather than whether it matches a known pattern. 
+
+6 Discussion 6.1 Beyond Rule-Based Detection 
+
+We consider static analysis as the analysis of source code without executing it, and are convinced that our belief-guided static analysis offers new opportunities for identifying semantic bugs that have previously been out of reach. In the security domain, our randomly sampled benchmark shows that most of the vulnerabilities are semantic (40 of 50), and among them over 50% (21/40) are difficult to express as a rule. This means that a large proportion of domain-specific vulnerabilities cannot be captured by the traditional static analysis paradigm based on patterns or rules, since they depend on the specific context (such as the timing side-channel that is only vulnerable in the sign-in authentication context). With the rule-based, language-specific view these domain-specific contexts are reduced or hard to recognize, and thus the vulnerabilities that need more semantic meaning are difficult to detect. Creed addresses this problem through belief-guided vulnerability detection. Rather than fixing rules before detection, it derives the violation conditions while evaluating each belief. Since each belief is inferred from an action and grounded in the specific context, Creed can identify semantic vulnerabilities such as the timing side-channel and the insufficient permission check that rule-based detection overlooks (see Table 1). In this paper, we explore the opportunities of LLMs for program analysis and find that they are indispensable when it comes to semantic, high-level, domain-specific, language-agnostic reasoning about developer intention and beliefs. 
+
+6.2 The Boundary of Belief-Guided Vulnerability Detection 
+
+The main boundary of belief-guided vulnerability detection is that evaluating a belief sometimes requires knowledge that lies beyond common security practice and cannot be inferred from the code alone. This appears in both the sanity check and the violation check. For the sanity check, an application may have its own specified security policy or threat model beyond common security practice, making it hard to judge whether a belief is reasonable. For withPermShare (CVE-2026-32761), judging that checking only the share permission is insufficient requires the application’s specified policy that a user without download permission should not share a file. For the violation check, a belief may be violated under open-ended conditions, and knowing which of them can actually occur often requires context beyond the function. For containsDangerousSubstitution 
+
+(CVE-2025-65946), the dangerous substitutions are essentially unbounded, so Creed lists many  
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. 18 Junming Liu and Marcel Böhme
+
+conditions but misses the one that applies. Such knowledge lies outside the code. Improving belief-guided vulnerability detection therefore depends on providing the application’s specified security policy and trust model. 
+
+6.3 Threats to Validity 
+
+Construct validity . In our study, we evaluate each approach with two metrics, recall and overhead, both of which we report conservatively. For recall, a report counts as matched only if a human confirms it, so the reported recall is a lower bound on the true recall. For overhead, we treat every unmatched finding as a false alarm, so the reported overhead is a worst-case upper bound and the actual inspection effort is no higher (Section 3). Deciding whether a finding matches the known evidence relies on an LLM-as-a-Judge [32, 38]. Like for any LLM-based evaluation, there is inherent uncertainty: the LLM may misjudge a match. To mitigate this, a) we choose the judge from a different model family than the evaluated approaches, and b) we manually verify the matches and assess the judge’s reliability against human experts in RQ-5. 
+
+Internal validity . A key concern is whether our experimental setup compares Creed and the baselines fairly. The first such factor is the underlying model. To ensure that the comparison reflects the approaches rather than the model, all approaches use the same backbone model. A robustness experiment with a different backbone (DeepSeek V4 Pro) shows that Creed still achieves the highest recall, suggesting that the result is not specific to a single model. The second is the non-determinism inherent in LLMs, which could make the results unstable. We mitigate this by setting the temperature to 0 for all approaches, except for LLM-Thinking, for which the temperature is not configurable in thinking mode. A third factor is the differing settings some baselines require. RepoAudit performs repository-level analysis, so we provide it with the full repository and manually supply the user-specified functions it needs. PrimeVul-CoT originally outputs a binary label, so we use its explanation-generating variant so that it can be evaluated on the same basis as the other approaches. Another common concern is that the dataset itself may have been part of the LLMs’ training data. To mitigate data leakage, we explicitly collect only vulnerabilities disclosed after the backbone model’s training cutoff, so that the model is unlikely to have seen them during training. Finally, the evaluation itself relies on an LLM-as-a-Judge, whose reliability we address under construct validity. 
+
+External validity . Our benchmark contains 50 vulnerable functions, a size that may limit how far our findings generalize. To reduce bias, we sample randomly from recently disclosed CVEs collected by a third-party tool [3] and retain only those whose function contains the CVE’s root cause, rather than selecting cases favorable to our approach. Despite its size, the benchmark is diverse and its type distribution closely tracks that of the 622-CVE pool it was sampled from (Figure 6). Its 50 vulnerable functions come from 45 distinct projects and span 10 programming languages and 10 vulnerability types, covering both memory-related and semantic categories. We therefore believe it is reasonably representative of real-world vulnerabilities. 
+
+7 Conclusion 
+
+Many real-world vulnerabilities are semantic and domain-specific, and cannot be captured by the syntactic patterns that traditional static analysis relies on. We propose Creed, a belief-guided semantic static analysis implemented with large language models. Given a function, Creed identifies the actions implemented by the code, infers the beliefs behind these actions, and checks whether each belief is unreasonable or can be violated under specific conditions, and finally reports potential vulnerabilities with explanations of their root causes and exploitation contexts. To address the context-dependency problem of binary metrics in function-level vulnerability detection, we propose two metrics, recall and overhead. Recall measures detection effectiveness  
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 19
+
+as the fraction of known vulnerabilities for which an approach produces a matching explanation. Overhead measures human inspection effort as the number of findings that must be examined per identified vulnerability. Our evaluation on 50 recent real-world vulnerable functions shows that Creed achieves the highest recall among all evaluated approaches and the best recall-overhead trade-off, and is effective across both memory-related and semantic vulnerabilities. 
+
+> , Vol. 1, No. 1, Article . Publication date: October 2026.
+
+20 Junming Liu and Marcel Böhme 
+
+References 
+
+[1] Mansour Ahmadi, Reza Mirzazade Farkhani, Ryan Williams, and Long Lu. 2021. Finding bugs using your own code: detecting functionally-similar yet inconsistent code. In 30th USENIX security symposium (USENIX Security 21) .2025–2040. [2] Anthropic. 2026. Extended Thinking. https://platform.claude.com/docs/en/build-with-claude/extended-thinking# feature-compatibility. Accessed: 2026-06-28. [3] Guru Bhandari, Amara Naseer, and Leon Moonen. 2021. CVEfixes: automated collection of vulnerabilities and their fixes from open-source software. In Proceedings of the 17th International Conference on Predictive Models and Data Analytics in Software Engineering . 30–39. [4] Ruven Brooks. 1983. Towards a theory of the comprehension of computer programs. International journal of man-machine studies 18, 6 (1983), 543–554. [5] Yangruibo Ding, Yanjun Fu, Omniyyah Ibrahim, Chawin Sitawarin, Xinyun Chen, Basel Alomair, David Wagner, Baishakhi Ray, and Yizheng Chen. 2024. Vulnerability detection with code language models: How far are we? arXiv preprint arXiv:2403.18624 (2024). [6] Xiaohu Du, Ming Wen, Jiahao Zhu, Zifan Xie, Bin Ji, Huijun Liu, Xuanhua Shi, and Hai Jin. 2024. Generalization-enhanced code vulnerability detection via multi-task instruction fine-tuning. In Findings of the Association for Compu-tational Linguistics: ACL 2024 . 10507–10521. [7] Xueying Du, Geng Zheng, Kaixin Wang, Yi Zou, Yujia Wang, Wentai Deng, Jiayi Feng, Mingwei Liu, Bihuan Chen, Xin Peng, et al. 2024. Vul-rag: Enhancing llm-based vulnerability detection via knowledge-level rag. ACM Transactions on Software Engineering and Methodology (2024). [8] Dawson Engler, David Yu Chen, Seth Hallem, Andy Chou, and Benjamin Chelf. 2001. Bugs as deviant behavior: A general approach to inferring errors in systems code. ACM SIGOPS Operating Systems Review 35, 5 (2001), 57–72. [9] Pavlína Wurzel Gonçalves, Pooja Rani, Margaret-Anne Storey, Diomidis Spinellis, and Alberto Bacchelli. 2025. Code review comprehension: Reviewing strategies seen through code comprehension theories. In 2025 IEEE/ACM 33rd International Conference on Program Comprehension (ICPC) . IEEE, 589–601. [10] Jinyao Guo, Chengpeng Wang, Xiangzhe Xu, Zian Su, and Xiangyu Zhang. 2025. RepoAudit: An Autonomous LLM-Agent for Repository-Level Code Auditing. In International Conference on Machine Learning . PMLR, 21083–21100. [11] Sarah Heckman and Laurie Williams. 2011. A systematic literature review of actionable alert identification techniques for automated static code analysis. Information and Software Technology 53, 4 (2011), 363–387. [12] Sihao Hu, Tiansheng Huang, Fatih İlhan, Selim Furkan Tekin, and Ling Liu. 2023. Large language model-powered smart contract vulnerability detection: New perspectives. In 2023 5th IEEE International Conference on Trust, Privacy and Security in Intelligent Systems and Applications (TPS-ISA) . IEEE, 297–306. [13] Suman Jana, Yuan Jochen Kang, Samuel Roth, and Baishakhi Ray. 2016. Automatically detecting error handling bugs using error specifications. In 25th USENIX Security Symposium (USENIX Security 16) . 345–362. [14] Ted Kremenek, Paul Twohey, Godmar Back, Andrew Ng, and Dawson Engler. 2006. From uncertainty to belief: Inferring the specification within. In Proceedings of the 7th symposium on Operating systems design and implementation . 161–176. [15] Ahmed Lekssays, Hamza Mouhcine, Khang Tran, Ting Yu, and Issa Khalil. 2025. {LLMxCPG }:{Context-Aware }
+
+vulnerability detection through code property {Graph-Guided } large language models. In 34th USENIX Security Symposium (USENIX Security 25) . 489–507. [16] Stanley Letovsky. 1987. Cognitive processes in program comprehension. Journal of Systems and software 7, 4 (1987), 325–339. [17] Haonan Li, Yu Hao, Yizhuo Zhai, and Zhiyun Qian. 2024. Enhancing static analysis for practical bug detection: An llm-integrated approach. Proceedings of the ACM on Programming Languages 8, OOPSLA1 (2024), 474–499. [18] Ziyang Li, Saikat Dutta, and Mayur Naik. 2025. IRIS: LLM-assisted static analysis for detecting security vulnerabilities. In International conference on learning representations , Vol. 2025. 35735–35758. [19] Zhenmin Li and Yuanyuan Zhou. 2005. PR-Miner: automatically extracting implicit programming rules and detecting violations in large software code. ACM SIGSOFT Software Engineering Notes 30, 5 (2005), 306–315. [20] Miaoqian Lin, Kai Chen, and Yang Xiao. 2023. Detecting {API } { Post-Handling } bugs using code and description in patches. In 32nd USENIX Security Symposium (USENIX Security 23) . 3709–3726. [21] Dinghao Liu, Qiushi Wu, Shouling Ji, Kangjie Lu, Zhenguang Liu, Jianhai Chen, and Qinming He. 2021. Detecting missed security operations through differential checking of object-based similar paths. In Proceedings of the 2021 ACM SIGSAC Conference on Computer and Communications Security . 1627–1644. [22] Peiyu Liu, Junming Liu, Lirong Fu, Kangjie Lu, Yifan Xia, Xuhong Zhang, Wenzhi Chen, Haiqin Weng, Shouling Ji, and Wenhai Wang. 2024. Exploring {ChatGPT’s } capabilities on vulnerability management. In 33rd USENIX Security Symposium (USENIX Security 24) . 811–828. [23] Puzhuo Liu, Chengnian Sun, Yaowen Zheng, Xuan Feng, Chuan Qin, Yuncheng Wang, Zhenyang Xu, Zhi Li, Peng Di, Yu Jiang, et al. 2025. Llm-powered static binary taint analysis. ACM Transactions on Software Engineering and 
+
+, Vol. 1, No. 1, Article . Publication date: October 2026. LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions 21 
+
+Methodology 34, 3 (2025), 1–36. [24] Kangjie Lu, Aditya Pakki, and Qiushi Wu. 2019. Detecting {Missing-Check } bugs via semantic-and {Context-Aware }
+
+criticalness and constraints inferences. In 28th USENIX Security Symposium (USENIX Security 19) . 1769–1786. [25] Wei Ma, Daoyuan Wu, Yuqiang Sun, Tianwen Wang, Shangqing Liu, Jian Zhang, Yue Xue, and Yang Liu. 2025. Combining fine-tuning and llm-based agents for intuitive smart contract auditing with justifications. In 2025 IEEE/ACM 47th International Conference on Software Engineering (ICSE) . IEEE, 1742–1754. [26] Yu Nong, Mohammed Aldeen, Long Cheng, Hongxin Hu, Feng Chen, and Haipeng Cai. 2024. Chain-of-thought prompting of large language models for discovering and fixing software vulnerabilities. arXiv preprint arXiv:2402.17230 
+
+(2024). [27] Niklas Risse, Jing Liu, and Marcel Böhme. 2025. Top score on the wrong exam: On benchmarking in machine learning for vulnerability detection. Proceedings of the ACM on Software Engineering 2, ISSTA (2025), 388–410. [28] Xiangpu Song, Longjia Pei, Jianliang Wu, Yingpei Zeng, Gaoshuo He, Chaoshun Zuo, Xiaofeng Liu, Qingchuan Zhao, and Shanqing Guo. 2026. ProtocolGuard: Detecting Protocol Non-compliance Bugs via LLM-guided Static Analysis and Dynamic Verification.. In NDSS .[29] Yuqiang Sun, Daoyuan Wu, Yue Xue, Han Liu, Haijun Wang, Zhengzi Xu, Xiaofei Xie, and Yang Liu. 2024. Gptscan: Detecting logic vulnerabilities in smart contracts by combining gpt with program analysis. In Proceedings of the IEEE/ACM 46th international conference on software engineering . 1–13. [30] Karl Tamberg and Hayretdin Bahsi. 2025. Harnessing large language models for software vulnerability detection: A comprehensive benchmarking study. IEEE Access (2025). [31] Chong Wang, Jianan Liu, Xin Peng, Yang Liu, and Yiling Lou. 2025. Boosting static resource leak detection via llm-based resource-oriented intention inference. In 2025 IEEE/ACM 47th International Conference on Software Engineering (ICSE) .IEEE, 2905–2917. [32] Ruiqi Wang, Jiyu Guo, Cuiyun Gao, Guodong Fan, Chun Yong Chong, and Xin Xia. 2025. Can llms replace human evaluators? an empirical study of llm-as-a-judge in software engineering. Proceedings of the ACM on Software Engineering 2, ISSTA (2025), 1955–1977. [33] Zhiyuan Wei, Jing Sun, Yuqiang Sun, Ye Liu, Daoyuan Wu, Zijian Zhang, Xianhao Zhang, Meng Li, Yang Liu, Chunmiao Li, et al. 2025. Advanced smart contract vulnerability detection via llm-powered multi-agent systems. IEEE Transactions on Software Engineering (2025). [34] Martin Weyssow, Chengran Yang, Junkai Chen, Ratnadira Widyasari, Ting Zhang, Huihui Huang, Huu Hung Nguyen, Yan Naing Tun, Tan Bui, Yikun Li, et al. 2025. R2vul: Learning to reason about software vulnerabilities with reinforce-ment learning and structured reasoning distillation. arXiv preprint arXiv:2504.04699 (2025). [35] Ratnadira Widyasari, Martin Weyssow, Ivana Clairine Irsan, Han Wei Ang, Frank Liauw, Eng Lieh Ouh, Lwin Khin Shar, Hong Jin Kang, and David Lo. 2025. Let the trial begin: A mock-court approach to vulnerability detection using llm-based agents. arXiv preprint arXiv:2505.10961 (2025). [36] Chenyuan Yang, Zijie Zhao, Zichen Xie, Haoyu Li, and Lingming Zhang. 2025. Knighter: Transforming static analysis with llm-synthesized checkers. In Proceedings of the ACM SIGOPS 31st Symposium on Operating Systems Principles .655–669. [37] Chenyuan Zhang, Hao Liu, Jiutian Zeng, Kejing Yang, Yuhong Li, and Hui Li. 2024. Prompt-enhanced software vulnerability detection using chatgpt. In Proceedings of the 2024 IEEE/ACM 46th International Conference on Software Engineering: Companion Proceedings . 276–277. [38] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric Xing, et al. 2023. Judging llm-as-a-judge with mt-bench and chatbot arena. Advances in neural information processing systems 36 (2023), 46595–46623. [39] Hao Zhu, Jia Li, Cuiyun Gao, Jiaru Qian, Yihong Dong, Huanyu Liu, Lecheng Wang, Ziliang Wang, Xiaolong Hu, and Ge Li. 2025. Specification-Guided Vulnerability Detection with Large Language Models. arXiv preprint arXiv:2511.04014 
+
+(2025). , Vol. 1, No. 1, Article . Publication date: October 2026.
