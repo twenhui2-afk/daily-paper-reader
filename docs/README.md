@@ -6,61 +6,64 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-19
-- 运行时间：2026-10-20 06:57:37 UTC+8
+- 最新运行日期：2026-10-20
+- 运行时间：2026-10-21 06:13:28 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Finite Root Sums in Symmetrizable Kac-Moody Algebras》（8.4/10）, 《Geodesics in Black-Hole Spacetimes: A Qualitative Classification Using Vieta's Formulae》（8.0/10）
-- 速读：《The nearest neighbor interchange proximity measure for the tree-basedness of rooted binary phylogenetic networks》（7.8/10）, 《Deterministic Bounds on Accuracy and Stability of Metric-Space Regression and Classification》（7.0/10）, 《The Restricted Inverse Optimal Value Problem on Shortest Path under $l_\infty$ Norm on Trees》（7.0/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Planar Disk Filters and Real Chromatic Roots at Beraha Numbers》（8.4/10）, 《Multiple propagating modes in random polycrystals》（8.0/10）
+- 速读：《Non-Acceleration of the Heavy-Ball Method in 1D》（7.7/10）, 《Quantum symmetric spaces at roots of 1》（7.6/10）, 《Dunnett's and Tukey's procedures under mixed model covariance structures: dimensional reduction of multivariate-t integrals》（7.6/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/19/README](/202610/19/README)
+- 详情：[/202610/20/README](/202610/20/README)
 
 ### 精读区论文标签
-1. [Finite Root Sums in Symmetrizable Kac-Moody Algebras](/202610/19/2610.15923v2-finite-root-sums-in-symmetrizable-kac-moody-algebras)  
+1. [Planar Disk Filters and Real Chromatic Roots at Beraha Numbers](/202610/20/2610.23989v1-planar-disk-filters-and-real-chromatic-roots-at-beraha-numbers)  
    标签：评分：8.4/10
    evidence：检索回退候选
-2. [Geodesics in Black-Hole Spacetimes: A Qualitative Classification Using Vieta's Formulae](/202610/19/2610.22399v1-geodesics-in-black-hole-spacetimes-a-qualitative-classification-using-vietas-formulae)  
+2. [Multiple propagating modes in random polycrystals](/202610/20/2610.24047v1-multiple-propagating-modes-in-random-polycrystals)  
+   标签：评分：8.0/10
+   evidence：检索回退候选
+3. [A Recursive Construction of Perfect $K^n\times K^n$ Arrays over $K$ Roots of Unity](/202610/20/2610.24408v1-a-recursive-construction-of-perfect-kntimes-kn-arrays-over-k-roots-of-unity)  
    标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [The nearest neighbor interchange proximity measure for the tree-basedness of rooted binary phylogenetic networks](/202610/19/2610.23426v1-the-nearest-neighbor-interchange-proximity-measure-for-the-tree-basedness-of-rooted-binary-phylogenetic-networks)  
-   标签：评分：7.8/10
+1. [Non-Acceleration of the Heavy-Ball Method in 1D](/202610/20/2610.25104v1-non-acceleration-of-the-heavy-ball-method-in-1d)  
+   标签：评分：7.7/10
    evidence：检索回退候选
-2. [Deterministic Bounds on Accuracy and Stability of Metric-Space Regression and Classification](/202610/19/2610.22564v1-deterministic-bounds-on-accuracy-and-stability-of-metric-space-regression-and-classification)  
-   标签：评分：7.0/10
+2. [Quantum symmetric spaces at roots of 1](/202610/20/2610.25624v1-quantum-symmetric-spaces-at-roots-of-1)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-3. [The Restricted Inverse Optimal Value Problem on Shortest Path under $l_\infty$ Norm on Trees](/202610/19/2610.23710v1-the-restricted-inverse-optimal-value-problem-on-shortest-path-under-linfty-norm-on-trees)  
-   标签：评分：7.0/10
+3. [Dunnett's and Tukey's procedures under mixed model covariance structures: dimensional reduction of multivariate-t integrals](/202610/20/2610.26115v1-dunnetts-and-tukeys-procedures-under-mixed-model-covariance-structures-dimensional-reduction-of-multivariate-t-integrals)  
+   标签：评分：7.6/10
    evidence：检索回退候选
-4. [Feasible closed form moment matching for scenario generation through covariance rotations](/202610/19/2610.23786v1-feasible-closed-form-moment-matching-for-scenario-generation-through-covariance-rotations)  
-   标签：评分：6.9/10
+4. [Geodesics in the continuous Hecke monoid](/202610/20/2610.26700v1-geodesics-in-the-continuous-hecke-monoid)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-5. [Parametric Resonance in Primal-Dual Learning for Slowly Non-Stationary Constrained MDPs](/202610/19/2610.23788v1-parametric-resonance-in-primal-dual-learning-for-slowly-non-stationary-constrained-mdps)  
-   标签：评分：6.9/10
-   evidence：检索回退候选
-6. [Whitney--Lagrange Decomposition for the First Family of Finite Element Differential Forms](/202610/19/2610.15477v1-whitney--lagrange-decomposition-for-the-first-family-of-finite-element-differential-forms)  
+5. [Causal adaptive intensity estimation for non-stationary point processes: a Kalman-kernel duality framework](/202610/20/2610.24018v1-causal-adaptive-intensity-estimation-for-non-stationary-point-processes-a-kalman-kernel-duality-framework)  
    标签：评分：6.8/10
    evidence：检索回退候选
-7. [New Translations From LTL with Past to LDBA and DPA](/202610/19/2610.15479v1-new-translations-from-ltl-with-past-to-ldba-and-dpa)  
+6. [PICKLES: Covariance-Preconditioned Kinetic Langevin Ensemble Sampler](/202610/20/2610.24295v1-pickles-covariance-preconditioned-kinetic-langevin-ensemble-sampler)  
    标签：评分：6.7/10
    evidence：检索回退候选
-8. [Rabin Games Revisited](/202610/19/2610.15495v1-rabin-games-revisited)  
+7. [From Software History to Executable Regression Tasks: A System for Evaluating Software Agents](/202610/20/2610.25308v1-from-software-history-to-executable-regression-tasks-a-system-for-evaluating-software-agents)  
    标签：评分：6.6/10
    evidence：检索回退候选
-9. [Beyond Aggregate Drift: Optimal Client-Specific Windows in Federated Learning](/202610/19/2610.15543v1-beyond-aggregate-drift-optimal-client-specific-windows-in-federated-learning)  
+8. [The Corners of Ramanujan: Partial- and False-Theta Companions to Third-Order Mock Theta Functions](/202610/20/2610.25380v1-the-corners-of-ramanujan-partial--and-false-theta-companions-to-third-order-mock-theta-functions)  
    标签：评分：6.6/10
    evidence：检索回退候选
-10. [A trace lower bound for totally positive units in $\mathbb{Q}(ζ_p)^+$ and its application to fusion category](/202610/19/2610.15643v1-a-trace-lower-bound-for-totally-positive-units-in-mathbbqp-and-its-application-to-fusion-category)  
+9. [MapSteal: Map-based Autonomous Knowledge Stealing Attack Against Large Language Models](/202610/20/2610.25626v1-mapsteal-map-based-autonomous-knowledge-stealing-attack-against-large-language-models)  
    标签：评分：6.5/10
    evidence：检索回退候选
-11. [LLM-based Code Auditing by Inferring and Evaluating Developer Assumptions](/202610/19/2610.15729v1-llm-based-code-auditing-by-inferring-and-evaluating-developer-assumptions)  
+10. [Single-graph rational exponents in mixed multicolour Ramsey theory](/202610/20/2610.26061v1-single-graph-rational-exponents-in-mixed-multicolour-ramsey-theory)  
    标签：评分：6.5/10
+   evidence：检索回退候选
+11. [Geodesics of the five-dimensional Kerr-(A)dS black hole in closed form](/202610/20/2610.26242v1-geodesics-of-the-five-dimensional-kerr-ads-black-hole-in-closed-form)  
+   标签：评分：6.4/10
    evidence：检索回退候选
 
 

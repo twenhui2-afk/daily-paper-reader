@@ -1,0 +1,555 @@
+Title: From Software History to Executable Regression Tasks: A System for Evaluating Software Agents
+
+URL Source: https://arxiv.org/pdf/2610.25308v1
+
+Published Time: Tue, 20 Oct 2026 01:38:22 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# From Software History to Executable Regression Tasks: A System for Evaluating Software Agents 
+
+RUIKAI SHI ∗, Peking University, China 
+
+ZHENGRAN ZENG ∗, Peking University, China 
+
+RUI XIE †, Peking University, China 
+
+SHIKUN ZHANG †, Peking University, China 
+
+WEI YE †, Peking University, China As software agents increasingly generate and modify code, evaluating their ability to review changes and discover defects becomes important. Such evaluation needs executable project environments for investigation and reliable defect references supported by reproducible behavior. Existing code review benchmarks provide limited support for this combination. We present a system that constructs executable regression instances from historical introducing–fixing commit pairs and developer tests. The system extracts candidate tests from fixing-side changes, then uses constrained agents to transplant them and configure version-specific environments while preserving production code and test expectations. Independent replay and evidence-based review verify whether tests that fail on the introducing version and pass on the fixing version support the proposed regression relationship. Accepted instances retain both versions’ replay recipes, validated tests, and execution evidence. Repair-supported analysis and human review add root-cause locations, tested repairs, and causal explanations. These instances support bug detection and localization in code review, and further enable bug repair and regression-test generation on the same defects. The system constructs 172 validated instances from 522 candidates across 11 Python projects. We evaluate three software agents with ten models and additional reasoning-effort settings on 83 manually selected, enriched instances across the three tasks. Precise root-line localization remains challenging, while baseline combinations achieve repair and regression-test generation success rates of up to 68.7% and 77.1%, respectively. Leading configurations differ by task, and higher task performance does not necessarily yield greater API-cost efficiency. Our approach provides reusable executable evidence for studying agents’ defect discovery, repair, and testing capabilities. CCS Concepts: • Software and its engineering → Software testing and debugging ; Software evolution .Additional Key Words and Phrases: Executable regression data, Mining software repositories, Large language models, Benchmark 
+
+1 Introduction 
+
+As LLM-based agents take on more code generation and modification tasks [42], evaluating and improving their code review and defect discovery capabilities becomes increasingly important. Finding defects in a change can require executing the program, constructing inputs, and checking suspected behavior. Evaluation therefore needs executable project environments that support investigation and reliable reference answers identifying the defects and their locations. SWR-Bench, CodeFuse-CR-Bench (SWE-CARE), and AACR-Bench provide pull requests, reposi-tory context, and review annotations [12, 44, 46]. Their published construction workflows do not describe systematic reconstruction and validation of project execution conditions for each reviewed revision. Repository snapshots and general Agent containers still require historical dependencies and test support to run the affected behavior reliably. Reliable evaluation also needs reproducible behavioral evidence supporting the reference defect. We address these needs by constructing executable regression instances from software history. 
+
+> ∗These authors contributed equally to this work.
+> †Corresponding authors: Rui Xie, Shikun Zhang, and Wei Ye. Authors’ email addresses: Ruikai Shi (rkshi25@stu.pku.edu.cn); Zhengran Zeng (zhengranzeng@stu.pku.edu.cn); Rui Xie (ruixie@pku.edu.cn); Shikun Zhang (zhangsk@pku.edu.cn); Wei Ye (wye@pku.edu.cn).
+> 1arXiv:2610.25308v1 [cs.SE] 18 Oct 2026
+
+Software history records introducing changes, repairs, and developer tests. Constructing exe-cutable instances presents three challenges. Fixing-side test changes may pass on both versions or exercise unrelated behavior. Historical versions may require different dependencies and test support that must be reproducible beyond an Agent session. Fail-to-pass outcomes must reflect proposed code changes rather than incompatible test support or unintended validation edits. We present EReg-Factory , a system for constructing executable regression data from candidate introducing–fixing pairs. The system extracts fixing-side candidate tests for constrained Validation Agents to transplant and execute in version-specific environments. Operation Judges check Agent actions; an environment replayer independently reruns tests; and a Regression Verifier connects paired outcomes to code changes. Instances retain two replay recipes, validated tests, execution evidence, and explanations. Repair-supported analysis and human review add root locations, tested repairs, and causal explanations. These instances support bug detection and localization in code review, where Agents examine the introducing change without access to later fixes or target regression tests. Retained repairs and behavioral evidence further support bug repair and regression-test generation. These three related tasks are evaluated independently on the same defects. Across 522 candidates from 11 Python projects, EReg-Factory yields 172 validated regression instances. We evaluate three Agents with ten models and additional reasoning settings on 83 manually selected enriched instances across the three tasks. Precise root-cause localization remains challenging, while repair and regression-test generation show promise. Leading models differ by task, and higher performance does not necessarily provide greater benefit per dollar. Our contributions are: 
+
+• A regression construction system combining paired environment construction, indepen-dent replay, and evidence review to validate historical introducing–fixing relationships and retain reproducible execution conditions. 
+
+• Instance enrichment for three tasks using reviewed root locations, repairs, and explana-tions to support code review through bug detection and localization, alongside repair and regression-test generation. 
+
+• An empirical study characterizing construction outcomes and comparing Agents, models, and reasoning configurations by task performance and cost efficiency. 
+
+2 Motivation and Instance Definition 
+
+A Checkmk regression illustrates why a related commit pair alone is insufficient to construct executable regression data. 
+
+A missing-state regression. When neither an iplink record nor an explicit link indication is available, Checkmk uses traffic counters to report UP or UNKNOWN. A refactoring replaced None 
+
+with an empty list for missing state. Because the downstream check treats any non-None sequence as available state information, this change produces DOWN and bypasses the fallback. The fix restores None while retaining the refactoring (Figure 1). After transplanting the fixing-side candidate tests, independent execution yields four passes and one failure on the introducing version, versus five passes on the fixing version. Only the fail-to-pass case is a regression witness. 
+
+From historical changes to executable evidence. The example motivates three requirements: selecting tests that expose the affected behavior, reconstructing each version’s execution envi-ronment, and linking the observed difference to the introducing and fixing changes rather than incompatible test support.                          
+
+> 2AMissing-state regression No iplink entry and no explicit link indication
+> Missing-state value
+> lnx_if.py:208
+> Execution path Reported status Introducing Istate_infos =[] Inspect empty flags DOWN
+> Incorrect
+> Fixing Fstate_infos =None
+> Default value Use traffic counter Counter > 0 → UP
+> Otherwise → UNKNOWN
+> BPaired test results I+ transplanted tests F
+> Parse case 3 FAIL PASS
+> Other four cases PASS PASS
+
+Fig. 1. Checkmk’s missing-state regression: (A) abbreviated code and (B) paired test results. 
+
+Executable regression instances. Let 𝐼 and 𝐹 denote candidate introducing and fixing commits. We seek a nonempty set of regression cases 𝑇 ∗ from tests changed in 𝐹 , such that 
+
+𝑂 𝐼 (𝑡 ) = FAIL and 𝑂 𝐹 (𝑡 ) = PASS , ∀𝑡 ∈ 𝑇 ∗. (1) We measure 𝑂 𝐼 with transplanted tests and necessary non-production adaptations while preserving production code at 𝐼 , and 𝑂 𝐹 at 𝐹 , each in its own environment. Code and execution evidence must link these outcomes to the target functional or compatibility regression. Each instance stores a commit pair, two replay recipes, validated tests, execution evidence and behavioral explanations. Section 3 constructs these instances; Section 4 enriches them with root annotations and tested repairs for the three evaluation tasks. 
+
+3 EReg-Factory: Regression Instance Construction 
+
+EReg-Factory constructs executable regression instances from candidate introducing–fixing commit pairs through paired validation, independent environment replay, and regression verification. This section describes that core construction process. Figure 2 summarizes the process from candidate acquisition to a validated, independently replayable regression instance. 
+
+3.1 Candidate Relationships and Test Scope 
+
+Candidate acquisition is replaceable: other mining methods or curated sources can supply pairs, provided that both commits and fixing-side test changes are available. We use GH Archive, which records public GitHub activity in hourly archives [11]. Its cross-repository history enables mining without selecting repositories individually in advance. We mine its 2023–2025 PushEvents across repositories. Case-insensitive matching identifies repair ( fixes , correct , resolve ) or causal terms (regression , introduced by , broken since ), followed by a full 40-character hexadecimal SHA. The message links fixing candidate 𝐹 to introducing candidate 𝐼 through an explicit SHA reference, without cross-message similarity matching (Figure 3). Filters remove dependency updates, routine merges, CI, documentation, formatting, releases and backports; repository and test-change screening retains Python projects with pytest indications and candidate test files. Following this initial rule-based screening, all candidate relationships undergo rigorous manual secondary screening to confirm their credibility and provide reliable inputs for subsequent validation. To further screen candidate inputs, we examine the pull requests associated with each fixing candidate. Fixing candidates pass when any associated pull request is merged; those without requests also proceed to later validation, accommodating direct commits. Those with only unmerged requests are excluded. For eligible fixes referencing one introducing commit, we select the latest event: later attempts may complete an earlier repair. Paired execution tests this relationship. 
+
+> 3
+
+Input materials   
+
+> Commit pairs ( I,F)Changed tests in F
+
+Preprocessing 
+
+> 1. Filter pairs 2. Extract test nodes
+
+Candidate instances   
+
+> Selected pair ( I,F)Candidate tests T0
+
+Introducing version I
+
+Validation Agent 
+
+> Transplant tests Configure + run
+
+Operation Judge 
+
+> Task compliance
+
+Independent replay 
+
+> Rebuild environment Run selected tests
+
+Fixing version F
+
+Validation Agent 
+
+> Configure env. Run same tests
+
+Operation Judge 
+
+> Task compliance
+
+Independent replay   
+
+> Rebuild environment Run selected tests Test scope Trun and command
+
+Evidence   
+
+> Matched test results from I,F
+> Code and test changes Agent reports + replay records
+
+Regression Verifier     
+
+> Identify fail-to-pass cases Assess I-Frelationship Select regression tests T*
+
+Executable regression instances       
+
+> 1. Replayable environments for Iand F
+> 2. Regression tests T*and run evidence 3. Bug and regression explanations
+
+Fig. 2. The EReg-Factory construction pipeline. The dashed arrow transfers test scope and command; non-accepted branches are omitted. Fixing candidate F
+
+> d582f59
+
+Introducing candidate I   
+
+> ea0d12c
+> This fixes a regression introduced in
+> ea0d12c f068735afd4eee8a192538bd0541528b0
+> references fortigate_sensors: add parse function
+
+Fig. 3. Identifying a candidate commit pair from a commit message. 
+
+We treat tests changed by a fixing commit as candidate regression tests because they may express the behavior targeted by the fix and its expected outcome. Pytest tests check program behavior through given inputs and assertions on expected results, providing a basis for reusing the same behavioral check across versions. In subsequent stages, we preserve these inputs and assertions and transplant the complete fixing-side tests to the introducing version, checking the earlier version against the same expectations after necessary adaptation. Changes confined to assertions or expected results can therefore also yield candidates. We map changed locations in test code onto Python abstract syntax trees to identify the corre-sponding test functions or methods and generate pytest nodes, forming candidate scope 𝑇 0. If no eligible nodes are identified, we discard the candidate commit pair. For retained candidates, later stages configure the environment and adapt test support to verify executability and behavioral differences between versions, establishing valid regression tests. 
+
+3.2 Validation on the Introducing Version 
+
+Introducing-side validation tests whether fixing-side candidates execute on 𝐼 and expose a failure. Historical dependencies and test infrastructure can cause failures unrelated to a regression. A 
+
+Validation Agent prepares and runs the tests, an operation Judge checks compliance, and independent replay provides inspectable, repeatable execution evidence. 
+
+> 4
+
+We build the Validation Agent on SWE-agent [42], adding task instructions and tools for repos-itory inspection, dependency configuration, candidate test transplantation and execution, and evidence collection. It observes test behavior rather than repairing the program and produces a structured report. Figure 4 summarizes both sides’ tasks and instructions. (a) Introducing-side Validation Agent            
+
+> Input
+> Repository at I; candidate nodes T0
+> Files from Fcontaining these selected test nodes
+> Task
+> Transplant these complete files. Configure the environment at I.Run candidate tests T0.
+> Rules
+> Preserve production code and candidate test behavior.
+> Agent outputs
+> Environment setup commands Final test command and scope Agent-observed test results Validation report
+> (b) Fixing-side Validation Agent
+> Input
+> Repository at F
+> Final scope Trun and command
+> Task
+> Configure the environment at F.Run the same scope Trun .
+> Rules
+> No source or test edits.
+> Agent outputs
+> Environment setup commands Agent-observed test results Validation report Test scope + command
+
+Fig. 4. Introducing- and fixing-side Validation Agent tasks; the dashed arrow transfers final test scope and command. 
+
+The introducing-side Validation Agent receives the repository, the introducing and fixing commit identifiers, candidate test paths and the specified pytest nodes 𝑇 0. It applies to 𝐼 the complete fixing-side test files containing the nodes extracted in Section 3.1, configures the required environment, and executes those candidate nodes 𝑇 0. Existing non-production fixtures, helpers, test data and test configuration may be restored or adapted to support execution, but candidate inputs, assertions, expected results, parameters and skip behavior must remain unchanged. Production implementation cannot be copied or edited, even to resolve an import, because doing so could import the fix under investigation. If some candidates cannot execute within these constraints, the Agent may narrow the scope to 𝑇 run ⊆ 𝑇 0 and report the omitted tests. Its final report records the environment preparation, self-contained test command, exit code and observed outcome. Before independent replay, an LLM-based Judge reviews task compliance using the task require-ments, Agent execution record, code changes and validation report (Figure 5). It allows supporting adaptations needed to run the tests while requiring the candidate tests’ behavioral expectations and the production implementation to remain unchanged. Runs that pass this review proceed to independent replay. We use GPT-5.6 Sol with reasoning effort set to max for the Judges on both the introducing and fixing sides. 
+
+Independent replay. Environment construction is exploratory, involving dependency installation, temporary inputs, environment variables and repository build commands; neither a package list nor the final test command captures all these conditions. Our environment replayer converts the recorded configuration process into a recipe executable in a fresh container, avoiding reliance solely on the Agent’s account or temporary session. SetUpAgent and Repo2Run reuse Agent exploration for setup [15, 38]; our replayer couples this process with the historical source state and candidate test scope. 
+
+> 5Operation Judge
+> Does the Agent's attempt comply with the task?
+> Inputs / evidence
+> Task requirements and test scope Agent actions and execution outputs Code changes and validation report
+> Review criteria
+> Introducing side
+> 1. Is production code unchanged? 2. Are test expectations preserved? 3. Are all support edits necessary? 4. Is narrowing only for unrunnable tests?
+> Fixing side
+> 1. Is setup limited to the environment? 2. Are source and tests unchanged? 3. Is the introducing-side scope retained?
+> Both sides
+> 1. Is the required revision used? 2. Does the report match the execution evidence? 3. Is execution free of bypasses and fabrication? ALLOW Independent replay REJECT Discard this Agent attempt
+
+Fig. 5. Operation compliance checking before independent replay. 
+
+Replay starts from the target commit and extracts environment configuration operations and their required temporary inputs from the execution trace, preserving their order and necessary environment settings. Environment and source state are reconstructed separately: setup and build commands restore dependencies and generated artifacts, while a patch applies test transplantation and permitted supporting changes, avoiding duplicate application of generated artifacts. The replayer then reconciles the final report with the execution record to determine the test command and runtime settings, so that replay corresponds to the Agent’s final reported experiment rather than an exploratory attempt. We also retain dependency information and recorded versions for Python packages, system packages and build tools used to construct the Agent’s environment. When replay exposes missing dependencies during test startup, collection or setup, the replayer uses these records to install the corresponding package versions and reruns the same test command, rather than modifying the program under test to eliminate failures. Replay preserves per-case results and failure output for behavioral comparison, regression verification and re-examination. 
+
+3.3 Validation on the Fixing Version 
+
+Fixing-side validation checks that the tests exercised on 𝐼 pass on 𝐹 , resolving the observed failures. The Validation Agent receives the repository at 𝐹 and the introducing side’s final test command and exercised scope, including any narrowed subset (Figure 4). It configures its own environment and runs the existing tests without changing source code or tests, recording the environment, command and outcomes in a structured report. The fixing-side Judge reviews the execution evidence under this environment-only constraint, checking that preparation preserves the program, tests and required test scope. Runs that pass proceed to independent validation with the environment replayer described in Section 3.2. Replay uses the fixing-side Validation Agent’s own configuration and final command in a fresh container. The two sides therefore share a test scope, while allowing the dependency versions and runtime settings needed by each historical version to differ. Paired replays yield independently observed outcomes for the same tests. A fail-to-pass difference alone does not establish the proposed introducing–fixing relationship; Section 3.4 examines both executions, failure causes and commit changes. 
+
+> 6
+
+3.4 Reviewing the Regression Relationship 
+
+We use an LLM-based Regression Verifier to combine evidence from both validation stages and assess whether candidate tests support the proposed introducing–fixing relationship. Our implementation uses GPT-5.6 Sol with reasoning effort set to max . We align the independently replayed outcomes by individual test case and examine those that fail on 𝐼 and pass on 𝐹 . We assess individual parameterized cases, rather than entire test functions, as regression evidence. (a) Evidence (b) Relationship review (c) Outputs     
+
+> Independent replay
+> I: Fail F: Pass
+> Matched test case
+> Execution context
+> Failure output Agent reports
+> Test evidence
+> Test code and changes
+> Commit evidence
+> Changes in Iand F
+> Regression Verifier
+> Does the introducing change explain the observed failure? Does the fixing change address the same problem? Does the test exercise the affected behavior?
+> Supported tests
+
+T *  
+
+> Bug explanation Regression explanation
+> Retain with
+> Replay recipes Execution evidence Unresolved / unsupported Not included in T*
+
+Fig. 6. Evidence-based regression verification. 
+
+The verifier receives both Agent reports, paired replay results and failure output, relevant test code and its changes, and the introducing and fixing commit differences (Figure 6). It examines whether the change in 𝐼 explains the observed failure, whether 𝐹 addresses the same problem, and whether the test exercises the affected behavior. Unlike the operation Judge’s compliance check, this assessment links code changes, test expectations and paired outcomes to distinguish supported regressions from unrelated behavior, environment failures or incompatible test transplantation. The verifier produces a structured assessment comprising supported regression tests 𝑇 ∗, a bug explanation describing the defect and how it was introduced and repaired, and a regression explanation describing the behavior checked by the tests and why their outcomes support that relationship. Unresolved or unsupported cases are excluded from 𝑇 ∗. We retain the supported tests and explanations with both replay recipes and execution results. These instances are then enriched with root-cause annotations and task-specific evidence for evaluation. 
+
+4 Instance Enrichment and Evaluation Task Design 
+
+EReg-Factory constructs executable regression instances with validated tests and environments for both versions (Section 3). We enrich these instances with root-cause annotations and tested repairs, then use the resulting evidence to design three complementary evaluation tasks: bug detection and localization, bug repair, and regression-test generation. 
+
+4.1 Repair-Supported Root-Cause Annotation 
+
+Validated regression tests expose affected behavior but do not directly locate its root cause. Repair locations need not coincide with root-cause locations: a repair may adjust downstream handling or add a guard to eliminate a failure whose cause lies elsewhere. We combine repair-based analysis with human annotation to locate the regression’s causes in the introducing change, providing reference locations and explanations for evaluation (Figure 7).       
+
+> 7Validated regression instance Root-Cause Agent Human annotation
+> Introducing diff + developer's repair Regression tests, failures + explanations Rebuilt environment at introducing version 1Analyze the failure 2Propose root locations 3Repair and rerun Prefer repair at the root Roots + explanation Repair + run evidence
+> Tests pass
+> Two independent annotators Discuss + correct
+> Reference answers
+> Root locations Reviewed repair R
+> Causal explanation
+
+Fig. 7. Repair-supported root-cause annotation. 
+
+The environment replayer reconstructs the introducing version with the accepted regression tests and confirms their failure. Our Root-Cause Agent is based on SWE-agent [42] and uses DeepSeek V4 Flash. It receives the prepared environment, read-only access to the introducing and fixing changes, and the preceding stage’s validated regression tests, failure output, bug explanation and regression explanation. Together, these provide the context for analyzing how the problem arose, why the tests expose it, and how the fix changes the affected behavior. The Agent is instructed to first analyze the failure and propose root locations, then implement its own repair. It is encouraged to repair at the identified root cause rather than mechanically reproduce the developer’s repair. It preserves the tests and their execution conditions and reruns the tests in the same container. When the tests pass, we retain the proposed source-line root locations, repair patch 𝑅 and causal explanation for subsequent manual annotation and review. The three reviewed artifacts jointly support subsequent evaluation. Two master’s students in computer science independently assess all three artifacts : whether the root locations are accurate, whether 𝑅 addresses the stated problem, and whether the causal explanation agrees with the source and execution evidence. They annotate and correct locations and explanations, review and confirm the repair, and resolve disagreements through discussion to estab-lish the final reference answers. Root locations support localization comparison and test-coverage evaluation; 𝑅 provides the repaired state for regression-test generation; and causal explanations inform task descriptions and behavior specifications. 
+
+4.2 Evaluation Task Design 
+
+We turn validated and enriched regression instances into three complementary tasks: finding a problem in a code change, repairing its behavior, and writing a test that exposes it (Table 1). The tasks share a behavioral basis but are evaluated independently. Each provides task-specific inputs to the Agent while retaining reference answers with the evaluator. 
+
+Bug detection and localization. This task assesses whether an Agent can identify a potential problem when examining a code change. We provide the introducing version, its parent, the change description and diff, allowing analysis of both added and deleted behavior without later fixes or regression-test evidence. The Agent judges whether a bug is present and identifies the responsible source lines without changing the repository. We compare the reported locations with the instance’s root-cause lines. 
+
+Bug repair. Following an evaluation pattern similar to SWE-bench [18], this task assesses whether an Agent can repair a problem from a symptom description. The Agent receives this description and the prepared introducing repository, analyzes the relevant code, and produces a repair without                       
+
+> 8Table 1. Inputs, outputs and evaluation criteria for the three tasks.
+> Detection / localization Repair Test generation
+> Input Parent and 𝐼 ; change description and diff. Repository at 𝐼 ; symptom description. Parent and 𝐼 ; diff, behavior specification and test support. Output Bug judgment; source lines. Repair patch. Regression tests; support code. Evaluation Match reported and root-cause lines. Test the Agent-repaired version. Same tests on 𝐼 and 𝐼 +𝑅 .Criteria Bug-judgment correctness; line-level agreement. All target failures resolved; baseline passes preserved. Behavioral fail-to-pass; separate root-line coverage.
+> Introducing version: 𝐼 ; validated repair: 𝑅 . Deleted roots use parent lines. Checks use the evaluated scope. Import/collection errors are excluded; root coverage is not a pass condition.
+
+access to the target regression tests. We then run the relevant tests to determine whether the repair resolves the targeted failures while preserving previously passing cases within the evaluated scope. If any targeted failure remains or a previously passing case fails, the repair is unsuccessful. 
+
+Regression-test generation. This task assesses whether an Agent can turn a behavioral require-ment into a test that detects the regression. The Agent receives a behavior specification, the parent and introducing versions, and their diff. Ordinary tests and reusable support remain available. The Agent analyzes the specified behavior and designs its own test inputs, assertions and implementa-tion without changing production code. Its tests must fail on the introducing version and pass on that version with the validated repair 𝑅 applied. The failure must expose a behavioral difference, rather than an import or test-collection error. The generated tests should also cover as many of the regression’s root-cause lines as possible. To assess repair and test generation more independently of an Agent’s ability to discover and localize a problem from scratch, we provide concise descriptions of the target behavior. We use GPT-5.6 Sol with reasoning effort set to max to generate repair symptom descriptions and test behavior specifications from the instances’ validated regression tests and execution evidence; the latter also use the introducing change. We manually review these descriptions for fidelity to the evidence and answer leakage, retaining necessary trigger conditions and behavioral requirements without revealing root locations, repair solutions or reference test implementations. The Agent must still analyze the repository to complete each task. 
+
+5 Study Design 
+
+We study the regression data constructed by EReg-Factory and Agent performance on the three tasks defined in Section 4.2. 
+
+5.1 Research Questions 
+
+RQ1: What executable regression data can EReg-Factory construct? We examine construction output, project distribution, and the root-cause and test evidence supporting the three tasks. 
+
+RQ2: How do Agents and models differ across the three tasks? We compare Agents and models on the same instances to examine whether their relative strengths carry across localization, repair and regression-test generation. 
+
+RQ3: How do reasoning effort and model configuration affect performance and cost efficiency? We vary Sol’s reasoning effort under a common request budget and compare GPT 
+
+> 9
+
+configurations’ API cost efficiency. We compare Qwen sizes and dense versus mixture-of-experts architectures as configuration comparisons, not causal estimates of parameter-count effects. 
+
+5.2 Instances, Agents and Models 
+
+From the enriched instances, we exclude those limited to documentation adjustments or surface-level interface changes and manually select 83 reviewed instances from 11 Python projects as the common cohort for all three tasks and Agent–model combinations. This is a curated set, not a random sample of candidate commits; RQ1 examines the broader construction output separately. The evaluated systems are Mini-SWE-Agent 2.4.6, Codex 0.147.0 and Claude Code 2.1.233, distinct from the SWE-agent-based construction Agents. Table 2 lists the ten models and their reasoning settings; Sol, Luna and Terra denote the gpt-5.6-* service models used here. Each of the three Agents is evaluated with every model configuration on the same 83 instances for all three tasks. Including Sol’s additional effort settings, the twelve configurations yield 83 × 3 × 3 × 12 = 8,964 evaluations: 7,470 in the main comparison and 1,494 in the additional Sol effort comparison.        
+
+> Table 2. Agent–model combinations and shared settings.
+> Setting Configuration
+> Agents (all configurations) Mini-SWE-Agent; Codex; Claude Code Sol, Luna, Terra Medium; Sol additionally low/high Qwen3.8 27B: native medium thinking Qwen3.6 27B, 35B-A3B: native thinking Qwen3.5 9B, 27B, 35B-A3B, 122B-A10B: native thinking Common budgets 100 main requests; 262,144 context tokens; 8,192 output tokens/request
+
+5.3 Execution and Comparison Protocol 
+
+For each task and instance, Agents receive identical descriptions and permitted evidence under Section 4.2’s information boundaries; the evaluator retains the task-specific private reference material. Agents keep their native tools and context management, using isolated workspaces without access to one another’s solutions. Table 2 specifies the common context, output and main-request budgets; requests, not shell commands, are counted. Temperature is zero, with Agent time limits of 2 h for localization and 4 h for repair and test generation. Localization allows up to two additional format-recovery requests of up to 4,096 output tokens each, using the existing record without renewed repository exploration. We retain one effective attempt per instance–Agent–configuration combination, not the best retry. Infrastructure interruptions are recovered separately from capability failures; budget-limited, invalid and unsuccessful runs remain in the denominator. A verified repair can still succeed after request-budget exhaustion. Tasks are scored separately, without a composite ranking. 
+
+5.4 Evaluation Metrics 
+
+For each Agent–model pair, sums cover 𝑁 = 83 instances, and 1[·] is an indicator. 
+
+Bug detection and localization. Predicted and reference root-location sets 𝑃 𝑖 and 𝐺 𝑖 use file– side–line coordinates, with deleted roots on the parent side. Macro line F1 is primary; exact-set match and any-hit rates supplement it:                          
+
+> MacroF1 =1
+> 𝑁 ∑︁ 𝑖
+> 2|𝑃 𝑖 ∩𝐺 𝑖 ||𝑃 𝑖 | + | 𝐺 𝑖 |,ExactMatch =1
+> 𝑁 ∑︁ 𝑖
+> 1[𝑃 𝑖 =𝐺 𝑖 ],AnyHit =1
+> 𝑁 ∑︁ 𝑖
+> 1[𝑃 𝑖 ∩𝐺 𝑖 ≠∅] .(2)
+> 10
+
+Missing or invalid submissions score zero. Detection recall is 𝑁 −1 Í𝑖 1[bug reported on 𝑖 ]; this positive-only cohort does not measure false alarms on bug-free commits. 
+
+Bug repair. Private acceptance sets 𝑟 𝑖 = 1 if all targeted failures are resolved and previously passing cases in scope remain passing; otherwise 𝑟 𝑖 = 0: RepairCount =
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑟 𝑖 , RepairSuccess = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑟 𝑖 . (3) 
+
+Regression-test generation. For a compliant, completed run, stable regression validation sets 
+
+𝑠 𝑖 = 1 for matching cases and repeatable outcomes across two runs per state ( 𝐼 , 𝐼 + 𝑅 ), with at least one behavioral fail-to-pass case and all cases passing on 𝐼 + 𝑅 ; otherwise 𝑠 𝑖 = 0. Import, collection and setup errors or skipped cases do not qualify. Let 𝐷 𝑖 be matched fail-to-pass cases in the first execution pair and 𝐶 𝑖 the generated cases recorded on 𝐼 + 𝑅 in that pair: TestSuccess = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑠 𝑖 , CasePrecision = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+|𝐷 𝑖 ||𝐶 𝑖 | . (4) Test success is primary; case precision ignores repeatability and is zero without evidence or if 
+
+𝐶 𝑖 = ∅.Let 𝐿 𝑖 be annotated Python root lines present in 𝐼 (excluding deletions), 𝐸 𝑖 the lines executed by generated tests, and 𝐻 𝑖 ⊆ 𝐿 𝑖 the roots executed by human-written reference tests. Root-line and reference-test-relative coverage are RootCov 𝑖 = |𝐸 𝑖 ∩ 𝐿 𝑖 ||𝐿 𝑖 | , RefCov 𝑖 = |𝐸 𝑖 ∩ 𝐻 𝑖 ||𝐻 𝑖 | . (5) Each is macro-averaged where 𝑠 𝑖 = 1, coverage is recorded and its denominator is nonempty; measured and missing counts accompany these conditional metrics. 
+
+API cost efficiency. Let 𝑐 𝑖 be API cost in USD and 𝑞 𝑖 be line F1, 𝑟 𝑖 , or 𝑠 𝑖 for the respective task: Yield /USD =
+
+Í𝑁 𝑖 =1 𝑞 𝑖 
+
+Í𝑁 𝑖 =1 𝑐 𝑖 
+
+. (6) Exact matches per USD instead uses 𝑞 𝑖 = 1[𝑃 𝑖 = 𝐺 𝑖 ]. For the five GPT configurations, public short-context token rates [26–28] price all retained runs, including failures and submission recovery. Reported cache usage is preserved; unreported cache input counts as uncached, and unreported response tokens are excluded. Reference API costs exclude full compute costs and are not invoices; dollar rankings exclude self-hosted Qwen. Equal request limits do not imply equal-dollar budgets. 
+
+6 Results 6.1 RQ1: What executable regression data can EReg-Factory construct? 
+
+Construction output. Mining the 2023–2025 GH Archive data yields 1,694 candidate records across 34 repositories. We select 11 Python repositories with relatively large candidate pools and apply EReg-Factory (Section 3) to 522 eligible candidate instances. Before execution, 145 other candidates are excluded: 126 lack eligible test nodes and 19 lack available test files. Of the 522 instances, 394 complete test execution on both versions and 172 pass regression relationship verification. 
+
+> 11
+
+What prevents retention? The main obstacle is the absence of the required behavioral contrast: 141 candidates do not fail on the introducing version, while 48 fail on the fixing version. The remaining candidates fall into three categories (Figure 8). Validation-policy violations exclude 64 candidates: Agents modify the tested production code, bypass required tests, or misreport results, contrary to the requirements checked by the Operation Judge. Environment or execution issues account for 62 candidates: Agents report unsuccessful environment setup, or execution, replay or required artifacts remain incomplete. The remaining 35 lack sufficient regression evidence: results or downstream records do not establish the proposed introducing–fixing relationship. 0 100 200   
+
+> Instances
+> 189 64 62 35 No fail-to-pass contrast Validation-policy violations Environment or execution issues Insufficient regression evidence
+> Fig. 8. Reasons for excluding construction candidates ( 𝑛 =350 ).
+
+Root-cause enrichment retains 153 of the 172 validated instances (89.0%). The other 19 instances lack evidence of production-code changes that supports source-level root-cause annotation. For example, a regression may arise from a commit’s changes to the project’s dependency declarations or versions rather than to the tested production code. 
+
+Per-instance API cost. Table 3 reports the mean token usage and API cost at each automated stage for 153 accepted instances. The model configuration uses DeepSeek V4 Flash for both Validation Agents and the Root-Cause Agent, and GPT-5.6 Sol with max effort for the Operation Judges and Regression Verifier. These automated stages cost $1.01 per instance on average: $0.98 for regression construction and $0.03 for root-cause analysis.                                       
+
+> Table 3. Mean token usage and API cost per accepted instance ( 𝑛 =153 ); k denotes 1,000 tokens.
+> Stage Input (k) Output (k) Total (k) USD
+> Introducing Agent 2,125.2 7.1 2,132.4 0.068 Introducing Judge 110.3 1.4 111.6 0.416 Fixing Agent 1,509.3 5.1 1,514.3 0.048 Fixing Judge 81.0 1.1 82.2 0.314 Regression Verifier 22.4 2.5 24.8 0.137 Construction Subtotal 3,848.2 17.1 3,865.3 0.983 Root-Cause Agent 764.9 10.6 775.6 0.027
+> Total 4,613.1 27.8 4,640.9 1.011
+
+Evaluation cohort. From the enriched instances, we manually select 83 instances across the 11 projects for evaluation (Figure 9). They contain 393 root-line coordinates and 391 failing regression cases shared by the three tasks; Table 4 summarizes their per-instance counts. 
+
+> 12 21.7% 19.3% 18.1% 10.8% 8.4% 7.2% 4.8% 3.6% 2.4% 2.4% 1.2%
+> Checkmk (18) tinygrad (16) Home Assistant (15) Notification API (9) JAX (7) Dagster (6) PyVista (4) Inmanta (3) dd-trace-py (2) OpenHands (2) Great Expectations (1)
+
+Fig. 9. Project distribution of the 83 evaluation instances. Table 4. Per-instance root-line and regression-case counts ( 𝑛 = 83 ). Range rows report numbers of instances. 
+
+Count Root lines Test cases 
+
+1 26 35 2–3 29 27 4–5 9 86–10 6 5
+
+≥ 11 13 8Mean 4.73 4.71 
+
+Conclusion 1: EReg-Factory constructs executable regression instances with independently reproducible environments for the introducing and fixing versions, verified introducing–fixing relationships, and regression tests exhibiting fail-to-pass behavior. Root-cause enrichment adds reviewed source-line locations, repair patches and causal explanations, providing a shared foundation for bug localization, repair and regression-test generation. 
+
+6.2 RQ2: How do Agents and models differ across the three tasks? 
+
+Bug repair and regression-test generation show promising results, but precise localization remains challenging. Table 5 reports macro-averaged localization F1 (Loc.), repair success rate (Repair), and stable regression-test generation success rate (Tests) on the same 83 instances for each Agent–model combination. Among the ten baseline model configurations, Sol with Claude Code repairs 57 instances (68.7%), and Qwen3.8-27B with Codex generates successful regression tests for 64 (77.1%). These outcomes demonstrate successful bug repair and regression-test generation on a substantial portion of the cohort. However, no baseline combination exactly recovers the reference root-line set on more than 17 instances (20.5%, Sol with Claude Code). 
+
+Table 5. Agent–model performance (%; 83 instances per combination). Column maxima are bold. 
+
+Mini-SWE-Agent Codex Claude Code Model Loc. Repair Tests Loc. Repair Tests Loc. Repair Tests 
+
+Sol (medium) 30.9 61.4 65.1 34.1 67.5 67.5 31.8 68.7 60.2 Luna (medium) 24.6 49.4 51.8 31.3 54.2 57.8 21.2 49.4 45.8 Terra (medium) 24.0 60.2 60.2 26.1 59.0 59.0 27.8 61.4 56.6 Qwen3.5-122B-A10B 14.6 25.3 41.0 28.5 32.5 43.4 27.9 27.7 37.3 Qwen3.5-35B-A3B 16.7 16.9 27.7 22.0 27.7 33.7 26.3 24.1 30.1 Qwen3.5-27B 11.2 26.5 48.2 26.0 26.5 47.0 26.4 34.9 50.6 Qwen3.5-9B 6.3 13.3 27.7 24.0 19.3 22.9 24.5 16.9 24.1 Qwen3.6-35B-A3B 17.2 24.1 38.6 24.1 28.9 33.7 22.8 31.3 37.3 Qwen3.6-27B 23.1 36.1 51.8 23.2 41.0 49.4 24.6 36.1 53.0 Qwen3.8-27B 22.0 32.5 66.3 30.0 47.0 77.1 24.3 51.8 75.9 
+
+Additional Sol reasoning settings Sol (low) 34.5 56.6 63.9 31.4 57.8 65.1 35.0 62.7 61.4 Sol (high) 29.6 69.9 69.9 31.3 63.9 72.3 34.8 67.5 68.7 
+
+> 13
+
+The localization measures in Figure 10a reveal a substantial gap between finding part of a root cause and identifying its full extent. Sol’s Agent-averaged any-hit rate is 44.2%, compared with 19.3% exact-set match and 32.3% line F1. For Qwen3.8, the corresponding values are 35.3%, 14.1% and 25.4%. Finding a relevant line is thus considerably more common than precisely identifying all reference locations. Any-hit alone would obscure this shortfall; F1 additionally captures both missed root lines and extraneous reported lines. GPT-5.6 Sol GPT-5.6 Luna GPT-5.6 Terra Qwen3.5-122B-A10B Qwen3.5-35B-A3B Qwen3.5-27B Qwen3.5-9B Qwen3.6-35B-A3B Qwen3.6-27B Qwen3.8-27B       
+
+> 010 20 30 40 50
+> Case precision Root coverage Reference coverage
+> 025 50 75 100
+> 63.0 88.2 96.0
+> 70.1 86.6 94.8
+> (a) Root-line localization (%) (b) Test quality (%)
+> Exact match Line F1 Any hit GPT-5.6 Sol Qwen3.8-27B
+
+Fig. 10. Localization and generated-test quality (%): (a) localization; (b) test precision and root-line coverage. 
+
+Conclusion 2: Agents can complete substantial portions of repair and regression-test generation, but precise, complete root-cause localization remains limited. The gap between any-hit and exact-set match makes this limitation visible. 
+
+Codex leads the Agent averages. Table 6 reports equal-weight means across ten baseline models (a) or three Agents (b); Sol’s extra effort settings enter only RQ3. Codex leads all three Agent averages. Its localization F1 exceeds Claude Code by 1.15 percentage points and Mini-SWE-Agent by 7.87 points. Repair is nearly tied with Claude Code: 335 versus 334 successes across 830 evaluations (40.36% versus 40.24%). 
+
+Sol leads localization and repair; Qwen3.8 leads test generation. Among baseline models, Sol achieves the highest Agent-averaged localization F1 (32.3%) and repair success (65.9%). Every Agent obtains its highest baseline repair success with Sol. Qwen3.8 leads test generation at 73.1%, exceeding Sol by 8.84 percentage points, and ranks first for each Agent rather than relying on one strong combination. Higher task performance need not yield more benefit per dollar; RQ3 examines this trade-off separately. 
+
+Conclusion 3: Codex achieves the highest average on all three tasks, with repair nearly tied with Claude Code. Sol leads baseline model localization and repair; Qwen3.8 leads test generation for all three Agents. 
+
+Generated regression tests cover root-cause code. Table 5 reports the main task results for all combinations. We further compare case precision and root-line coverage in Figure 10b for Sol and Qwen3.8, the two baseline models with the highest test-generation success rates. Sol and Qwen3.8 achieve macro case precision of 63.0% and 70.1%, respectively. Recorded coverage data from tests that pass regression validation show mean per-run root-line recall of 88.2% and 86.6%. Relative to 
+
+> 14
+
+Table 6. Agent and model averages (%; 830 and 249 runs per task, respectively). Bold marks each metric’s maximum among Agents or models.                                                            
+
+> (a) Agent averages (b) Model averages Agent Loc. Repair Tests Model Loc. Repair Tests Model Loc. Repair Tests
+> Mini-SWE-Agent 19.1 34.6 47.8 Sol (medium) 32.3 65.9 64.3 Qwen3.5-27B 21.2 29.3 48.6 Codex 26.9 40.4 49.2 Luna (medium) 25.7 51.0 51.8 Qwen3.5-9B 18.3 16.5 24.9 Claude Code 25.8 40.2 47.1 Terra (medium) 26.0 60.2 58.6 Qwen3.6-35B-A3B 21.3 28.1 36.5 Qwen3.5-122B-A10B 23.6 28.5 40.6 Qwen3.6-27B 23.6 37.8 51.4 Qwen3.5-35B-A3B 21.7 22.9 30.5 Qwen3.8-27B 25.4 43.8 73.1
+
+roots exercised by the human-written reference tests in each run, mean recall reaches 96.0% and 94.8%. Qwen3.8 combines a higher test-generation success rate with a higher average fraction of generated cases satisfying the regression criterion. This coverage pattern extends beyond these two models: across the other eight baseline models, recorded coverage from tests passing regression validation shows mean root-line recall of 83.8–89.2% and reference-test-relative recall of 92.5–96.4%. 
+
+Conclusion 4: Across models, generated tests that pass regression validation cover, on average, most root lines and much of the root-cause scope exercised by human-written reference tests. The recorded coverage shows that these tests not only distinguish pre- and post-repair behavior but also execute code associated with the target regression. 
+
+6.3 RQ3: How do reasoning effort and model configuration affect performance and cost efficiency? 
+
+Reasoning effort affects the three tasks differently. Figure 11 compares Sol’s three reasoning settings under the same main-request budget. Average repair success rises from 59.0% at low to 65.9% at medium and 67.1% at high. Medium captures most of this gain, with high adding only 1.2 percentage points. Mini-SWE-Agent continues to improve at high effort, while Codex and Claude Code peak at medium. Average test-generation success increases from 63.5% at low to 64.3% at medium and 70.3% at high, a low-to-high gain of 6.8 percentage points. All three Agents obtain their highest test-generation success at high effort. Average localization F1 decreases from 33.7% at low to 32.3% at medium and 31.9% at high. Higher reasoning effort therefore does not improve recovery of the reference root-line set on average. Low Medium High 55 60 65 70 75 Percent       
+
+> (a) Repair success
+> Low Medium High 55 60 65 70 75
+> (b) Test generation
+> Low Medium High 28 30 32 34 36
+> (c) Localization F1
+> Mini-SWE-Agent Codex Claude Code
+
+Fig. 11. Sol reasoning effort and task performance ( 𝑛 = 83 per point); axis ranges vary by panel. 
+
+> 15
+
+Conclusion 5: Medium reasoning effort captures most of the repair gains; high effort further improves test generation but not average localization F1. 
+
+Higher success and higher benefit per dollar favor different configurations. Table 7 com-pares the five GPT settings across 249 runs per task, including unsuccessful attempts. USD/run denotes mean API cost; Yield/USD divides summed line F1 for localization, or successful-run counts for repair and test generation, by total cost. Raising Sol from medium to high multiplies mean repair cost by 2.47, from $0.374 to $0.922, for three additional successes (164 to 167). Test-generation cost rises 1.90-fold, from $0.242 to $0.459, for 15 additional successes (160 to 175). The added effort thus produces a larger observed gain for test generation, although Sol low delivers the highest benefit per dollar within the Sol family on all three tasks.                                       
+
+> Table 7. API cost and task yield across GPT configurations. Best yields per USD are bold.
+> Localization Repair Test generation Configuration USD/run Yield/USD USD/run Yield/USD USD/run Yield/USD
+> Sol low 0.1209 2.78 0.2594 2.28 0.1850 3.43 Sol medium 0.1873 1.72 0.3735 1.76 0.2419 2.66 Sol high 0.4693 0.68 0.9216 0.73 0.4595 1.53 Luna medium 0.0117 21.96 0.0232 21.96 0.0177 29.19
+> Terra medium 0.1245 2.08 0.2166 2.78 0.1489 3.94
+
+Luna has the highest yield per dollar in all three tasks, whereas Sol high achieves the highest GPT repair and test-generation success rates. Luna’s advantage comes from lower token prices, not lower token consumption: its mean input and output token counts exceed Sol medium’s in every task. The efficiency ranking therefore differs from the capability ranking. These comparisons describe observed cost–quality trade-offs, not outcomes under a controlled equal-dollar budget. 
+
+Conclusion 6: Higher reasoning effort does not ensure greater benefit per dollar. Sol high leads GPT repair and test-generation success, while Luna provides the highest yield on all three tasks. 
+
+Newer models perform better overall at the same parameter scale. To compare model generations at the same parameter scale, we select the 27B configurations of Qwen3.5, Qwen3.6 and Qwen3.8 (Figure 12). From Qwen3.5 through 3.6 to 3.8, average repair success increases from 29.3% to 37.8% and 43.8%; test-generation success rises from 48.6% to 51.4% and 73.1%. The 3.5-to-3.8 gains are 14.5 and 24.5 percentage points, respectively. Localization F1 also increases, from 21.2% to 23.6% and 25.4%. The three-Agent curves show that the repair and test-generation endpoint gains hold for every Agent, not just the aggregate. 
+
+Larger total parameter counts do not always yield better performance. Within Qwen3.5, the dense 27B model outperforms 9B on all three average metrics, with repair success of 29.3% versus 16.5% and test-generation success of 48.6% versus 24.9%. The larger 122B-A10B model, however, does not consistently outperform 27B: its localization F1 is higher (23.6% versus 21.2%), but its repair and test-generation success rates are lower, at 28.5% and 40.6%, respectively. Model selection should reflect performance on the target task rather than total parameter count alone. 
+
+Conclusion 7: At the same parameter scale, newer models perform better overall: average performance on all three tasks improves across successive generations from Qwen3.5 through Qwen3.6 to Qwen3.8. A larger total parameter count alone, however, does not ensure better performance.            
+
+> 16 3.5 3.6 3.8 Qwen 27B 20 30 40 50 Percent
+> (a) Repair success
+> 3.5 3.6 3.8 Qwen 27B 40 50 60 70 80
+> (b) Test generation
+> 3.5 3.6 3.8 Qwen 27B 10 20 30
+> (c) Localization F1
+> Mini-SWE-Agent Codex Claude Code Fig. 12. Three Qwen 27B generations ( 𝑛 =83 per point); axis ranges vary by panel.
+
+7 Discussion and Threats to Validity 7.1 Discussion 
+
+Historical regressions as reusable experimental data. EReg-Factory turns historical regres-sions into reusable executable instances by retaining both versions’ replay recipes, validated tests and execution evidence. Root-cause annotations and tested repairs support complementary evaluations grounded in the same behavioral difference. 
+
+Repair and test generation show promise; precise localization needs improvement. The strongest combinations show practical promise for repair and test generation (Section 6.2). Identi-fying relevant code, however, still falls short of precise, complete root-line recovery, motivating better links between behavioral reasoning and source changes. 
+
+Agent–model combinations should be selected by task. Relative strengths differ across local-ization, repair and test generation. Combinations should therefore be evaluated on the intended task rather than selected solely from overall Agent or model rankings. 
+
+Reasoning effort should match the task. For Sol, medium effort captures most Agent-averaged repair gains, while high effort further improves test generation but not mean localization F1 (Section 6.3). More reasoning is thus not uniformly beneficial across tasks. 
+
+Parameter count is not a performance guarantee. Larger total parameter counts in Qwen3.5 do not consistently yield better results, whereas newer Qwen generations improve average results at the same parameter scale. Total parameter count alone is insufficient for selecting models. 
+
+Cost efficiency changes the model-selection objective. Among GPT configurations, Luna provides the highest yield per dollar, whereas Sol high leads Agent-averaged repair and test-generation success. Selection should balance the required performance against API cost. 
+
+7.2 Threats to Validity 
+
+Internal validity. Environment reconstruction, automated judgments and annotations can in-troduce errors, mitigated through independent replay, evidence checking and two independent annotators who resolve disagreements through discussion. One retained effective attempt per combination leaves run-to-run variability unmeasured. 
+
+Construct validity. Repair acceptance covers targeted failures and previously passing cases in scope, not complete program correctness. Location matching measures agreement with reviewed 
+
+> 17
+
+roots; coverage records execution, not comprehensive assertion adequacy. The positive-only local-ization cohort does not measure false-alarm rates on bug-free changes. 
+
+External validity. Our configuration and experiments target Python projects using pytest. Other languages and testing frameworks may require different environment setup and test execution mechanisms, and applicability there remains to be validated. 
+
+8 Related Work 
+
+Historical defects and executable data. SZZ traces fixes to potentially inducing changes [36]. Defects4J and BugsInPy package reproducible defects for testing and debugging [19, 39]; Bugs.jar and ManyBugs broaden the available repair subjects [20, 33]. Bears and BugSwarm reproduce failing and passing builds from CI histories [24, 37]. Building on this emphasis on execution, EReg-Factory follows explicitly linked introducing–fixing commits and checks fixing-side tests at both historical states, rather than treating a mined association as a verified regression. 
+
+Automated environment and task construction. Executable repository tasks support evalua-tion and training [18, 30, 45], while R2E constructs function-level test harnesses [16]. SetUpAgent and Repo2Run automate environment exploration and reusable setup [15, 38]. SWE-Factory and SWE-rebench V2 integrate environment preparation with task validation [4, 13]; SWE-smith and R2E-Gym scale task construction through synthetic generation [17, 43]. Our focus is validating a proposed historical regression: side-specific environment reconstruction, independent replay, and review of operations and regression evidence together connect the observed behavior to the introducing and fixing changes. The retained instances include both replay recipes and behavioral explanations, supporting reuse beyond repair alone. 
+
+Fault localization and program repair. Spectrum-based, learned, and LLM-guided localizers identify suspicious program elements [1, 22, 31]. Test-guided repair spans search-based methods and conversational or autonomous LLM systems [7, 21, 41]. Repository-level approaches further address code search, planning, and tool-driven editing [5, 40, 42, 47]. EReg-Factory uses repair-supported analysis and human review to annotate inducing locations separately from repair locations: restoring behavior need not modify the change that introduced the problem. These annotations support localization evaluation independently of repair acceptance. 
+
+Regression tests and behavioral oracles. Random and search-based generators construct ex-ecutable test suites [10, 23, 29]. LLM approaches generate or improve tests using code context and execution feedback [2, 8, 34]; CoverUp and SymPrompt explicitly guide generation toward coverage [3, 32]. However, coverage alone does not establish fault detection [35]: oracle research examines how assertions distinguish intended from observed behavior [6, 9, 14]. SWT-Bench evaluates issue-reproducing tests through fail-to-pass execution and change coverage [25]. EReg-Factory supplies validated historical regression tests and reviewed root locations, linking behavioral discrimination with root-code coverage in the subsequent test-generation evaluation. 
+
+9 Conclusion 
+
+We presented EReg-Factory, a system for constructing executable regression data from real-world software history. By combining constrained Agent exploration, paired environment construction, independent replay, and evidence review, the system turns candidate introducing–fixing rela-tionships into instances with validated regression tests and reproducible execution conditions. Repair-supported analysis and human review enrich these instances with root locations, repair patches, and causal explanations for localization, repair, and regression-test generation. Our evalu-ation shows promising repair and test-generation performance, while precise root-line localization 
+
+> 18
+
+remains challenging. Agent–model strengths differ by task; greater reasoning effort or model size does not uniformly improve performance, and higher success does not necessarily yield greater benefit per dollar. Together, the construction system and multi-task evaluation provide a reusable basis for developing executable data and studying software agents on real historical regressions. 
+
+Data Availability 
+
+An anonymized replication package is available at https://figshare.com/s/dd865a746d169c689a13. It includes the EReg-Factory implementation, constructed datasets and evaluation instances, envi-ronment replay materials, experimental configurations, retained evaluation results, and analysis scripts. 
+
+> 19
+
+References 
+
+[1] Rui Abreu, Peter Zoeteweij, and Arjan Van Gemund. 2006. An Evaluation of Similarity Coefficients for Software Fault Localization. In 2006 12th Pacific Rim International Symposium on Dependable Computing (PRDC’06) . IEEE, 39–46. doi:10.1109/prdc.2006.18 [2] Nadia Alshahwan, Jubin Chheda, Anastasia Finogenova, Beliz Gokkaya, Mark Harman, Inna Harper, Alexandru Marginean, Shubho Sengupta, and Eddy Wang. 2024. Automated Unit Test Improvement using Large Language Models at Meta. In Companion Proceedings of the 32nd ACM International Conference on the Foundations of Software Engineering .ACM, 185–196. doi:10.1145/3663529.3663839 [3] Juan Altmayer Pizzorno and Emery D. Berger. 2025. CoverUp: Effective High Coverage Test Generation for Python. 
+
+Proceedings of the ACM on Software Engineering 2, FSE, Article FSE128 (2025), 23 pages. doi:10.1145/3729398 [4] Ibragim Badertdinov, Maksim Nekrashevich, Anton Shevtsov, and Alexander Golubev. 2026. SWE-rebench V2: Language-Agnostic SWE Task Collection at Scale. In Proceedings of the 43rd International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 306) . PMLR, 4820–4843. https://proceedings.mlr.press/v306/ badertdinov26a.html [5] Ramakrishna Bairi, Atharv Sonwane, Aditya Kanade, Vageesh D C, Arun Iyer, Suresh Parthasarathy, Sriram Rajamani, B. Ashok, and Shashank Shet. 2024. CodePlan: Repository-Level Coding using LLMs and Planning. Proceedings of the ACM on Software Engineering 1, FSE (2024), 675–698. doi:10.1145/3643757 [6] Earl T. Barr, Mark Harman, Phil McMinn, Muzammil Shahbaz, and Shin Yoo. 2015. The Oracle Problem in Software Testing: A Survey. IEEE Transactions on Software Engineering 41, 5 (2015), 507–525. doi:10.1109/tse.2014.2372785 [7] Islem Bouzenia, Premkumar Devanbu, and Michael Pradel. 2025. RepairAgent: An Autonomous, LLM-Based Agent for Program Repair. In 2025 IEEE/ACM 47th International Conference on Software Engineering (ICSE) . IEEE, 2188–2200. doi:10.1109/icse55347.2025.00157 [8] Yinghao Chen, Zehao Hu, Chen Zhi, Junxiao Han, Shuiguang Deng, and Jianwei Yin. 2024. ChatUniTest: A Framework for LLM-Based Test Generation. In Companion Proceedings of the 32nd ACM International Conference on the Foundations of Software Engineering . ACM, 572–576. doi:10.1145/3663529.3663801 [9] Elizabeth Dinella, Gabriel Ryan, Todd Mytkowicz, and Shuvendu K. Lahiri. 2022. TOGA: a neural method for test oracle generation. In Proceedings of the 44th International Conference on Software Engineering . ACM, 2130–2141. doi:10.1145/3510003.3510141 [10] Gordon Fraser and Andrea Arcuri. 2011. EvoSuite: automatic test suite generation for object-oriented software. In Proceedings of the 19th ACM SIGSOFT symposium and the 13th European conference on Foundations of software engineering . ACM, 416–419. doi:10.1145/2025113.2025179 [11] GH Archive. [n. d.]. GH Archive. https://www.gharchive.org/. Accessed September 27, 2026. [12] Hanyang Guo, Xunjin Zheng, Zihan Liao, Hang Yu, Peng Di, Ziyin Zhang, and Hong-Ning Dai. 2025. CodeFuse-CR-Bench: A Comprehensiveness-aware Benchmark for End-to-End Code Review Evaluation in Python Projects. arXiv:2509.14856 [cs.SE] https://arxiv.org/abs/2509.14856v3 [13] Lianghong Guo, Yanlin Wang, Caihua Li, Wei Tao, Pengyu Yang, Jiachi Chen, Haoyu Song, Duyu Tang, and Zibin Zheng. 2026. SWE Data Construction, Automatically! Proceedings of the ACM on Software Engineering 3, FSE (2026), 525–546. doi:10.1145/3797119 [14] Soneya Binta Hossain, Antonio Filieri, Matthew B. Dwyer, Sebastian Elbaum, and Willem Visser. 2023. Neural-Based Test Oracle Generation: A Large-Scale Evaluation and Lessons Learned. In Proceedings of the 31st ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering . 120–132. doi:10.1145/3611643.3616265 [15] Ruida Hu, Chao Peng, Xinchen Wang, Junjielong Xu, and Cuiyun Gao. 2025. Repo2Run: Automated Building Executable Environment for Code Repository at Scale. In Advances in Neural Information Processing Systems , Vol. 38. 36770–36809. doi:10.52202/085713-1096 [16] Naman Jain, Manish Shetty, Tianjun Zhang, King Han, Koushik Sen, and Ion Stoica. 2024. R2E: Turning any Github Repository into a Programming Agent Environment. In Proceedings of the 41st International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 21196–21224. https://proceedings.mlr.press/ v235/jain24c.html [17] Naman Jain, Jaskirat Singh, Manish Shetty, Tianjun Zhang, Liang Zheng, Koushik Sen, and Ion Stoica. 2025. R2E-Gym: Procedural Environment Generation and Hybrid Verifiers for Scaling Open-Weights SWE Agents. In Second Conference on Language Modeling . https://openreview.net/forum?id=7evvwwdo3z [18] Carlos E. Jimenez, John Yang, Alexander Wettig, Shunyu Yao, Kexin Pei, Ofir Press, and Karthik Narasimhan. 2024. SWE-bench: Can Language Models Resolve Real-World GitHub Issues?. In The Twelfth International Conference on Learning Representations . 54107–54157. https://proceedings.iclr.cc/paper_files/paper/2024/hash/ edac78c3e300629acfe6cbe9ca88fb84-Abstract-Conference.html 
+
+> 20
+
+[19] René Just, Darioush Jalali, and Michael D. Ernst. 2014. Defects4J: a database of existing faults to enable controlled testing studies for Java programs. In Proceedings of the 2014 International Symposium on Software Testing and Analysis .ACM, 437–440. doi:10.1145/2610384.2628055 [20] Claire Le Goues, Neal Holtschulte, Edward K. Smith, Yuriy Brun, Premkumar Devanbu, Stephanie Forrest, and Westley Weimer. 2015. The ManyBugs and IntroClass Benchmarks for Automated Repair of C Programs. IEEE Transactions on Software Engineering 41, 12 (2015), 1236–1256. doi:10.1109/tse.2015.2454513 [21] Claire Le Goues, ThanhVu Nguyen, Stephanie Forrest, and Westley Weimer. 2012. GenProg: A Generic Method for Automatic Software Repair. IEEE Transactions on Software Engineering 38, 1 (2012), 54–72. doi:10.1109/tse.2011.104 [22] Xia Li, Wei Li, Yuqun Zhang, and Lingming Zhang. 2019. DeepFL: integrating multiple fault diagnosis dimensions for deep fault localization. In Proceedings of the 28th ACM SIGSOFT International Symposium on Software Testing and Analysis . ACM, 169–180. doi:10.1145/3293882.3330574 [23] Stephan Lukasczyk, Florian Kroiß, and Gordon Fraser. 2023. An empirical study of automated unit test generation for Python. Empirical Software Engineering 28, 2, Article 36 (2023). doi:10.1007/s10664-022-10248-w [24] Fernanda Madeiral, Simon Urli, Marcelo Maia, and Martin Monperrus. 2019. BEARS: An Extensible Java Bug Benchmark for Automatic Program Repair Studies. In 2019 IEEE 26th International Conference on Software Analysis, Evolution and Reengineering (SANER) . IEEE, 468–478. doi:10.1109/saner.2019.8667991 [25] Niels Mündler, Mark Niklas Müller, Jingxuan He, and Martin Vechev. 2024. SWT-Bench: Testing and Validating Real-World Bug-Fixes with Code Agents. In Advances in Neural Information Processing Systems , Vol. 37. 81857–81887. doi:10.52202/079017-2601 [26] OpenAI. 2026. GPT-5.6 Luna: Model and Pricing. https://developers.openai.com/api/docs/models/gpt-5.6-luna Accessed October 1, 2026. [27] OpenAI. 2026. GPT-5.6 Sol: Model and Pricing. https://developers.openai.com/api/docs/models/gpt-5.6-sol Accessed September 30, 2026. [28] OpenAI. 2026. GPT-5.6 Terra: Model and Pricing. https://developers.openai.com/api/docs/models/gpt-5.6-terra Accessed October 1, 2026. [29] Carlos Pacheco, Shuvendu K. Lahiri, Michael D. Ernst, and Thomas Ball. 2007. Feedback-Directed Random Test Generation. In 29th International Conference on Software Engineering (ICSE’07) . IEEE, 75–84. doi:10.1109/icse.2007.37 [30] Jiayi Pan, Xingyao Wang, Graham Neubig, Navdeep Jaitly, Heng Ji, Alane Suhr, and Yizhe Zhang. 2025. Training Software Engineering Agents and Verifiers with SWE-Gym. In Proceedings of the 42nd International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 267) . PMLR, 47717–47737. https://proceedings.mlr. press/v267/pan25g.html [31] Yihao Qin, Shangwen Wang, Yiling Lou, Jinhao Dong, Kaixin Wang, Xiaoling Li, and Xiaoguang Mao. 2025. SoapFL: A Standard Operating Procedure for LLM-Based Method-Level Fault Localization. IEEE Transactions on Software Engineering 51, 4 (2025), 1173–1187. doi:10.1109/tse.2025.3543187 [32] Gabriel Ryan, Siddhartha Jain, Mingyue Shang, Shiqi Wang, Xiaofei Ma, Murali Krishna Ramanathan, and Baishakhi Ray. 2024. Code-Aware Prompting: A Study of Coverage-Guided Test Generation in Regression Setting using LLM. 
+
+Proceedings of the ACM on Software Engineering 1, FSE, Article 43 (2024), 21 pages. doi:10.1145/3643769 [33] Ripon K. Saha, Yingjun Lyu, Wing Lam, Hiroaki Yoshida, and Mukul R. Prasad. 2018. Bugs.jar: a large-scale, diverse dataset of real-world Java bugs. In Proceedings of the 15th International Conference on Mining Software Repositories .ACM, 10–13. doi:10.1145/3196398.3196473 [34] Max Schäfer, Sarah Nadi, Aryaz Eghbali, and Frank Tip. 2024. An Empirical Evaluation of Using Large Language Models for Automated Unit Test Generation. IEEE Transactions on Software Engineering 50, 1 (2024), 85–105. doi:10. 1109/tse.2023.3334955 [35] Sina Shamshiri, Rene Just, Jose Miguel Rojas, Gordon Fraser, Phil McMinn, and Andrea Arcuri. 2015. Do Automatically Generated Unit Tests Find Real Faults? An Empirical Study of Effectiveness and Challenges. In 2015 30th IEEE/ACM International Conference on Automated Software Engineering (ASE) . IEEE, 201–211. doi:10.1109/ase.2015.86 [36] Jacek Śliwerski, Thomas Zimmermann, and Andreas Zeller. 2005. When do changes induce fixes?. In Proceedings of the 2005 international workshop on Mining software repositories - MSR ’05 . ACM Press, 1–5. doi:10.1145/1083142.1083147 [37] David A. Tomassi, Naji Dmeiri, Yichen Wang, Antara Bhowmick, Yen-Chuan Liu, Premkumar T. Devanbu, Bogdan Vasilescu, and Cindy Rubio-Gonzalez. 2019. BugSwarm: Mining and Continuously Growing a Dataset of Reproducible Failures and Fixes. In 2019 IEEE/ACM 41st International Conference on Software Engineering (ICSE) . IEEE, 339–349. doi:10.1109/icse.2019.00048 [38] Konstantinos Vergopoulos, Mark Niklas Mueller, and Martin Vechev. 2025. Automated Benchmark Generation for Repository-Level Coding Tasks. In Proceedings of the 42nd International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 267) . PMLR, 61240–61265. https://proceedings.mlr.press/v267/vergopoulos25a.html [39] Ratnadira Widyasari, Sheng Qin Sim, Camellia Lok, Haodi Qi, Jack Phan, Qijin Tay, Constance Tan, Fiona Wee, Jodie Ethelda Tan, Yuheng Yieh, Brian Goh, Ferdian Thung, Hong Jin Kang, Thong Hoang, David Lo, and Eng Lieh 
+
+> 21
+
+Ouh. 2020. BugsInPy: A Database of Existing Bugs in Python Programs to Enable Controlled Testing and Debugging Studies. In Proceedings of the 28th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE 2020) . Association for Computing Machinery, 1556–1560. doi:10.1145/3368089.3417943 [40] Chunqiu Steven Xia, Yinlin Deng, Soren Dunn, and Lingming Zhang. 2025. Demystifying LLM-Based Software Engineering Agents. Proceedings of the ACM on Software Engineering 2, FSE, Article FSE037 (2025), 24 pages. doi:10. 1145/3715754 [41] Chunqiu Steven Xia and Lingming Zhang. 2024. Automated Program Repair via Conversation: Fixing 162 out of 337 Bugs for $0.42 Each using ChatGPT. In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis . ACM, 819–831. doi:10.1145/3650212.3680323 [42] John Yang, Carlos E. Jimenez, Alexander Wettig, Kilian Lieret, Shunyu Yao, Karthik Narasimhan, and Ofir Press. 2024. SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering. In Advances in Neural Information Processing Systems , Vol. 37. 50528–50652. doi:10.52202/079017-1601 [43] John Yang, Kilian Lieret, Carlos E. Jimenez, Alexander Wettig, Kabir Khandpur, Yanzhe Zhang, Binyuan Hui, Ofir Press, Ludwig Schmidt, and Diyi Yang. 2025. SWE-smith: Scaling Data for Software Engineering Agents. In Advances in Neural Information Processing Systems , Vol. 38. 107402–107452. doi:10.52202/085713-3239 [44] Zhengran Zeng, Ruikai Shi, Keke Han, Yixin Li, Kaicheng Sun, Yidong Wang, Zhuohao Yu, Rui Xie, Wei Ye, and Shikun Zhang. 2026. SWR-Bench: Assessing LLM Performance in Real-World Code Review Comment Generation. Proceedings of the ACM on Software Engineering 3, FSE (2026), 3093–3115. doi:10.1145/3808144 [45] Linghao Zhang, Shilin He, Chaoyun Zhang, Yu Kang, Bowen Li, Chengxing Xie, Junhao Wang, Maoquan Wang, Yufan Huang, Shengyu Fu, Elsie Nallipogu, Qingwei Lin, Yingnong Dang, Saravan Rajmohan, and Dongmei Zhang. 2025. SWE-bench Goes Live!. In Advances in Neural Information Processing Systems , Vol. 38. 163347–163372. doi:10.52202/085713-4923 [46] Lei Zhang, Yongda Yu, Minghui Yu, Xinxin Guo, Zhengqi Zhuang, Guoping Rong, Dong Shao, Haifeng Shen, Hongyu Kuang, Zhengfeng Li, Boge Wang, Guoan Zhang, Bangyu Xiang, and Xiaobin Xu. 2026. AACR-Bench: Evaluating Automatic Code Review with Holistic Repository-Level Context. arXiv:2601.19494 [cs.SE] https://arxiv.org/abs/2601. 19494v3 [47] Yuntong Zhang, Haifeng Ruan, Zhiyu Fan, and Abhik Roychoudhury. 2024. AutoCodeRover: Autonomous Program Improvement. In Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis .ACM, 1592–1604. doi:10.1145/3650212.3680384
