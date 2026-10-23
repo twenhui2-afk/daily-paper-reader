@@ -6,60 +6,63 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-22
-- 运行时间：2026-10-23 06:42:49 UTC+8
+- 最新运行日期：2026-10-23
+- 运行时间：2026-10-24 06:35:49 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：14
+- 精读区：3
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Support periods of polynomials and support-primitive decomposition of constacyclic codes over Galois rings》（8.3/10）, 《Every Alarm Has a Cause: An Open Generator of Telecom Alarm Storms with Exact Root Causes, Bound to NORIA-O, RFC 8632 and TMF642》（8.0/10）
-- 速读：《CloudIR-Bench: A Benchmark for Root Cause Analysis and Mitigation of Cloud Incidents》（7.5/10）, 《Principle of generating critical points of rational functions and Gauss-Fourier conjecture for second-kind zeros》（7.4/10）, 《How Much Does the Harness Matter, and for Whom? A Multi-Model Study of Context in LLM-Driven Vulnerability Discovery》（6.3/10）
+- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
+- 精读：《Cambium: Participant-Built Commitment Roots for Shared Digital Infrastructure》（8.5/10）, 《SR-ANM: A Square-Root Atomic Norm Minimization Estimator for Noise-Robust Direction-of-Arrival Estimation》（8.4/10）
+- 速读：《The Porous Medium Equation and Convexity》（7.5/10）, 《A Polynomial-Time Algorithm for $k$-Path Vertex Cover Reconfiguration on Trees under Token Sliding》（7.5/10）, 《HuMiT: Low-Latency Whole-Body Humanoid Teleoperation via Compact Reference Tracking》（6.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/22/README](/202610/22/README)
+- 详情：[/202610/23/README](/202610/23/README)
 
 ### 精读区论文标签
-1. [Support periods of polynomials and support-primitive decomposition of constacyclic codes over Galois rings](/202610/22/2610.29284v1-support-periods-of-polynomials-and-support-primitive-decomposition-of-constacyclic-codes-over-galois-rings)  
-   标签：评分：8.3/10
+1. [Cambium: Participant-Built Commitment Roots for Shared Digital Infrastructure](/202610/23/2610.30409v1-cambium-participant-built-commitment-roots-for-shared-digital-infrastructure)  
+   标签：评分：8.5/10
    evidence：检索回退候选
-2. [Every Alarm Has a Cause: An Open Generator of Telecom Alarm Storms with Exact Root Causes, Bound to NORIA-O, RFC 8632 and TMF642](/202610/22/2610.30004v1-every-alarm-has-a-cause-an-open-generator-of-telecom-alarm-storms-with-exact-root-causes-bound-to-noria-o-rfc-8632-and-tmf642)  
-   标签：评分：8.0/10
+2. [SR-ANM: A Square-Root Atomic Norm Minimization Estimator for Noise-Robust Direction-of-Arrival Estimation](/202610/23/2610.31509v1-sr-anm-a-square-root-atomic-norm-minimization-estimator-for-noise-robust-direction-of-arrival-estimation)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+3. [Extending Harmonic Function Methods via Root Locus for Coordinated Path Generation](/202610/23/2610.31625v1-extending-harmonic-function-methods-via-root-locus-for-coordinated-path-generation)  
+   标签：评分：8.1/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [CloudIR-Bench: A Benchmark for Root Cause Analysis and Mitigation of Cloud Incidents](/202610/22/2610.29185v1-cloudir-bench-a-benchmark-for-root-cause-analysis-and-mitigation-of-cloud-incidents)  
+1. [The Porous Medium Equation and Convexity](/202610/23/2610.30358v1-the-porous-medium-equation-and-convexity)  
    标签：评分：7.5/10
    evidence：检索回退候选
-2. [Principle of generating critical points of rational functions and Gauss-Fourier conjecture for second-kind zeros](/202610/22/2610.29790v1-principle-of-generating-critical-points-of-rational-functions-and-gauss-fourier-conjecture-for-second-kind-zeros)  
-   标签：评分：7.4/10
+2. [A Polynomial-Time Algorithm for $k$-Path Vertex Cover Reconfiguration on Trees under Token Sliding](/202610/23/2610.31261v1-a-polynomial-time-algorithm-for-k-path-vertex-cover-reconfiguration-on-trees-under-token-sliding)  
+   标签：评分：7.5/10
    evidence：检索回退候选
-3. [How Much Does the Harness Matter, and for Whom? A Multi-Model Study of Context in LLM-Driven Vulnerability Discovery](/202610/22/2610.28802v1-how-much-does-the-harness-matter-and-for-whom-a-multi-model-study-of-context-in-llm-driven-vulnerability-discovery)  
-   标签：评分：6.3/10
-   evidence：检索回退候选
-4. [The Octonionic Rational Wave Numbers: Non-Associative Sequence Algebras, Moufang Loops, and Exceptional $G_2$ Symmetries](/202610/22/2610.28921v1-the-octonionic-rational-wave-numbers-non-associative-sequence-algebras-moufang-loops-and-exceptional-g2-symmetries)  
-   标签：评分：6.3/10
-   evidence：检索回退候选
-5. [Transformers as Generic Deep Neural Networks: Exact Compilation, the Cost of Removing Activation-Activation Products, and Multi-Agent Attention Clustering](/202610/22/2610.28958v1-transformers-as-generic-deep-neural-networks-exact-compilation-the-cost-of-removing-activation-activation-products-and-multi-agent-attention-clustering)  
+3. [HuMiT: Low-Latency Whole-Body Humanoid Teleoperation via Compact Reference Tracking](/202610/23/2610.29903v1-humit-low-latency-whole-body-humanoid-teleoperation-via-compact-reference-tracking)  
    标签：评分：6.2/10
    evidence：检索回退候选
-6. [Recursive Self-Improvement on a Budget: Scoring Code Edits Before They Run](/202610/22/2610.29121v1-recursive-self-improvement-on-a-budget-scoring-code-edits-before-they-run)  
+4. [Automorphisms of Twisted Chevalley Groups over Commutative Rings](/202610/23/2610.30314v1-automorphisms-of-twisted-chevalley-groups-over-commutative-rings)  
    标签：评分：6.2/10
    evidence：检索回退候选
-7. [Optimal Labeling Schemes for $Γ$-Free Matrices](/202610/22/2610.29184v1-optimal-labeling-schemes-for--free-matrices)  
+5. [Drinfeld presentation of affine iquantum groups via iHopf algebras](/202610/23/2610.30521v1-drinfeld-presentation-of-affine-iquantum-groups-via-ihopf-algebras)  
    标签：评分：6.1/10
    evidence：检索回退候选
-8. [Near Minimax Rate for Quantile Distributional Reinforcement Learning](/202610/22/2610.29595v1-near-minimax-rate-for-quantile-distributional-reinforcement-learning)  
+6. [Comprehensive Resolution of the Gauss-Fourier Conjecture for the First Kind of Zeros](/202610/23/2610.30620v1-comprehensive-resolution-of-the-gauss-fourier-conjecture-for-the-first-kind-of-zeros)  
    标签：评分：6.1/10
    evidence：检索回退候选
-9. [Explicit finite size corrections for Toeplitz determinants and rectangular domino tilings](/202610/22/2610.29844v1-explicit-finite-size-corrections-for-toeplitz-determinants-and-rectangular-domino-tilings)  
+7. [Zero Forcing on Maximal Outerplanar Graphs: Capacities and Phase Repair](/202610/23/2610.31138v1-zero-forcing-on-maximal-outerplanar-graphs-capacities-and-phase-repair)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [VideoHarness-SRSI: Structured Recursive Self-Improvement for Video Understanding Harness](/202610/22/2610.19424v1-videoharness-srsi-structured-recursive-self-improvement-for-video-understanding-harness)  
+8. [Constrained Nuclear-Electronic Orbital Time-Dependent Density Functional Theory for Excited-State Dynamics with Nuclear Quantum Effects](/202610/23/2610.21120v1-constrained-nuclear-electronic-orbital-time-dependent-density-functional-theory-for-excited-state-dynamics-with-nuclear-quantum-effects)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [VideoHarness-SRSI: Structured Recursive Self-Improvement for Video Understanding Harness](/202610/22/2610.19424v2-videoharness-srsi-structured-recursive-self-improvement-for-video-understanding-harness)  
+9. [Strong Consistency and Asymptotic Normality of the Maximum Likelihood Estimator in $r$-Largest Generalized Extreme-Value Models](/202610/23/2610.21161v1-strong-consistency-and-asymptotic-normality-of-the-maximum-likelihood-estimator-in-r-largest-generalized-extreme-value-models)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [The end-of-month option in futures contracts and the Gittins index of holding the underlying](/202610/23/2610.21196v1-the-end-of-month-option-in-futures-contracts-and-the-gittins-index-of-holding-the-underlying)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [CLIS-MPPI: Closed-Loop Model Predictive Path Integral Control With Initial-State Sampling Under Execution Delay](/202610/23/2610.21239v1-clis-mppi-closed-loop-model-predictive-path-integral-control-with-initial-state-sampling-under-execution-delay)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
