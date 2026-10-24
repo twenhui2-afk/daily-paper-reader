@@ -6,63 +6,54 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-23
-- 运行时间：2026-10-24 06:35:49 UTC+8
+- 最新运行日期：2026-10-24
+- 运行时间：2026-10-25 05:15:04 UTC+8
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：3
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 14 篇推荐（精读 3 篇，速读 11 篇）
-- 精读：《Cambium: Participant-Built Commitment Roots for Shared Digital Infrastructure》（8.5/10）, 《SR-ANM: A Square-Root Atomic Norm Minimization Estimator for Noise-Robust Direction-of-Arrival Estimation》（8.4/10）
-- 速读：《The Porous Medium Equation and Convexity》（7.5/10）, 《A Polynomial-Time Algorithm for $k$-Path Vertex Cover Reconfiguration on Trees under Token Sliding》（7.5/10）, 《HuMiT: Low-Latency Whole-Body Humanoid Teleoperation via Compact Reference Tracking》（6.2/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Cross-ratios and first order ordinary differential equations》（6.3/10）, 《Competitive Online Clustering with Movement Cost》（6.3/10）, 《Metric Poissonian Pair Correlation Property Part 2: The Case \(n\log n\)》（6.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/23/README](/202610/23/README)
+- 详情：[/202610/24/README](/202610/24/README)
 
 ### 精读区论文标签
-1. [Cambium: Participant-Built Commitment Roots for Shared Digital Infrastructure](/202610/23/2610.30409v1-cambium-participant-built-commitment-roots-for-shared-digital-infrastructure)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [SR-ANM: A Square-Root Atomic Norm Minimization Estimator for Noise-Robust Direction-of-Arrival Estimation](/202610/23/2610.31509v1-sr-anm-a-square-root-atomic-norm-minimization-estimator-for-noise-robust-direction-of-arrival-estimation)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-3. [Extending Harmonic Function Methods via Root Locus for Coordinated Path Generation](/202610/23/2610.31625v1-extending-harmonic-function-methods-via-root-locus-for-coordinated-path-generation)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [The Porous Medium Equation and Convexity](/202610/23/2610.30358v1-the-porous-medium-equation-and-convexity)  
-   标签：评分：7.5/10
+1. [Cross-ratios and first order ordinary differential equations](/202610/24/2610.22712v1-cross-ratios-and-first-order-ordinary-differential-equations)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-2. [A Polynomial-Time Algorithm for $k$-Path Vertex Cover Reconfiguration on Trees under Token Sliding](/202610/23/2610.31261v1-a-polynomial-time-algorithm-for-k-path-vertex-cover-reconfiguration-on-trees-under-token-sliding)  
-   标签：评分：7.5/10
+2. [Competitive Online Clustering with Movement Cost](/202610/24/2610.22824v1-competitive-online-clustering-with-movement-cost)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-3. [HuMiT: Low-Latency Whole-Body Humanoid Teleoperation via Compact Reference Tracking](/202610/23/2610.29903v1-humit-low-latency-whole-body-humanoid-teleoperation-via-compact-reference-tracking)  
+3. [Metric Poissonian Pair Correlation Property Part 2: The Case \(n\log n\)](/202610/24/2610.22833v1-metric-poissonian-pair-correlation-property-part-2-the-case-nlog-n)  
    标签：评分：6.2/10
    evidence：检索回退候选
-4. [Automorphisms of Twisted Chevalley Groups over Commutative Rings](/202610/23/2610.30314v1-automorphisms-of-twisted-chevalley-groups-over-commutative-rings)  
+4. [Integer Parameter Shifts in One-Variable Restrictions of Lauricella's $F_C$](/202610/24/2610.22933v1-integer-parameter-shifts-in-one-variable-restrictions-of-lauricellas-fc)  
    标签：评分：6.2/10
    evidence：检索回退候选
-5. [Drinfeld presentation of affine iquantum groups via iHopf algebras](/202610/23/2610.30521v1-drinfeld-presentation-of-affine-iquantum-groups-via-ihopf-algebras)  
+5. [Perron-Wright asymptotics and critical component processes for regular inhomogeneous random graphs](/202610/24/2610.23003v1-perron-wright-asymptotics-and-critical-component-processes-for-regular-inhomogeneous-random-graphs)  
    标签：评分：6.1/10
    evidence：检索回退候选
-6. [Comprehensive Resolution of the Gauss-Fourier Conjecture for the First Kind of Zeros](/202610/23/2610.30620v1-comprehensive-resolution-of-the-gauss-fourier-conjecture-for-the-first-kind-of-zeros)  
+6. [BeJEPA: A Goal-Conditioned Humanoid Behavior World Model via Unsupervised RL](/202610/24/2610.23127v1-bejepa-a-goal-conditioned-humanoid-behavior-world-model-via-unsupervised-rl)  
    标签：评分：6.1/10
    evidence：检索回退候选
-7. [Zero Forcing on Maximal Outerplanar Graphs: Capacities and Phase Repair](/202610/23/2610.31138v1-zero-forcing-on-maximal-outerplanar-graphs-capacities-and-phase-repair)  
+7. [IMU-Aided Motion Compensation of RSS Measurements for Dynamic Visible Light-Inertial Localization](/202610/24/2610.23188v1-imu-aided-motion-compensation-of-rss-measurements-for-dynamic-visible-light-inertial-localization)  
    标签：评分：6.0/10
    evidence：检索回退候选
-8. [Constrained Nuclear-Electronic Orbital Time-Dependent Density Functional Theory for Excited-State Dynamics with Nuclear Quantum Effects](/202610/23/2610.21120v1-constrained-nuclear-electronic-orbital-time-dependent-density-functional-theory-for-excited-state-dynamics-with-nuclear-quantum-effects)  
+8. [Preventing Data Hallucinations in Agentic AI for Optical Network Troubleshooting](/202610/24/2610.23252v1-preventing-data-hallucinations-in-agentic-ai-for-optical-network-troubleshooting)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [Strong Consistency and Asymptotic Normality of the Maximum Likelihood Estimator in $r$-Largest Generalized Extreme-Value Models](/202610/23/2610.21161v1-strong-consistency-and-asymptotic-normality-of-the-maximum-likelihood-estimator-in-r-largest-generalized-extreme-value-models)  
+9. [On the (In)stability of Adaptive Fee Mechanisms in Multi-Chain Systems](/202610/24/2610.23305v1-on-the-instability-of-adaptive-fee-mechanisms-in-multi-chain-systems)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [The end-of-month option in futures contracts and the Gittins index of holding the underlying](/202610/23/2610.21196v1-the-end-of-month-option-in-futures-contracts-and-the-gittins-index-of-holding-the-underlying)  
+10. [Foreground Groups and Host-Galaxy Geometry in the Dispersion-Measure Scatter of Fast Radio Bursts](/202610/24/2610.23333v1-foreground-groups-and-host-galaxy-geometry-in-the-dispersion-measure-scatter-of-fast-radio-bursts)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [CLIS-MPPI: Closed-Loop Model Predictive Path Integral Control With Initial-State Sampling Under Execution Delay](/202610/23/2610.21239v1-clis-mppi-closed-loop-model-predictive-path-integral-control-with-initial-state-sampling-under-execution-delay)  
+11. [Quasi-Monte Carlo based meshfree methods for parabolic equations on parameterized Riemannian manifolds](/202610/24/2610.23341v1-quasi-monte-carlo-based-meshfree-methods-for-parabolic-equations-on-parameterized-riemannian-manifolds)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
