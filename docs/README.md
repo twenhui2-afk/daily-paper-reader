@@ -6,60 +6,66 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-26
-- 运行时间：2026-10-27 06:56:51 UTC+8
+- 最新运行日期：2026-10-27
+- 运行时间：2026-10-28 07:14:14 UTC+8
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
+- 本次总论文数：15
+- 精读区：4
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《The Strength of Root Cuts in an Extended Abstract Branch-and-Cut Model》（8.4/10）, 《Deterministic Root-Finding over Finite Fields with Elliptic Curves》（8.3/10）
-- 速读：《Coefficient Positivity for Arborescence Ratios of Covering Digraphs》（7.7/10）, 《DeepAVR: Deep Analysis via Multi-Agent Collaboration for Automated Vulnerability Repair》（7.6/10）, 《Ozone groups and centers of two-parameter quantum Heisenberg algebras》（6.5/10）
+- 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
+- 精读：《A Congestion-Aware RDMA Front-End for LST Advanced Camera Readout》（8.6/10）, 《Radial reduction, spherical splitting and root counts for two-sided quaternionic polynomials》（8.5/10）
+- 速读：《Minimum orders of clique oddomorphism counterexamples》（7.4/10）, 《A knowledge-driven nonconvex square-root regularization framework for joint group sparsity and structured smoothness》（7.4/10）, 《Exceptional points and cusp singularities in relativistic stellar oscillations with causal bulk relaxation》（6.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/26/README](/202610/26/README)
+- 详情：[/202610/27/README](/202610/27/README)
 
 ### 精读区论文标签
-1. [The Strength of Root Cuts in an Extended Abstract Branch-and-Cut Model](/202610/26/2610.31774v1-the-strength-of-root-cuts-in-an-extended-abstract-branch-and-cut-model)  
-   标签：评分：8.4/10
+1. [A Congestion-Aware RDMA Front-End for LST Advanced Camera Readout](/202610/27/2610.35171v1-a-congestion-aware-rdma-front-end-for-lst-advanced-camera-readout)  
+   标签：评分：8.6/10
    evidence：检索回退候选
-2. [Deterministic Root-Finding over Finite Fields with Elliptic Curves](/202610/26/2610.32508v1-deterministic-root-finding-over-finite-fields-with-elliptic-curves)  
-   标签：评分：8.3/10
+2. [Radial reduction, spherical splitting and root counts for two-sided quaternionic polynomials](/202610/27/2610.33082v1-radial-reduction-spherical-splitting-and-root-counts-for-two-sided-quaternionic-polynomials)  
+   标签：评分：8.5/10
+   evidence：检索回退候选
+3. [Convex orders in root systems and quantum tangent spaces](/202610/27/2610.35091v1-convex-orders-in-root-systems-and-quantum-tangent-spaces)  
+   标签：评分：8.2/10
+   evidence：检索回退候选
+4. [Square-Root Clustered Lasso for High-Dimensional Linear Regression with Finite-Sample Theory and Efficient Algorithm Implementation](/202610/27/2610.35390v1-square-root-clustered-lasso-for-high-dimensional-linear-regression-with-finite-sample-theory-and-efficient-algorithm-implementation)  
+   标签：评分：8.1/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Coefficient Positivity for Arborescence Ratios of Covering Digraphs](/202610/26/2610.31980v1-coefficient-positivity-for-arborescence-ratios-of-covering-digraphs)  
-   标签：评分：7.7/10
+1. [Minimum orders of clique oddomorphism counterexamples](/202610/27/2610.33283v1-minimum-orders-of-clique-oddomorphism-counterexamples)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-2. [DeepAVR: Deep Analysis via Multi-Agent Collaboration for Automated Vulnerability Repair](/202610/26/2610.32345v1-deepavr-deep-analysis-via-multi-agent-collaboration-for-automated-vulnerability-repair)  
-   标签：评分：7.6/10
+2. [A knowledge-driven nonconvex square-root regularization framework for joint group sparsity and structured smoothness](/202610/27/2610.35428v1-a-knowledge-driven-nonconvex-square-root-regularization-framework-for-joint-group-sparsity-and-structured-smoothness)  
+   标签：评分：7.4/10
    evidence：检索回退候选
-3. [Ozone groups and centers of two-parameter quantum Heisenberg algebras](/202610/26/2610.31781v1-ozone-groups-and-centers-of-two-parameter-quantum-heisenberg-algebras)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-4. [Elliptic curve rank growth in multi-quadratic extensions](/202610/26/2610.31925v1-elliptic-curve-rank-growth-in-multi-quadratic-extensions)  
-   标签：评分：6.5/10
-   evidence：检索回退候选
-5. [On perfectoid ideals](/202610/26/2610.31964v1-on-perfectoid-ideals)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-6. [Asymptotic spectral properties and extreme eigenvalues of sample correlation matrices from nonstationary high-dimensional VAR processes](/202610/26/2610.32284v1-asymptotic-spectral-properties-and-extreme-eigenvalues-of-sample-correlation-matrices-from-nonstationary-high-dimensional-var-processes)  
-   标签：评分：6.4/10
-   evidence：检索回退候选
-7. [SoK: PIAtlas: Decomposing the Unbounded Prompt Injection Attack Space](/202610/26/2610.24999v1-sok-piatlas-decomposing-the-unbounded-prompt-injection-attack-space)  
+3. [Exceptional points and cusp singularities in relativistic stellar oscillations with causal bulk relaxation](/202610/27/2610.33089v1-exceptional-points-and-cusp-singularities-in-relativistic-stellar-oscillations-with-causal-bulk-relaxation)  
    标签：评分：6.2/10
    evidence：检索回退候选
-8. [A $u$-$p_w$ SPH framework with mechanical-hydraulic boundary treatment in GeoDualSPHysics for large-deformation geomechanics](/202610/26/2610.25175v1-a-u-pw-sph-framework-with-mechanical-hydraulic-boundary-treatment-in-geodualsphysics-for-large-deformation-geomechanics)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-9. [Covering finite fields by translates of multiplicative subgroups](/202610/26/2610.25228v1-covering-finite-fields-by-translates-of-multiplicative-subgroups)  
+4. [A Deterministic Security Runtime for LLM Agents on MPI and Batch-Scheduled HPC Systems: Consensus-Governed, Hardware-Rooted Supervision of Every Rank](/202610/27/2610.33318v1-a-deterministic-security-runtime-for-llm-agents-on-mpi-and-batch-scheduled-hpc-systems-consensus-governed-hardware-rooted-supervision-of-every-rank)  
    标签：评分：6.1/10
    evidence：检索回退候选
-10. [Conventional Inference under Nonstationary Heavy Tailed Fractional Processes & Arrays](/202610/26/2610.25237v1-conventional-inference-under-nonstationary-heavy-tailed-fractional-processes--arrays)  
+5. [Absolutely universal projective embeddings of long-root geometries of orthogonal type](/202610/27/2610.33384v1-absolutely-universal-projective-embeddings-of-long-root-geometries-of-orthogonal-type)  
    标签：评分：6.1/10
    evidence：检索回退候选
-11. [Irreducibility of the Cuboid Polynomial $Q_{p,q}(t)$ via the Rank-One Chabauty-Coleman Method](/202610/26/2610.25319v1-irreducibility-of-the-cuboid-polynomial-qpqt-via-the-rank-one-chabauty-coleman-method)  
+6. [Compactness of composition operators on Hardy spaces of homogeneous rooted trees](/202610/27/2610.33717v1-compactness-of-composition-operators-on-hardy-spaces-of-homogeneous-rooted-trees)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+7. [On The Manin Constant](/202610/27/2610.25672v1-on-the-manin-constant)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+8. [Frobenius Profiles of Polynomial-Multiple MRD Codes](/202610/27/2610.25722v1-frobenius-profiles-of-polynomial-multiple-mrd-codes)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+9. [From Trace to Fix: Residual Task State in Long-Horizon Agents](/202610/27/2610.25776v1-from-trace-to-fix-residual-task-state-in-long-horizon-agents)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+10. [Modal Sense Disambiguation in Language Models: The Role of Context, Training Domain, and Input Frequency](/202610/27/2610.25816v1-modal-sense-disambiguation-in-language-models-the-role-of-context-training-domain-and-input-frequency)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [Constant mixed Chern curvature on complete type-A flag manifolds](/202610/27/2610.25864v1-constant-mixed-chern-curvature-on-complete-type-a-flag-manifolds)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
