@@ -6,8 +6,8 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-27
-- 运行时间：2026-10-28 07:14:14 UTC+8
+- 最新运行日期：2026-10-28
+- 运行时间：2026-10-29 06:59:47 UTC+8
 - 运行状态：成功
 - 本次总论文数：15
 - 精读区：4
@@ -15,57 +15,57 @@
 
 ### 今日简报（AI）
 - 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
-- 精读：《A Congestion-Aware RDMA Front-End for LST Advanced Camera Readout》（8.6/10）, 《Radial reduction, spherical splitting and root counts for two-sided quaternionic polynomials》（8.5/10）
-- 速读：《Minimum orders of clique oddomorphism counterexamples》（7.4/10）, 《A knowledge-driven nonconvex square-root regularization framework for joint group sparsity and structured smoothness》（7.4/10）, 《Exceptional points and cusp singularities in relativistic stellar oscillations with causal bulk relaxation》（6.2/10）
+- 精读：《Replication or Corroboration? An Axiomatic Framework for Evidential Dependence in Multi-Agent Debate》（8.5/10）, 《Finite Fields: Root Sets, Frobenius, and Algebraic Structure》（8.4/10）
+- 速读：《Boundary and Interior of Root Sets of Power Series》（7.3/10）, 《On $p$-Adic Valuation Trees Arising from Laplace Transform of Fibonacci Polynomials》（7.3/10）, 《Near-boundary asymptotics for profile score statistics》（6.1/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/27/README](/202610/27/README)
+- 详情：[/202610/28/README](/202610/28/README)
 
 ### 精读区论文标签
-1. [A Congestion-Aware RDMA Front-End for LST Advanced Camera Readout](/202610/27/2610.35171v1-a-congestion-aware-rdma-front-end-for-lst-advanced-camera-readout)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [Radial reduction, spherical splitting and root counts for two-sided quaternionic polynomials](/202610/27/2610.33082v1-radial-reduction-spherical-splitting-and-root-counts-for-two-sided-quaternionic-polynomials)  
+1. [Replication or Corroboration? An Axiomatic Framework for Evidential Dependence in Multi-Agent Debate](/202610/28/2610.36151v1-replication-or-corroboration-an-axiomatic-framework-for-evidential-dependence-in-multi-agent-debate)  
    标签：评分：8.5/10
    evidence：检索回退候选
-3. [Convex orders in root systems and quantum tangent spaces](/202610/27/2610.35091v1-convex-orders-in-root-systems-and-quantum-tangent-spaces)  
+2. [Finite Fields: Root Sets, Frobenius, and Algebraic Structure](/202610/28/2610.36727v1-finite-fields-root-sets-frobenius-and-algebraic-structure)  
+   标签：评分：8.4/10
+   evidence：检索回退候选
+3. [Merkle-Tree-Based Verifiable Public Data Auditing for Cloud Object Storage Using Smart Contracts](/202610/28/2610.36001v1-merkle-tree-based-verifiable-public-data-auditing-for-cloud-object-storage-using-smart-contracts)  
    标签：评分：8.2/10
    evidence：检索回退候选
-4. [Square-Root Clustered Lasso for High-Dimensional Linear Regression with Finite-Sample Theory and Efficient Algorithm Implementation](/202610/27/2610.35390v1-square-root-clustered-lasso-for-high-dimensional-linear-regression-with-finite-sample-theory-and-efficient-algorithm-implementation)  
-   标签：评分：8.1/10
+4. [Existence of a third self-similar solution of the Yang--Mills equation in high odd dimensions](/202610/28/2610.36784v1-existence-of-a-third-self-similar-solution-of-the-yang--mills-equation-in-high-odd-dimensions)  
+   标签：评分：8.2/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Minimum orders of clique oddomorphism counterexamples](/202610/27/2610.33283v1-minimum-orders-of-clique-oddomorphism-counterexamples)  
-   标签：评分：7.4/10
+1. [Boundary and Interior of Root Sets of Power Series](/202610/28/2610.36279v1-boundary-and-interior-of-root-sets-of-power-series)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-2. [A knowledge-driven nonconvex square-root regularization framework for joint group sparsity and structured smoothness](/202610/27/2610.35428v1-a-knowledge-driven-nonconvex-square-root-regularization-framework-for-joint-group-sparsity-and-structured-smoothness)  
-   标签：评分：7.4/10
+2. [On $p$-Adic Valuation Trees Arising from Laplace Transform of Fibonacci Polynomials](/202610/28/2610.37356v1-on-p-adic-valuation-trees-arising-from-laplace-transform-of-fibonacci-polynomials)  
+   标签：评分：7.3/10
    evidence：检索回退候选
-3. [Exceptional points and cusp singularities in relativistic stellar oscillations with causal bulk relaxation](/202610/27/2610.33089v1-exceptional-points-and-cusp-singularities-in-relativistic-stellar-oscillations-with-causal-bulk-relaxation)  
-   标签：评分：6.2/10
-   evidence：检索回退候选
-4. [A Deterministic Security Runtime for LLM Agents on MPI and Batch-Scheduled HPC Systems: Consensus-Governed, Hardware-Rooted Supervision of Every Rank](/202610/27/2610.33318v1-a-deterministic-security-runtime-for-llm-agents-on-mpi-and-batch-scheduled-hpc-systems-consensus-governed-hardware-rooted-supervision-of-every-rank)  
+3. [Near-boundary asymptotics for profile score statistics](/202610/28/2610.33912v1-near-boundary-asymptotics-for-profile-score-statistics)  
    标签：评分：6.1/10
    evidence：检索回退候选
-5. [Absolutely universal projective embeddings of long-root geometries of orthogonal type](/202610/27/2610.33384v1-absolutely-universal-projective-embeddings-of-long-root-geometries-of-orthogonal-type)  
+4. [Free to Look, Free to Reason: Simple LLM Harnesses Outdiagnose Hand-Crafted Root Cause Analysis Agents](/202610/28/2610.35767v1-free-to-look-free-to-reason-simple-llm-harnesses-outdiagnose-hand-crafted-root-cause-analysis-agents)  
    标签：评分：6.1/10
    evidence：检索回退候选
-6. [Compactness of composition operators on Hardy spaces of homogeneous rooted trees](/202610/27/2610.33717v1-compactness-of-composition-operators-on-hardy-spaces-of-homogeneous-rooted-trees)  
+5. [Persistence Pays: Square-root condition-number dependence for Metropolis-adjusted kinetic Langevin Monte Carlo with a non-reversibly updated accept/reject uniform](/202610/28/2610.35781v1-persistence-pays-square-root-condition-number-dependence-for-metropolis-adjusted-kinetic-langevin-monte-carlo-with-a-non-reversibly-updated-acceptreject-uniform)  
    标签：评分：6.0/10
    evidence：检索回退候选
-7. [On The Manin Constant](/202610/27/2610.25672v1-on-the-manin-constant)  
+6. [Structural equation modelling--based meta-analytic model for diagnostic test accuracy studies](/202610/28/2610.27408v1-structural-equation-modelling--based-meta-analytic-model-for-diagnostic-test-accuracy-studies)  
    标签：评分：6.0/10
    evidence：检索回退候选
-8. [Frobenius Profiles of Polynomial-Multiple MRD Codes](/202610/27/2610.25722v1-frobenius-profiles-of-polynomial-multiple-mrd-codes)  
+7. [Multiplexed Label-Free Cytokine Sensing Using a 128x128 CMOS ISFET Array with Flexdym Microfluidic Partitioning](/202610/28/2610.27432v1-multiplexed-label-free-cytokine-sensing-using-a-128x128-cmos-isfet-array-with-flexdym-microfluidic-partitioning)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [From Trace to Fix: Residual Task State in Long-Horizon Agents](/202610/27/2610.25776v1-from-trace-to-fix-residual-task-state-in-long-horizon-agents)  
+8. [RMSampler: Sparse Radio Map Reconstruction with Active Sampling and Diffusion Posterior Correction](/202610/28/2610.27464v1-rmsampler-sparse-radio-map-reconstruction-with-active-sampling-and-diffusion-posterior-correction)  
    标签：评分：6.0/10
    evidence：检索回退候选
-10. [Modal Sense Disambiguation in Language Models: The Role of Context, Training Domain, and Input Frequency](/202610/27/2610.25816v1-modal-sense-disambiguation-in-language-models-the-role-of-context-training-domain-and-input-frequency)  
+9. [When Parameter Gradient Flows Close in Representation Space](/202610/28/2610.27474v1-when-parameter-gradient-flows-close-in-representation-space)  
    标签：评分：6.0/10
    evidence：检索回退候选
-11. [Constant mixed Chern curvature on complete type-A flag manifolds](/202610/27/2610.25864v1-constant-mixed-chern-curvature-on-complete-type-a-flag-manifolds)  
+10. [Lie algebras in symmetric tensor categories](/202610/28/2610.27492v1-lie-algebras-in-symmetric-tensor-categories)  
+   标签：评分：6.0/10
+   evidence：检索回退候选
+11. [HypoNet Nankai PS: rapid hypocenter determination for the Nankai Trough using physics-informed neural networks with three-dimensional P- and S-wave velocity models](/202610/28/2610.27561v1-hyponet-nankai-ps-rapid-hypocenter-determination-for-the-nankai-trough-using-physics-informed-neural-networks-with-three-dimensional-p--and-s-wave-velocity-models)  
    标签：评分：6.0/10
    evidence：检索回退候选
 

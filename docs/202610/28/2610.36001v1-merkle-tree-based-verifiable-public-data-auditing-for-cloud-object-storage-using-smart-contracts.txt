@@ -1,0 +1,939 @@
+Title: Merkle-Tree-Based Verifiable Public Data Auditing for Cloud Object Storage Using Smart Contracts
+
+URL Source: https://arxiv.org/pdf/2610.36001v1
+
+Published Time: Wed, 28 Oct 2026 00:04:17 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# Merkle-Tree-Based Verifiable Public Data Auditing for Cloud Object Storage Using Smart Contracts 
+
+Siri Reddy Tadi 
+
+Dept. of Information Technology Chaitanya Bharathi Institute of Technology 
+
+Hyderabad, Telangana, India tadi.sirireddy@gmail.com 
+
+K. Gangadhara Rao 
+
+Dept. of Information Technology Chaitanya Bharathi Institute of Technology 
+
+Hyderabad, Telangana, India kgangadhar it@cbit.ac.in 
+
+(Corresponding Author) 
+
+M. Venu Gopalachari 
+
+Dept. of Information Technology Chaitanya Bharathi Institute of Technology 
+
+Hyderabad, Telangana, India 
+
+C. Chetann Reddy 
+
+Dept. of Information Technology Chaitanya Bharathi Institute of Technology 
+
+Hyderabad, Telangana, India chetann0717@gmail.com 
+
+Jaswanth Bhimireddy 
+
+Dept. of Information Technology Chaitanya Bharathi Institute of Technology 
+
+Hyderabad, Telangana, India jaswanthbhimireddy5@gmail.com 
+
+Abstract —Owners of data in cloud object storage cannot directly check whether the provider still keeps every object unchanged. Existing research mostly checks blocks inside files or relies on third-party auditors, and less attention has been given to checking each object against a public blockchain reference while measuring the cost. A full-data audit downloads every object and compares it with a saved hash list, which is slow and only as reliable as that list. We propose a public auditing system in which the SHA-256 hash of each object and its name forms a leaf of a Merkle tree, so the whole dataset is represented by one Merkle root. This root is stored in an Ethereum smart contract as a trusted public record, while the objects stay with the provider. An auditor downloads an object, rebuilds the root using a short Merkle proof and compares it with the stored root, marking the object as intact, modified or missing. In five experiments on an S3-compatible store and a local Hardhat blockchain (normal audit, single- and multiple-object tampering, deletion and scalability), the system detected 15 of 15 single modifications, 2,205 of 2,205 modified objects and 830 of 830 deleted objects with no false alarms. The proof needed only 14 hashes for 10,000 objects, so checking one object took about 10 ms and a 100-object sample about 150 ms regardless of dataset size, while a full audit of 10,000 objects (14.3 s) took about as long as downloading them (13.5 s). Storing the root cost 91,863 gas, 252 times less than storing 1,000 hashes on-chain. The system thus shows exactly which objects were modified or are missing, with its main savings coming from checking selected objects. 
+
+Index Terms —cloud object storage, data integrity, public auditing, Merkle tree, Merkle proof, SHA-256, blockchain, smart contracts 
+
+I. I NTRODUCTION 
+
+Organizations increasingly keep unstructured data in cloud object stores whose hardware they neither own nor operate [1]. Objects can be damaged or lost through disk faults, software bugs, operator mistakes or deliberate interference, and as long as nobody checks, an overwritten or deleted object looks no different to its owner from one that is still intact. An integrity audit therefore needs two ingredients: a description of the correct state that the provider is unable to alter, and a procedure, affordable enough to run regularly, that compares the stored data with that description. The most direct procedure is a full-data audit, in which the auditor fetches every object and compares its SHA-256 digest with a digest list kept locally. The work grows with the volume of data, failures can be pinpointed only if one digest per object is retained, and the result can be trusted only as far as the stored list can. A Merkle tree [2], [3] compresses the digests of n objects into one 32-byte root and allows any single object to be checked against that root with a proof of about log 2 n hashes. If the root is recorded in a smart contract, it becomes a public reference that neither the provider nor the auditor can silently change, while the objects themselves stay off-chain. This paper designs, implements and measures such a mech-anism for an S3-compatible object store. Its aim is not to propose a new cryptographic primitive, but to establish experi-mentally what the combination of SHA-256, a Merkle tree and an on-chain root actually provides: which integrity violations it detects, what each audit costs in time and transferred data, how these costs scale with the number of objects, and what the blockchain adds in gas and latency. 
+
+A. Research Questions  
+
+> •
+
+RQ1 (correctness). Does the audit classify unmodified objects as intact and a single modified object as modified, arXiv:2610.36001v1 [cs.CR] 26 Oct 2026 for different kinds of modification?  
+
+> •
+
+RQ2 (multiple violations). Does the audit identify ev-ery modified and every deleted object when several are affected, distinguish the two cases, and with what probability does a sampled audit of c objects detect t
+
+violations?  
+
+> •
+
+RQ3 (scalability). How do tree construction, proof gen-eration, proof verification and audit time grow with the number of objects n? 
+
+> •
+
+RQ4 (communication). How much data must an auditor retrieve compared with a full-data audit?  
+
+> •
+
+RQ5 (blockchain overhead). What gas and latency does keeping the trusted root and the audit log on-chain add? 
+
+B. Contributions 
+
+1) A Merkle-tree commitment for object storage in which each leaf binds an object’s key to its SHA-256 digest, in-ternal and leaf nodes are domain-separated, and unpaired nodes are promoted rather than duplicated (Section V). 2) A smart contract that stores only the root, the object count and an append-only audit log, and that can also verify a Merkle proof on-chain; the off-chain tree is treated as untrusted (Sections V–VI). 3) A public audit procedure that downloads the challenged objects themselves, recomputes their leaves and classi-fies each object as intact , modified or missing , in full or sampled form. 4) A measured evaluation on a local testbed covering normal audits, single- and multiple-object tampering, deletion, scalability from 10 to 10,000 stored objects (and to 220 leaves in memory), communication volume and smart-contract gas, with five repetitions per configu-ration (three for the largest dataset) (Sections VII–VIII). 
+
+Organization. Section II gives background and Section III discusses related work. Section IV states the problem, threat model and requirements, Section V presents the system and Section VI its implementation. Section VII describes the experimental methodology and Section VIII the results. Section IX analyses security, and Sections X–XIV discuss the findings, threats to validity, limitations, future work and conclusions. II. B ACKGROUND 
+
+This section reviews the building blocks the mechanism re-lies on. Each subsection ends by stating the role the component plays in our design, so that established material is kept apart from what this paper contributes. 
+
+A. Cloud Object Storage and the Trust Problem 
+
+In an object store, every item is an opaque byte sequence that carries some metadata and is addressed by a key in a flat namespace; clients manipulate it through a small set of HTTP requests (PUT, GET, DELETE, LIST). The request vocabulary of Amazon S3 [4] has become a common interface that other servers, MinIO among them [5], reimplement. Under the service models described by NIST [6] and in the early analysis of cloud computing by Armbrust et al. [1], the tenant decides what is stored but does not operate the machines that store it. Kamara and Lauter [7] therefore argue that a tenant should be able to check its outsourced data cryptographically rather than rely on the provider’s word. For integrity, the difficulty is easy to state: a successful GET shows only that 
+
+some bytes came back, not that they are the bytes that were uploaded, and the loss of an object may go unnoticed until someone next asks for it. Role here: the object store holds the data and is treated as untrusted. 
+
+B. Cryptographic Hash Functions 
+
+SHA-256, specified in FIPS 180-4 [8], compresses an input of arbitrary length into a 256-bit value. The properties our argument needs are those formalized by Rogaway and Shrimp-ton [9]: second-preimage resistance (given one input, finding another with the same output is infeasible) and collision resistance (finding any two inputs with the same output is infeasible). NIST rates the collision strength of SHA-256 at 128 bits [10]. These guarantees are not universal across hash functions: a practical collision for SHA-1 was demonstrated in 2017 [11], which is why the digest algorithm has to be chosen with care. Role here: each object is reduced to a 32-byte digest, and the digest changes if any bit of the object changes. A set of n digests, however, still has to be stored somewhere trustworthy; hashing by itself does not remove that need. 
+
+C. Merkle Trees 
+
+Merkle’s hash tree [2], [3] places digests at the leaves of a binary tree and labels every internal node with the hash of its two children. Because the label at the top depends on every leaf and on their order, the root acts as a short commitment 
+
+to the whole sequence: altering, dropping or permuting a leaf alters the root. Building the tree costs exactly n − 1 node hashes for n leaves. The same structure underlies tamper-evident logs [12], the Certificate Transparency protocol [13], [14] and file systems on untrusted servers [15]. Certificate Transparency also introduced the practice, which we follow, of hashing leaves and internal nodes with different one-byte prefixes, so that an internal node can never be passed off as a leaf [13]. Role here: the tree replaces n trusted digests by one trusted 32-byte root. 
+
+D. Merkle Proofs 
+
+To show that a given leaf belongs to a tree with a known root, it suffices to supply the hashes of the siblings met on the way from the leaf to the root, often called the authentication or audit path. The verifier folds these siblings into the leaf, one level at a time, and checks whether the result equals the root. A balanced tree with n leaves needs at most ⌈log 2 n⌉ siblings, so the proof is small regardless of how large the object is; Szydlo [16] studies how such paths can be produced efficiently for successive leaves. The path does not have to come from a trusted party: a wrong sibling simply leads to a wrong root. 
+
+Role here: one object can be checked without fetching the others, and the untrusted provider can serve the proofs. E. Blockchains and Smart Contracts 
+
+A public blockchain is a ledger replicated across many nodes, extended only by appending blocks, and practically immutable unless an attacker controls a large share of the network’s resources [17], [18]. Ethereum [19], [20] lets pro-grams, called smart contracts, keep state on this ledger. The state changes only through transactions that pass the contract’s own checks and can be read by anyone. Execution is metered in gas ; writing a new 32-byte storage word is among the most expensive operations, so contracts are usually designed to keep large data off-chain and store only short commitments on-chain [21]. Contract code can also contain defects [22], [23], which is why our threat model treats the correctness of the contract as an explicit assumption. Role here: the contract is a public, provider-independent place for the root. It never sees the objects and cannot itself notice tampering; detection happens only when an auditor compares freshly computed values with the stored root. III. R ELATED WORK 
+
+We group prior work into four lines: proofs of storage, public and dynamic auditing, hash-tree structures for untrusted storage, and blockchain-assisted auditing. Table I compares representative schemes along the dimensions that matter for our design. 
+
+A. Provable Data Possession and Proofs of Retrievability 
+
+Provable data possession (PDP), proposed by Ateniese et al. [24] and extended in a later journal version [25], lets a client check that a server still stores a file. The client attaches homomorphic tags to file blocks before upload; afterwards it challenges a random subset of blocks, and the server answers with one short aggregated value instead of the blocks them-selves. A lighter variant relies only on symmetric primitives and allows a bounded number of updates [26], and MR-PDP [27] extends the idea to several replicas of the same file. Proofs of retrievability (PoR) give a stronger guarantee: a server that passes the checks must hold enough data for the file to be recovered. Juels and Kaliski [28] obtain this with hidden sentinel blocks and error-correcting codes; Shacham and Waters [29] construct compact PoRs, one of which can be verified with public parameters; Dodis et al. [30] analyze PoR through hardness amplification; and HAIL [31] spreads a file over several providers so that integrity and availability can be checked and restored together. All of these protocols operate on blocks inside a file and keep their verification material with the owner or in public keys rather than on a ledger. The idea we borrow from them is random sampling: challenging c random units catches a corrupted fraction with a probability that can be computed in advance (Section V-G). 
+
+B. Public and Dynamic Auditing 
+
+Public auditing delegates verification to any third party. Wang et al. set out the requirements for publicly auditable cloud storage [32] and designed auditing that hides the data from the auditor by masking the server’s response [33], [34]. In a separate scheme [35], they authenticate block tags with a Merkle hash tree, so that the auditor can check block positions and the owner can modify, insert or delete blocks; the owner signs each new root and the server keeps it. Erway et al. [36] support updates with a rank-based authenticated skip list. Yang and Jia [37] add dynamic updates and batch auditing over many owners and clouds, and Zhu et al. [38] combine responses from several providers in a multicloud setting. In this line of work, the auditor trusts the reference value because the owner has signed it. 
+
+C. Hash Trees over Untrusted Storage 
+
+Hash trees have long been used to protect data held by parties that are not trusted. SUNDR [15] keeps a file system on an untrusted server while letting clients detect misbehavior, and Crosby and Wallach [12] build tamper-evident logs from a history tree that yields compact membership and consis-tency proofs. Certificate Transparency [13], [14] publishes certificates in Merkle-tree logs that anyone can audit. Our commitment follows the leaf and node encoding of these logs, but it is applied to the objects of a storage bucket and the root is anchored in a smart contract. 
+
+D. Blockchain-Assisted Auditing 
+
+Several schemes use a blockchain to remove or constrain the third-party auditor. Liu et al. [39] let owners and consumers of IoT data verify integrity through smart contracts, and Yue et al. [40] combine Merkle trees with a blockchain for peer-to-peer cloud storage and study how many samples to check. Zhang et al. [41] keep certificateless tags for the proof itself and use Ethereum to derive unpredictable challenges and to time-stamp each audit, so that a late auditor can be identified. Wang et al. [42] replace the auditor with a contract that pays the provider only when its periodic possession proofs verify. Shu et al. [43] decentralize auditing over a blockchain network and use a DAO-style design to limit dishonest auditors and miners. Lin et al. [44] record auditor activity on a consortium chain, where a contract flags abnormal behavior. These works study proof aggregation, incentives and auditor accountability; to our knowledge, they do not provide an S3-level, per-object classification of objects as intact, modified or missing together with a measured breakdown of where audit cost arises. 
+
+E. Positioning 
+
+Our design deliberately uses fewer primitives than the tag-based schemes: SHA-256 only, no keys for verification, and one 32-byte root per dataset on-chain. The price is that each audited object must be downloaded, so communication savings come from auditing a subset of objects rather than from aggregate proofs. We do not claim stronger security than the schemes above. Our contribution is an implementation and measurement study of the simpler design on an S3-compatible store, with per-object, three-way classification. TABLE I COMPARISON WITH RELATED WORK                                         
+
+> Work Integrity primitive Merkle Blockchain role Public PDP [24] homomorphic tags, sampling no none yes PoR [28] sentinels + ECC no none no Compact PoR [29] BLS / MAC authenticators no none yes †
+> DPDP [36] authenticated skip list related none no Wang et al. [35] BLS tags + MHT yes none yes Liu et al. [39] data hashes, contracts n/r verification yes Yue et al. [40] Merkle tree, sampling yes verification yes Zhang et al. [41] certificateless tags no challenges, log yes
+> This work SHA-256 Merkle tree yes root + audit log yes
+> †BLS variant. n/r: not reported in the sources we consulted.
+
+IV. P ROBLEM STATEMENT , T HREAT MODEL AND 
+
+REQUIREMENTS 
+
+A. Problem Statement 
+
+A data owner stores a dataset D =
+
+{(k1, D 1), . . . , (kn, D n)} of objects with keys ki and contents Di in a bucket of an object store. At a later time, any party should be able to decide, for any object or for the whole dataset, whether the stored data still equals D, and to identify which objects were modified or deleted, without trusting the provider, without the owner being online, and without downloading the dataset for every check. 
+
+B. System Entities  
+
+> •
+
+Data owner uploads D, computes the commitment and registers it on-chain. Trusted at commitment time.  
+
+> •
+
+Cloud storage provider (CSP) stores the objects and the off-chain tree metadata and runs the prover , which answers proof requests. Untrusted for integrity.  
+
+> •
+
+Public auditor challenges objects, verifies proofs and may record the outcome on-chain. Needs no secret; anyone can act as auditor.  
+
+> •
+
+Smart contract on an Ethereum-compatible chain stores the trusted root, the object count and the audit log. 
+
+C. Threat Model 
+
+The CSP, or an attacker who controls it, may: (i) modify the content of one or more objects; (ii) delete objects; (iii) replace an object with another stored object’s content or rename it; (iv) alter the off-chain tree metadata; (v) return forged sibling hashes, wrong keys or proofs for a different index; and (vi) answer audits inconsistently, for example serving correct data only to some requests. It may also try to change the integrity reference itself. 
+
+Assumptions. SHA-256 is collision- and second-preimage-resistant. The chain provides integrity of committed state and the contract code is correct. The owner’s signing key is not compromised, and the owner computes the commitment over the intended data. The auditor’s own environment (client code, reading of chain state) is not compromised. 
+
+Out of scope. The mechanism does not protect against: data that was already wrong when the root was computed; a compromised owner key or root-generation process, which can register a wrong root; denial of service and unavailability of the CSP or the chain; a compromised auditor client; loss of confidentiality (objects are not encrypted by this mechanism); and recovery of lost data, since auditing detects but does not repair. 
+
+D. Requirements 
+
+R1 Detection: any modification or deletion of a committed object is detected when that object is audited. R2 Localization: a full audit identifies exactly which objects failed and whether each was modified or missing. R3 Public verifiability: verification uses only public informa-tion (the on-chain root and object count). R4 Tamper-resistant reference: the CSP cannot change the trusted root. R5 Efficiency: a single object can be audited without retriev-ing other objects, and on-chain state is independent of 
+
+n.V. P ROPOSED SYSTEM 
+
+A. System Architecture 
+
+Fig. 1 shows the architecture and the two phases of the protocol. In the commitment phase , the owner uploads the objects, hashes them, builds the Merkle tree and registers the root and the object count in the contract; the full tree (object keys and node hashes) is stored off-chain next to the data, where the prover can use it. In the audit phase ,the auditor reads the trusted root from the contract, chooses which objects to challenge, downloads each challenged object, obtains its sibling path from the prover, recomputes the root and compares. The division of state is strict:  
+
+> •
+
+Off-chain (object store): object contents; object keys; the Merkle tree metadata ( n keys and 2n−1 node hashes). None of it is trusted.  
+
+> •
+
+On-chain (contract): dataset identifier, Merkle root (32 bytes), object count n, registration time, version and owner address; one audit record per audit (root checked against, time, objects checked, objects failed, auditor). No object data. 
+
+B. Data Upload and Hash Generation 
+
+For each object the owner computes the content digest 
+
+Hi = SHA256( Di), 1 ≤ i ≤ n, (1) and the leaf node 
+
+ℓi = SHA256  0x00 ∥ SHA256( ki) ∥ Hi
+
+. (2) Binding the key into the leaf means that an object moved to another key, or two objects swapped, no longer match their leaves; hashing the key keeps the leaf input at a fixed 65 bytes. Leaves are ordered lexicographically by key, which fixes each object’s index i.off-chain on-chain                  
+
+> Data owner Provider (untrusted) Public auditor
+> Upload objects
+> D1, . . . , D n
+> Hash Hi, leaf ℓi;build tree, root R
+> Object store: objects Di
+> Prover: tree metadata Download
+> D′
+> i= GET( ki)
+> Leaf ℓ′
+> i; root R′
+> i
+> from proof πi
+> Compare R′
+> i,R∗
+> →status Smart contract: R∗,n,version, audit log
+> C1
+> PUT
+> C2 C3
+> tree
+> C4
+> registerRoot
+> A3
+> D′
+> i
+> A2 iki, π i
+> A4 A5 A1
+> getRoot A6
+> record-Audit
+
+Fig. 1. Proposed system architecture. Black arrows (C1–C4) form the commitment phase: upload, hashing and tree construction, storage of the tree metadata with the provider, and registration of the root. Blue arrows (A1– A6) form the audit phase of Algorithm 4: read the trusted root, obtain key and proof, download the object, recompute the root and classify the object; recording the outcome on-chain is optional (dashed). Only the root, the object count and audit records are stored on-chain. 
+
+Algorithm 1 Merkle Tree Construction 
+
+Input: leaves ℓ1, . . . , ℓ n ordered by key 
+
+Output: levels L0, . . . , L d; root R
+
+1: L0 ← [ℓ1, . . . , ℓ n]; j ← 0
+
+2: while |Lj | > 1 do 
+
+3: Lj+1 ← [ ] 
+
+4: for q ← 1 to ⌊| Lj |/2⌋ do 
+
+5: append P (Lj [2 q − 1] , L j [2 q]) to Lj+1 ▷ Eq. (3) 
+
+6: end for 
+
+7: if |Lj | is odd then append Lj [|Lj |] to Lj+1 ▷
+
+promote 
+
+8: end if 
+
+9: j ← j + 1 
+
+10: end while 
+
+11: return L0, . . . , L j and R ← Lj [1] 
+
+C. Merkle Tree Construction 
+
+Internal nodes use a different prefix from leaves: 
+
+P (xL, x R) = SHA256  0x01 ∥ xL ∥ xR
+
+. (3) Let level 0 be the leaves, x(0)  
+
+> i
+
+= ℓi, and let mj be the number of nodes at level j. Level j + 1 is 
+
+x(j+1)  
+
+> q
+
+=
+
+(
+
+P  x(j)2q−1, x (j)2q
+
+, 2q ≤ mj ,x(j)2q−1, 2q − 1 = mj (unpaired) , (4) for 1 ≤ q ≤ ⌈ mj /2⌉. An unpaired last node is promoted 
+
+unchanged rather than hashed with a copy of itself, so no two different leaf sequences produce the same tree. Construction stops when one node remains: 
+
+R = MerkleRoot( ℓ1, . . . , ℓ n), (5) after exactly n − 1 evaluations of (3). Algorithm 1 gives the procedure, and Fig. 2 shows it for five objects, including the promotion of an unpaired node.                              
+
+> ℓ1ℓ2ℓ3ℓ4ℓ5
+> (k1, D 1)(k2, D 2)(k3, D 3)(k4, D 4)(k5, D 5)
+> P(ℓ1, ℓ 2)P(ℓ3, ℓ 4)ℓ5
+> P(x12 , x 34 )ℓ5
+> R=P(x1–4, ℓ 5)
+> promoted promoted
+> j=0
+> j=1
+> j=2
+> j=3
+> leaf: ℓi= SHA256( 0x00 ∥SHA256( ki)∥SHA256( Di)) , Eq. (2) node: P(x, y ) = SHA256( 0x01 ∥x∥y), Eq. (3)
+
+Fig. 2. Construction of the tree for an odd number of objects ( n = 5 ), following Eq. (4) and Algorithm 1. Shaded nodes are hashed with the 0x01 
+
+prefix; the unpaired leaf ℓ5 (dashed) is promoted unchanged at levels 0 and 1 instead of being paired with a copy of itself. The root needs n − 1 = 4 node hashes, and the proof for ℓ5 contains a single sibling ( x1–4), illustrating that proofs can be shorter than ⌈log 2 n⌉.
+
+Algorithm 2 Commitment and Root Registration (owner) 
+
+Input: objects (ki, D i)ni=1 , dataset id id 
+
+1: for i ← 1 to n do 
+
+2: PUT (ki, D i); Hi ← SHA256( Di); ℓi ← Eq. (2) 
+
+3: end for 
+
+4: (L0..L d, R ) ← Algorithm 1 (ℓ1..ℓ n)
+
+5: store (k1..k n, L 0..L d) off-chain for the prover 
+
+6: send transaction registerRoot (id , R, n ); wait for re-ceipt 
+
+D. Root Registration 
+
+Algorithm 2 shows the commitment. The owner calls 
+
+registerRoot (id , R, n ) with R from Eq. (5); the contract stores R, n, the block time, a version counter and the caller as owner, rejects calls from any other address for an existing 
+
+id , and emits an event. A legitimate update of the dataset is committed by registering a new root, which increments the version. The tree metadata is written to the object store; it does not need protection because every value derived from it is checked against R.
+
+E. Merkle Proof Generation and Verification 
+
+For index i the prover returns the key ki and the proof 
+
+πi = ( s1, . . . , s m; b), where sj are the sibling hashes from the leaf upwards and bit bj records whether sj is a left sibling. Levels at which the path node was promoted contribute no sibling, so 
+
+m = |πi| ≤ ⌈ log 2 n⌉. (6) Verification (Algorithm 3) folds the siblings into the leaf with (3) and returns the reconstructed root R′
+
+> i
+
+. It costs at most 
+
+⌈log 2 n⌉ hash evaluations, independent of the object size. The same function is implemented in Solidity as verifyProof ,using the EVM’s SHA-256 precompile. Fig. 3 shows, as a message sequence, how this registra-tion precedes every later audit and which steps involve the blockchain. Algorithm 3 Merkle Proof Verification 
+
+Input: leaf ℓ, proof (s1..s m; b)
+
+Output: reconstructed root R′
+
+1: h ← ℓ
+
+2: for j ← 1 to m do 
+
+3: if bj = 1 then h ← P (sj , h )
+
+4: else h ← P (h, s j )
+
+5: end if 
+
+6: end for 
+
+7: return h                       
+
+> Data owner Provider (store + prover) Smart contract Public auditor
+> Commitment phase (Algorithm 2)
+> 1: PUT (ki, D i),i= 1 ..n
+> 2: Hi, ℓ i; tree, R
+> 3: tree metadata 4: registerRoot (id, R, n )[tx] 5: receipt, RootRegistered
+> Audit phase (Algorithm 4)
+> 6: getRoot (id )[view] 7: (R∗, n )
+> loop for each i∈C8: challenge i
+> 9: (ki, π i)
+> 10: GET (ki)
+> 11: D′
+> ior no such key
+> 12: ℓ′
+> i,R′
+> i, status (Eq. (7)) 13: recordAudit (id, |C|, f )[tx, optional] 14: receipt
+
+Fig. 3. Message sequence of commitment registration and a subsequent audit. Messages 1–5 are sent once per dataset version; messages 6–14 form one audit over the challenge set C (all n indices, a random sample of c, or one index). Only messages 4 and 13 are blockchain transactions; message 6 is a read-only call. The provider supplies the proof in message 9, but the auditor downloads the object itself in messages 10–11. 
+
+F. Public Audit and Tampering/Deletion Detection 
+
+The auditor reads (R∗, n ) from the contract and selects a challenge set C ⊆ { 1..n }: all indices for a full audit , c
+
+indices drawn uniformly without replacement for a sampled audit , or one index for a targeted audit . For each i ∈ C it obtains (ki, π i) from the prover and downloads the object itself (Algorithm 4). The status of object i is 
+
+status i =
+
+
+
+MISSING , GET (ki) returns no object ,
+
+INTACT , R′ 
+
+> i
+
+= R∗,
+
+MODIFIED , R′
+
+> i
+
+̸ = R∗,
+
+(7) with R′ 
+
+> i
+
+the root reconstructed from ℓ′ 
+
+> i
+
+= SHA256( 0x00 ∥
+
+SHA256( ki) ∥ SHA256( D′
+
+> i
+
+)) and πi, where D′ 
+
+> i
+
+is the content currently stored. The audit passes iff every challenged object is intact. Downloading D′ 
+
+> i
+
+rather than accepting a digest from the CSP is deliberate: a CSP that had lost or altered the object                         
+
+> challenge index i(1≤i≤n,nread from chain) receive (ki, π i)from prover GET (ki)
+> returns data?
+> ℓ′
+> i←SHA256( 0x00 ∥SHA256( ki)∥SHA256( D′
+> i))
+> R′
+> i←fold ℓ′
+> iwith πi(Alg. 3)
+> R′
+> i=R∗?
+> INTACT MODIFIED MISSING
+> yes no yes no object deleted (threat ii); no hash is needed: the key is fixed by R∗
+> object unchanged and proof genuine content changed (i); content moved to another key or swapped (iii); forged or wrong proof or key, or altered tree metadata (iv, v)
+
+Fig. 4. Decision procedure that the auditor applies to each challenged object (Eq. (7), Algorithm 4), annotated with the threat-model actions of Section IV that lead to each outcome. Deletion is recognized before any hashing; every other deviation, including misbehavior of the prover, ends in MODIFIED . The audit passes only if every challenged object is INTACT .
+
+Algorithm 4 Public Audit with Tampering/Deletion Detection 
+
+Input: dataset id id , challenge set C
+
+Output: status of every i ∈ C; PASS/FAIL 
+
+1: (R∗, n ) ← getRoot (id ) ▷ on-chain read 
+
+2: for each i ∈ C do 
+
+3: (ki, π i) ← prover.challenge (i)
+
+4: D′ 
+
+> i
+
+← GET (ki)
+
+5: if D′ 
+
+> i
+
+= ⊥ then status i ← MISSING ; continue 
+
+6: end if 
+
+7: ℓ′ 
+
+> i
+
+← SHA256( 0x00 ∥ SHA256( ki) ∥ SHA256( D′
+
+> i
+
+)) 
+
+8: R′ 
+
+> i
+
+← Algorithm 3 (ℓ′
+
+> i
+
+, π i)
+
+9: status i ← INTACT if R′ 
+
+> i
+
+= R∗ else MODIFIED 10: end for 
+
+11: optional: recordAudit (id , |C|, |{ i : status i̸ =
+
+INTACT }| )
+
+12: return PASS iff all statuses are INTACT 
+
+could otherwise keep returning the original digest. Deletion is detectable even though a deleted object cannot be hashed, because the key and index of every committed object are fixed by the tree and the count n is on-chain: the auditor knows which object must exist, asks for it and receives none. If the prover instead omits or renames the entry, the returned key no longer reconstructs R∗ through (2). An inconsistent prover is thus classified as MODIFIED , the conservative outcome. Fig. 4 summarizes this per-object decision and maps each attacker action of the threat model to the outcome it produces. The auditor may also publish the outcome with 
+
+recordAudit (id , |C|, #failed ); the contract appends a time-stamped record that includes the root against which the audit was checked. TABLE II IMPLEMENTATION COMPONENTS (N ON -B LANK LINES )Component Responsibility Lines                   
+
+> merkle.py digests, leaves, Alg. 1, proofs, Alg. 3 69
+> audit.py owner commit, prover, Alg. 4, baseline 136
+> storage.py S3 client wrapper (PUT/GET/DELETE/LIST) 34
+> chain.py Web3.py deploy, register, read, record, verify 66
+> MerkleAuditRegistry.sol registry contract + evaluation baseline 87
+> compile.js solc compilation to ABI/bytecode 13
+> experiments.py experiment harness, raw JSON records 411
+> plots.py figures from raw records 172
+> tests/ unit and on-chain cross-check tests 46
+
+G. Sampled Audits 
+
+A full audit must download every object. A sampled audit of c distinct objects, drawn uniformly from n of which t
+
+are modified or missing, detects at least one violation with probability 
+
+Pdet (n, t, c ) = 1 −
+
+n − tc
+
+.nc
+
+
+
+, (8) the hypergeometric argument used in PDP [24], [25]. For a fixed fraction t/n , Pdet depends mainly on c and hardly on n,so the cost of reaching a target detection probability is roughly constant as the dataset grows. 
+
+H. Communication Model 
+
+A full-data audit transfers Bfull = Pni=1 |Di| bytes and requires the auditor to keep 32 n bytes of reference digests. A Merkle audit with challenge set C transfers 
+
+BMerkle (C) = X
+
+> i∈C
+
+ |Di| + 32 |πi| + 32 + |ki|, (9) where the 32-byte term is the direction bitmap as passed to the contract, and the auditor keeps no per-object state. For a full audit, BMerkle slightly exceeds Bfull ; the saving comes only from auditing |C| < n objects. VI. I MPLEMENTATION 
+
+The prototype is written in Python and Solidity; Table II lists its components. In total it comprises about 1,030 non-blank lines, including the experiment harness and plotting code. 
+
+Merkle library. Digests use Python’s hashlib SHA-256. The tree is kept as a list of levels, so proof generation is a walk of ⌈log 2 n⌉ list lookups. Proofs carry the sibling list and an integer bitmap of directions, the same encoding the contract accepts. 
+
+Storage and prover. Objects are stored in one bucket per dataset under flat keys ( obj-0000000.bin , . . . ) and ac-cessed with the MinIO Python SDK [5]. The prover is a class that holds the commitment’s levels and keys and answers 
+
+challenge (i) with (ki, π i); in the experiments it runs in the auditor’s process, so its time is measured separately and transport of the proof is accounted for by its byte size, Eq. (9). 
+
+Smart contract. MerkleAuditRegistry exposes 
+
+registerRoot , getRoot , recordAudit , getAudit ,
+
+auditCount and the view function verifyProof . Adataset occupies three storage slots (root; count, time and version; owner) and an audit record two. A second contract, 
+
+PerObjectHashRegistry , which stores every object digest on-chain, exists only as an evaluation baseline. Both are compiled with solc 0.8.24 (optimizer, 200 runs; 2,656 bytes of runtime code for the registry) [45] and deployed on a local Hardhat network [46]; chain.py calls them through Web3.py [47]. 
+
+Measurement. Each audit records separately the time to read the root from the chain, to retrieve objects, to compute digests and leaves, to generate proofs and to verify them, using time.perf_counter , as well as the bytes of object content and of proof metadata. Python’s garbage collector is run before each repetition, and peak memory of commitment construction is measured with tracemalloc in a separate, untimed pass. For transactions we record gas used from the receipt and wall-clock time from submission to receipt; for view functions we record eth_estimateGas , which includes the 21,000 intrinsic gas of a transaction, although a view call made off-chain costs nothing. 
+
+Validation. Six automated tests check that every proof verifies for all indices of trees with 1–69, 127–129 and 1,000 leaves, that proof length never exceeds ⌈log 2 n⌉, that a modified leaf, a swapped key or a forged sibling fails, that the promotion rule of Eq. (4) holds, and that the Solidity 
+
+verifyProof accepts every proof the Python verifier ac-cepts (trees of 1, 2, 3, 7 and 33 leaves) and rejects a forged leaf. 
+
+A measurement artifact we removed. In initial runs every GET took about 44 ms regardless of object size, while a HEAD request took 1 ms. The cause was Nagle’s algorithm on the server socket interacting with delayed acknowledgements on the client. We patched the S3 server to set TCP_NODELAY ,after which a GET of 100 B to 200 KiB took 1.1–3.5 ms. All reported results use the patched server. VII. E XPERIMENTAL METHODOLOGY 
+
+A. Experimental Environment 
+
+All components run on one virtual machine (Table III) and communicate over the loopback interface. The official MinIO server binary could not be obtained in our build environment, so the object store is s3s-fs 0.17.0 [48], an open-source S3-compatible server written in Rust that stores each object as a file; the client is the MinIO Python SDK, so the client side is the same as against MinIO. The blockchain is a Hardhat [46] network with automatic mining, i.e. every transaction is mined immediately in its own block. 
+
+B. Dataset Configuration 
+
+Datasets are synthetic and reproducible: object i of the dataset with n objects has a size drawn log-uniformly between 1 KiB and 256 KiB and pseudo-random content, both from a seeded generator, so that a dataset can be regenerated byte for byte. Object contents are incompressible and their sizes span typical small documents and images. Table IV lists the four datasets. The Large dataset (1,000 objects) is the subject of experiments E1–E4. TABLE III EXPERIMENTAL ENVIRONMENT                                               
+
+> Component Technology / configuration Hardware Intel Xeon @ 2.10 GHz, 2 vCPU, 7.8 GiB RAM Operating system Ubuntu 24.04.5 LTS, Linux 6.18, ext4 Programming language Python 3.13.16 Hash function SHA-256 (Python hashlib )Merkle tree own implementation, Section V Object storage s3s-fs 0.17.0 (S3 API, file backend), loopback Storage client MinIO Python SDK 7.2.20 Blockchain Hardhat 2.22.17 network, chain id 31337, Cancun rules, automine, Node.js 22.22.0 Smart contract language Solidity 0.8.24, optimizer 200 runs Blockchain interface Web3.py 8.0.0 Logging per-run JSON records TABLE IV DATASET CONFIGURATION
+> Dataset Objects Total size Mean object Depth Tree metadata Small 10 0.43 MiB 43.9 KiB 4822 B Medium 100 4.00 MiB 41.0 KiB 77.8 KiB Large 1,000 48.68 MiB 49.9 KiB 10 77.2 KiB Very large 10,000 441.66 MiB 45.2 KiB 14 771.6 KiB
+> Depth =⌈log 2n⌉. Tree metadata: object keys plus all 2n−1node hashes.
+
+In addition, a component benchmark builds trees from 24 to 
+
+220 (1,048,576) random in-memory leaves to isolate the cost of the Merkle operations from storage access. 
+
+C. Metrics  
+
+> •
+
+Hash time: SHA-256 of object contents plus leaf compu-tation, Eqs. (1)–(2).  
+
+> •
+
+Construction time: Algorithm 1 over existing leaves.  
+
+> •
+
+Proof generation / verification time: per proof, and summed over an audit.  
+
+> •
+
+Chain read time: getRoot call through JSON-RPC.  
+
+> •
+
+Retrieval time: GET of the challenged objects.  
+
+> •
+
+Audit time: wall-clock time of Algorithm 4, including the chain read.  
+
+> •
+
+Detection outcome: per-object status compared with the ground truth of the injected fault; detection rate = cor-rectly classified faulty objects / faulty objects; false positives = intact objects classified otherwise.  
+
+> •
+
+Bytes transferred: object content plus proof metadata, Eq. (9).  
+
+> •
+
+Memory: peak traced allocation during commitment con-struction.  
+
+> •
+
+Gas and transaction latency: from receipts; storage slots from the contract layout. 
+
+D. Experimental Procedure 
+
+Each experiment starts from a trusted state: the dataset is uploaded, the owner computes the commitment from its local copy (Algorithm 2) and the root is registered on a freshly deployed contract. Faults are injected by writing to the object store directly, as a misbehaving provider would: bit flip (one random bit of the content inverted), append (one byte added)                                       
+
+> TABLE V E1: N ORMAL INTEGRITY AUDIT (L ARGE DATASET ,n= 1 ,000 )Quantity Value
+> Commitment (owner, one run at upload)
+> Objects / total size 1,000 / 48.68 MiB SHA-256 digests + leaves 53.1 ms Tree construction (2,001 nodes, depth 10) 0.58 ms Trusted root (prefix) 107037f0dda3709a... registerRoot 91,863 gas, 11.1 ms
+> Full audit (mean ±s.d., 5 runs)
+> Chain read ( getRoot )10.4 ±2.9 ms Object retrieval (1,000 GETs) 1,312.5 ±109.8 ms SHA-256 digests + leaves 49.8 ±1.8 ms Proof generation (1,000 proofs) 7.0 ±0.4 ms Proof verification (1,000 proofs) 10.2 ±0.5 ms Total audit time 1,393.8 ±112.7 ms Whole-root recomputation 1,317.6 ±75.3 ms Result 1,000/1,000 INTACT , PASS in 5/5
+> recordAudit 118,104 gas
+
+and replace (content replaced by random bytes of equal length) for modification, and DELETE for deletion. The modified or deleted objects are chosen uniformly at random with a fixed seed. After each repetition the affected objects are restored from the owner’s copy, so that every repetition starts from the trusted state. Every configuration is repeated five times (three times for the 10,000-object scalability runs); we report the mean and the sample standard deviation over repetitions. The full-data baseline downloads every object and compares its SHA-256 digest with a digest list held by the auditor. All raw records, the code that produced them, and the scripts that generate every figure and table are part of the project artifact. VIII. E XPERIMENTAL EVALUATION 
+
+A. E1: Normal Data Integrity Audit (RQ1) 
+
+E1 establishes the trusted state of the Large dataset and audits it unchanged with a full audit ( C = {1..n }) and, for comparison, with a whole-root recomputation from all current objects. Table V gives the measurements. All 1,000 objects were classified as intact and the re-computed root equalled the registered root in every run, so the mechanism produces no false alarms on unmodified data. Retrieval accounts for 94% of the audit time; hashing 48.68 MiB takes 3.6%, and generating and verifying 1,000 proofs together 1.2% (7.0 μs and 10.2 μs per proof). The cost of a full audit is therefore the cost of reading the data, not of the Merkle operations. 
+
+Finding 1. On unmodified data every object passes and the audit time is dominated (94%) by object retrieval; Merkle proof genera-tion and verification take about 17 μs per object. 
+
+B. E2: Single-File Tampering (RQ1) 
+
+After establishing the trusted state, E2 modifies exactly one randomly chosen object, audits it with a targeted single-object audit, then runs a full audit and a whole-root recomputation, and restores the object. This is done five times for each of the three modification types. Table VI reports the outcome and the cost of detection; Fig. 5 illustrates the mechanism. TABLE VI E2: S INGLE -F ILE TAMPERING (n = 1 ,000 , 5 RUNS PER TYPE )Bit flip Append 1 B Replace Targeted audit: detected 5/5 5/5 5/5 Full audit: flagged objects exactly 1 exactly 1 exactly 1 Whole-root check fails 5/5 5/5 5/5 Detection time (ms) 9.77 ± 1.61 11.48 ± 2.16 11.37 ± 1.98 chain read (ms) 8.22 ± 0.98 9.99 ± 1.97 9.87 ± 1.98 retrieval (ms) 1.47 ± 0.79 1.43 ± 0.29 1.44 ± 0.27 hashing ( μs) 28 ± 18 20 ± 9 23 ± 8verification ( μs) 28 ± 28 13 ± 2 13 ± 1Full audit time (s) 1.53 ± 0.09 1.46 ± 0.06 1.44 ± 0.07                      
+
+> ℓ1ℓ2ℓ3ℓ′
+> 4ℓ5ℓ6ℓ7ℓ8
+> P12 P′
+> 34 P56 P78
+> P′
+> 1–4P5–8
+> R′
+> D′
+> 4(modified object) SHA-256, Eq. (2)
+> R′̸=R∗(on-chain)
+> ⇒MODIFIED
+> s1
+> s2
+> s3
+> recomputed by the auditor sibling sjsupplied in π4
+
+Fig. 5. Effect of modifying object 4 in an 8-object tree (illustration, not measured data). The auditor hashes the downloaded content D′ 
+
+> 4
+
+into a new leaf ℓ′ 
+
+> 4
+
+and recomputes every ancestor on its path (orange, solid border) using the three siblings s1–s3 supplied unchanged in the proof π4 (blue, dashed border). The reconstructed root R′ differs from the registered root R∗, so object 4 is classified as MODIFIED .
+
+In all 15 trials the targeted audit returned MODIFIED 
+
+for the tampered object, the full audit flagged that object and no other (999 intact), and the whole-root recomputa-tion failed. For example, in the first bit-flip trial object 
+
+obj-0000121.bin (4,339 B) had digest 966638ee... 
+
+before and 351a68de... after the flip; folding the new leaf with its ten siblings gave 1dee077d... , which differs from the registered 107037f0... , and the whole-root recompu-tation produced the same 1dee077d... . The mechanism is that of Fig. 5: the changed digest changes the leaf (2), and because each node on the path is a hash of its child, every ancestor up to the root changes, while the siblings supplied by the prover stay valid. The size of the change is irrelevant: a single bit and a full replacement are detected alike, as expected from a hash function. Detection takes about 10 ms, of which 8–10 ms is the JSON-RPC read of the root from the local node; retrieval of the object takes about 1.4 ms and hashing plus verification less than 0.06 ms. 
+
+Finding 2. A single modified object, from a one-bit flip to full replacement, was detected in 15/15 trials and localized without false positives. A targeted audit takes about 10 ms, dominated by the on-chain root read. 
+
+TABLE VII E3: M ULTIPLE -F ILE TAMPERING (n = 1 ,000 , 5 RUNS PER LEVEL )                                                      
+
+> tDetected False pos. Detection rate Verification (ms) Audit time (s) 15/5 0100% 10.6 1.43 ±0.08 525/25 0100% 11.5 1.56 ±0.05 10 50/50 0100% 11.2 1.55 ±0.02 25 125/125 0100% 10.6 1.53 ±0.06 50 250/250 0100% 10.8 1.51 ±0.08 100 500/500 0100% 11.4 1.51 ±0.04 250 1,250/1,250 0100% 11.2 1.54 ±0.12
+> Detected and false positives summed over 5 runs; verification = all 1,000 proofs of one audit (mean).
+
+1 5 10 25 50 100 250 
+
+Number of affected objects (out of n = 1,000) 
+
+0.0 0.5 1.0 1.5 2.0 
+
+> Full-audit time (s)
+
+Modi fi ed objects (E3) Deleted objects (E4) 
+
+Fig. 6. Full audit time against the number of modified (E3) or deleted (E4) objects in the Large dataset (mean ± s.d., 5 runs). 
+
+C. E3: Multiple-File Tampering (RQ2) 
+
+E3 flips one bit in t ∈ { 1, 5, 10 , 25 , 50 , 100 , 250 } randomly chosen objects of the Large dataset (0.1%–25%) and runs a full audit; five repetitions per level with different objects. Table VII and Fig. 6 show the results. All 2,205 modified objects were classified as modified and none of the 32,795 untouched objects was flagged, a measured detection rate of 100% with no false positives. Audit time does not depend on t (1.43–1.56 s, within run-to-run variation), because a full audit performs the same retrieval, hashing and verification for every object whatever its status. Each object is checked against the root through its own path, so violations do not mask each other. 
+
+Sampled audits. Fig. 7 shows the probability that a sampled audit of c objects detects at least one of the t modified objects. For every tampered state we used the per-object outcomes of the full audit and drew 2,000 random challenge sets of each size; the measured frequencies agree with Eq. (8) to within 0.005 in every cell (e.g., t = 10 , c = 100 : 0.651 measured, 0.653 analytic). In addition, real sampled audits were run once per repetition; they took 21.5–26.4 ms for c = 10 , 74.8– 90.3 ms for c = 50 , 146.6–164.2 ms for c = 100 and 429.6– 479.7 ms for c = 300 . A sample of 300 objects (30% of the work of a full audit) detected 1% corruption ( t = 10 ) with probability 0.97, whereas a single modified object is caught 1 5 10 25 50 100 250 
+
+Number of modified objects t (out of n = 1,000) 
+
+0.0 0.2 0.4 0.6 0.8 1.0                                                                  
+
+> Probability of detection
+> c= 10
+> c= 50
+> c= 100
+> c= 300 measured (Monte Carlo) analytic, Eq. (8) Fig. 7. Detection probability of a sampled audit of cobjects against the number of modified objects t(n=1,000 ). Markers: frequency over 5 tampered states ×2,000 random samples; dashed lines: Eq. (8). TABLE VIII E4: F ILE DELETION (n= 1 ,000 , 5 RUNS PER LEVEL )
+> dMISSING found Misclassified Detection time (ms) Full audit (s) 15/5 010.43 ±1.32 1.61 ±0.13 525/25 010.35 ±0.92 1.51 ±0.11 10 50/50 010.76 ±2.05 1.55 ±0.21 50 250/250 010.20 ±1.94 1.47 ±0.09 100 500/500 010.89 ±2.80 1.50 ±0.08 Mixed, 20 modified + 20 deleted, 5 runs (classified as): intact →INTACT 4,800; modified →MODIFIED 100; deleted →MISSING 100
+
+only with probability c/n .
+
+Finding 3. A full audit identified all 2,205 modified objects with no false positives at a cost independent of the number of violations. A sampled audit trades certainty for cost exactly as Eq. (8) predicts. 
+
+D. E4: File Deletion (RQ2) 
+
+E4 deletes d ∈ { 1, 5, 10 , 50 , 100 } random objects of the Large dataset and runs a targeted audit of one deleted object and a full audit (Table VIII). A mixed scenario then modifies 20 and deletes 20 objects at once to test the three-way classification. All 830 deleted objects were reported as MISSING , none as 
+
+> MODIFIED
+
+, and no present object as missing; the whole-root recomputation failed in every run. In the mixed scenario the classification matched the ground truth for all 5,000 object audits, so the audit distinguishes the three states. Deletion is detected without hashing the deleted object: the committed key list and the on-chain count n say which objects must exist, and the auditor asks for each of them. A provider that removed the entry from the tree metadata would have to present a different key or proof for that index, which fails Eq. (7) as MODIFIED .Merely listing the bucket would not suffice, because the list 10 1 10 2 10 3 10 4 10 5 10 6
+
+Number of objects n
+
+10 −2
+
+10 −1
+
+10 0
+
+10 1
+
+10 2
+
+10 3   
+
+> Tree-construction time (ms)  In-memory leaves (5 runs) Object-store datasets (E5)
+> Fig. 8. Merkle tree construction time against the number of objects (log– log; mean ±s.d.): object-store datasets (E5) and in-memory component benchmark.
+
+shows what exists, not what should. Detection time (about 10 ms) and full-audit time match E2 and E3; the transfer saved by not downloading deleted objects is within run-to-run variation. 
+
+Finding 4. All 830 deletions were detected and reported as MISS -
+
+> ING
+
+, separately from modifications; deletion is detectable because the expected key set is fixed by the commitment, not by the current bucket listing. 
+
+E. E5: Scalability (RQ3) 
+
+E5 repeats the commitment and the audits on the four datasets of Table IV; the component benchmark extends tree construction and proof operations to 220 leaves. Table IX and Figs. 8–10 show the results. 
+
+Tree construction. Construction time grows linearly with n:0.68 ms for 1,000 and 6.73 ms for 10,000 objects, and in memory from 0.054 ms for 16 leaves to 722 ms for 220 leaves (Fig. 8), approaching 0.7 μs per internal node for large trees. It is about 70 times cheaper than hashing the object contents (455 ms for 441.66 MiB), which is itself linear in the data volume. Memory is also linear: construction over 220 leaves allocated 81.8 MiB at peak (internal nodes and level lists, excluding the leaves), because Python stores each 32-byte hash as a separate object. 
+
+Audit time. Fig. 9 separates the audit types. Full Merkle audits, whole-root recomputation and the full-data baseline all grow linearly and lie within about 6% of one another (14.3, 13.7 and 13.5 s at 10,000 objects), because all three retrieve every object; the Merkle full audit is slightly slower, partly because it also generates and verifies n proofs (1.6% of its time at n = 10 ,000 ). A targeted audit stays at about 10 ms and a sampled audit of 100 objects at 138–153 ms from 100 to 10,000 objects, i.e. independent of n, because their work depends on |C| and on log 2 n only. (At n = 10 and n = 100 
+
+the sample covers all objects and is a full audit.) 
+
+Proof generation and verification. Proof length follows the bound of Eq. (6), from 4 to 20 hashes between 16 and 220 TABLE IX E5: S CALABILITY ON THE OBJECT STORE (M EAN ± S.D.; 5 R UNS , 3 FOR n = 10 ,000 )
+
+n = 10 n = 100 n = 1 ,000 n = 10 ,000 
+
+Hashing, all objects (ms) 0.4 ± 0.0 4.0 ± 0.1 49.1 ± 1.0 455.1 ± 4.2 Tree construction (ms) 0.01 ± 0.00 0.09 ± 0.02 0.68 ± 0.17 6.73 ± 0.83 Peak memory of commitment construction 216 KiB 431 KiB 524 KiB 1.70 MiB Proof length, max / mean (hashes) 4 / 3.60 7 / 6.88 10 / 9.98 14 / 13.63 Proof generation, all n (ms) 0.05 ± 0.00 0.55 ± 0.02 7.0 ± 0.5 86.2 ± 2.4 Proof verification, all n (ms) 0.05 ± 0.00 0.85 ± 0.08 11.4 ± 0.9 139.0 ± 1.5 Merkle full audit (s) 0.024 ± 0.002 0.145 ± 0.008 1.443 ± 0.153 14.293 ± 0.036 Whole-root recomputation (s) 0.015 ± 0.001 0.130 ± 0.011 1.441 ± 0.106 13.659 ± 0.249 Full-data baseline (s) 0.013 ± 0.002 0.136 ± 0.017 1.373 ± 0.088 13.526 ± 0.395 Sampled audit, c = min(100 , n ) (ms) 22.9 ± 2.0 138.3 ± 12.7 147.5 ± 13.4 153.3 ± 10.2 Targeted single-object audit (ms) 10.3 ± 1.9 9.8 ± 1.7 9.9 ± 2.0 10.6 ± 1.6 
+
+registerRoot gas 91,851 91,839 91,863 91,863 10 1 10 2 10 3 10 4
+
+Number of objects n
+
+10 1
+
+10 2
+
+10 3
+
+10 4  
+
+> Audit time (ms)
+> Full-data baseline Merkle full audit ( nproofs) Merkle sampled audit ( c= 100) Merkle single-object audit
+
+Fig. 9. Audit time against the number of objects (log–log; mean ± s.d.). Full audits retrieve every object; sampled and targeted audits retrieve min(100 , n )
+
+and one object. 
+
+leaves (Fig. 10). Verification time follows it, from 2.9 μsto 16.5 μs per proof, i.e. about 0.8 μs per sibling. Proof generation is a walk of the same length, but its time rose from 0.9 μs to 52 μs, sharply above 216 leaves. Because the number of lookups grows only from 4 to 20, we attribute the rise to memory access: a random path touches nodes spread over a structure of tens of megabytes. We did not isolate this effect. 
+
+Finding 5. Tree construction and full audits are linear in n, and full audits cost the same as downloading the data. Proof size and verification grow logarithmically (20 hashes and 16.5 μs at 220 
+
+objects), so targeted and sampled audits stay constant in time from 100 to 10,000 objects. 
+
+F. Communication Overhead (RQ4) 
+
+Table X and Fig. 11 compare the bytes an auditor retrieves, measured as object content plus proof metadata. A Merkle full audit transfers slightly more than the baseline, 0.36–1.04% for keys and proofs, consistent with Eq. (9). The reduction appears only when fewer objects are audited: at 10 1 10 2 10 3 10 4 10 5 10 6
+
+Number of objects n
+
+010 20 30 40 50 60 
+
+> Time per proof ( μs)
+
+Proof veri fi cation Proof generation 
+
+4 6 8 10 12 14 16 18 20 
+
+Proof length m (sibling hashes) 
+
+Fig. 10. Time per Merkle proof against the number of leaves (in-memory benchmark, 1,000 random proofs per run; mean ± s.d., 5 runs). Proof length is ⌈log 2 n⌉: 4 to 20 hashes, shown on the upper axis. TABLE X FULL -D ATA VERSUS MERKLE -B ASED AUDIT : D ATA PER AUDIT 
+
+n = 10 n = 100 n = 1 ,000 n = 10 ,000 
+
+Full-data baseline 439.4 KiB 4.00 MiB 48.68 MiB 441.66 MiB Merkle full audit 441.0 KiB 4.03 MiB 49.03 MiB 446.27 MiB proof share 0.36% 0.64% 0.72% 1.04% Merkle sampled ( c = 100 )∗ 441.0 KiB 4.03 MiB 4.43 MiB 4.60 MiB Merkle single object 62.8 KiB 68.0 KiB 98.8 KiB 28.5 KiB of which proof 175 B 271 B 367 B 495 B Auditor-held state 320 B 3.1 KiB 31.3 KiB 312.5 KiB (Merkle: none; root on-chain)  
+
+> ∗c= min(100 , n ). Single-object values depend on the size of the randomly chosen object.
+
+10,000 objects a sampled audit of 100 objects transferred 4.60 MiB, 1.04% of the dataset, and a targeted audit 28.5 KiB, of which the proof was 495 B (14 hashes plus bitmap and key). Moreover, the baseline auditor must hold 32 bytes per object (312.5 KiB at n = 10 ,000 ) and must protect that list, whereas the Merkle auditor holds nothing and reads 32 bytes of root 10 1 10 2 10 3 10 4
+
+Number of objects n                                                  
+
+> 10 −1
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> Data transferred per audit (KiB)
+> Full-data baseline Merkle sampled audit ( c= 100) Merkle single-object audit Proof metadata only (single object) Fig. 11. Data transferred per audit against the number of objects (log–log). The single-object curve varies with the size of the randomly selected object; the proof alone grows from 175 B to 495 B. TABLE XI SMART CONTRACT EVALUATION (5 R UNS )Operation Gas used Latency (ms) Storage Deploy registry 627,612 –2,656 B code
+> registerRoot , new dataset 91,863 11.8 ±0.8 3 slots
+> registerRoot , update 37,885–37,897 12.2 ±1.7 –
+> recordAudit , first 118,104 14.4 ±3.0 3 slots
+> recordAudit , subsequent 101,016 11.7 ±1.4 2 slots
+> getRoot (view) †28,707 7.1 ±0.8 –
+> verifyProof (view) †, 10 sib. 40,473–40,517 7.3 –
+> verifyProof (view) †, 20 sib. 55,633–55,681 9.9 –All digests on-chain, n= 1 ,000 23,167,068 178.6 (10 tx) 1,000 slots
+> †eth_estimateGas , includes 21,000 intrinsic gas; free when called off-chain. Latency on a local automining node.
+
+from the contract. 
+
+Finding 6. Merkle auditing does not reduce the data of a full audit; it adds about 1%. It reduces transfer by letting an auditor verify one object (with a proof of 175–495 B) or a sample of objects against a constant-size public root, without holding any per-object state. 
+
+G. Smart Contract Evaluation (RQ5) 
+
+Table XI reports gas and latency of the contract operations, and Fig. 12 compares committing a dataset by its root with storing every digest on-chain. Registering a dataset costs 91,863 gas whatever its size (91,839–91,863 for 10 to 10,000 objects; the small differences come from zero bytes in the calldata), almost all of it for writing three new storage slots; updating the root of an existing dataset costs 37,885–37,897 gas. Recording an audit costs 118,104 gas the first time (the record plus the array length) and 101,016 afterwards. Storing all 1,000 digests instead cost 23,167,068 gas in 10 transactions, 252 times the root, and grows linearly (251,874 gas for 10 and 2,316,678 for 100 objects). On-chain verification of a proof costs about 1,520 gas per sibling beyond a fixed part (26,852 for one sibling, 55,654 on average for 20), so even a dataset of 220 objects can 10 100 1000 
+
+Number of objects n
+
+10 5
+
+10 6
+
+10 7
+
+10 8
+
+> Gas to commit the dataset
+
+251,874 2,316,678 23,167,068 91,863 Every object digest on-chain Single Merkle root (registerRoot)  
+
+> Fig. 12. Gas required to commit a dataset on-chain: one Merkle root versus all object digests (log–log). Point labels give the measured gas used (Table XI and Section VIII-G).
+
+be verified inside a contract if needed; reading the root, which is all our off-chain auditor does, is free. Per audit, therefore, the blockchain adds one read (7–10 ms here) and optionally one transaction. The latencies in Table XI are those of a local node that mines every transaction at once. On a public network, a transaction is not included before the next block, and Ethereum mainnet divides time into 12-second slots [49]; gas is paid at a price set by the protocol’s base fee and the sender’s tip [50]. Registration and audit records would then take seconds to minutes to confirm, while the root read stays a local RPC call. 
+
+Finding 7. Keeping the trusted root on-chain costs 91,863 gas once per dataset version, independent of n, and a free read per audit; storing the digests themselves would cost 252 times more at 1,000 objects and grow linearly. 
+
+IX. S ECURITY ANALYSIS 
+
+The integrity decision is always made the same way: current data → current digest and leaf → root reconstructed with the proof → comparison with the trusted root → decision. The blockchain does not detect tampering; it only guarantees that the value compared against has not changed since registration. 
+
+A. Modification. If D′
+
+> i
+
+̸ = Di, then H′
+
+> i
+
+̸ = Hi except with probability negligible under the collision resistance of SHA-256, hence ℓ′
+
+> i
+
+̸ = ℓi. To pass, the CSP would need sibling values that lead from ℓ′ 
+
+> i
+
+to R∗, which requires a collision in (3) somewhere on the path. Every modification in E2 and E3 was detected, consistent with this argument. 
+
+B. Multiple modifications. Each object is verified through its own path against the same root, so several modifications neither cancel nor hide each other (E3: 2,205 of 2,205). With sampling, an unchallenged modification goes unnoticed in that audit; the residual risk is 1 − Pdet of Eq. (8), and repeated audits with fresh random samples reduce it further. The challenge must be unpredictable to the CSP; our auditor draws it locally, and Zhang et al. [41] show how block hashes can make it publicly verifiable. C. Deletion. The committed tree fixes the key and position of every object and the contract fixes n; a missing object therefore fails as MISSING , and removing or renaming its tree entry fails as MODIFIED (E4). Integrity auditing cannot restore the object; that requires replicas or backups. 
+
+D. Substitution, reordering and replay. Because the leaf binds SHA256( ki), serving one object’s content under another key, or swapping two objects, fails. Serving an older version of an object passes only if that version is the one committed by the current root; after a legitimate update and re-registration, stale content fails. 
+
+E. Integrity of the reference record. Only the owner address can change a dataset’s root, and every change increments the version and emits an event, so a CSP cannot replace the root and a legitimate change is visible. Audit records are append-only and include the root they were checked against. 
+
+F. Hash collisions and tree structure. NIST assigns SHA-256 a collision strength of 128 bits [10]; no practical collision is known for it, in contrast to SHA-1 [11]. Distinct prefixes for leaves and internal nodes [13] prevent presenting an internal node as a leaf, and promoting unpaired nodes avoids the ambiguity of trees that duplicate the last node, in which two different leaf sequences can share a root. 
+
+G. Smart-contract trust and root generation. Blockchain immutability guarantees that the registered root is the one that was submitted, not that it was correct . If the owner’s environment or key is compromised, or the data was already corrupted when hashed, an attacker-chosen root is registered and the faulty data will pass every audit. Root generation must therefore run in a trusted environment over the intended data, and the owner key must be protected. 
+
+H. Limits of immutability and of the mechanism. The contract cannot see off-chain data, so its guarantee is only as strong as the auditor’s honest execution of Algorithm 4, and it rests on the contract being free of the implementation flaws catalogued for Ethereum contracts [22], [23]. The scheme pro-vides neither availability nor confidentiality: a CSP that refuses to answer causes a failed audit but no recovery, and auditors read the plaintext of the objects they check; confidentiality would require encrypting objects before upload [7]. A chain reorganization or a censored transaction can delay registration on a public network, which is outside our local evaluation. X. D ISCUSSION 
+
+Answers to the research questions. RQ1: unmodified objects always passed (E1), and single modifications of three kinds were detected and localized in 15 of 15 trials (E2). RQ2: full audits identified all 2,205 modified and all 830 deleted objects, separated the two classes and produced no false positives (E3, E4); sampled audits detect violations with the probability of Eq. (8). RQ3: construction and full audits are linear in n, proof size and verification logarithmic, and targeted and sampled audits constant in n (E5). RQ4: a full Merkle audit transfers about 1% more than a full-data audit; a targeted audit needs one object and a proof of under 500 B, and a 100-object sample 1% of the 10,000-object dataset. RQ5: the root costs 91,863 gas per dataset version independent of n, and an audit needs one free chain read. 
+
+Where the benefit lies. The measurements correct a common expectation: a Merkle tree does not make checking every 
+
+object cheaper, because each object still has to be read and hashed, and in our testbed retrieval was 94% of a full audit. Its benefits are elsewhere. It replaces a per-object reference list, which grows with the data and must itself be protected, by a 32-byte value that fits in a contract at constant cost (Fig. 12); it lets anyone check one object, or a random sample, against that value at a cost independent of the dataset size; and it localizes each failure. Practical deployments would therefore combine frequent sampled audits, whose detection probability can be chosen through c, with occasional full audits. XI. T HREATS TO VALIDITY 
+
+Internal validity. All components share one 2-vCPU virtual machine, so object retrieval competes with the auditor and the chain node for CPU, and absolute retrieval times would differ with separate hosts. The S3 server needed a socket-option patch (Section VI); without it, retrieval times were inflated by 40 ms per GET. Five repetitions (three at 10,000 objects) give modest statistical power; we report standard deviations, not confidence intervals. The prover ran in the auditor’s process, so network transfer of proofs is represented by byte counts, not by measured time. Detection probabilities of sampled audits were estimated by drawing samples over the measured per-object outcomes, complemented by one real sampled audit per repetition. 
+
+External validity. The object store was s3s-fs over loopback, not MinIO or a production cloud store; network latency, bandwidth limits, erasure coding and request pricing of real providers would raise retrieval time and cost, which strength-ens rather than weakens the relative value of sampled audits. The blockchain was a local Hardhat network with instant mining; gas values are those of the EVM and carry over to Ethereum-compatible chains, but latencies do not. Datasets were synthetic, with object sizes from 1 KiB to 256 KiB and at most 10,000 stored objects (441.66 MiB); very large objects or millions of stored objects were evaluated only through the in-memory benchmark. Timings depend on the Python implementation. 
+
+Construct validity. “Detection time” is the duration of a targeted audit of an object already known to be affected; time until a violation is noticed in practice depends on the audit schedule. Peak memory was measured with tracemalloc 
+
+and covers Python allocations only. XII. L IMITATIONS 
+
+The evaluation is a local simulation, not a production cloud deployment. The security of the scheme depends on the root being generated over correct data and registered with an uncompromised key. Any change to the dataset requires re-building the affected path and registering a new root (37,885– 37,897 gas per update here), so frequently changing data incurs on-chain cost per committed version; the prototype rebuilds the tree rather than updating it incrementally. Auditing detects but cannot restore deleted or modified objects, and it does not guarantee availability; recovery requires redundancy across providers, as in HAIL [31]. Auditors must download the objects they check, which reveals their contents and makes full audits as expensive as full downloads. On a public chain, transaction latency and gas fees would add seconds to minutes and monetary cost to every registration and recorded audit. XIII. F UTURE WORK 
+
+We plan to repeat the evaluation against MinIO and a public cloud object store with the auditor on a separate host, and on an Ethereum test network to measure confirmation latency. The tree can be extended with incremental updates for insertions and deletions, and challenges can be derived from block hashes so that sampling is publicly verifiable. Combining the root with homomorphic tags [24], [35] would allow auditing without downloading object content, and privacy-preserving auditing [34] or zero-knowledge proofs could hide object contents from auditors. Incremental tree maintenance can draw on dynamic schemes [36], [37]. XIV. C ONCLUSION 
+
+This paper examined, through an implementation and re-peated measurements, how far a deliberately simple design can go: SHA-256 leaves that bind each object’s key to its content, one Merkle root per dataset, and a smart contract that keeps the root and an audit log. In the S3-compatible testbed with a local Ethereum network, no unmodified object was ever flagged, and every injected fault was found and attributed to the right object and class: 15 single modifications, 2,205 modifications in multi-object trials and 830 deletions. The costs separate cleanly. Building the tree and auditing every object grow linearly with the number of objects, and a complete audit is about as expensive as downloading the data. Checking a single object depends only on the logarithmic proof length (14 hashes, or 495 B including key and bitmap, at 10,000 objects), which kept targeted audits near 10 ms and 100-object samples near 150 ms at every dataset size we tried; the measured detection rates of sampled audits followed the hypergeometric model. Anchoring the root on-chain cost 91,863 gas per dataset version, 252 times less than writing 1,000 individual digests. The mechanism verifies integrity only; it neither keeps data confidential nor repairs it. All measurements come from a single-host simulation, and repeating them on production storage and a public blockchain remains future work. DATA AVAILABILITY 
+
+The source code, smart contract, unit tests, raw per-run JSON records of all experiments, the data series of every graph and the scripts that produce every figure and table in this paper are publicly available at https://github.com/ kgrcbit/Merkle-Tree-Based-Verifiable-Public-Data-Auditing. The datasets are synthetic and are regenerated byte for byte from a fixed seed by the included experiment script. DECLARATION OF COMPETING INTEREST 
+
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper. FUNDING 
+
+This research did not receive any specific grant from funding agencies in the public, commercial, or not-for-profit sectors. DECLARATION OF GENERATIVE AI AND AI-A SSISTED 
+
+TECHNOLOGIES 
+
+During the preparation of this work the authors used Claude (Anthropic) to draft and revise the manuscript text, to imple-ment the prototype and experiment scripts, and to execute the experiments reported in Section VIII. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article. REFERENCES [1] M. Armbrust, A. Fox, R. Griffith, A. D. Joseph, R. Katz, A. Konwinski, G. Lee, D. Patterson, A. Rabkin, I. Stoica, and M. Zaharia, “A view of cloud computing,” Commun. ACM , vol. 53, no. 4, pp. 50–58, 2010, doi: 10.1145/1721654.1721672. [2] R. C. Merkle, “Protocols for public key cryptosystems,” in Proc. IEEE Symp. Security and Privacy , 1980, doi: 10.1109/SP.1980.10006. [3] R. C. Merkle, “A digital signature based on a conventional encryption function,” in Advances in Cryptology—CRYPTO ’87 , ser. LNCS, vol. 293. Springer, 1988, pp. 369–378. [4] Amazon Web Services, “What is Amazon S3?” Amazon S3 User Guide . [Online]. Available: https://docs.aws.amazon.com/AmazonS3/ latest/userguide/Welcome.html [5] MinIO, Inc., “MinIO object storage and MinIO Python client SDK (minio-py 7.2.20),” https://github.com/minio/minio-py, 2025. [6] P. Mell and T. Grance, “The NIST definition of cloud computing,” National Institute of Standards and Technology, Special Publication 800-145, 2011. [7] S. Kamara and K. Lauter, “Cryptographic cloud storage,” in Financial Cryptography and Data Security (FC 2010 Workshops) , ser. LNCS, vol. 6054. Springer, 2010, pp. 136–149, doi: 10.1007/978-3-642-14992-4 13. [8] National Institute of Standards and Technology, “Secure Hash Standard (SHS),” FIPS PUB 180-4, Aug. 2015. [9] P. Rogaway and T. Shrimpton, “Cryptographic hash-function basics: Definitions, implications, and separations for preimage resistance, second-preimage resistance, and collision resistance,” in Fast Software Encryption (FSE 2004) , ser. LNCS, vol. 3017. Springer, 2004, pp. 371– 388, doi: 10.1007/978-3-540-25937-4 24. [10] Q. Dang, “Recommendation for applications using approved hash al-gorithms,” National Institute of Standards and Technology, Special Publication 800-107 Rev. 1, Aug. 2012, doi: 10.6028/NIST.SP.800-107r1. [11] M. Stevens, E. Bursztein, P. Karpman, A. Albertini, and Y. Markov, “The first collision for full SHA-1,” in Advances in Cryptology— CRYPTO 2017 , ser. LNCS, vol. 10401. Springer, 2017, pp. 570–596, doi: 10.1007/978-3-319-63688-7 19. [12] S. A. Crosby and D. S. Wallach, “Efficient data structures for tamper-evident logging,” in Proc. 18th USENIX Security Symp. , 2009. [13] B. Laurie, A. Langley, and E. Kasper, “Certificate Transparency,” IETF RFC 6962, Jun. 2013. [14] B. Laurie, E. Messeri, and R. Stradling, “Certificate Transparency version 2.0,” IETF RFC 9162, Dec. 2021, doi: 10.17487/RFC9162. [15] J. Li, M. Krohn, D. Mazi` eres, and D. Shasha, “Secure untrusted data repository (SUNDR),” in Proc. 6th USENIX Symp. Operating Systems Design and Implementation (OSDI) , 2004. [16] M. Szydlo, “Merkle tree traversal in log space and time,” in Advances in Cryptology—EUROCRYPT 2004 , ser. LNCS, vol. 3027. Springer, 2004, pp. 541–554, doi: 10.1007/978-3-540-24676-3 32. [17] S. Nakamoto, “Bitcoin: A peer-to-peer electronic cash system,” 2008. [Online]. Available: https://bitcoin.org/bitcoin.pdf [18] Z. Zheng, S. Xie, H. Dai, X. Chen, and H. Wang, “An overview of blockchain technology: Architecture, consensus, and future trends,” in 
+
+Proc. IEEE Int. Congr. Big Data (BigData Congress) , 2017, pp. 557– 564, doi: 10.1109/BigDataCongress.2017.85. [19] V. Buterin, “Ethereum: A next-generation smart contract and decentral-ized application platform,” Ethereum white paper, 2014. [20] G. Wood, “Ethereum: A secure decentralised generalised transaction ledger,” Ethereum Yellow Paper, 2014. [21] G. Zyskind, O. Nathan, and A. Pentland, “Decentralizing privacy: Using blockchain to protect personal data,” in Proc. IEEE Security and Privacy Workshops (SPW) , 2015. [22] N. Atzei, M. Bartoletti, and T. Cimoli, “A survey of attacks on Ethereum smart contracts (SoK),” in Principles of Security and Trust (POST 2017) ,ser. LNCS, vol. 10204. Springer, 2017, pp. 164–186, doi: 10.1007/978-3-662-54455-6 8. [23] L. Luu, D.-H. Chu, H. Olickel, P. Saxena, and A. Hobor, “Making smart contracts smarter,” in Proc. ACM SIGSAC Conf. Computer and Communications Security (CCS) , 2016, doi: 10.1145/2976749.2978309. [24] G. Ateniese, R. Burns, R. Curtmola, J. Herring, L. Kissner, Z. Peterson, and D. Song, “Provable data possession at untrusted stores,” in Proc. 14th ACM Conf. Computer and Communications Security (CCS) , 2007, pp. 598–609. [25] G. Ateniese, R. Burns, R. Curtmola, J. Herring, O. Khan, L. Kissner, Z. Peterson, and D. Song, “Remote data checking using provable data possession,” ACM Trans. Inf. Syst. Secur. , vol. 14, no. 1, Art. 12, 2011, doi: 10.1145/1952982.1952994. [26] G. Ateniese, R. Di Pietro, L. V. Mancini, and G. Tsudik, “Scalable and efficient provable data possession,” in Proc. 4th Int. Conf. Security and Privacy in Communication Networks (SecureComm) , 2008. [27] R. Curtmola, O. Khan, R. Burns, and G. Ateniese, “MR-PDP: Multiple-replica provable data possession,” in Proc. 28th Int. Conf. Distributed Computing Systems (ICDCS) , 2008, pp. 411–420, doi: 10.1109/ICDCS.2008.68. [28] A. Juels and B. S. Kaliski Jr., “PORs: Proofs of retrievability for large files,” in Proc. 14th ACM Conf. Computer and Communications Security (CCS) , 2007, pp. 584–597. [29] H. Shacham and B. Waters, “Compact proofs of retrievability,” in 
+
+Advances in Cryptology—ASIACRYPT 2008 , ser. LNCS, vol. 5350. Springer, 2008, pp. 90–107. [30] Y. Dodis, S. Vadhan, and D. Wichs, “Proofs of retrievability via hardness amplification,” in Theory of Cryptography (TCC 2009) , ser. LNCS, vol. 5444. Springer, 2009, pp. 109–127, doi: 10.1007/978-3-642-00457-5 8. [31] K. D. Bowers, A. Juels, and A. Oprea, “HAIL: A high-availability and integrity layer for cloud storage,” in Proc. 16th ACM Conf. Computer and Communications Security (CCS) , 2009, doi: 10.1145/1653662.1653686. [32] C. Wang, K. Ren, W. Lou, and J. Li, “Toward publicly auditable secure cloud data storage services,” IEEE Netw. , vol. 24, no. 4, pp. 19–24, 2010, doi: 10.1109/MNET.2010.5510914. [33] C. Wang, Q. Wang, K. Ren, and W. Lou, “Privacy-preserving public auditing for data storage security in cloud computing,” in Proc. IEEE INFOCOM , 2010. [34] C. Wang, S. S. M. Chow, Q. Wang, K. Ren, and W. Lou, “Privacy-preserving public auditing for secure cloud storage,” IEEE Trans. Comput. , vol. 62, no. 2, pp. 362–375, 2013. [35] Q. Wang, C. Wang, K. Ren, W. Lou, and J. Li, “Enabling public auditability and data dynamics for storage security in cloud computing,” 
+
+IEEE Trans. Parallel Distrib. Syst. , vol. 22, no. 5, pp. 847–859, May 2011, doi: 10.1109/TPDS.2010.183. [36] C. Erway, A. K¨ upc ¸ ¨ u, C. Papamanthou, and R. Tamassia, “Dynamic provable data possession,” in Proc. 16th ACM Conf. Computer and Communications Security (CCS) , 2009, pp. 213–222. [37] K. Yang and X. Jia, “An efficient and secure dynamic auditing protocol for data storage in cloud computing,” IEEE Trans. Parallel Distrib. Syst. ,vol. 24, no. 9, pp. 1717–1726, 2013, doi: 10.1109/TPDS.2012.278. [38] Y. Zhu, H. Hu, G.-J. Ahn, and M. Yu, “Cooperative provable data possession for integrity verification in multicloud storage,” IEEE Trans. Parallel Distrib. Syst. , vol. 23, no. 12, pp. 2231–2244, 2012, doi: 10.1109/TPDS.2012.66. [39] B. Liu, X. L. Yu, S. Chen, X. Xu, and L. Zhu, “Blockchain based data integrity service framework for IoT data,” in Proc. IEEE Int. Conf. Web Services (ICWS) , Honolulu, HI, USA, 2017, pp. 468–475. [40] D. Yue, R. Li, Y. Zhang, W. Tian, and C. Peng, “Blockchain based data integrity verification in P2P cloud storage,” in Proc. IEEE 24th Int. Conf. Parallel and Distributed Systems (ICPADS) , Singapore, 2018, pp. 561–568, doi: 10.1109/PADSW.2018.8644863. [41] Y. Zhang, C. Xu, X. Lin, and X. Shen, “Blockchain-based public integrity verification for cloud storage against procrastinating auditors,” 
+
+IEEE Trans. Cloud Comput. , 2019, doi: 10.1109/TCC.2019.2908400. [42] H. Wang, H. Qin, M. Zhao, X. Wei, H. Shen, and W. Susilo, “Blockchain-based fair payment smart contract for public cloud storage auditing,” Inf. Sci. , vol. 519, pp. 348–362, 2020. [43] J. Shu, X. Zou, X. Jia, W. Zhang, and R. Xie, “Blockchain-based decen-tralized public auditing for cloud storage,” IEEE Trans. Cloud Comput. ,vol. 10, no. 4, pp. 2366–2380, 2022, doi: 10.1109/TCC.2021.3051622. [44] Y. Lin, J. Li, S. Kimura, Y. Yang, Y. Ji, and Y. Cao, “Consortium blockchain-based public integrity verification in cloud storage for IoT,” 
+
+IEEE Internet Things J. , vol. 9, no. 5, pp. 3978–3987, 2022, doi: 10.1109/JIOT.2021.3102236. [45] The Solidity Authors, “Solidity documentation, version 0.8.24.” [On-line]. Available: https://docs.soliditylang.org/en/v0.8.24/ [46] Nomic Foundation, “Hardhat: Ethereum development environment, ver-sion 2.22.17,” https://hardhat.org. [47] “web3.py documentation, version 8.0.0: a Python library for interacting with Ethereum.” [Online]. Available: https://web3py.readthedocs.io/ [48] Nugine and contributors, “s3s: S3 service adapter; s3s-fs 0.17.0, an experimental S3 server based on file system,” https://github.com/Nugine/ s3s. [49] Ethereum Foundation, “Blocks,” ethereum.org developer documentation .[Online]. Available: https://ethereum.org/en/developers/docs/blocks/ [50] V. Buterin, E. Conner, R. Dudley, M. Slipper, I. Norden, and A. Bakhta, “EIP-1559: Fee market change for ETH 1.0 chain,” Ethereum Improve-ment Proposal 1559, 2019. [Online]. Available: https://eips.ethereum. org/EIPS/eip-1559
