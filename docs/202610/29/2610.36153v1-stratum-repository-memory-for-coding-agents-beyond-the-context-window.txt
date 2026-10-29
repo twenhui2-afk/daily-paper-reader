@@ -1,0 +1,180 @@
+Title: Stratum: Repository Memory for Coding Agents Beyond the Context Window
+
+URL Source: https://arxiv.org/pdf/2610.36153v1
+
+Published Time: Wed, 28 Oct 2026 00:12:46 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# STRATUM : Repository Memory for Coding Agents Beyond the Context Window 
+
+Yuvraj Sehgal 
+
+Department of Computer Science Brock University 
+
+St. Catharines, Ontario, Canada ys19rk@brocku.ca 
+
+Mahsa Panahandeh 
+
+School of Electrical Engineering and Computer Science University of Ottawa 
+
+Ottawa, Ontario, Canada mpanahan@uottawa.ca 
+
+Naser Ezzati-Jivan 
+
+Department of Computer Science Brock University 
+
+St. Catharines, Ontario, Canada nezzatijivan@brocku.ca 
+
+Abstract —Context windows have grown a thousand-fold, yet coding agents still start every session with no memory of their past work. They re-read files, retry failed approaches, and forget root causes they established hours earlier. This is not a context-length problem but a memory-architecture problem. Our hypothesis: coding agents need persistent, experience-aware repository memory, so that knowledge survives from one session to the next. Three measurements on real repositories motivate the design. First, mid-size projects already exceed the largest production context windows, and storing knowledge inside the model’s key–value (KV) cache costs 10 4 to 10 5 times more bytes than storing it as indexed text. Second, across 752 real bug-fix commits, the median fix edits two files, and these files plus their direct imports amount to less than 10% of the repository; the bottleneck is selection, not capacity. Third, even with transitive import reachability and test links, 47% of co-edited file pairs remain structurally disconnected; the knowledge needed for selection must be mined from history and experience. We sketch STRATUM , a tiered memory that lives with the repository and serves it through page-safe tools: every response states what was returned, what remains, and what it cost. Retrieval over a store of one million nodes takes 1.7 ms at the median. In a multi-session experiment on eight real bugs, a fresh agent that inherited a prior session’s memory, written by a different model, identified the root-cause file in 21 of 24 trials versus 6 of 24 for a retrieval-only baseline (Fisher p< 10 −4), at 4.5× lower median token cost. With the notes of all eight investigations pooled in one store, success remained 8/8. 
+
+Index Terms —coding agents, LLM memory, context manage-ment, retrieval, software repositories 
+
+I. I NTRODUCTION 
+
+Autonomous coding agents now routinely work for hours on repositories they can never see whole, and the industry’s answer has been capacity. Context windows grew from 2K to 1M tokens in four years, and a large body of systems work optimizes the key–value (KV) cache, the per-token attention state that a long context creates inside the model (Section VI reviews it). All of this work makes the current turn cheaper. None of it gives an agent knowledge that survives the end of a session or a change of model. This paper asks what should survive. Our central hypothesis: 
+
+coding agents need persistent, experience-aware reposi-tory memory to avoid repeatedly rediscovering knowledge across independent sessions. We distinguish what the model can hold (attention state over tokens it has read) from what the agent should remember : the repository, its history, and its own experience with it. The latter, we propose, is a first-class software engineering artifact. Three measurements on real repositories ground this position. 
+
+F1: Model-resident knowledge does not scale. Django alone is 6.2M tokens, six times the largest production context window. No one proposes storing a repository as KV state; the measurement bounds the cost of any design that keeps knowledge inside the model. One billion tokens occupy about 4 GB as indexed text, but about 300 TB as fp16 KV state for a 70B-parameter model (Section II). The KV form is also model-specific: it must be rebuilt whenever the model changes. 
+
+F2: The directly connected code working set is small. 
+
+Across 752 bug-fix commits in Django, Flask, and scikit-learn, the median fix edits two files. These files, plus every file they import or are imported by (their one-hop import closure), amount to 2.7–9.9% of the repository’s code. This closure is only a proxy for the context a fix needs, generous in breadth but blind to configuration, runtime, and documentation dependencies. Even so, it suggests the code context of real maintenance fits in today’s windows, if it can be found .
+
+F3: Selection knowledge is not in the static structure. In these commits, plus those of a fourth repository (852 in total), 76.5% of the file pairs changed together by the same commit share no direct import edge. Extending to full transitive import reachability and test-naming links still leaves 47.3% of the pairs disconnected. Yet co-edited pairs are 26 × more likely than random pairs to be import-linked: co-change is real structure, but static analysis sees only half of it. The other half must be mined from version history [1] and from experience, and it must persist. Together, these findings reframe agent memory as two problems joined: a systems problem, a memory hierarchy with paging and eviction; and a software engineering prob-lem, mining and maintaining the relationships that make a repository navigable. Section III sketches S TRATUM , which organizes memory into three kinds: structural (parsed from code), historical (mined from version history), and experiential (written back by agents). The store lives with the repository and is exposed through nine page-safe tools over the Model arXiv:2610.36153v1 [cs.SE] 26 Oct 2026 Context Protocol [2]: every response carries explicit pagination and budget state, so the agent, not a lossy heuristic, decides what enters its context. Section V reports preliminary evidence for both the substrate and the mechanism, and Section VII lays out the research plan. II. M OTIVATING STUDY 
+
+We ran three measurements on six active open-source repos-itories (Django, Flask, Redis, requests, scikit-learn, Vue core), counting tokens with the cl100k_base tokenizer. Scripts and raw results are in our replication package. 1
+
+A. E1: The Cost of Model-Resident Knowledge 
+
+The six repositories hold 17.6M tokens of tracked source, documentation, and configuration in 70 MB of text: Django 6.2M, scikit-learn 4.8M, Redis 4.7M, Vue core 1.5M, Flask 0.27M, and requests 0.15M. The measured text density is 4.17 bytes per token. One billion tokens of accumulated project knowledge cost about 4 GB of SSD as text, or about 8 GB with a search index. Held inside the model as fp16 KV state, the same tokens cost 119 TB for an 8B-parameter model, 298 TB for 70B, and 469 TB for 405B (KV size per token is 2 · L · Hkv · d · 2 bytes for L layers, Hkv KV heads, and head dimension d; the twos cover keys plus values at two bytes each, with grouped-query attention assumed). The gap is four to five orders of magnitude, and 2-bit quantization [3] narrows it by only one. This is a bound on representation cost, not a claim that anyone stores repositories as KV state: whatever long-lived agent memory is, it must live outside the model. 
+
+B. E2: The Working Set of a Real Bug Fix 
+
+We next measured how much of a repository a real bug fix touches. For the three Python-dominant repositories (Django, Flask, scikit-learn) we built the static import graph at the latest commit by parsing every file’s import statements. We then sampled up to 300 recent non-merge commits per repository whose messages indicate a bug fix (the words fix , bug , or 
+
+regression ) and that change at most 20 Python files, giving 752 commits. The median fix edits two files. Adding every file they import or are imported by gives the one-hop closure: 32 files (114,532 tokens, 2.7% of the Python code) for Django, 24 files (4.6%) for scikit-learn, and 2 files (9.9%) for Flask. We claim only what this measures: the directly connected code around a fix is ten to forty times smaller than the repository. What a fix additionally needs, such as configuration, fixtures, runtime knowledge, and rationale, is exactly what Section III argues memory must supply. 
+
+C. E3: What Static Structure Cannot See 
+
+Finally, we asked how much of co-change is visible to static analysis. We took the same commits, plus those of requests, for a total of 852 commits and 3,695 pairs of files changed by the same commit. For each pair we checked progressively stronger static relationships. A direct import edge connects 23.5% of the pairs. Full transitive reachability, in either direction, 
+
+> 1https://doi.org/10.5281/zenodo.23615180
+
+raises this to 52.0%. Test-to-source name links raise it only to 52.7%, leaving 47.3% of the pairs disconnected under every static view we tried. At the same time, co-edited pairs are far from random: they are 26 × more likely than random file pairs to share a direct import edge (23.5% versus 0.9%; with transitive reachability, random pairs reach only 16.3%). Files change together because of protocols, mirrored logic, and shared conventions, knowledge that lives in version history [1] and in maintainers’ heads. A memory layer that indexes only parseable structure misses half of the real working set; it must learn edges from history and experience. III. S TRATUM : D ESIGN 
+
+STRATUM is a memory hierarchy for coding agents (Fig. 1). The analogy is the buffer pool of a database: a large, cheap store; a small, fast working set; and a controller that moves data between the two. The difference is where it lives: on the developer’s machine, next to the repository, not inside the model or the serving stack. It holds structural memory (files, APIs, import and test edges; rebuilt by parsing), his-torical memory (co-change edges, decisions, design rationale; mined from version history), and experiential memory (failed attempts, root causes, debugging discoveries; written back by agents). E3 shows that structural memory alone recovers barely half of the working set. Historical and experiential memory are what existing retrieval stacks do not keep. 
+
+A. Storage and Controller 
+
+The cold tier is a SQLite graph. Its nodes are source files, tests, research notes, decisions, failures, and root-cause findings; its typed edges are imports , tests , similar ,
+
+sources , and co_changes , the last mined continuously from git history in direct response to E3. An HNSW index [4] over locally computed embeddings serves similarity search. A file watcher re-indexes a file only when its content hash changes, and refreshes the co-change statistics. At 4 to 8 GB per billion tokens, a decade of project memory fits on a laptop SSD. The controller decides which nodes are resident , that is, held in RAM and in the agent’s context. It scores each node 
+
+S(v) = w1G(v) + w2C(v) + w3H(v) + w4P (v),
+
+where G is graph proximity to the files under edit, C is co-change affinity, H is time-decayed access frequency, and P is explicit pin priority. We present this linear form as a research hypothesis, not a tuned policy; RQ3 (Section VII) asks whether any semantic scoring beats recency-only baselines. Eviction follows the score downward: pinned nodes are never evicted; direct neighbors of the files under edit keep interface-level detail; other warm nodes degrade to one-line summaries; ev-erything else returns to SSD, less than 3 ms away (Section V). When free context drops below 15%, the controller evicts the largest and coldest nodes first and reports what it removed. Developer Machine — Memory Host Tier 1 · RAM — hot                   
+
+> LRU node cache · HNSW vector index pinned blobs · session buffer
+> Memory Controller
+> graph-aware prefetch · eviction S(v) hotness decay · budget tracking
+> promote / evict Tier 2 · SSD — cold, unbounded
+> SQLite knowledge graph + typed edges · 4–8 GB per 10 ⁹tokens
+> </> Structural
+> files · APIs import / test edges
+> rebuilt by parsing
+> Historical
+> co-change edges decisions · rationale
+> mined from git history
+> Experiential
+> failed attempts root causes · RCA notes
+> written back by agents
+> reindex File Watcher
+> hash-diff reindex · co-change mining · summary refresh
+> MCP Server
+> 9 page-safe tools
+> every response: has_more ·budget range ·hint
+> 1memory.* tool calls 2paged envelopes
+> has_more ·budget ·hint
+> LLM Server — Compute Host Coding Agent
+> runs the loop: reason →memory.* tool calls →act
+> Prefix Cache — stable
+> system prompt · tool definitions pinned-node KV, keyed by content hash
+> Context Window — per turn
+> pinned tree index · pinned nodes · working set · budget line
+> agent sees pagination — it decides what loads, and when to stop
+> GPU KV Cache
+> active turn only — ephemeral, model-specific
+> Cross-session, cross-model memory (E5)
+> 21/24 vs 6/24 root causes · 4.5× fewer tokens · survives model swap
+> 3memory.remember( ) — write-back: decisions · failures · RCA
+
+Fig. 1. STRATUM architecture. Knowledge lives as text and structure on the developer’s machine; the model’s KV cache holds only the active turn. The controller pages a scored working set across the MCP boundary under an explicit token budget. 
+
+B. Nine Page-Safe Tools 
+
+The agent reaches the store through nine MCP tools. Five read: tree lists the store as a hierarchy; search combines embedding similarity, keyword match, and recency; get re-turns a node at a chosen detail level ( summary , api , or 
+
+full ) in fixed-size character pages; walk follows typed edges; budget reports token usage. One writes: remember 
+
+persists a new knowledge node. Three control residency: 
+
+pin /unpin holds a node in context, prefetch warms nodes ahead of need, and evict releases them. Every re-sponse is one envelope carrying the content, the pagination state ( page , total_pages , has_more ), the remaining token budget, and a hint such as “Page 2/3; create() is on this page.” We call this contract page safety : no tool ever silently truncates. The agent always knows whether more content exists, which range it holds, and what the call cost, so it can decide that page 2 of 3 already contains the answer and stop. Write-back closes the loop. At the end of a task the agent persists what it learned, and the next session, possibly run by a different model, inherits it. IV. D ESIGN RATIONALE 
+
+Five decisions define S TRATUM . Each follows from a find-ing or from a measured cost. 
+
+R1. Store text and structure, not tensors. KV state is model-specific and holds only tokens some model has already read; text plus a graph is 10 4 to 10 5 times smaller (F1) and holds knowledge no model has read yet. Storage portability is free: text survives any model swap. Retrieval portability is not: embeddings must be recomputed for each encoder, and ranking behavior may shift. The KV-cache work reviewed in Section VI is complementary, not competing: it makes the current turn cheaper, and S TRATUM decides what the turn contains. 
+
+R2. Make paging legible to the agent. Retrieval pipelines truncate silently, and models demonstrably misuse what is placed into long contexts [5]. An agent can manage its memory only if it can see that memory’s boundaries. The explicit 
+
+has_more and budget fields turn context into a resource the agent reasons about, and F2 makes this practical: the working set is small enough to hold, and reason about, in one window. 
+
+R3. Learn the edges; keep the failures. E3 shows that even transitive static structure misses half of what changes together, so S TRATUM mines co-change edges from version history [1] and lets agents write failure and rca (root-cause analysis) nodes linked to the code they concern. We conjecture that this negative knowledge, the record of what was tried and why it failed, is the store’s highest-value content. Nothing prevents a RAG pipeline from storing failure notes, but we are not aware of deployed coding-agent stacks that keep them as durable, linkable records, yet such records are exactly what stop an agent from spending its budget rediscovering a dead end (RQ4, Section VII). 
+
+R4. Semantic signals for an OS-style policy. Classic cache-replacement policies treat pages as opaque; S TRATUM 
+
+instead sees graph distance, co-change affinity, and pin intent. Whether these signals beat a least-recently-used (LRU) policy is an open, testable question (RQ3), not an assumption. 
+
+R5. Live with the code; compose with serving caches. 
+
+Hosting memory on the developer’s machine gives freshness (the watcher sees every save) and limits data exposure. The repository as a whole never leaves the machine. Only the scoped working set is sent to a hosted model, and a locally run model avoids even that. Pinned nodes enter the context as stable blocks keyed by content hash, and serving-side prefix caches, which reuse the attention state of an unchanged prefix, skip recomputing them [6]–[8]. V. P RELIMINARY EVIDENCE 
+
+A. E4: Storage and Retrieval Feasibility 
+
+We built the cold tier at realistic scale on a consumer laptop (Core Ultra 9, 32 GB RAM, NVMe SSD, CPU only): 
+
+10 6 nodes holding about 440M tokens of synthetic content, 
+
+5×10 6 edges, and 384-dimensional vectors; the store occupies 3.7 GB and builds in under four minutes. Across 200 end-to-end retrievals (a vector search with k=20 , a one-hop graph walk, and loading the 20 result nodes) the median took 1.70 ms and the 99th percentile 2.76 ms; two-hop walks took 0.95 ms at the median. We claim exactly two things: the store fits on commodity hardware, and its basic operations are orders of magnitude faster than an LLM turn. Retrieval quality on real embeddings, controller overhead, and the cost of keeping the index fresh as files change remain unmeasured (Section VII). TABLE I E5: S ESSION -2 OUTCOMES ACROSS 8 REAL BUGS (MEDIANS ). N OTES WERE WRITTEN BY A DIFFERENT MODEL THAN THE ONE USING THEM .IN-TOK FOR C IS PER CALL .Condition Success Calls Reads In-tok A: retrieval only 6/24 18 6.5 196.6K B: + experiential memory 21/24 9 5 43.3K P: B, pooled store 8/8 8 4.5 41.7K C: whole repo in context 14/16 — — 164.4K 
+
+B. E5: Does Inherited Memory Prevent Repeated Work? 
+
+We implemented a prototype of S TRATUM ’s storage and tool layer, a SQLite store with lexical full-text retrieval and four of the nine tools ( tree , search , get , remember )with the full page-safe envelope, and ran the multi-session design our hypothesis implies. The tasks are eight real bug-fix commits from requests and Flask. Each task gives the agent a behaviorally described symptom, with file paths removed, and the repository tree from before the fix, so the bug is present; ground truth is the source files the human fix changed, and success means naming the root-cause file (a conservative, file-level criterion). In Session 1, a Claude Sonnet agent (the 
+
+writer ) investigates the bug and persists rca and failure 
+
+notes. After a full context reset, a different, smaller model (Claude Haiku, the reader ) diagnoses the same symptom in Session 2 under identical prompts. Condition A strips the notes; the reader keeps full lexical search over the repository, a retrieval-only baseline in the style of retrieval-augmented generation (RAG). Condition B inherits the notes, the same retrieval plus experiential memory; A and B ran three trials per task. Condition P (one trial) inherits the pooled 26 notes of all eight investigations (mostly unrelated bugs, some from the other project) to test retrieval as memory accumulates. Condition C (two trials) places the entire repository in the context window in a single call, with no tools, possible only because requests and Flask are our census’s two smallest repositories. Table I summarizes the outcomes. With inherited notes (B), the reader succeeded in 21 of 24 trials at 4.5× lower median input-token cost. The retrieval-only baseline (A) succeeded in 6 of 24 and typically exhausted its 16-round tool budget; a one-sided Fisher exact test gives p = 1 .3×10 −5. Accumulation did not hurt: with all 26 notes pooled (P), success was 8 of 8 at the same cost, including the one task (an IPv6 bug) that had failed in two of three B trials. The writer solved all eight tasks (median 83K tokens, paid once), so the probe measures transfer rather than writer errors. The full-context condition (C) succeeded in 14 of 16 trials, exactly B’s 87.5% success rate, but a single call cost 3.8× the tokens of an entire memory session (164K versus 43K), the cost recurs on every further call, nothing persists, and the approach is unavailable for a repository like Django, which is 31 × the reader’s 200K-token window. The one task C failed in both trials, memory solved in all three. This probe is small (eight tasks, two repositories, re-diagnosis rather than transfer to a new task), but it exercises the full mechanism: knowledge one model wrote through the page-safe interface changed what a different model did with a cold context, which no window growth provides. VI. R ELATED WORK 
+
+KV-cache management spans quantization [3], token se-lection [9]–[13], paged serving memory [14], multi-tier of-floading [15]–[19], cross-request reuse [6]–[8], [20], [21], and retrieval over the cache itself [22]–[26], with surveys in [27], [28]. All of this work manages model-specific state for tokens already read within one serving context; none of it survives a session or model boundary. S TRATUM sits above this layer and composes with it (R5). Our differentiation from the closest neighbors is the com-bination of three properties. First, S TRATUM is repository-native: a typed code graph, co-change mining, and a file watcher. MemGPT [29], the closest system in spirit, pages conversation history and knows nothing about code. Second, STRATUM is experience-aware: failures and root causes are durable nodes linked to the code they concern. Repository RAG [30] and code knowledge graphs index what the code 
+
+is , not what was learned about it. Third, S TRATUM is budget-controlled: the page-safe contract makes truncation and cost visible to the agent. Conventional retrieval interfaces return the k highest-ranked results and discard the rest silently. Co-change mining itself is a classic technique from mining software repositories research [1]; S TRATUM turns it into live edges traversed during a task. VII. F UTURE PLANS 
+
+E5 shows the mechanism works at small scale; the program now is to test it at a scale that can serve as evidence. RQ1: 
+
+Does persistent repository memory improve multi-session task success? We will use repeated and related SWE-bench [31] instances, measuring success, re-reads, repeated failures, and turns. RQ2: Do historical and experiential edges retrieve the files a fix actually needs better than static structure alone? Ground truth: the files touched by real fixes, as in E2 and E3. RQ3: Does semantic eviction ( S(v), Section III) beat LRU under a fixed context budget? RQ4: Does negative knowledge reduce repeated failed approaches? We will remove the failure and rca nodes and compare. RQ5: Does memory transfer across models and frameworks, generalizing E5? Beyond these lie memory hygiene (a wrong note poisons future sessions; written-back web content is a prompt-injection channel), summary faithfulness, and team-shared stores. 
+
+Limitations. E2 and E3 analyze Python files only, and their import graph is built at the latest commit while the commits analyzed are older, so files may have moved or changed in between. Message-keyword commit selection may bias the sample toward well-described fixes. The one-hop closure is a proxy for required context; RQ2 validates it against files developers actually consulted. E4 uses synthetic content, and in E5 we did not control the quality of the writer’s notes, the retrieval baseline is lexical rather than embedding-based, and we did not test plain session-summary carry-over (RQ1). VIII. C ONCLUSION 
+
+The context window is a cache; the field is making it larger and cheaper, but the harder problem is what it should contain. F1 to F3 showed that the knowledge an agent needs is small, half-invisible to static analysis, and affordable only as text beside the code. S TRATUM sketches this layer, E5 shows it working across a model boundary, and the next step is evidence at scale. REFERENCES [1] T. Zimmermann, P. Weißgerber, S. Diehl, and A. Zeller, “Mining version histories to guide software changes,” IEEE Transactions on Software Engineering , vol. 31, no. 6, pp. 429–445, 2005. [2] Anthropic, “Model context protocol,” https://modelcontextprotocol.io, 2024. [3] Z. Liu, J. Yuan, H. Jin, S. Zhong, Z. Xu, V. Braverman, B. Chen, and X. Hu, “Kivi: A tuning-free asymmetric 2bit quantization for kv cache,” 
+
+arXiv preprint arXiv:2402.02750 , 2024. [4] Y. A. Malkov and D. A. Yashunin, “Efficient and robust approxi-mate nearest neighbor search using hierarchical navigable small world graphs,” IEEE Transactions on Pattern Analysis and Machine Intelli-gence , vol. 42, no. 4, pp. 824–836, 2020. [5] N. F. Liu, K. Lin, J. Hewitt, A. Paranjape, M. Bevilacqua, F. Petroni, and P. Liang, “Lost in the middle: How language models use long contexts,” 
+
+Transactions of the Association for Computational Linguistics , vol. 12, pp. 157–173, 2024. [6] B. Gao, Z. He, P. Sharma, Q. Kang, D. Jevdjic, J. Deng, X. Yang, Z. Yu, and P. Zuo, “Cost-efficient large language model serving for multi-turn conversations with cachedattention,” arXiv preprint arXiv:2403.19708 ,2024. [7] R. Qin, Z. Li, W. He, M. Zhang, Y. Wu, W. Zheng, and X. Xu, “Moon-cake: A kvcache-centric disaggregated architecture for llm serving,” 
+
+arXiv preprint arXiv:2407.00079 , 2024. [8] J. Yao, H. Li, Y. Liu, S. Ray, Y. Cheng, Q. Zhang, K. Du, S. Lu, and J. Jiang, “Cacheblend: Fast large language model serving for rag with cached knowledge fusion,” arXiv preprint arXiv:2405.16444 , 2024. [9] Z. Zhang, Y. Sheng, T. Zhou, T. Chen, L. Zheng, R. Cai, Z. Song, Y. Tian, C. Ré, C. Barrett, Z. Wang, and B. Chen, “H 2o: Heavy-hitter oracle for efficient generative inference of large language models,” in 
+
+Advances in Neural Information Processing Systems (NeurIPS) , vol. 36, 2023. [10] Y. Li, Y. Huang, B. Yang, B. Venkitesh, A. Locatelli, H. Ye, T. Cai, P. Lewis, and D. Chen, “Snapkv: Llm knows what you are looking for before generation,” arXiv preprint arXiv:2404.14469 , 2024. [11] J. Tang, Y. Zhao, K. Zhu, G. Xiao, B. Kasikci, and S. Han, “Quest: Query-aware sparsity for efficient long-context llm inference,” arXiv preprint arXiv:2406.10774 , 2024. [12] Z. Chen, R. Sadhukhan, Z. Ye, Y. Zhou, J. Zhang, N. Nolte, Y. Tian, M. Douze, L. Bottou, Z. Jia, and B. Chen, “Magicpig: Lsh sampling for efficient llm generation,” arXiv preprint arXiv:2410.16179 , 2024. [13] G. Xiao, Y. Tian, B. Chen, S. Han, and M. Lewis, “Efficient streaming language models with attention sinks,” in Proc. International Conference on Learning Representations (ICLR) , 2024. [14] W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. H. Yu, J. E. Gonzalez, H. Zhang, and I. Stoica, “Efficient memory management for large language model serving with pagedattention,” in Proc. 29th ACM Symposium on Operating Systems Principles (SOSP) , 2023. [15] Y. Sheng, L. Zheng, B. Yuan, Z. Li, M. Ryabinin, D. Y. Fu, Z. Xie, B. Chen, C. Barrett, J. E. Gonzalez, P. Liang, C. Ré, I. Stoica, and C. Zhang, “Flexgen: High-throughput generative inference of large language models with a single gpu,” arXiv preprint arXiv:2303.06865 ,2023. [16] W. Lee, J. Lee, J. Seo, and J. Sim, “Infinigen: Efficient generative in-ference of large language models with dynamic kv cache management,” 
+
+arXiv preprint arXiv:2406.19707 , 2024. [17] H. Zhang, C. Xia, and Z. Wang, “Kvswap: Disk-aware kv cache offloading for long-context on-device inference,” arXiv preprint arXiv:2511.11907 , 2025. [18] J. Lin, J. Mi, Z. Hong, H. Wang, Q. Liu, H. Zhang, P. Li, and S. Guo, “Kvdrive: A holistic multi-tier kv cache management system for long-context llm inference,” arXiv preprint arXiv:2605.18071 , 2026. [19] H. Sun, L.-W. Chang, W. Bao, S. Zheng, N. Zheng, X. Liu, H. Dong, Y. Chi, and B. Chen, “Shadowkv: Kv cache in shad-ows for high-throughput long-context llm inference,” arXiv preprint arXiv:2410.21465 , 2024. [20] Y. Liu, H. Li, Y. Cheng, S. Ray, Y. Huang, Q. Zhang, K. Du, J. Yao, S. Lu, G. Ananthanarayanan, M. Maire, H. Hoffmann, A. Holtzman, and J. Jiang, “Cachegen: Kv cache compression and streaming for fast large language model serving,” arXiv preprint arXiv:2310.07240 , 2023. [21] Y. Liu, Y. Cheng, J. Yao, Y. An, X. Chen, S. Feng, Y. Huang, S. Shen, R. Zhang, K. Du, and J. Jiang, “Lmcache: An efficient kv cache layer for enterprise-scale llm inference,” arXiv preprint arXiv:2510.09665 , 2025. [22] D. Liu, M. Chen, B. Lu, H. Jiang, Z. Han, Q. Zhang, Q. Chen, C. Zhang, B. Ding, K. Zhang, C. Chen, F. Yang, Y. Yang, and L. Qiu, “Retrievalattention: Accelerating long-context llm inference via vector retrieval,” arXiv preprint arXiv:2409.10516 , 2024. [23] G. Liu, C. Li, Z. Ning, J. Lin, Y. Yao, D. Ke, M. Guo, and J. Zhao, “Freekv: Boosting kv cache retrieval for efficient llm inference,” in Proc. International Conference on Learning Representations (ICLR) , 2026. [24] Y. Qi, X. Chen, H. Jiang, Q. Wang, B. Peng, and T. Palpanas, “Pariskv: Fast and drift-robust kv-cache retrieval for long-context llms,” arXiv preprint arXiv:2602.07721 , 2026. [25] C. Xiao, P. Zhang, X. Han, G. Xiao, Y. Lin, Z. Zhang, Z. Liu, and M. Sun, “Infllm: Training-free long-context extrapolation for llms with an efficient context memory,” arXiv preprint arXiv:2402.04617 , 2024. [26] Y. Wu, M. N. Rabe, D. Hutchins, and C. Szegedy, “Memorizing trans-formers,” in Proc. International Conference on Learning Representations (ICLR) , 2022. [27] H. Li, Y. Li, A. Tian, T. Tang, Z. Xu, X. Chen, N. Hu, W. Dong, Q. Li, and L. Chen, “A survey on large language model acceleration based on kv cache management,” arXiv preprint arXiv:2412.19442 , 2024. [28] Y. Li, H. Jiang, Q. Wu, X. Luo, S. Ahn, C. Zhang, A. H. Abdi, D. Li, J. Gao, Y. Yang, and L. Qiu, “Scbench: A kv cache-centric analysis of long-context methods,” in Proc. International Conference on Learning Representations (ICLR) , 2025. [29] C. Packer, S. Wooders, K. Lin, V. Fang, S. G. Patil, I. Stoica, and J. E. Gonzalez, “Memgpt: Towards llms as operating systems,” arXiv preprint arXiv:2310.08560 , 2023. [30] P. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin, N. Goyal, H. Küttler, M. Lewis, W. tau Yih, T. Rocktäschel, S. Riedel, and D. Kiela, “Retrieval-augmented generation for knowledge-intensive NLP tasks,” in Proc. NeurIPS , 2020. [31] C. E. Jimenez, J. Yang, A. Wettig, S. Yao, K. Pei, O. Press, and K. Narasimhan, “SWE-bench: Can language models resolve real-world GitHub issues?” in Proc. ICLR , 2024.

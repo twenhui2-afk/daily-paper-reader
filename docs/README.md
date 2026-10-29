@@ -6,66 +6,54 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-28
-- 运行时间：2026-10-29 06:59:47 UTC+8
+- 最新运行日期：2026-10-29
+- 运行时间：2026-10-30 07:26:09 UTC+8
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：4
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
-- 精读：《Replication or Corroboration? An Axiomatic Framework for Evidential Dependence in Multi-Agent Debate》（8.5/10）, 《Finite Fields: Root Sets, Frobenius, and Algebraic Structure》（8.4/10）
-- 速读：《Boundary and Interior of Root Sets of Power Series》（7.3/10）, 《On $p$-Adic Valuation Trees Arising from Laplace Transform of Fibonacci Polynomials》（7.3/10）, 《Near-boundary asymptotics for profile score statistics》（6.1/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《Stratum: Repository Memory for Coding Agents Beyond the Context Window》（6.3/10）, 《Bethe Cycles, Frobenius Identities, and Quantum/Classical Duality》（6.3/10）, 《Spin generalizations of the classical elliptic Calogero--Inozemtsev model and integrable models of interacting tops associated with the $\rm{BC}_n$ root system》（6.2/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/28/README](/202610/28/README)
+- 详情：[/202610/29/README](/202610/29/README)
 
 ### 精读区论文标签
-1. [Replication or Corroboration? An Axiomatic Framework for Evidential Dependence in Multi-Agent Debate](/202610/28/2610.36151v1-replication-or-corroboration-an-axiomatic-framework-for-evidential-dependence-in-multi-agent-debate)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-2. [Finite Fields: Root Sets, Frobenius, and Algebraic Structure](/202610/28/2610.36727v1-finite-fields-root-sets-frobenius-and-algebraic-structure)  
-   标签：评分：8.4/10
-   evidence：检索回退候选
-3. [Merkle-Tree-Based Verifiable Public Data Auditing for Cloud Object Storage Using Smart Contracts](/202610/28/2610.36001v1-merkle-tree-based-verifiable-public-data-auditing-for-cloud-object-storage-using-smart-contracts)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [Existence of a third self-similar solution of the Yang--Mills equation in high odd dimensions](/202610/28/2610.36784v1-existence-of-a-third-self-similar-solution-of-the-yang--mills-equation-in-high-odd-dimensions)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Boundary and Interior of Root Sets of Power Series](/202610/28/2610.36279v1-boundary-and-interior-of-root-sets-of-power-series)  
-   标签：评分：7.3/10
+1. [Stratum: Repository Memory for Coding Agents Beyond the Context Window](/202610/29/2610.36153v1-stratum-repository-memory-for-coding-agents-beyond-the-context-window)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-2. [On $p$-Adic Valuation Trees Arising from Laplace Transform of Fibonacci Polynomials](/202610/28/2610.37356v1-on-p-adic-valuation-trees-arising-from-laplace-transform-of-fibonacci-polynomials)  
-   标签：评分：7.3/10
+2. [Bethe Cycles, Frobenius Identities, and Quantum/Classical Duality](/202610/29/2610.36975v1-bethe-cycles-frobenius-identities-and-quantumclassical-duality)  
+   标签：评分：6.3/10
    evidence：检索回退候选
-3. [Near-boundary asymptotics for profile score statistics](/202610/28/2610.33912v1-near-boundary-asymptotics-for-profile-score-statistics)  
+3. [Spin generalizations of the classical elliptic Calogero--Inozemtsev model and integrable models of interacting tops associated with the $\rm{BC}_n$ root system](/202610/29/2610.37165v1-spin-generalizations-of-the-classical-elliptic-calogero--inozemtsev-model-and-integrable-models-of-interacting-tops-associated-with-the-rmbcn-root-system)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+4. [The homogeneity function of the fractional $p$-Laplacian and optimal asymptotic exponents for critical Hardy-Sobolev equations](/202610/29/2610.37212v1-the-homogeneity-function-of-the-fractional-p-laplacian-and-optimal-asymptotic-exponents-for-critical-hardy-sobolev-equations)  
+   标签：评分：6.2/10
+   evidence：检索回退候选
+5. [A logarithmic regularity criterion for the axisymmetric Navier-Stokes equations](/202610/29/2610.29012v1-a-logarithmic-regularity-criterion-for-the-axisymmetric-navier-stokes-equations)  
    标签：评分：6.1/10
    evidence：检索回退候选
-4. [Free to Look, Free to Reason: Simple LLM Harnesses Outdiagnose Hand-Crafted Root Cause Analysis Agents](/202610/28/2610.35767v1-free-to-look-free-to-reason-simple-llm-harnesses-outdiagnose-hand-crafted-root-cause-analysis-agents)  
+6. [Precision-Aware Hierarchical Spectrum Search for Finite-Precision MUSIC DOA Estimation](/202610/29/2610.29059v1-precision-aware-hierarchical-spectrum-search-for-finite-precision-music-doa-estimation)  
    标签：评分：6.1/10
    evidence：检索回退候选
-5. [Persistence Pays: Square-root condition-number dependence for Metropolis-adjusted kinetic Langevin Monte Carlo with a non-reversibly updated accept/reject uniform](/202610/28/2610.35781v1-persistence-pays-square-root-condition-number-dependence-for-metropolis-adjusted-kinetic-langevin-monte-carlo-with-a-non-reversibly-updated-acceptreject-uniform)  
+7. [The Price of Choice in Selective Prediction](/202610/29/2610.29067v1-the-price-of-choice-in-selective-prediction)  
    标签：评分：6.0/10
    evidence：检索回退候选
-6. [Structural equation modelling--based meta-analytic model for diagnostic test accuracy studies](/202610/28/2610.27408v1-structural-equation-modelling--based-meta-analytic-model-for-diagnostic-test-accuracy-studies)  
+8. [Sharp asymptotics for a free boundary touching a degenerate boundary: the perpetual Heston put](/202610/29/2610.29253v1-sharp-asymptotics-for-a-free-boundary-touching-a-degenerate-boundary-the-perpetual-heston-put)  
    标签：评分：6.0/10
    evidence：检索回退候选
-7. [Multiplexed Label-Free Cytokine Sensing Using a 128x128 CMOS ISFET Array with Flexdym Microfluidic Partitioning](/202610/28/2610.27432v1-multiplexed-label-free-cytokine-sensing-using-a-128x128-cmos-isfet-array-with-flexdym-microfluidic-partitioning)  
+9. [FM-Occ: Feature-Diverse Upsampling and Memory-Aware Decoding for 3D Occupancy Prediction](/202610/29/2610.29388v1-fm-occ-feature-diverse-upsampling-and-memory-aware-decoding-for-3d-occupancy-prediction)  
    标签：评分：6.0/10
    evidence：检索回退候选
-8. [RMSampler: Sparse Radio Map Reconstruction with Active Sampling and Diffusion Posterior Correction](/202610/28/2610.27464v1-rmsampler-sparse-radio-map-reconstruction-with-active-sampling-and-diffusion-posterior-correction)  
+10. [Spin-Adapted Spin-Flip Tamm-Dancoff Approximation (XSF-TDA) for Singlet-Triplet Gaps in MR-TADF and INVEST Emitters](/202610/29/2610.29460v1-spin-adapted-spin-flip-tamm-dancoff-approximation-xsf-tda-for-singlet-triplet-gaps-in-mr-tadf-and-invest-emitters)  
    标签：评分：6.0/10
    evidence：检索回退候选
-9. [When Parameter Gradient Flows Close in Representation Space](/202610/28/2610.27474v1-when-parameter-gradient-flows-close-in-representation-space)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-10. [Lie algebras in symmetric tensor categories](/202610/28/2610.27492v1-lie-algebras-in-symmetric-tensor-categories)  
-   标签：评分：6.0/10
-   evidence：检索回退候选
-11. [HypoNet Nankai PS: rapid hypocenter determination for the Nankai Trough using physics-informed neural networks with three-dimensional P- and S-wave velocity models](/202610/28/2610.27561v1-hyponet-nankai-ps-rapid-hypocenter-determination-for-the-nankai-trough-using-physics-informed-neural-networks-with-three-dimensional-p--and-s-wave-velocity-models)  
+11. [SatCraft: Agentic Optimization of Scheduling Policies for Satellite-Cellular Edge Services](/202610/29/2610.29588v1-satcraft-agentic-optimization-of-scheduling-policies-for-satellite-cellular-edge-services)  
    标签：评分：6.0/10
    evidence：检索回退候选
 
