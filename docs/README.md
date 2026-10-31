@@ -6,67 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-30
-- 运行时间：2026-10-31 07:03:07 UTC+8
+- 最新运行日期：2026-10-31
+- 运行时间：2026-11-01 06:37:43 UTC+8
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：4
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 15 篇推荐（精读 4 篇，速读 11 篇）
-- 精读：《Beyond Ground Truth: A Heuristic Unsupervised Quality Assurance Engine for Diagnosing Calibrational Blindness in Dental Segmentation》（8.6/10）, 《SparseTokenGS: Gaussian-based Sparse-View CBCT Reconstruction via Reusable Token Pool》（8.5/10）
-- 速读：《Pooled Testing under Congestion: Operational Scaling Laws for Pool-Size Selection》（7.8/10）, 《Diagrams for Roots and Quiver Representations in the context of the Gabriel-Kac Theorem》（7.4/10）, 《The Borisov--Nuer conjecture and root decompositions in even unimodular Lorentzian lattices》（7.4/10）
+- 今日共生成 11 篇推荐（精读 0 篇，速读 11 篇）
+- 速读：《A Positivity-Preserving Numerical Method for the Free Cox-Ingersoll-Ross Equation》（7.4/10）, 《Real-rooted Ehrhart $h^*$-polynomials of crown posets and wheel and whirl matroids》（7.3/10）, 《Quasinormal-mode encounters: Pseudospectra near Kerr--Newman exceptional points》（6.5/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202610/30/README](/202610/30/README)
+- 详情：[/202610/31/README](/202610/31/README)
 
 ### 精读区论文标签
-1. [Beyond Ground Truth: A Heuristic Unsupervised Quality Assurance Engine for Diagnosing Calibrational Blindness in Dental Segmentation](/202610/30/2610.40587v1-beyond-ground-truth-a-heuristic-unsupervised-quality-assurance-engine-for-diagnosing-calibrational-blindness-in-dental-segmentation)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [SparseTokenGS: Gaussian-based Sparse-View CBCT Reconstruction via Reusable Token Pool](/202610/30/2610.38360v1-sparsetokengs-gaussian-based-sparse-view-cbct-reconstruction-via-reusable-token-pool)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-3. [Quantitative Ultrasound Perfusion Biomarker: Cross-Modality Validation with Laser Speckle Imaging](/202610/30/2610.39069v1-quantitative-ultrasound-perfusion-biomarker-cross-modality-validation-with-laser-speckle-imaging)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-4. [Quasimodularity of $q$-series associated to root lattices](/202610/30/2610.40034v1-quasimodularity-of-q-series-associated-to-root-lattices)  
-   标签：评分：8.1/10
-   evidence：检索回退候选
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Pooled Testing under Congestion: Operational Scaling Laws for Pool-Size Selection](/202610/30/2610.37729v1-pooled-testing-under-congestion-operational-scaling-laws-for-pool-size-selection)  
-   标签：评分：7.8/10
-   evidence：检索回退候选
-2. [Diagrams for Roots and Quiver Representations in the context of the Gabriel-Kac Theorem](/202610/30/2610.37969v1-diagrams-for-roots-and-quiver-representations-in-the-context-of-the-gabriel-kac-theorem)  
+1. [A Positivity-Preserving Numerical Method for the Free Cox-Ingersoll-Ross Equation](/202610/31/2610.39631v1-a-positivity-preserving-numerical-method-for-the-free-cox-ingersoll-ross-equation)  
    标签：评分：7.4/10
    evidence：检索回退候选
-3. [The Borisov--Nuer conjecture and root decompositions in even unimodular Lorentzian lattices](/202610/30/2610.38414v1-the-borisov--nuer-conjecture-and-root-decompositions-in-even-unimodular-lorentzian-lattices)  
-   标签：评分：7.4/10
-   evidence：检索回退候选
-4. [Regular closedness off the real axis for root closures of bounded-height integer polynomials](/202610/30/2610.38971v1-regular-closedness-off-the-real-axis-for-root-closures-of-bounded-height-integer-polynomials)  
+2. [Real-rooted Ehrhart $h^*$-polynomials of crown posets and wheel and whirl matroids](/202610/31/2610.40496v1-real-rooted-ehrhart-h-polynomials-of-crown-posets-and-wheel-and-whirl-matroids)  
    标签：评分：7.3/10
    evidence：检索回退候选
-5. [Graftings and cograftings for species](/202610/30/2610.38996v1-graftings-and-cograftings-for-species)  
-   标签：评分：7.3/10
+3. [Quasinormal-mode encounters: Pseudospectra near Kerr--Newman exceptional points](/202610/31/2610.40323v1-quasinormal-mode-encounters-pseudospectra-near-kerr--newman-exceptional-points)  
+   标签：评分：6.5/10
    evidence：检索回退候选
-6. [VEvo-Harness: Causally-Guarded Self-Evolving Harness for Agentic Image Generation](/202610/30/2610.39158v1-vevo-harness-causally-guarded-self-evolving-harness-for-agentic-image-generation)  
-   标签：评分：7.2/10
+4. [Additive uncertainty relations via pseudospectral methods](/202610/31/2610.32014v1-additive-uncertainty-relations-via-pseudospectral-methods)  
+   标签：评分：6.4/10
    evidence：检索回退候选
-7. [Nonreciprocal coupling enables tunable exceptional-point response in non-Hermitian circuits](/202610/30/2610.39157v1-nonreciprocal-coupling-enables-tunable-exceptional-point-response-in-non-hermitian-circuits)  
+5. [SPA: Structure-Preserving Approximation of Gated Activations under FHE](/202610/31/2610.32065v1-spa-structure-preserving-approximation-of-gated-activations-under-fhe)  
+   标签：评分：6.4/10
+   evidence：检索回退候选
+6. [Material criteria for angular-momentum transfer from twisted photons to photoelectrons](/202610/31/2610.32121v1-material-criteria-for-angular-momentum-transfer-from-twisted-photons-to-photoelectrons)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+7. [Beyond Data Schedule: Fast LLM Pretraining on Data Mixtures by Loss-Reweighting](/202610/31/2610.32141v1-beyond-data-schedule-fast-llm-pretraining-on-data-mixtures-by-loss-reweighting)  
+   标签：评分：6.3/10
+   evidence：检索回退候选
+8. [Neural Disjunctive Normal Forms for Learning Exact Rank Filters](/202610/31/2610.32203v1-neural-disjunctive-normal-forms-for-learning-exact-rank-filters)  
    标签：评分：6.2/10
    evidence：检索回退候选
-8. [Where to Learn and How Far to Roll Out: Efficient Adaptive Training for GUI Agents](/202610/30/2610.39251v1-where-to-learn-and-how-far-to-roll-out-efficient-adaptive-training-for-gui-agents)  
+9. [RootDown: Deploying and Benchmarking Models for Beet-Root Detection on Edge Devices](/202610/31/2610.32275v1-rootdown-deploying-and-benchmarking-models-for-beet-root-detection-on-edge-devices)  
    标签：评分：6.2/10
    evidence：检索回退候选
-9. [Parameterized Approximation of Max k-Weight CSP: A Dichotomy for Boolean Languages](/202610/30/2610.39751v1-parameterized-approximation-of-max-k-weight-csp-a-dichotomy-for-boolean-languages)  
+10. [Direct Simulation of Poisson and Newton Kernel Distributions](/202610/31/2610.32506v1-direct-simulation-of-poisson-and-newton-kernel-distributions)  
    标签：评分：6.1/10
    evidence：检索回退候选
-10. [A Dolbeault complex for the contact quantised flag manifolds of type $\mathrm{C}_{2}$ and $\mathrm{D}_{4}$](/202610/30/2610.40076v1-a-dolbeault-complex-for-the-contact-quantised-flag-manifolds-of-type-mathrmc2-and-mathrmd4)  
+11. [Single-Machine Guarantees on Unrelated Machines and Beyond: Proportional Fairness for Nonclairvoyant Polytope Scheduling](/202610/31/2610.32545v1-single-machine-guarantees-on-unrelated-machines-and-beyond-proportional-fairness-for-nonclairvoyant-polytope-scheduling)  
    标签：评分：6.1/10
-   evidence：检索回退候选
-11. [Graphical Models Induced by Irreversible Event Accumulation on Trees](/202610/30/2610.40127v1-graphical-models-induced-by-irreversible-event-accumulation-on-trees)  
-   标签：评分：6.0/10
    evidence：检索回退候选
 
 
