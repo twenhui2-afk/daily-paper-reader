@@ -1,0 +1,400 @@
+Title: Fix Where It Fails: Root-Cause-Guided Agentic Harness Optimization for Scene Graph Generation
+
+URL Source: https://arxiv.org/pdf/2611.27529v1
+
+Published Time: Mon, 23 Nov 2026 02:37:24 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# Fix Where It Fails: Root-Cause-Guided Agentic Harness Optimization for Scene Graph Generation 
+
+## Jee Eun Kim Donghyeon Choi Sangjune An Hae Beom Lee † Kyong Hwan Jin †
+
+## Korea University 
+
+{kimjeeeun98, dong_choi, ics8088, haebeomlee, kyong_jin }@korea.ac.kr 
+
+Problem 
+
+> where each model fails
+
+Harness search (offline) Result (deployed)  
+
+> box name pair pred. rank
+> two-stage model one-stage model MLLM
+> “where does it fail?”
+> RCA agent
+> pair
+> 1
+> pred.
+> 2
+> box
+> 3
+> causes
+> rank
+> 4
+> </>
+> “fix each cause”
+> proposer agent
+> </>
+> harness
+> fix
+> evaluate & re-diagnose selected harness
+> two-stage model
+> REACT++
+> one-stage model
+> EGTR
+> MLLM
+> R1-SGG
+> 123444
+> 24.1
+> 38.7
+> R@100
+> 6.3
+> 15.2
+> mR@100
+> R1-SGG, VG150 test
+> baseline RoHa-SGG
+
+Figure 1. Frozen SGG models fail at different components. RoHa-SGG fixes each model without retraining. A root-cause analysis (RCA) agent finds the components at which each model fails (left). A proposer agent turns each cause into a candidate harness, which is evaluated before the analysis is repeated. The selected harness edits these components and raises GC R@100 and mR@100. The bars show R1-SGG with the multi-pass harness on the VG150 test set. 
+
+## Abstract 
+
+Scene graph generation (SGG) aims to detect objects in an image and predict the relationships between them. The stan-dard PredCls, SGCls, and SGDet settings show how much performance drops without ground-truth boxes and labels, but not where or why a model fails. Knowing this would allow fixing a model where it fails, without retraining. We propose RoHa-SGG (Ro ot-cause-guided Ha rness optimiza-tion for SGG ), which extends agentic harness optimization to SGG. It optimizes the harness, the inference code around a frozen SGG model. RoHa-SGG has two main LLM agents. A root-cause analysis (RCA) agent finds the components where the model fails and diagnoses why, and a proposer agent searches for a harness that fixes these causes. We evaluate RoHa-SGG on Visual Genome and PSG with representative two-stage, one-stage, and multimodal-LLM SGG models. The analysis shows that the components where ground-truth triplets are lost differ across models and datasets. RoHa-SGG improves every metric on all five model–dataset combi-nations. Graph-constrained R@100 and mR@100 rise by up to 15.8 and 26.4 points for the multimodal LLM and by up to 3.6 and 10.1 points for the two-stage and one-stage models. With root-cause guidance, the harness search reaches the final score of an unguided search up to three times faster. 
+
+> †
+
+Corresponding authors. 
+
+## 1. Introduction 
+
+Scene graph generation (SGG) describes an image as a set of (subject, predicate, object) triplets, such as (man, rid-ing, horse), over the objects it contains [22, 51]. Most SGG models follow one of three architectures: two-stage models first detect objects and then classify a predicate for each candidate pair (REACT++ [33]), one-stage models pre-dict objects and predicates together in a single DETR-style pass [6] (EGTR [18]), and multimodal large language mod-els (MLLMs) write the whole graph as text (R1-SGG [9]). Whatever the architecture, a ground-truth triplet counts as a match only if it passes five components: a correct box and name for both objects, a proposal for the pair, the correct predicate, and a rank within the top K. SGG is usually evalu-ated in three settings [51], which give the model ground-truth boxes and labels (PredCls), boxes only (SGCls), or neither (SGDet). Comparing the three shows how much a model depends on the given boxes and labels, but not at which component it loses ground-truth triplets. A model can fail at any of the five components, and where it fails differs by model and dataset (Fig. 1, left). Following TIDE [3] and Diag-HOI [63], we measure this with the same procedure for all three models. We correct components with their ground truth (the true boxes, names, pairs and predicates, and an ideal ranking) and attribute the recovered recall to each component (Fig. 3). In graph-constrained ( GC )R@20, the missed ground-truth triplets spread over several 1arXiv:2611.27529v1 [cs.CV] 20 Nov 2026 components, and REACT++, EGTR and R1-SGG all lose the most at the pair component. On VG150, the MLLM R1-SGG also loses 27.9 points at the box component, against 7.5 for each classic model. R1-SGG loses nothing at the rank component, where the classic models lose 11.6 to 16.5. On PSG, REACT++ and R1-SGG both lose more at the predicate component than on VG150 (19.6 and 16.6 vs. 16.1 and 9.7 points). A method that targets a single component therefore recovers only part of the missed triplets, and one that helps one model or dataset may not help another. Earlier SGG analyses measure only parts of this, such as pair recall [46], what the detector can reach [37] or separate object, pair and predicate scores [30], or substitute ground truth in a fixed order [14]. The weaknesses these analyses reveal are then usually fixed by retraining the model, for example with a new pair proposal module [46]. Retraining, however, is costly and must be repeated for every model and dataset. We instead optimize the harness ,the inference code that prepares the model’s input, calls the model, runs external tools, and post-processes and ranks the output. Because it handles every step from the image to the final scene graph, the harness can reach every component without changing the model. Harness optimization has recently been shown to work for LLM systems [24] and, in concurrent work, for video understanding and embodied agents [23, 28]. It has not yet been applied to SGG. The space of possible harnesses is large, and scoring each candidate harness means running the model on a large image set. The search is therefore ex-pensive and can afford only a few candidates. These few candidates should target where the model actually fails. Re-cent harness optimizers diagnose failures by reading an LLM agent’s execution traces, such as its prompts, tool calls and intermediate reasoning [7, 36, 47]. A frozen SGG model produces no such trace. Its output shows which ground-truth triplets are missing, but not where or why they were lost. We therefore measure where, component by component, and then test why. We introduce RoHa-SGG (Ro ot-cause-guided Ha rness optimization for SGG ), which uses this per-component di-agnosis to guide the harness search (Figs. 1 and 2). It has two LLM agents. A root-cause analysis (RCA) agent finds where and why the model loses ground-truth triplets, using the same procedure for every model and dataset. It splits the missed triplets over the five components with Shapley values and tests each suspected cause with an intervention whose effect it predicts before running it. A proposer agent then searches for harnesses that fix the diagnosed causes first, rather than exploring the code space without direction. The search runs in rounds, and before each round the RCA agent analyzes the current best harness again, so the proposer always works on the causes that remain. We evaluate RoHa-SGG with REACT++, EGTR and R1-SGG on VG150 [22, 51] and PSG [52]. Without retraining the SGG models, the harness found by each search improves every metric on the official test sets of all five model–dataset combinations (Tab. 2). GC R@100 and mR@100 rise by up to 15.8 and 26.4 points for R1-SGG and by up to 3.6 and 10.1 points for REACT++ and EGTR. Diagnosing first also makes the search faster. To measure this, we run three searches with the same loop, adapted from Meta-Harness [24], and the same number of iterations. The unguided search uses only the loop, the knowledge-guided search adds a human-written guide based on the SGG literature, and the RCA-guided search adds the root-cause analysis. On REACT++ and EGTR, the RCA-guided search reaches the final score of the other two searches after only 5 and 4 of 12 iterations (Fig. 7). Candidate harnesses guided by the diagnosis also reduce the error they target more often. In the first round, 60% of them lower the error of their target component, compared with 41% when the targets are reassigned at random. In summary, our main contributions are as follows: • We propose RoHa-SGG, the first agentic harness optimiza-tion for SGG. It improves a frozen SGG model without retraining it by searching over the inference code around it, guided by an analysis of where and why the model fails. • We introduce a root-cause analysis for SGG that splits each model’s missed ground-truth triplets over five com-ponents with order-independent Shapley values and tests suspected causes with interventions. It reveals that models and datasets lose ground-truth triplets at different compo-nents. • With two-stage, one-stage and multimodal-LLM SGG models on VG150 and PSG, RoHa-SGG improves every metric on all five model–dataset combinations. On VG150, root-cause analysis makes the search up to three times faster than unguided and knowledge-guided searches. 
+
+## 2. Related Work 
+
+Scene graph generation. SGG models include two-stage methods that detect objects first and then predict their pred-icates [33, 57, 61], one-stage methods that predict objects and predicates together with a DETR-style decoder [18, 26], and multimodal LLMs that write the graph as text [9, 11]. Most existing methods improve these models by training them, for example with predicate debiasing and long-tail learning [38, 45, 58], open-vocabulary training [8] or rein-forcement learning for MLLMs [9, 11]. This training must be repeated for every model and dataset. Training-free meth-ods post-process the output, for example by filtering predi-cates with an LLM or VLM [19], blending debiased VLM scores [48], choosing from conformal prediction sets [32] or refining the ranking with commonsense constraints [34]. 2Root-cause analysis Harness search           
+
+> baseline scene graph
+> Frozen SGG model M
+> RCA agent
+> 1
+> errors per component
+> pair
+> 1
+> pred.
+> 2
+> box
+> 3
+> ranked causes
+> test each cause
+> predict test confirm
+> ?
+> next cause
+> proposer agent
+> 2
+> </>
+> 1
+> </>
+> 2
+> </>
+> 3
+> writes 3 candidates, at least 2 for causes
+> candidates in each round
+> iteration
+> 12?
+> 3?
+> 4
+> cause ?free merge
+> 3
+> evaluate
+> </>
+> best harness
+> check each candidate
+> review checks pass
+> repair
+> ×4 iterations
+> reads earlier code, scores, records
+> ×3 rounds
+> the RCA agent re-diagnoses the best harness
+> 4
+> image
+> </>
+> deployed harness
+> improved scene graph
+
+Figure 2. RoHa-SGG overview. (1) The RCA agent corrects components of the frozen model M ’s output with ground truth and splits the missed ground-truth triplets over the components. It tests each cause with an intervention. (2) In each iteration, the proposer agent writes three candidate harnesses, at least two of which target diagnosed causes. (3) Each is reviewed, checked and scored on search images. The best harness is re-diagnosed every four iterations. (4) The harness selected on selection images is deployed around the unchanged model. 
+
+Each adds one post-processing step that corrects the predi-cates or the ranking, and applies it in the same way to every model. Without retraining the SGG model, we instead search over the whole inference code around it, so that the fix targets the components where each model fails on each dataset. 
+
+Error and root-cause analysis. In computer vision, error diagnosis tools have been built for object detection [3, 15], temporal action detection [2] and human-object interaction detection [63]. They fix each error type with an oracle and measure how much the score rises, as TIDE [3] does for false positives, missed objects and localization errors of de-tectors. For SGG, earlier analyses each cover part of where ground-truth triplets are lost, such as pair recall [46], detec-tor reachability [37], metrics that separate object, pair and predicate quality [30] and ground-truth substitution in a fixed order [14]. Outside vision, related methods identify which agent caused a failure in LLM multi-agent systems [60], ana-lyze the root causes of cloud incidents with LLM agents [49], and diagnose approximate nearest-neighbor search to re-design it automatically [62]. When ground truth is substi-tuted in a fixed order, the measured contribution of each component depends on that order [3], and the module most responsible for a failure is not always the best place to fix it [55]. We measure all five components for every model and dataset with one protocol and split the gain of fixing them with order-independent Shapley values [42], as Shap-leyFlow [54] does for the modules of agentic workflows. We then test each suspected cause with an intervention whose effect is predicted before it runs. 
+
+Agentic harness optimization. LLMs can compose vision models and tools into programs [13, 43]. Such programs are usually designed manually, as in a training-free pipeline that detects human-object interactions with an MLLM [5]. Instead of manual design, other work lets LLMs optimize prompts and LM pipelines [1, 21, 56], programs [41] and agent designs [16, 59] automatically. Meta-Harness [24] extends this to the whole harness of an LLM system, and concurrent work applies harness optimization to video under-standing [10, 28], vision-tool pipelines [12] and embodied agents [23]. These optimizers mostly find what to fix by reading the execution traces of an LLM agent, such as its prompts, tool calls and reasoning [7, 24, 36, 47]. An SGG model outputs only the scene graph, without such traces. We extend agentic harness optimization to SGG and guide the search with root causes measured for each component. 
+
+## 3. Method 
+
+RoHa-SGG has two LLM agents (Fig. 2). The RCA agent measures where a frozen SGG model loses ground-truth triplets and tests the suspected causes with interventions (Sec. 3.2). The proposer agent then searches for harnesses that fix these causes first (Sec. 3.3). 
+
+3.1. Problem Setup 
+
+Let M be a frozen SGG model. A harness h is the inference code around M . Given an image, h prepares the input of M ,calls M , runs external tools, and post-processes the output into a ranked list of (subject, predicate, object) triplets with boxes. The baseline h0 is the official inference pipeline re-leased with M (preprocessing, decoding, post-processing). With M frozen and a fixed number of search iterations, har-ness optimization finds the harness that maximizes a score μ
+
+on the data distribution D,
+
+h⋆ = arg max 
+
+> h∈H c
+
+μ h(· ; M ), D, (1) where Hc is the set of harnesses allowed in the inference condition c (single-pass or multi-pass). The score μ is the sum of GC R@100 and mR@100, so it rewards gains on both frequent and rare predicates. The candidate ranking (Sec. 3.3) also checks K=20 and 50. The search approxi-mates D with the search split, selects on the selection split and scores the selected harness once on test. 3(a) missed GC R@20                                              
+
+> box name pair pred. rank
+> 7.5 12.3 27.8 16.1 13.2 7.5 14.7 31.3 11.5 11.6 27.9 7.6 33.2 9.7 0.0 4.1 4.8 22.7 19.6 16.5 18.9 5.2 28.6 16.6 0.0 (b) missed GC mR@20
+> box name pair pred. rank
+> 7.4 14.0 28.4 19.8 11.4 6.9 13.9 35.3 25.9 9.2 26.4 7.1 34.9 21.8 0.0 2.8 3.7 13.1 26.7 11.0 12.1 2.9 19.2 34.4 0.0
+> REACT++ two-stage
+> EGTR one-stage
+> R1-SGG MLLM
+> REACT++ R1-SGG
+> VG150 PSG
+
+Figure 3. Where the baselines miss ground-truth triplets. Each cell gives the GC R@20 or mR@20 points that the baseline loses at that component, i.e . its Shapley share (Eq. (2)) of the gain of correcting all components with ground truth. A triplet that needs several corrections is split equally among them. VG150 uses 3,000 search and check images, and PSG uses the 790 search images with ground-truth triplets. All cells share one color scale, and bold marks the largest value per row. Each row sums to the gain of correcting all components, within about 1 point of 100 − R@20 for GC R@20. 
+
+The two inference conditions differ in how many times a harness may call M . A single-pass harness calls M once per image on the unchanged image, as the baseline does, so its gains do not come from extra model calls. A multi-pass 
+
+harness itself decides how many times to call M (e.g . on crops or flipped images), as long as its estimated time per image stays within 30 s. 
+
+3.2. Root-Cause Analysis 
+
+Errors per component. A ground-truth triplet counts as a match at K only if it passes five components, a box with IoU ≥0.5 (box ) and a correct name ( name ) for both objects, a proposal for the pair ( pair ), the correct predicate ( predicate )and a rank within the top K (rank ). To measure how many triplets a harness loses at each component, we correct its output with ground truth. Let T be the set of the five compo-nents. For a subset S ⊆ T , v(S) is the GC R@ K or mR@ K
+
+of the harness after the components in S are corrected, so 
+
+v(∅) is its unchanged recall. For example, v({box }) adds the missed ground-truth boxes and keeps everything else as predicted. Following TIDE [3], one can correct a sin-gle component s and measure how much the recall rises, 
+
+∆s = v({s}) − v(∅). This misses triplets that are lost at more than one component. For example, a triplet whose subject has no box is recovered only when both its box and its pair are corrected. Neither ∆box nor ∆pair counts it, so the single-component gains do not add up to the missed recall. Correcting the components one after another in a fixed or-der [14] counts it, but attributes it entirely to the component corrected last, so the result depends on the order. The five components can be corrected in 5! = 120 orders, and on the images of the search split the component with the largest share changes in up to half of them. For example, in pipeline order (box, name, pair, predicate, rank), the box component receives nothing for any model. Correcting boxes alone re-covers no ground-truth triplet. We therefore split the gain of correcting all components, v(T ) − v(∅), with Shapley values [42], which average the gain of adding s over all 120 orders. In each order, s is added after some subset S of the other components, so the average can be computed exactly from the 25 = 32 subsets of T ,
+
+ϕs = X
+
+> S⊆T \{ s}
+
+|S|! ( n − | S| − 1)! 
+
+n!
+
+ v(S ∪ { s}) − v(S), (2) where n=|T | =5 and the weight is the share of the n! orders in which exactly the components in S come before s. For a single triplet, this splits its recovery equally among the com-ponents it needs, so the triplet in the example above counts one half for box and one half for pair. The ϕs therefore sum to v(T ) − v(∅) and do not depend on any order. For R@ K, v(T ) − v(∅) is within about 1 point of the missed recall 100 − R@ K, so ϕs reads as the recall points lost at component s (Fig. 3). 
+
+RCA agent. From these errors per component, per-image records and a literature guide, the RCA agent writes candi-date root causes, each a hypothesis about why triplets are lost at one component. It tests each cause with an intervention (e.g . adding boxes from an external detector). Before each intervention, it writes down the expected direction and size of the change in the metric, so that a cause is accepted only when the predicted change appears. A cause is confirmed 
+
+if the change has the predicted direction and at least half the predicted size, its paired bootstrap 95% interval on the search images excludes zero, and it has the same sign on the check set, a small image set disjoint from the search split (Sec. 4.1). Otherwise, it is kept as an estimated cause. For each cause, the agent records the component, image evidence, confirmation experiment and expected direction of the fix. It then ranks the causes and states a reason for each rank (Fig. 2). Another LLM agent then reviews the whole analysis. It can send the analysis back to the RCA agent for correction at most twice. The RCA agent reads only records of the search images and the check set, and never sees the selection or test images. After each round r, it analyzes the new best harness hr in the same way, and the next round works on these new causes. 
+
+3.3. Harness Search 
+
+Harness space. Each candidate harness may change any of the five components (Tab. 1). It may call the external tools listed in Tab. 1, but no other SGG model or SGG ensemble. It may also train small add-on modules on training images while M stays frozen, for example a calibration that rescales the model’s predicate scores or a light head, a small classifier on the model’s features. 
+
+Proposer agent. In each iteration, the proposer agent starts a new session and writes three candidate harnesses. Follow-4Table 1. Harness space by component. What a harness may change at each component, and the tools and cues it may use. The unguided, knowledge-guided and RCA-guided searches (Sec. 4.4) share this space. For R1-SGG, the harness may also optimize prompts with GEPA [1].          
+
+> Component Harness operations Tools and cues box add, refine or merge boxes Grounding DINO [29], OWLv2 [31], SAM 2.1 [40] name correct or add object names RAM++ [17], Florence-2 [50], CLIP [39], DINOv2 [35] pair rebuild candidate pairs box geometry, detector outputs predicate rescore predicates with evidence RTMPose [20], Florence-2 captions, Depth Anything V2 [53] rank re-rank the triplet list model scores, priors from training images
+
+ing Meta-Harness [24], it reads the code, scores, errors per component and per-image records of all earlier candidates in its search through a file system. A cause-guided candidate receives one diagnosed cause from the RCA agent and writes a harness that fixes it. It starts from a parent harness, which is an earlier candidate of the search. In the first iteration of a round, all three candidates are cause-guided. In the next two iterations, two are cause-guided, and the third is a 
+
+free candidate. A free candidate receives no cause, so it can explore any change to the harness. In the last iteration, two candidates are again cause-guided, and the third merges the fixes found by the round’s cause-guided candidates into one harness. A cause is not given again once its error is fixed or after two attempts that do not reduce it. Before scoring, a reviewer agent, separate from the proposer, checks each candidate’s code. Automatic checks also ensure that the harness follows its inference condition, for example that a single-pass harness calls M only once and that no harness reads ground truth. 
+
+Ranking candidate harnesses. For each candidate harness, we measure its gain over the baseline h0 on the six primary metrics ( GC R@ K and mR@ K, K ∈ { 20 , 50 , 100 }) on the search split. A candidate ranks higher when more of these gains have an image-paired bootstrap 95% interval above zero. Among candidates with the same count, the one with the larger gain in the score μ (Eq. (1)) ranks higher. If two gains in μ differ by less than 0.3 points, the gain at K=50 decides, and then the gain at K=20 . The free candidates of the proposer also use this ranking to choose their parent harness. Among earlier candidates other than the current best, they pick the one with the highest ranking score plus an exploration bonus, which shrinks the more often that candidate has already served as a parent (an upper-confidence rule). 
+
+Rounds and final selection. Each search runs three rounds of four iterations, 12 iterations in total. A candidate harness is promoted if it raises at least one primary metric on the search split and no other primary metric drops significantly. Among the promoted candidates, the main harness of each search is chosen by the same ranking on the selection split. No agent sees these images during the search, so the choice does not depend on the images that guided it. 
+
+## 4. Experiments 
+
+4.1. Experimental Setup 
+
+Models and data. We use the publicly released weights of one model per architecture, the two-stage REACT++ [33], the one-stage EGTR [18] and the multimodal LLM R1-SGG [9] (base networks in Tab. 2). No PSG checkpoint is released for EGTR, so VG150 [22, 51] and PSG [52] give five model–dataset combinations. For each combination, we run an RCA-guided search under the single-pass and the multi-pass condition (Sec. 3.1). To measure the effect of root-cause analysis, the VG150 single-pass searches of the three models are also run as unguided and knowledge-guided searches (Sec. 4.4). All agents use Claude Opus 5.5 at maximum reasoning effort. 
+
+Splits. The search split scores every candidate harness, and the agents see its per-image records. The selection split is hidden from all agents. After the search, it re-scores the promoted candidates to pick the main harness among them (Sec. 3.3). The test split is the official test set. A small check set lets the RCA agent repeat each confirmation experiment on images outside the search split (Sec. 3.2). On VG150, the search (2,500 images), check (500) and selection (1,000) splits are disjoint subsets of the official validation set and contain no image from the training set of any VG150 model. PSG has no official validation set, so its search (791), check (150) and selection (997) splits come from its official training set. We use all 26,446 VG150 test images and all 2,177 PSG test images with ground-truth triplets. 
+
+Metrics. Following the standard SGG evaluation proto-col [9, 44], we report graph-constrained ( GC , one predi-cate per subject–object pair) R@ K and mR@ K at K ∈{20 , 50 , 100 }, averaged over images. For a fair comparison, we score all models with the same evaluation code. F@100 is the harmonic mean of R@100 and mR@100 [58]. On PSG, a predicted box matches a ground-truth box if their IoU is at least 0.5 and their labels agree, as in the evalua-tion of REACT++ and R1-SGG. We also report detection AP50 [27]. All intervals are 95% intervals from an image-paired bootstrap. 
+
+4.2. Main Results 
+
+Table 2 compares, for each model–dataset combination, the baseline with the harnesses selected by the single-pass and multi-pass searches. The bottom rows of Tab. 2 list the num-bers published for each model. Our REACT++ and EGTR 5Table 2. Main results on the official test sets. All metrics are graph-constrained ( GC ) per-image means. Parentheses give the change against the baseline, computed before rounding. Bold and underline mark the best and second best per model and dataset. Base networks are listed under the models. The bottom rows are published numbers under the authors’ protocols. †R1-SGG’s own protocol, with several predicates per pair and VG150 on its validation split. ‡Public model card. The R1-SGG baseline writes at most 20 triplets for almost every image, so its R@20, R@50 and R@100 nearly coincide. Data Model Harness R@20 R@50 R@100 mR@20 mR@50 mR@100 F@100 AP50 VG150 REACT++ baseline 23.39 30.12 34.01 12.25 15.96 18.15 23.67 37.25  
+
+> YOLOv8m
+
+single-pass (ours) 24.21 (+0.82) 32.09 (+1.97) 37.27 (+3.27) 13.31 (+1.06) 17.46 (+1.50) 20.46 (+2.30) 26.42 (+2.75) 37.72 (+0.47) 
+
+multi-pass (ours) 24.48 (+1.09) 31.82 (+1.69) 36.34 (+2.33) 13.54 (+1.29) 17.34 (+1.38) 19.87 (+1.72) 25.69 (+2.02) 37.67 (+0.42) 
+
+VG150 EGTR baseline 24.38 31.04 35.17 5.46 7.97 10.11 15.70 26.75  
+
+> ResNet-50
+
+single-pass (ours) 25.75 (+1.37) 32.66 (+1.62) 36.90 (+1.74) 9.19 (+3.73) 14.51 (+6.54) 18.77 (+8.66) 24.88 (+9.18) 26.83 (+0.08) 
+
+multi-pass (ours) 25.64 (+1.27) 33.29 (+2.25) 38.80 (+3.63) 10.45 (+4.98) 16.09 (+8.11) 20.16 (+10.05) 26.53 (+10.83) 27.09 (+0.35) 
+
+VG150 R1-SGG baseline 24.06 24.12 24.12 6.33 6.35 6.35 10.05 20.53  
+
+> Qwen2-VL 7B
+
+single-pass (ours) 25.25 (+1.19) 30.23 (+6.10) 32.15 (+8.03) 8.95 (+2.63) 10.72 (+4.37) 13.55 (+7.20) 19.06 (+9.01) 25.64 (+5.11) 
+
+multi-pass (ours) 28.20 (+4.15) 35.05 (+10.93) 38.67 (+14.55) 10.78 (+4.45) 13.76 (+7.41) 15.18 (+8.83) 21.80 (+11.75) 26.40 (+5.86) 
+
+PSG REACT++ baseline 30.46 35.91 38.99 22.53 25.25 26.93 31.85 55.22  
+
+> YOLOv8m
+
+single-pass (ours) 31.03 (+0.57) 37.43 (+1.52) 40.63 (+1.64) 23.26 (+0.73) 25.35 (+0.10) 27.59 (+0.66) 32.86 (+1.01) 55.54 (+0.31) 
+
+multi-pass (ours) 31.60 (+1.14) 37.29 (+1.38) 40.17 (+1.18) 24.49 (+1.96) 27.58 (+2.33) 29.52 (+2.60) 34.03 (+2.18) 55.53 (+0.31) 
+
+PSG R1-SGG baseline 28.29 28.35 28.35 11.52 11.53 11.53 16.39 42.73  
+
+> Qwen2-VL 7B
+
+single-pass (ours) 32.87 (+4.57) 36.68 (+8.33) 38.61 (+10.26) 28.01 (+16.49) 30.55 (+19.02) 31.88 (+20.35) 34.93 (+18.53) 51.26 (+8.53) 
+
+multi-pass (ours) 36.77 (+8.48) 41.48 (+13.13) 44.19 (+15.84) 34.52 (+23.00) 36.62 (+25.09) 37.93 (+26.40) 40.82 (+24.43) 51.94 (+9.21) 
+
+VG150 REACT++ card ‡ – 29.96 34.09 – 16.31 18.45 – –VG150 EGTR paper – 30.2 34.3 – 7.9 10.1 – –VG150 R1-SGG paper † 23.75 (R, val) 11.43 (mR, val) – –PSG REACT++ paper 29.1 34.2 37.5 22.2 24.9 27.1 – –PSG R1-SGG paper † – – 43.48 – – 33.71 – –Table 3. Inference time per image. Wall-clock time of the model’s forward pass (baseline) and, for the selected harness, of that pass plus its extra model calls, external tools and harness computa-tion. Times are medians, measured one image at a time on one RTX PRO 6000. External detectors are not speed-optimized. 
+
+Inference time (s per image) Data Model Baseline Single-pass Multi-pass VG150 REACT++ 0.017 0.92 1.27 EGTR 0.075 0.076 2.27 R1-SGG 11.7 13.2 29.1 PSG REACT++ 0.015 0.75 1.01 R1-SGG 11.0 12.5 29.7 
+
+baselines are within about 1.5 points of them at R@100 and mR@100. R1-SGG’s published numbers differ more be-cause its own evaluation code counts several predicates per subject–object pair. With that code, our R1-SGG baseline gives 43.49 R@100 and 33.75 mR@100 on PSG, against 43.48 and 33.71 in its paper. Figure 4 shows the best score found so far over the iterations of each search, measured on the search split. None of the searches has saturated after 12 iterations. 
+
+Every harness improves every metric. In all ten searches, it beats its baseline in Tab. 2 on R@ K and mR@ K
+
+at K=20 , 50 and 100, F@100 and detection AP50. For RE-ACT++ and EGTR, single-pass harnesses raise GC R@100 by 1.6–3.3 points and GC mR@100 by 0.7–8.7 points, and    
+
+> 04812 010 20 30 16.9 26.0 13.5 15.9 7.2 7.3 iteration
+
+VG150    
+
+> 04812 010 20 30 40 50 39.4 49.1 5.5 10.2 iteration
+
+PSG     
+
+> REACT++ EGTR R1-SGG solid: single-pass dashed: multi-pass
+
+Figure 4. Search progress. Best harness so far (by the ranking of Sec. 3.3), as a running maximum, in each of the 10 main searches. All ten still improve in round 3. The y-axis shows the gain over the baseline, ∆R@100 +∆ mR@100 ( GC , search split). 
+
+multi-pass harnesses by 1.2–3.6 and 1.7–10.1 points. For R1-SGG, single-pass harnesses raise GC R@100 and GC 
+
+mR@100 by up to 10.3 and 20.4 points, and multi-pass har-nesses by up to 15.8 and 26.4 points. On PSG, the multi-pass harness raises R1-SGG’s GC R@100 from 28.4 to 44.2 and 
+
+GC mR@100 from 11.5 to 37.9, by correcting predicates and by adding objects that the model leaves without a box (Sec. 4.3). Extra model calls mainly help mR@100 (infer-ence time in Tab. 3). Multi-pass harnesses raise GC mR@100 over single-pass ones in four of the five combinations (by 1.4–6.0 points), and for R1-SGG on VG150 also GC R@100 by 6.5 points. 6Baseline +RoHa-SGG Cause → fix REACT++                       
+
+> two-stage
+> EGTR
+> one-stage
+> R1-SGG
+> MLLM
+> R@100 25 (+75) R@100 25 →100
+> airplane engine wing airplane engine wing
+> has on under
+> pair component
+> Both ends are listed, but the list never relates them.
+> fix: repeat penalty
+> R@100 60 (+20) R@100 60 →80
+> person motorcycle person motorcycle on riding
+> helmet boot bike wearing wearing riding helmet boot bike wearing wearing riding
+> predicate component
+> The frequency prior collapses predicates onto head classes.
+> fix: debias the predicate prior
+> R@100 0 (+100) R@100 0→100
+> letter letter letter sign pole sign letter letter letter sign pole sign
+> not boxed + new box
+> on on on on
+> on
+> box component
+> The model misses further instances of classes it names.
+> fix: add detector boxes
+> recovered triplet obj. added box other triplet obj. not boxed by the baseline
+
+Figure 5. Before and after RoHa-SGG, one VG150 test image per model. Each image was chosen for clarity among the 30 largest per-image gains with at least two ground-truth triplets recovered at the cause’s component. For EGTR, it shows a generic predicate replaced by the annotated one on the same detection pair, within the top 30. Fixes are drawn in their cause’s component color, with thick edges and outlined added boxes. Other triplets and objects are grey, and objects the baseline did not box are dashed. R@100 is the per-image GC 
+
+R@100. The right column gives the cause, its component and the fix. 
+
+Two checks show that the gains come from the harness search itself. First, the gains do not depend on a single selected harness. Three further harnesses per search, chosen by a pre-specified rule, also raise GC R@100, mR@100 and F@100 in all 30 cases. Second, no SGG model is retrained. Most harnesses fit small add-on modules on training images, and most keep their R@100 gain when these modules are removed. 
+
+4.3. Where Models Fail and What Harnesses Fix 
+
+Figure 3 shows where the baselines fail, as the points of GC 
+
+R@20 and mR@20 that each baseline loses at each compo-nent. In GC R@20, all five baselines lose the most at the pair component. The other components differ by model. R1-SGG loses far more at the box component because it leaves many objects without a box. REACT++ and EGTR lose more at the rank component, because they output long lists of scored candidate triplets and correct triplets often fall outside the top 20. To test these differences, we compare the component shares of every two models on the same dataset, three pairs on VG150 and one on PSG, with paired 95% intervals. For example, on VG150 the box component accounts for 35.6% of R1-SGG’s gain of correcting all components and 9.8% of EGTR’s. The difference is 25.8 percentage points (25.1 to 26.5). Of the 20 differences per metric, the interval ex-cludes zero for 18 in GC R@20 and 13 in GC mR@20, so the models differ significantly at most components. The box and rank differences hold at K=50 as well.             
+
+> box name pair predicate rank
+> ∆@100 RmR
+> REACT++
+> two-stage +3.27 +2.30
+> name variants repeat penalty salient ends
+> EGTR
+> one-stage +1.74 +8.66
+> debias prior τ
+> re-rank dedup
+> R1-SGG
+> MLLM +8.03 +7.20
+> detector boxes prior names learned pair net layout prior unseen ends last edit for a diagnosed cause edit with no diagnosed cause recovered ground-truth triplets
+
+Figure 6. Selected harnesses for the three models (VG150, single-pass, test). Dots mark unchanged components and chips mark edited ones. A badge marks an edit that follows a diagnosed cause. Dashed chips mark edits with no diagnosed cause in the harness’s records. They come from free candidates or from earlier steps, which may themselves have followed a cause. Bars show the share of recovered ground-truth triplets that the baseline first lost at each component. The right column shows test GC ∆R@100 and 
+
+∆mR@100. 
+
+The selected harnesses reflect these differences (Fig. 6). REACT++’s harnesses recover triplets mainly at the name and pair components, EGTR’s at the pair and predicate com-ponents, and R1-SGG’s at the box component. Figure 5 shows one example per model, from the diagnosed cause to the fix. For REACT++, the output often lists both objects of a relationship but never relates them (pair component). The selected harness down-weights pairs that are already listed, so that new pairs such as the engine and the wing enter the list. For EGTR, the frequency prior pushes predicates toward 70 4 8 12 02468         
+
+> 4.5 4.7 7.2
+> +2.6
+> iteration
+> REACT++
+> 04812 0510 15
+> 7.5 8.7 13.5
+> +4.8
+> iteration
+> EGTR
+> Unguided search Knowledge-guided search RCA-guided search (ours) RCA-guided ahead
+> Figure 7. Unguided, knowledge-guided and RCA-guided search
+> (VG150, single-pass). Best harness so far (by the ranking of Sec. 3.3) per iteration, as a running maximum. The y-axis shows the gain over the baseline, ∆R@100 +∆ mR@100 ( GC , search split). The shaded area marks the lead of the RCA-guided search over the better other setting, and the arrow marks its final lead.
+
+head classes (predicate component). The selected harness debiases this prior and turns a generic “on” into the anno-tated “riding”. The two EGTR harnesses raise mR@100 on body and tail predicates by up to 10.8 and 13.2 points, against at most 2.5 on head predicates. The VG150 predicate groups follow BGNN [25] by training instances (head >10 k, body 0.5–10k, tail <0.5k). For R1-SGG, the model misses further instances of the classes it names (box component). The selected harness adds boxes from an external detector and recovers a sign and its letters. 
+
+4.4. Effect of Root-Cause Analysis 
+
+To measure the effect of root-cause analysis, we compare three search settings on the VG150 single-pass searches of all three models. All three settings run 12 iterations with three candidate harnesses each, and they share the model interface, tools, scoring and selection rule. The unguided search uses only the search loop adapted from Meta-Harness [24], so its proposer receives no diagnosed causes. The knowledge-guided search also gives the proposer a human-written guide based on the SGG literature. The RCA-guided search instead gives the proposer the causes diagnosed by the RCA agent, as described in Sec. 3. 
+
+Search efficiency. On REACT++ and EGTR, the RCA-guided search reaches the final score of the unguided and knowledge-guided searches after only 5 and 4 of 12 itera-tions, up to three times faster (Fig. 7). For EGTR, it leads at every iteration, almost entirely through GC mR@100. For REACT++, the gap opens with the first re-diagnosis. During the second round, the new causes lift the score from 4.1 to 6.9, while the other two settings stay nearly flat. Candidates guided by the diagnosis also reduce the error they target more often. In the first round, 60% of them lower the error of their target component, against 41% when targets are randomly permuted within a search (permutation test, p < 0.001 ).                   
+
+> Table 4. Search cost. API spend of one RCA-guided search in US dollars, including its root-cause analyses ($62–105). The harness makes no API call at inference.
+> VG150 PSG Search REACT++ EGTR R1-SGG REACT++ R1-SGG Single-pass $270 $325 $347 $263 $320 Multi-pass $318 $314 $376 $295 $296
+
+Test results. At iteration 12, the RCA-guided search also gives the largest gain in μ for EGTR (+10.4 vs. +7.8 and +7.5), mostly from GC mR@100 and with the highest F@100, and for REACT++ (+5.6 vs. +3.7 and +3.3). 
+
+4.5. Discussion and Limitations 
+
+When does the analysis help? The analysis helps most when a model’s errors cannot be seen from its output or its recall alone. For R1-SGG, the three settings end within 1.7 points on the search split. R1-SGG leaves many objects without a box, an error that is visible in its output. Every setting therefore adds detector boxes, and the analysis adds little beyond that. REACT++, in contrast, also loses triplets at object names, an error that its recall alone does not show. Only the RCA-guided search recovers these name errors (52% of its recovered triplets), through a candidate that read the errors per component, and it raises GC mR@100 two to five times as much as the other searches. 
+
+Inference and search cost. Single-pass harnesses add under 1 ms per image for EGTR, about 13% for R1-SGG and under 1 s for REACT++, which calls external detectors (Tab. 3). A search costs $263–376 in API fees, including $62–105 for the analysis (Tab. 4). The analysis pays for itself. On REACT++ and EGTR, the RCA-guided search reaches the final score of the other two searches early. Up to that point, it spends less than those searches spend in total, including all its analysis costs. 
+
+Limitations. Each search runs once, so the intervals reflect image, not run-to-run, variation [4]. Other LLM agents and the PredCls and SGCls settings are future work. 
+
+## 5. Conclusion 
+
+We presented RoHa-SGG, the first agentic harness opti-mization for SGG. Its RCA agent finds where and why a frozen SGG model fails, and its proposer agent automati-cally searches for harnesses that fix them without retraining. The analysis shows that models lose ground-truth triplets at different components. The searched harnesses improve every metric on all five model–dataset combinations, across two-stage, one-stage and multimodal-LLM models. The gains reach 15.8 GC R@100 and 26.4 GC mR@100 points. Root-cause analysis also makes the search up to three times faster than unguided and knowledge-guided searches. 8References 
+
+[1] Lakshya A. Agrawal, Shangyin Tan, Dilara Soylu, Noah Ziems, Rishi Khare, Krista Opsahl-Ong, Arnav Singhvi, Herumb Shandilya, Michael J. Ryan, Meng Jiang, Christo-pher Potts, Koushik Sen, Alexandros G. Dimakis, Ion Stoica, Dan Klein, Matei Zaharia, and Omar Khattab. GEPA: Reflec-tive prompt evolution can outperform reinforcement learning. In International Conference on Learning Representations (ICLR) , 2026. 3, 5 [2] Humam Alwassel, Fabian Caba Heilbron, Victor Escorcia, and Bernard Ghanem. Diagnosing error in temporal action de-tectors. In European Conference on Computer Vision (ECCV) ,pages 264–280, 2018. 3 [3] Daniel Bolya, Sean Foley, James Hays, and Judy Hoffman. TIDE: A general toolbox for identifying object detection errors. In European Conference on Computer Vision (ECCV) ,pages 558–573, 2020. 1, 3, 4 [4] Xavier Bouthillier, Pierre Delaunay, Mirko Bronzi, Assya Trofimov, Brennan Nichyporuk, Justin Szeto, Nazanin Mo-hammadi Sepahvand, Edward Raff, Kanika Madan, Vikram Voleti, Samira Ebrahimi Kahou, Vincent Michalski, Tal Arbel, Chris Pal, Ga¨ el Varoquaux, and Pascal Vincent. Accounting for variance in machine learning benchmarks. In Proceedings of Machine Learning and Systems (MLSys) , 2021. 8 [5] Zhaolin Cai, Huiyu Duan, Liu Yang, Yanjun Qin, Bo Ai, Wei Chen, Xiongkuo Min, and Guangtao Zhai. Harnessing multimodal large language models for training-free human-object interaction detection. arXiv preprint arXiv:2610.06394 ,2026. 3 [6] Nicolas Carion, Francisco Massa, Gabriel Synnaeve, Nicolas Usunier, Alexander Kirillov, and Sergey Zagoruyko. End-to-end object detection with transformers. In European Con-ference on Computer Vision (ECCV) , pages 213–229, 2020. 1[7] Mengzhuo Chen, Junjie Wang, Zhe Liu, Yawen Wang, Haim-ing Zheng, and Qing Wang. From failed trajectories to reliable LLM agents: Diagnosing and repairing harness flaws. arXiv preprint arXiv:2606.06324 , 2026. 2, 3 [8] Zuyao Chen, Jinlin Wu, Zhen Lei, Zhaoxiang Zhang, and Chang Wen Chen. Expanding scene graph boundaries: Fully open-vocabulary scene graph generation via visual-concept alignment and retention. In European Conference on Com-puter Vision (ECCV) , pages 108–124, 2024. 2 [9] Zuyao Chen, Jinlin Wu, Zhen Lei, Marc Pollefeys, and Chang Wen Chen. Compile scene graphs with reinforce-ment learning. arXiv preprint arXiv:2504.13617 , 2025. 1, 2, 5[10] Benlei Cui, Ruize Wang, Junjie Li, Jinhao Chen, Long-tao Huang, Yinghao Chen, Yuwen Zhai, Jingqun Tang, Ruijian Jia, Weiwei Wu, Pengfei Sun, and Haiwen Hong. MetaVideoAgent: Automated video-agent evolution for long-form video understanding. arXiv preprint arXiv:2608.04587 ,2026. 3 [11] Jiaye Feng, Qixiang Yin, Yuankun Liu, Tong Mo, and Weip-ing Li. SGG-R 3: From next-token prediction to end-to-end unbiased scene graph generation. In Findings of the Associa-tion for Computational Linguistics: ACL 2026 , pages 19811– 19830, 2026. 2 [12] Jinchao Ge, Lingqiao Liu, Shuwen Zhao, and Lei Wang. VTOS: Learning to orchestrate vision tools by co-searching solutions and observers. In Conference on Empirical Methods in Natural Language Processing (EMNLP) , pages 22551– 22569, 2026. 3 [13] Tanmay Gupta and Aniruddha Kembhavi. Visual program-ming: Compositional visual reasoning without training. In 
+
+IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 14953–14962, 2023. 3 [14] Xiaotian Han, Jianwei Yang, Houdong Hu, Lei Zhang, Jian-feng Gao, and Pengchuan Zhang. Image scene graph gener-ation (SGG) benchmark. arXiv preprint arXiv:2107.12604 ,2021. 2, 3, 4 [15] Derek Hoiem, Yodsawalai Chodpathumwan, and Qieyun Dai. Diagnosing error in object detectors. In European Conference on Computer Vision (ECCV) , pages 340–353, 2012. 3 [16] Shengran Hu, Cong Lu, and Jeff Clune. Automated design of agentic systems. In International Conference on Learning Representations (ICLR) , 2025. 3 [17] Xinyu Huang, Yi-Jie Huang, Youcai Zhang, Weiwei Tian, Rui Feng, Yuejie Zhang, Yanchun Xie, Yaqian Li, and Lei Zhang. Open-set image tagging with multi-grained text supervision. In ACM International Conference on Multimedia (ACM MM) ,pages 4117–4126, 2025. 5 [18] Jinbae Im, JeongYeon Nam, Nokyung Park, Hyungmin Lee, and Seunghyun Park. EGTR: Extracting graph from trans-former for scene graph generation. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 24229–24238, 2024. 1, 2, 5 [19] Bowen Jiang, Zhijun Zhuang, Shreyas S. Shivakumar, and Camillo J. Taylor. Enhancing scene graph generation with hierarchical relationships and commonsense knowledge. In 
+
+IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , pages 8883–8894, 2025. 2 [20] Tao Jiang, Peng Lu, Li Zhang, Ningsheng Ma, Rui Han, Chengqi Lyu, Yining Li, and Kai Chen. RTMPose: Real-time multi-person pose estimation based on MMPose. arXiv preprint arXiv:2303.07399 , 2023. 5 [21] Omar Khattab, Arnav Singhvi, Paridhi Maheshwari, Zhiyuan Zhang, Keshav Santhanam, Sri Vardhamanan, Saiful Haq, Ashutosh Sharma, Thomas T. Joshi, Hanna Moazam, Heather Miller, Matei Zaharia, and Christopher Potts. DSPy: Com-piling declarative language model calls into state-of-the-art pipelines. In International Conference on Learning Represen-tations (ICLR) , 2024. 3 [22] Ranjay Krishna, Yuke Zhu, Oliver Groth, Justin Johnson, Kenji Hata, Joshua Kravitz, Stephanie Chen, Yannis Kalan-tidis, Li-Jia Li, David A. Shamma, Michael S. Bernstein, and Li Fei-Fei. Visual Genome: Connecting language and vision using crowdsourced dense image annotations. International Journal of Computer Vision , 123(1):32–73, 2017. 1, 2, 5 [23] Hyun Jung Lee, Jungtaek Kim, Jongwon Jeong, Tae-Eui Kam, Donghyun Kim, and Yong Jae Lee. Harness optimization for embodied agents via experience traces. In NeurIPS 2026 Workshop on Self-Evolving Diversity-Driven Search for Ro-bust AI Systems , 2026. 2, 3 
+
+9[24] Yoonho Lee, Roshen S. Nair, Qizheng Zhang, Kangwook Lee, Omar Khattab, and Chelsea Finn. Meta-Harness: End-to-end optimization of model harnesses. In Conference on Language Modeling (COLM) , 2026. 2, 3, 5, 8 [25] Rongjie Li, Songyang Zhang, Bo Wan, and Xuming He. Bi-partite graph network with adaptive message passing for un-biased scene graph generation. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 11104–11114, 2021. 8 [26] Rongjie Li, Songyang Zhang, and Xuming He. SGTR: End-to-end scene graph generation with transformer. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 19464–19474, 2022. 2 [27] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva Ramanan, Piotr Doll´ ar, and C. Lawrence Zitnick. Microsoft COCO: Common objects in context. In 
+
+European Conference on Computer Vision (ECCV) , pages 740–755, 2014. 5 [28] Zihao Lin, Haoyu Dong, Haobo Xu, Chi-Chih Chang, Xuy-ing Ning, Yinglong Xia, Shuang Yang, Zhuokai Zhao, Xiny-ing Song, Dongfang Liu, Lifu Huang, Yang Song, and Qi-fan Wang. VideoHarness-SRSI: Structured recursive self-improvement for video understanding harness. arXiv preprint arXiv:2610.19424 , 2026. 2, 3 [29] Shilong Liu, Zhaoyang Zeng, Tianhe Ren, Feng Li, Hao Zhang, Jie Yang, Qing Jiang, Chunyuan Li, Jianwei Yang, Hang Su, Jun Zhu, and Lei Zhang. Grounding DINO: Marry-ing DINO with grounded pre-training for open-set object de-tection. In European Conference on Computer Vision (ECCV) ,pages 38–55, 2024. 5 [30] Julian Lorenz, Robin Sch¨ on, Katja Ludwig, and Rainer Lien-hart. A review and efficient implementation of scene graph generation metrics. In IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW) , pages 2567–2575, 2024. 2, 3 [31] Matthias Minderer, Alexey Gritsenko, and Neil Houlsby. Scal-ing open-vocabulary object detection. In Advances in Neu-ral Information Processing Systems (NeurIPS) , pages 72983– 73007, 2023. 5 [32] Sayak Nag, Udita Ghosh, Calvin-Khang Ta, Sarosij Bose, Jiachen Li, and Amit K. Roy-Chowdhury. Conformal pre-diction and MLLM aided uncertainty quantification in scene graph generation. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 11676–11686, 2025. 2 [33] Ma¨ elic Neau and Zoe Falomir. REACT++: Efficient cross-attention for real-time scene graph generation. arXiv preprint arXiv:2603.06386 , 2026. 1, 2, 5 [34] Ma¨ elic Neau, Salim Baloch, Jakob Suchan, Zoe Falomir, and Mehul Bhatt. Visual commonsense driven knowledge refinements for scene graph generation. arXiv preprint arXiv:2606.06369 , 2026. 2 [35] Maxime Oquab, Timoth´ ee Darcet, Th´ eo Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, Mahmoud Assran, Nicolas Ballas, Wojciech Galuba, Russell Howes, Po-Yao Huang, Shang-Wen Li, Ishan Misra, Michael Rabbat, Vasu Sharma, Gabriel Synnaeve, Hu Xu, Herv´ e Jegou, Julien Mairal, Patrick Labatut, Armand Joulin, and Piotr Bojanowski. DINOv2: Learning robust visual features without supervision. 
+
+Transactions on Machine Learning Research (TMLR) , 2024. 5[36] Sungho Park, Wonjoong Kim, Rongyuan Tan, Jue Zhang, Wook-Shin Han, Pengfei Gao, Chanyoung Park, Qingwei Lin, Saravan Rajmohan, and Dongmei Zhang. AutoSaddler: Automatic harness optimization with durable updates from agent execution traces. In Advances in Neural Information Processing Systems (NeurIPS) , 2026. 2, 3 [37] Runfeng Qu, Pia K. Bideau, Ole Hall, Julie Ouerfelli-Ethier, Klaus Obermayer, and Olaf Hellwich. Revisiting scene graph generation from the perspective of detector-conditioned reach-ability. In European Conference on Computer Vision (ECCV) ,pages 418–436, 2026. 2, 3 [38] Runfeng Qu, Ole Hall, Pia K. Bideau, Julie Ouerfelli-Ethier, Martin Rolfs, Klaus Obermayer, and Olaf Hellwich. Salience-SGG: Enhancing unbiased scene graph generation with itera-tive salience estimation. In IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , pages 1032–1042, 2026. 2 [39] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual models from natural language supervision. In International Conference on Machine Learning (ICML) , pages 8748–8763, 2021. 5 [40] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman R¨ adle, Chloe Rolland, Laura Gustafson, Eric Mintun, Junting Pan, Kalyan Vasudev Alwala, Nicolas Carion, Chao-Yuan Wu, Ross Girshick, Piotr Doll´ ar, and Christoph Feichtenhofer. SAM 2: Segment anything in images and videos. In Interna-tional Conference on Learning Representations (ICLR) , 2025. 5[41] Bernardino Romera-Paredes, Mohammadamin Barekatain, Alexander Novikov, Matej Balog, M. Pawan Kumar, Emilien Dupont, Francisco J. R. Ruiz, Jordan S. Ellenberg, Pengming Wang, Omar Fawzi, Pushmeet Kohli, and Alhussein Fawzi. Mathematical discoveries from program search with large language models. Nature , 625:468–475, 2024. 3 [42] Lloyd S. Shapley. A value for n-person games. In Contribu-tions to the Theory of Games, Volume II , number 28 in Annals of Mathematics Studies, pages 307–317. Princeton University Press, 1953. 3, 4 [43] D´ ıdac Sur´ ıs, Sachit Menon, and Carl Vondrick. ViperGPT: Visual inference via Python execution for reasoning. In 
+
+IEEE/CVF International Conference on Computer Vision (ICCV) , pages 11854–11864, 2023. 3 [44] Kaihua Tang. A scene graph generation codebase in PyTorch. GitHub repository (Scene-Graph-Benchmark.pytorch, MET-RICS.md), 2020. 5 [45] Kaihua Tang, Yulei Niu, Jianqiang Huang, Jiaxin Shi, and Hanwang Zhang. Unbiased scene graph generation from biased training. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 3713–3722, 2020. 2 
+
+10 [46] Jinghao Wang, Zhengyu Wen, Xiangtai Li, Zujin Guo, Jingkang Yang, and Ziwei Liu. Pair then relation: Pair-Net for panoptic scene graph generation. IEEE Transactions on Pat-tern Analysis and Machine Intelligence , 46(12):10452–10465, 2024. 2, 3 [47] Wenfeng Wang, Jianrui Shi, Mingang Guo, Jiayuan Ma, Yuqi Lu, Jiajun Sun, Guojiang Zhao, and Jing Li. Trace-to-Architecture: Capability bottleneck diagnosis for harness revision. arXiv preprint arXiv:2610.16725 , 2026. 2, 3 [48] Yuxuan Wang and Xiaoyuan Liu. Predicate debiasing in vision-language models integration for scene graph genera-tion enhancement. In Conference on Empirical Methods in Natural Language Processing (EMNLP) , pages 1627–1639, 2024. 2 [49] Zefan Wang, Zichuan Liu, Yingying Zhang, Aoxiao Zhong, Jihong Wang, Fengbin Yin, Lunting Fan, Lingfei Wu, and Qingsong Wen. RCAgent: Cloud root cause analysis by autonomous agents with tool-augmented large language mod-els. In ACM International Conference on Information and Knowledge Management (CIKM) , pages 4966–4974, 2024. 3 [50] Bin Xiao, Haiping Wu, Weijian Xu, Xiyang Dai, Houdong Hu, Yumao Lu, Michael Zeng, Ce Liu, and Lu Yuan. Florence-2: Advancing a unified representation for a variety of vision tasks. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 4818–4829, 2024. 5 [51] Danfei Xu, Yuke Zhu, Christopher B. Choy, and Li Fei-Fei. Scene graph generation by iterative message passing. In 
+
+IEEE Conference on Computer Vision and Pattern Recogni-tion (CVPR) , pages 3097–3106, 2017. 1, 2, 5 [52] Jingkang Yang, Yi Zhe Ang, Zujin Guo, Kaiyang Zhou, Wayne Zhang, and Ziwei Liu. Panoptic scene graph genera-tion. In European Conference on Computer Vision (ECCV) ,pages 178–196, 2022. 2, 5 [53] Lihe Yang, Bingyi Kang, Zilong Huang, Zhen Zhao, Xiao-gang Xu, Jiashi Feng, and Hengshuang Zhao. Depth Anything V2. In Advances in Neural Information Processing Systems (NeurIPS) , pages 21875–21911, 2024. 5 [54] Yingxuan Yang, Bo Huang, Siyuan Qi, Chao Feng, Haoyi Hu, Yuxuan Zhu, Jinbo Hu, Haoran Zhao, Ziyi He, Xiao Liu, ZongYu Wang, Muning Wen, Lin Qiu, Xuezhi Cao, Xunliang Cai, Yong Yu, and Weinan Zhang. Attribution-based analysis and optimization of modular agentic workflows. In Findings of the Association for Computational Linguistics: ACL 2026 ,pages 7247–7264, 2026. 3 [55] Jeonghun Yoon and Dongchan Kim. Diagnosis is not pre-scription: Linguistic co-adaptation explains patching hazards in LLM pipelines. arXiv preprint arXiv:2605.21958 , 2026. 3 [56] Mert Yuksekgonul, Federico Bianchi, Joseph Boen, Sheng Liu, Pan Lu, Zhi Huang, Carlos Guestrin, and James Zou. Op-timizing generative AI by backpropagating language model feedback. Nature , 639(8055):609–616, 2025. 3 [57] Rowan Zellers, Mark Yatskar, Sam Thomson, and Yejin Choi. Neural motifs: Scene graph parsing with global context. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 5831–5840, 2018. 2 [58] Ao Zhang, Yuan Yao, Qianyu Chen, Wei Ji, Zhiyuan Liu, Maosong Sun, and Tat-Seng Chua. Fine-grained scene graph generation with data transfer. In European Conference on Computer Vision (ECCV) , pages 409–424, 2022. 2, 5 [59] Jiayi Zhang, Jinyu Xiang, Zhaoyang Yu, Fengwei Teng, Xionghui Chen, Jiaqi Chen, Mingchen Zhuge, Xin Cheng, Sirui Hong, Jinlin Wang, Bingnan Zheng, Bang Liu, Yuyu Luo, and Chenglin Wu. AFlow: Automating agentic work-flow generation. In International Conference on Learning Representations (ICLR) , 2025. 3 [60] Shaokun Zhang, Ming Yin, Jieyu Zhang, Jiale Liu, Zhiguang Han, Jingyang Zhang, Beibin Li, Chi Wang, Huazheng Wang, Yiran Chen, and Qingyun Wu. Which agent causes task failures and when? On automated failure attribution of LLM multi-agent systems. In International Conference on Machine Learning (ICML) , pages 76583–76599, 2025. 3 [61] Chaofan Zheng, Xinyu Lyu, Lianli Gao, Bo Dai, and Jingkuan Song. Prototype-based embedding network for scene graph generation. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 22783–22792, 2023. 2[62] Yutong Zhou, Guoxin Kang, Lei Wang, Xueya Zhang, Qin-wei Yang, and Jianfeng Zhan. SmartANN: Object causal modeling boosts approximate nearest neighbor diagnosis and auto-design. arXiv preprint arXiv:2609.08240 , 2026. 3 [63] Fangrui Zhu, Yiming Xie, Weidi Xie, and Huaizu Jiang. Di-agnosing human-object interaction detectors. International Journal of Computer Vision , 133(4):2227–2244, 2025. 1, 3 
+
+11

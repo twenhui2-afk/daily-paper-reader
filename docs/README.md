@@ -6,72 +6,69 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-11-25
-- 运行时间：2026-11-25 11:18:43 UTC+8
+- 最新运行日期：2026-11-26
+- 运行时间：2026-11-26 10:24:43 UTC+8
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：16
+- 精读区：5
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 17 篇推荐（精读 6 篇，速读 11 篇）
-- 精读：《FrameSeg3D: Learned Local Frames for Segmenting Small Parts on High-Resolution 3D Scans》（8.6/10）, 《PeriaTrace: Tooth-Level Grounding Diagnosis and Patient-Facing Explanations from Periapical Radiographs》（8.5/10）
-- 速读：《Degree-three Euclidean spanning trees within a factor of 1.514 of the minimum》（8.3/10）, 《Faster than square-root run-time in adiabatic quantum algorithms for Exact Cover 3》（8.2/10）, 《Minimal norm of regular vectors in the root lattice of a crystallographic root system》（8.2/10）
+- 今日共生成 16 篇推荐（精读 5 篇，速读 11 篇）
+- 精读：《Linear-Time Optimal Leaf Roots beyond 3-Leaf Powers》（8.4/10）, 《Baker-Akhiezer functions for Koornwinder-van Diejen integrable system》（8.4/10）
+- 速读：《Square-root cancellation in three hyperbolic counting problems via maximal estimates》（7.8/10）, 《Square-root cancellation in three hyperbolic counting problems via maximal estimates》（7.8/10）, 《Computing the Wave: Bridging Gravitational Wave and High-Energy-Physics software (with modular ROOT extensions)》（7.7/10）
 - 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202611/25/README](/202611/25/README)
+- 详情：[/202611/26/README](/202611/26/README)
 
 ### 精读区论文标签
-1. [FrameSeg3D: Learned Local Frames for Segmenting Small Parts on High-Resolution 3D Scans](/202611/25/2611.22124v1-frameseg3d-learned-local-frames-for-segmenting-small-parts-on-high-resolution-3d-scans)  
-   标签：评分：8.6/10
-   evidence：检索回退候选
-2. [PeriaTrace: Tooth-Level Grounding Diagnosis and Patient-Facing Explanations from Periapical Radiographs](/202611/25/2611.23012v1-periatrace-tooth-level-grounding-diagnosis-and-patient-facing-explanations-from-periapical-radiographs)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-3. [\(A_α\)-Wronskian Vertices of Paths and Controllability of Path-Rooted Products](/202611/25/2611.21385v1-a-wronskian-vertices-of-paths-and-controllability-of-path-rooted-products)  
-   标签：评分：8.5/10
-   evidence：检索回退候选
-4. [Independent and end-faithful spanning trees in infinite graphs](/202611/25/2611.28938v1-independent-and-end-faithful-spanning-trees-in-infinite-graphs)  
+1. [Linear-Time Optimal Leaf Roots beyond 3-Leaf Powers](/202611/26/2611.31464v1-linear-time-optimal-leaf-roots-beyond-3-leaf-powers)  
    标签：评分：8.4/10
    evidence：检索回退候选
-5. [What Makes a Good Move? Learning to Act from Experience in Visual Worlds](/202611/25/2611.21065v1-what-makes-a-good-move-learning-to-act-from-experience-in-visual-worlds)  
+2. [Baker-Akhiezer functions for Koornwinder-van Diejen integrable system](/202611/26/2611.32744v1-baker-akhiezer-functions-for-koornwinder-van-diejen-integrable-system)  
    标签：评分：8.4/10
    evidence：检索回退候选
-6. [Exact Inversion of Relaxation from Rheometer Measurement Data](/202611/25/2611.22917v2-exact-inversion-of-relaxation-from-rheometer-measurement-data)  
-   标签：评分：8.3/10
+3. [Fix Where It Fails: Root-Cause-Guided Agentic Harness Optimization for Scene Graph Generation](/202611/26/2611.27529v1-fix-where-it-fails-root-cause-guided-agentic-harness-optimization-for-scene-graph-generation)  
+   标签：评分：8.1/10
+   evidence：检索回退候选
+4. [Agentic Root Cause Reasoning and Localization of Unsoundness in Static Call Graph Analysis](/202611/26/2611.29745v1-agentic-root-cause-reasoning-and-localization-of-unsoundness-in-static-call-graph-analysis)  
+   标签：评分：8.0/10
+   evidence：检索回退候选
+5. [Automorphisms Induced on Cartan Tori and Centers of Quantized Enveloping Algebras](/202611/26/2611.30981v1-automorphisms-induced-on-cartan-tori-and-centers-of-quantized-enveloping-algebras)  
+   标签：评分：8.0/10
    evidence：检索回退候选
 
 ### 速读区论文标签
-1. [Degree-three Euclidean spanning trees within a factor of 1.514 of the minimum](/202611/25/2611.23703v1-degree-three-euclidean-spanning-trees-within-a-factor-of-1514-of-the-minimum)  
-   标签：评分：8.3/10
-   evidence：检索回退候选
-2. [Faster than square-root run-time in adiabatic quantum algorithms for Exact Cover 3](/202611/25/2611.23956v1-faster-than-square-root-run-time-in-adiabatic-quantum-algorithms-for-exact-cover-3)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-3. [Minimal norm of regular vectors in the root lattice of a crystallographic root system](/202611/25/2611.24745v2-minimal-norm-of-regular-vectors-in-the-root-lattice-of-a-crystallographic-root-system)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-4. [Root-of-Unity Limits of Trigonometric qKZ Connections](/202611/25/2611.26375v1-root-of-unity-limits-of-trigonometric-qkz-connections)  
-   标签：评分：8.2/10
-   evidence：检索回退候选
-5. [A polynomial-time decoding algorithm up to half the square-root bound for quadratic residue and generalized quadratic residue codes](/202611/25/2611.21888v1-a-polynomial-time-decoding-algorithm-up-to-half-the-square-root-bound-for-quadratic-residue-and-generalized-quadratic-residue-codes)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-6. [RootSink: Reproducible C/C++ Crashes with Tested Repair Sites](/202611/25/2611.23336v1-rootsink-reproducible-cc-crashes-with-tested-repair-sites)  
-   标签：评分：7.9/10
-   evidence：检索回退候选
-7. [Super quantum groups of divided powers à la Lusztig](/202611/25/2611.26505v1-super-quantum-groups-of-divided-powers--la-lusztig)  
+1. [Square-root cancellation in three hyperbolic counting problems via maximal estimates](/202611/26/2611.26738v1-square-root-cancellation-in-three-hyperbolic-counting-problems-via-maximal-estimates)  
    标签：评分：7.8/10
    evidence：检索回退候选
-8. [A unified closed-form theory for elastic waves in polycrystals of any crystal symmetry](/202611/25/2611.26674v1-a-unified-closed-form-theory-for-elastic-waves-in-polycrystals-of-any-crystal-symmetry)  
+2. [Square-root cancellation in three hyperbolic counting problems via maximal estimates](/202611/26/2611.26738v2-square-root-cancellation-in-three-hyperbolic-counting-problems-via-maximal-estimates)  
    标签：评分：7.8/10
    evidence：检索回退候选
-9. [Weighted Proportional Toll Sharing on General Highway Networks](/202611/25/2611.22892v1-weighted-proportional-toll-sharing-on-general-highway-networks)  
+3. [Computing the Wave: Bridging Gravitational Wave and High-Energy-Physics software (with modular ROOT extensions)](/202611/26/2611.27026v1-computing-the-wave-bridging-gravitational-wave-and-high-energy-physics-software-with-modular-root-extensions)  
+   标签：评分：7.7/10
+   evidence：检索回退候选
+4. [Stable phase retrieval from operator measurements](/202611/26/2611.27085v1-stable-phase-retrieval-from-operator-measurements)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+5. [PIAE: Physics-Informed Continuous Autoencoding for Compact 3D Human Motion](/202611/26/2611.28922v1-piae-physics-informed-continuous-autoencoding-for-compact-3d-human-motion)  
+   标签：评分：7.6/10
+   evidence：检索回退候选
+6. [Joint Cohort Laws and Mixed Cumulants with Spectral Asymptotics for Growing Gaps in Finite-Age Branching Processes](/202611/26/2611.30180v1-joint-cohort-laws-and-mixed-cumulants-with-spectral-asymptotics-for-growing-gaps-in-finite-age-branching-processes)  
+   标签：评分：7.5/10
+   evidence：检索回退候选
+7. [Invariants of subfactors associated to Petrescu's Hadamard matrices of order 7](/202611/26/2611.25638v2-invariants-of-subfactors-associated-to-petrescus-hadamard-matrices-of-order-7)  
    标签：评分：6.9/10
    evidence：检索回退候选
-10. [A Two-Spectrum Deterministic Equivalent for Random Skew-Kernel Matrices](/202611/25/2611.23095v2-a-two-spectrum-deterministic-equivalent-for-random-skew-kernel-matrices)  
+8. [Self-Orthogonal MDS Principal-Ideal Codes](/202611/26/2611.25940v1-self-orthogonal-mds-principal-ideal-codes)  
    标签：评分：6.9/10
    evidence：检索回退候选
-11. [Horizon kinematics and the fine structure induced by finite-energy Hawking radiation](/202611/25/2611.23376v1-horizon-kinematics-and-the-fine-structure-induced-by-finite-energy-hawking-radiation)  
+9. [Degree Lower Bounds for Symmetric Boolean Functions: Breaking the Prime-Gap Barrier](/202611/26/2611.26446v1-degree-lower-bounds-for-symmetric-boolean-functions-breaking-the-prime-gap-barrier)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+10. [Demazure-Lusztig type operators and correspondences on Kato Catalan varieties](/202611/26/2611.27081v1-demazure-lusztig-type-operators-and-correspondences-on-kato-catalan-varieties)  
+   标签：评分：6.8/10
+   evidence：检索回退候选
+11. [Balanced Divide and Conquer for Rooted Maximum Agreement Forests](/202611/26/2611.27160v1-balanced-divide-and-conquer-for-rooted-maximum-agreement-forests)  
    标签：评分：6.8/10
    evidence：检索回退候选
 
