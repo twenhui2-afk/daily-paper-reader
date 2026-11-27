@@ -1,0 +1,768 @@
+Title: APQKE-DR: Entropy-Failure Analysis of a Post-Quantum-Initialized Ratcheted Channel
+
+URL Source: https://arxiv.org/pdf/2611.32024v1
+
+Published Time: Wed, 25 Nov 2026 02:15:48 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+> 1
+
+# APQKE-DR: Entropy-Failure Analysis of a Post-Quantum-Initialized Ratcheted Channel 
+
+Muhammad Asfand Hafeez , Graduate Student Member, IEEE, Zain Ul Abideen , Member, IEEE, ,Amna Zafar ,Kazi Hassan Shakib , Member, IEEE , Arslan Munir , Senior Member, IEEE 
+
+Abstract —Long-lived secure channels for embedded and cyber-physical systems (CPSs) must resist quantum attacks and failures in endpoint randomness. While several post-quantum key exchange protocols exist, their security assumes reliable randomness at the endpoint, but this assumption is not always true in embedded devices. In this paper, we introduce the Entropy Attack Suite (EAS) to evaluate secure channels facing endpoint randomness failures, such as low-entropy boot and Random Number Generation (RNG) path subversion. As a case study, we design and implement APQKE-DR, a post-quantum secure channel. Its handshake uses ML-KEM [1] and ML-DSA [2], producing a root key for an X25519 Double Ratchet. We assess APQKE-DR’s performance and security for smart grid communication, and integrate it beneath ANSI C12.22 and DNP3 without altering payload formats. On a Raspberry Pi Compute Module 5, the APQKE handshake exchanges 9,610 bytes with median latencies of 1.99 ms (node) and 0.82 ms (server). The ratcheted channel adds 31 bytes per message. With fresh randomness and ideal cryptographic primitives, ProVerif verifies the modeled secrecy and authentica-tion properties. If randomness fails, EAS can recover the RNG stream and root key from public transcripts. Under RNG-path subversion, a weak generator exposes the root key across sessions. If subversion also affects X25519 keys, attackers may access ratchet keys and plaintexts. TPM seeding prevents early-boot attacks but not later subversion, while measured boot can block modified firmware. Secure deployment thus requires integrity along the entire entropy path, not just strong cryptographic primitives. 
+
+I. I NTRODUCTION 
+
+Modern embedded and cyber-physical systems (CPSs) rely on continuous communication between field devices and central-ized control services, carrying measurements to control software and returning commands that drive system operation. Smart grids apply this model to electricity distribution: smart meters and other field devices send usage and grid measurements to supervisory control and data acquisition (SCADA) backends, which monitor conditions and coordinate control actions [3]– [5]. This connectivity improves visibility and automation but exposes devices and communication channels to attacks that can cause incorrect billing, falsified measurements, loss of visibility, or disruption of control functions [6]–[8]. In these systems, each connection has two endpoints : a field device and a backend server. These endpoints establish session keys to protect their communication, typically using 
+
+M.A. Hafeez, A. Zafar and A. Munir are with the Department of Computer Science and Electrical Engineering, Florida Atlantic University, 33431, Florida, USA (e-mail: mhafeez2024@fau.edu; azafar2025@fau.edu; arslanm@fau.edu). Zain Ul Abideen is with Department of Electrical and Computer Engineering, University of Idaho, Moscow, ID, USA (e-mail: zabideen@uidaho.edu). K. H. Shakib is with Department of Computer Science, Kansas State University, Kansas, USA (e-mail: kshakib@ksu.edu). 
+
+Rivest-Shamir-Adleman (RSA) or elliptic-curve cryptography (ECC) [9]. A sufficiently capable quantum adversary can break these public-key primitives and recover these keys, which would allow it to decrypt previously recorded traffic [10], [11]. Migrating away from these algorithms is difficult because field devices span a wide capability spectrum, from microcontroller unit (MCU)-class platforms to Linux-based gateways and the most resource-constrained devices in this range offer limited memory capacity and computational headroom. Post-quantum key exchange (PQKE) addresses the quantum threat, but it still requires unpredictable random inputs at the endpoints [12]. For a key-encapsulation mechanism (KEM), randomness is needed to generate an ephemeral keypair and to establish a shared secret using the recipient’s public key. An endpoint’s random number generator (RNG) can violate this requirement if it is initialized with too few unpredictable bits or if modified software replaces its output with a predictable sequence [13]. Suppose the device uses the same RNG stream for its random KEM inputs and its handshake nonce which is used to distinguish protocol runs. If the set of possible streams is small enough to enumerate, an attacker first regenerates the nonce for each stream and compares it with the recorded nonce. For each match, the attacker regenerates the device’s KEM keypair and encapsulation ciphertext. The regenerated public key and ciphertext are then compared with the recorded handshake messages. If both match, the attacker uses the regenerated private key and encapsulation randomness to recover the shared secrets. This search requires knowledge of the RNG algorithm and the order in which the protocol requests random values, but no further interaction with the device [14]. Fig. 1 illustrates the quantum threat and endpoint randomness failures in communication between a smart meter and a utility backend. Existing protocols provide an authenticated key establish-ment mechanism for updating encryption keys. Transport Layer Security (TLS) 1.3 authenticates its handshake transcript and confirms the derived keys, but its KeyUpdate mechanism derives each new traffic secret from the previous one. An attacker who obtains that secret can therefore derive subsequent traffic keys on the same connection [15]. The Signal protocol [16] addresses this limitation by incorporating fresh shared secrets through ratcheted messaging, including classical and post-quantum updates in its Triple Ratchet [17]. However, its post quantum (PQ) extended Diffie-Hellman (PQXDH) handshake still relies on classical elliptic-curve cryptography for mutual authentication [18]. To address these authentication and recovery requirements, arXiv:2611.32024v1 [cs.CR] 24 Nov 2026 2        
+
+> Monitoring &Control Smart Meter
+> MCU, frequent reboots
+> Untrusted Network
+> WAN/NAN/HAN
+> Server
+> Utility backend
+> Entropy failures
+> Early-boot hole / RNG path subversion
+> Future quantum
+> Record now, decrypt later
+> Secure channel design under realistic entropy
+> Fig. 1. Smart meters communicate with SCADA over untrusted networks, facing quantum record-now-decrypt-later risk and practical entropy failures.
+
+we design APQKE-DR, which combines an authenticated post-quantum key exchange with a Double Ratchet (DR) for direct node-to-server communication. Using a Raspberry Pi Compute Module 5 as a gateway-class embedded Linux endpoint, we evaluated the channel and hardware-rooted defenses with the 
+
+Entropy Attack Suite (EAS) under two controlled randomness failures: early-boot entropy holes and RNG-path subversion. APQKE-DR is post-quantum initialized, but its X25519 ratchet offers only classical post-compromise recovery. After the attacker loses access to the channel state, later messages can become confidential again if a key update introduces a shared secret unknown to the attacker. Our contributions are as follows:  
+
+> •
+
+We design and implement APQKE-DR , an experimental secure channel for the smart grid node-to-server interface. The APQKE handshake provides authenticated post-quantum key establishment using ML-KEM for key encapsulation and ML-DSA for signatures [19], [20], binds the derived root key to an authenticated transcript hash, and applies explicit Finished-style key confirmation [14], [21]. The initial root key RK 0 initializes the DR data channel, cryptographically linked to the authenticated handshake transcript for subsequent messaging.  
+
+> •
+
+We introduce an EAS to model early-boot entropy holes and RNG-path subversion, demonstrating offline recovery of the root key ( RK 0) from public transcripts and en-abling evaluation of the handshake-plus-channel protocol under degraded entropy conditions rather than idealized randomness assumptions [22].  
+
+> •
+
+We compare Trusted Platform Module (TPM) seeding with Platform Configuration Register (PCR)-bound measured-boot gating. TPM seeding blocks recovery in the tested early-boot configurations but does not stop replacement of RNG outputs after seeding. Under the enforced boot policy, PCR-bound gating blocks session establishment for the tested modified firmware.  
+
+> •
+
+Experimental evaluation measures latency, bandwidth, and total system power on the gateway-class testbed, and integrates APQKE-DR within ANSI C12.22 [23] and DNP3 [24] without changing their application payload formats. We model handshake secrecy, authentication, and channel binding in ProVerif [25] against an active network attacker, using ideal cryptographic primitives and fresh randomness. The paper is organized as follows: Section II reviews back-ground and related work. Section III presents the APQKE-DR protocol. Section IV introduces EAS and its implementation. Section V covers the security analysis and results. Finally, Section VI concludes the paper. II. B ACKGROUND , S YSTEM AND THREAT MODEL 
+
+The smart grid connects resource-constrained field devices via heterogeneous links. Key establishment and authentication protocols in smart grids focus on minimizing computational, bandwidth, and energy costs at endpoints, often using elliptic-curve primitives such as ECDH/ECDSA, along with symmetric encryption and message authentication codes (MACs) [26]. A wide range of lightweight and Advanced Metering Infrastruc-ture (AMI) focused designs refine handshake structure, reduce state, and optimize message formats to fit metering and SCADA constraints [27], [28]. Motivated by “record now, decrypt later” threats and the susceptibility of RSA/ECC to quantum algorithms [10], [11], re-cent work has explored integrating PQ primitives into smart grid and AMI security architectures. Prototypes have investigated Kyber and FrodoKEM-like mechanisms and their feasibility for embedded AMI deployments [29], [30], while other proposals develop lattice-based mutual authentication and key exchange protocols designed for smart grid communication [31]. These studies demonstrate that PQ primitives can be engineered into metering infrastructures, but they predominantly focus on initial session establishment and system integration. End-to-end secure messaging over long-lived channels, including forward secrecy, post-compromise recovery, and robustness to realistic endpoint randomness failures, is less frequently discussed. Outside the smart grid literature, secure-channel protocols provide well-established patterns for transcript binding and explicit key confirmation, notably in TLS 1.3 (transcript hash and Finished) [14], [21], as well as modular handshake frameworks, such as noise [32]. For long-lived encrypted messaging, the Signal Double Ratchet is a widely deployed construction for forward secrecy and post-compromise recovery, with formal security analyses [33], [34]. Parallel work has also explored post-quantum directions for secure-messaging handshakes [35]. 
+
+A. System and Threat Model 
+
+Smart-grid nodes {SGN i} use encrypted APQKE-DR channels to communicate with the utility server S (Fig. 2). Field devices include smart meters, remote terminal units (RTUs), phasor measurement units (PMUs), and gateways. AMI concentrators relay ciphertext without access to channel keys. Field links may use home or neighborhood area networks, such as home area networks (HANs) and neighborhood area networks (NANs). Both field and backhaul links are untrusted: an attacker can observe, modify, or block messages. A trusted authority provisions each node with the server’s ML-DSA verification key and registers each node’s verification key at S. Handshakes do not contact the authority. Nodes may have a hardware entropy source or TPM. Software updates are signed, and legitimate ratchet-state loss after a reset requires a fresh APQKE handshake. We distinguish six adversaries:  
+
+> •
+
+Anet is an active Dolev-Yao network adversary that can observe, modify, inject, replay, reorder, delay, or drop messages; initiate concurrent sessions; and mount compu-tational or state-exhaustion denial-of-service attempts.  
+
+> •
+
+Aseed can reset or power-cycle SGN i, control handshake timing, and knows the modeled low-entropy boot-seed distribution but cannot read endpoint secrets. 3 
+
+> •
+
+Arng controls only the bytes returned by the node’s RNG application programming interface (API). It cannot access long-term keys, plaintext, ratchet state, TPM state, or other process memory.  
+
+> •
+
+Aimg can install and attempt to boot a modified image but cannot forge an approved measurement or bypass the enforced TPM PCR policy. An unauthorized image, therefore, causes the node to fail closed before channel establishment.  
+
+> •
+
+Astate temporarily obtains the current Double Ratchet state, including the current root and chain keys, but later loses access and does not obtain provisioned keys or future randomness.  
+
+> •
+
+AQ records network traffic today and gains access to a large-scale quantum computer in the future, without live endpoint compromise. We assume a trustworthy provisioning authority and ML-DSA keys, correct cryptographic implementations, secure erasure of ephemeral KEM secrets, and used message keys, enforcement of the TPM measured-boot policy, and integrity of persistent credentials and ratchet state. Legitimate state loss is allowed, but malicious rollback or cloning of persistent state is out of scope, as are arbitrary or ongoing runtime-memory compromise, invasive physical attacks, compromise of the trusted authority or TPM, and side-channel or fault attacks. The protocol does not aim to resist sustained flooding, total state exhaustion, or indefinite message dropping. 
+
+AQ and Astate capture different goals. AQ addresses confi-dentiality of recorded sessions initialized through ML-KEM against future passive quantum adversaries. Astate addresses recovery after live ratchet-state compromise, which depends on a later uncompromised X25519 update and therefore offers only classical post-compromise recovery.        
+
+> Smart meter
+> billing, usage RTU / PMU
+> grid sensing
+> Gateway
+> field relay
+> Field devices {SGN i}
+> Firmware update:
+> Signed images
+> AMI concentrator
+> DCU / collector
+> Untrusted networks
+> RF mesh / PLC / IP
+> backhaul (NAN/WAN) AMI backend Server ( S)
+> many sessions
+> Provisioning / Key Registry
+> Pinned verif. keys Device ident.
+> Utility backend
+> Fig. 2. {SGN i}connect to backend Server through field links and an AMI concentrator. Provisioning distributes trust anchors and registered verification keys, while signed updates modify device software.
+
+III. P ROPOSED PROTOCOLS 
+
+In this section, we present our APQKE-DR protocol for secure communication between a provisioned embedded end-point SGN i and the utility backend server S. The design includes two parts: APQKE , which is an authenticated post-quantum handshake generating an initial root key ( RK 0) and an authenticated transcript hash ( T H 1), and the DR data channel, which is resource-aware, seeded by RK 0, and tied to the handshake using T H 1 for application traffic. To manage resources,We have implemented a resource-aware rekey schedule. APQKE is executed during the initial connec-tion, during state loss, and periodically thereafter. Meanwhile, the Diffie-Hellman (DH) ratchet refresh operates continuously with compact message headers. 
+
+A. Trusted Authority (TA) assisted distribution of long-term ML-DSA keys 
+
+We assume a trusted authority (TA) that distributes long-term ML-DSA public keys out-of-band before deployment. Unlike certificate-based PKI, the TA does not issue certificates or transmit certificate material during the handshake. Instead, the TA securely provisions the server’s long-term signature verification key to each device and vice versa. In concrete terms, the backend server has a long-term ML-DSA key pair (sk sig S , pk sig S ), and each node of the smart grid has (sk sig SGN i , pk sig SGN i ). During manufacturing, pk sig S is written in each SGN i (key pin), while the server stores 
+
+(ID i, pk sig SGN i ) in a registration table indexed by device identity. This enables APQKE to authenticate all ephemeral ML-KEM keys by verifying signatures under pre-provisioned ML-DSA verification keys, without repeatedly transmitting any static public keys on the network. For compact on-wire identity representation, deployments may use a short key identifier, e.g., kid S = H(pk sig S ), kid i =
+
+H(pk sig SGN i ), so that a receiver can select the correct pinned/reg-istered key with minimal overhead. 
+
+B. APQKE Handshake 
+
+Fig. 3 illustrates the APQKE handshake, which establishes an initial 256-bit RK 0 key for the DR channel. Unlike certificate-based designs, only long-term ML-DSA verification keys are provisioned out of band, as described in Section III-A; all ML-KEM public keys are ephemeral and exchanged during the handshake. The SGN i initiates the handshake by executing steps (a)-(c). In step (a) it selects parameters params , identity 
+
+ID i, and a fresh nonce NSGN i , which is included in the transcript to provide freshness and replay resistance. In step (b), SGN i generates a one-time ML-KEM key pair 
+
+(epm sk SGN i , epm pk SGN i ) that is erased after completion. In step (c), the ephemeral ML-KEM public key is authenticated using its long-term ML-DSA signing key. This early signature prevents an active adversary from substituting epm pk SGN i
+
+during transmission because the server checks this signature before wrapping up the message. After signing, SGN i sends the message M1 = ( params, ID i, N SGN i , epm pk SGN i , σ (1)  
+
+> SGN
+
+)
+
+to the server. After receiving M1, the server executes steps (a)–(i). In step (a), it uses ID i to fetch pk sig SGN i from its provisioned registry and verifies σ(1)  
+
+> SGN
+
+; if it fails, the handshake terminates before establishing any cryptographic state. Steps (b)–(c) contribute to server freshness by sampling NS and gener-ating (epm sk S , epm pk S ). The server seeds the transcript 4
+
+Server ( S) Smart Grid Node ( SGN i)
+
+(a)–(c) SGN setup 
+
+(a) Choose params , identity ID i, and nonce 
+
+NSGN i
+
+(b) Generate SGN ephemeral ML-KEM 
+
+(epm sk SGN i , epm pk SGN i )
+
+(c) Authenticate SGN ephemeral key (ML-DSA): 
+
+σ(1)  
+
+> SGN
+
+= Sign sk sig SGN i
+
+ H(params ∥ ID i ∥
+
+NSGN i ∥ epm pk SGN i )
+
+(a)–(i) Server processing 
+
+(a) Lookup pk sig SGN i ; verify σ(1) 
+
+> SGN
+
+(b) Sample server nonce NS
+
+(c) Generate server ephemeral ML-KEM 
+
+(epm sk S , epm pk S )
+
+(d) Seed transcript: 
+
+T H 0 = H(params ∥ ID i ∥ NSGN i ∥ NS ∥
+
+epm pk SGN i ∥ σ(1)  
+
+> SGN
+
+)
+
+(e) Encapsulate to SGN ephemeral: 
+
+(ct S , ss S ) = Encaps ML-KEM (epm pk SGN i )
+
+(f) Bind context: T H 1 = H(T H 0 ∥ epm pk S ∥ ct S )
+
+(g) Server signature: σS = Sign sk sig S
+
+(T H 1)
+
+(h) Handshake secret: hs = HKDF( ss S , “hs” ∥
+
+T H 1)
+
+Traffic: (hsK snd , hsK rcv ) ←
+
+HKDF( hs, “hs-traffic” )
+
+(i) Finished: F inished S =MAC hsK snd (“server finished” ∥ T H 1)
+
+(d)–(l) SGN verification & response 
+
+(d) Recompute T H 0, T H 1 as in server steps (e) Recover ss S =Decaps ML-KEM (epm sk SGN i , ct S )
+
+(f) Derive hs ; SGN role assignment: 
+
+(hsK rcv , hsK snd ) ← HKDF( hs, “hs-traffic” )
+
+(g) Verify σS and 
+
+F inished S
+
+> ?
+
+= MAC hsKrcv (“server finished” ∥
+
+T H 1)
+
+(h) Encapsulate to server ephemeral: 
+
+(ct SGN i , ss SGN i ) = Encaps ML-KEM (epm pk S )
+
+(i) Bind SGN ciphertext: hSGN i = H(ct SGN i )
+
+(j) Derive root key for Algorithm 1: RK 0 =HKDF( ss SGN i ∥ ss S , “dr-root” ∥ T H 1)
+
+(k) SGN Finished: F inished SGN i =MAC hsK snd (“SGN finished” ∥ T H 1 ∥ hSGN i )
+
+(l) Encrypt key confirmation: ECA =AEAD .Enc hsK snd (AAD = T H 1 ∥
+
+hSGN i , F inished SGN i )
+
+(j)–(m) Server finalization 
+
+(j) Compute hSGN i = H(ct SGN i ); decrypt ECA 
+
+under hsK rcv and verify F inished SGN i
+
+(k) Constant-time decapsulation: ss SGN i =Decaps CT ML-KEM (epm sk S , ct SGN i )
+
+(l) Derive root key for Algorithm 1: RK 0 =HKDF( ss SGN i ∥ ss S , “dr-root” ∥ T H 1)
+
+(m) Erase epm sk S , ss S , ss SGN i (m) Erase epm sk SGN i , ss S , ss SGN i
+
+Both sides now hold the same RK 0
+
+M1 : params ∥ ID i ∥ NSGN i
+
+epm pk SGN i ∥ σ(1) 
+
+> SGN
+
+M2 : NS ∥ epm pk S ∥ ct S
+
+∥ σS ∥ F inished S
+
+M3 : ct SGN i ∥ ECA 
+
+Fig. 3. APQKE (Protocol 1): Ephemeral ML-KEM with long-term ML-DSA authentication, transcript binding ( T H 0, T H 1), and Finished MACs, generating shared root key RK 0 for Algorithm 1. 
+
+in step (d) as T H 0 = H(params ∥ ID i ∥ NSGN i ∥
+
+NS ∥ epm pk SGN i ∥ σ(1) 
+
+SGN ), encapsulates it to the SGN i
+
+ephemeral key in step (e), obtaining (ct S , ss S ), and completes transcript binding in step (f) as T H 1 = H(T H 0 ∥ epm pk S ∥
+
+ct S ).The server authenticates the bound transcript by signing T H 1
+
+(step (g)) and derives handshake traffic keys from ss S (step (h)): 
+
+hs = HKDF( ss S , “hs” ∥ T H 1) and (hsK snd , hsK rcv ) ←
+
+HKDF( hs, “hs-traffic” ). This ordering is the server-side as-signment. The SGN i derives the same two HKDF outputs but assigns them in reverse order as (hsK rcv , hsK snd ) ←
+
+HKDF( hs, “hs-traffic” ). Hence, hsK Ssnd = hsK SGN i
+
+rcv and 
+
+hsK Srcv = hsK SGN i
+
+snd . Here, each endpoint considers hsK snd 
+
+as the key for records it transmits and hsK rcv for records it receives. The server then computes a Finished MAC (step (i)) and sends M2 = ( NS , epm pk S , ct S , σ S , F inished S ) to the 
+
+SGN i.On receipt of M2, SGN i reconstructs T H 0, T H 1, decapsu-lates ct S to recover ss S , derives hs , applies the SGN-side role assignment above, and verifies both the server signature σS
+
+and F inished S
+
+?
+
+= MAC hsK rcv (“server finished” ∥ T H 1). At this point, SGN i accepts the server and confirms agreement on the transcript and traffic keys. After authenticating the server, SGN i computes the sec-ond KEM secret by encapsulating epm pk S and generates 
+
+(ct SGN i , ss SGN i ) (step (h)), and binds this ciphertext using 
+
+hSGN i = H(ct SGN i ) (step (i)). It then derives the initial Double-Ratchet root key (step (j)) RK 0 = HKDF( ss SGN i ∥
+
+ss S , “dr-root” ∥ T H 1). Finally, it computes key confirmation 
+
+F inished SGN i = MAC hsK snd (“SGN finished” ∥ T H 1 ∥
+
+hSGN i ) in step (k), encrypts it in step (l) as ECA =AEAD .Enc hsK snd (AAD = T H 1 ∥ hSGN i , F inished SGN i ),and sends M3 = ( ct SGN i , ECA ) to S.When S receives M3, it computes hSGN i = H(ct SGN i ),decrypts ECA under hsK rcv , and verifies F inished SGN i . It then decapsulates ct SGN i in constant time to obtain ss SGN i ,derives the same RK 0, and erases ephemeral secrets. Both endpoints now hold the same RK 0, while the authenticated transcript hash T H 1 is available to bind the traffic of the DR protocol to this handshake. 
+
+C. Double-Ratcheted Data Channel 
+
+The DR channel, outlined in Algorithm 1 secures smart grid traffic after the APQKE handshake by evolving keys across messages and sessions with minimal steady-state overhead. It uses X25519 for both bootstrap and DH-ratchet updates, so initialization is post-quantum; however, recovery after ratchet-state disclosure relies on classical security assumptions in order to minimize the overhead and reduce computational and bandwidth costs. The channel starts with the shared RK 0 and is linked to the authenticated handshake by setting AD := 
+
+T H 1 and using AD as associated data in every authenticated encryption with associated data (AEAD) call. The ratcheted channel is initialized with two bootstrap messages, denoted B0
+
+and B1.Referring to Algorithm 1, line 1 initializes the local DR state from RK 0 (root/chain keys, counters, an unset peer DH key cpk ,an empty skip-cache Kskip , and needDH ← 0). Line 2 derives a short-lived bootstrap authenticator Kboot from (RK 0, AD ). In 
+
+line 3 , the SGN generates an initial DH keypair and sends B0 =(pk, τ C ), where τC binds the role label "SGN bootstrap" ,5
+
+Algorithm 1 Session-aware Double Ratchet Channel (DH = X25519, AEAD = ChaCha20–Poly1305) 
+
+Shared constants: κ = 256 ; skip window W ; associated data AD := T H 1.
+
+State (each endpoint): RK, CK s, CK r ∈ { 0, 1}κ; counters ns, n r, P N ∈ N;DH keypair (sk, pk ) and peer key cpk ; skip-cache Kskip ; flag needDH ∈ { 0, 1}. The complete mutable state is denoted by S.
+
+Bootstrap (run once after Protocol 1): 
+
+1. RK ← RK 0; ns, n r, P N ← 0; cpk ← ⊥ ; Kskip ← ∅ ; needDH ← 0.2. Kboot ← HKDF( RK 0, "dr-boot" ∥ AD, κ ).3. SGN → S: (sk, pk ) ← DH .Gen () ; τC ← MAC Kboot ("SGN bootstrap" ∥ AD ∥ pk ); send B0 = ( pk, τ C ).4. S: verify τC ?
+
+= MAC Kboot ("SGN bootstrap" ∥ AD ∥ pk ); set cpk ← pk ; (sk, pk ) ← DH .Gen () ; τS ←
+
+MAC Kboot ("server bootstrap" ∥ AD ∥ pk ); send B1 = ( pk, τ S ).5. SGN: verify τS ?
+
+= MAC Kboot ("server bootstrap" ∥ AD ∥ pk ); set cpk ← pk .6. Both compute Z0 ← DH (sk, cpk ) and derive (RK, CK 0, CK 1) ← HKDF( RK 0, "dr-init" ∥ Z0 ∥ AD, 3κ).7. Role assignment: SGN sets (CK s, CK r) ← (CK 0, CK 1); server sets (CK s, CK r) ← (CK 1, CK 0). Erase Kboot .
+
+Header formats (bandwidth optimized): 
+
+8. Rekey header: HDR 1 = (1 , pk, P N, n s); Data header: HDR 0 = (0 , n s).
+
+StartSession(): (called by the entity that sends first in a new session) 9. P N ← ns; ns ← 0; (sk, pk ) ← DH .Gen () ; Z ← DH (sk, cpk ); (RK, CK s) ← KDF RK (RK, Z ); needDH ← 1.
+
+Send (m):10. If needDH = 1 then set hdr ← HDR 1 and needDH ← 0; else set hdr ← HDR 0.11. (CK s, M K ) ← KDF CK (CK s); nonce ← Encode96( ns).12. C ← AEAD .Enc (M K, nonce, AAD = AD ∥ hdr, m ); erase M K ; ns ← ns + 1 .13. Transmit MSG = ( hdr, C ).
+
+Receive (hdr, C ):14. Parse hdr . If hdr = HDR 1, extract (pk peer , P N peer , n ); else extract (n) and set pk peer ← cpk .15. Set S′ ← Copy( S); operations in lines 16–19 are performed on S′. If hdr = HDR 1 and pk peer ̸ = cpk , run DHRatchet (pk peer , P N peer ) on S′.16. If (cpk, n ) ∈ K skip then set M K ← K skip [cpk, n ] and delete it from the temporary state. 17. Else if n > n r + W then discard S′, drop and rate-limit the record, signal desynchronization, and resynchronize via an authenticated control path. 18. Else if n < n r then discard S′ and reject the record as a replay; otherwise, while nr ≤ n do (CK r, M K ) ← KDF CK (CK r);if nr < n then store M K as Kskip [cpk, n r]; nr ← nr + 1 ; end while. 19. nonce ← Encode96( n); attempt m ← AEAD .Dec (M K, nonce, AAD = AD ∥ hdr, C ). On failure, discard S′, erase M K , and abort; on success, commit S ← S ′, erase M K , and output m.
+
+DHRatchet (pk peer , P N peer ):20. Derive and cache at most W skipped keys from the current receive chain up to P N peer ; abort the candidate ratchet if this bound is exceeded. 21. cpk ← pk peer ; nr ← 0.22. Z ← DH (sk, cpk ); (RK, CK r) ← KDF RK (RK, Z ).23. P N ← ns; ns ← 0; (sk, pk ) ← DH .Gen () ; Z′ ← DH (sk, cpk ); (RK, CK s) ← KDF RK (RK, Z ′); needDH ← 1.
+
+AD , and the SGN public key under Kboot . In line 4 , the server verifies this role-labeled MAC, stores the peer DH public key, generates its own DH keypair, and replies with B1 = ( pk, τ S ),where τS uses the distinct label "server bootstrap" .After the SGN verifies τS (line 5 ), both sides compute the initial DH shared secret Z0 and derive the initial ratchet state 
+
+(RK, CK 0, CK 1) (line 6 ). Because Kboot is derived from 
+
+RK 0, verification of B0 confirms to the server that the SGN derived RK 0, while verification of B1 gives the SGN explicit confirmation that the server derived the same RK 0. Line 7 assigns the chain keys directionally (SGN uses (CK s, CK r) ←
+
+(CK 0, CK 1); the server swaps them) and erases Kboot .
+
+Line 8 defines two header formats. First is a compact data header HDR 0 = (0 , n s) for most messages, and a rekey header 
+
+HDR 1 = (1 , pk, P N, n s) that includes the sender’s DH public key and previous sending-chain length P N , which is used only for DH updates. 
+
+StartSession() is called by the entity that sends first in a new session. In line 9 , the sender snapshots the length of its previous sending chain ( P N ← ns), resets ns, generates a fresh DH keypair, mixes a DH shared secret into the root state (updating (RK, CK s)), and sets needDH ← 1 so the next outbound message carries HDR 1.When sending an application message, line 10 selects the header: if needDH = 1 , the sender transmits HDR 1 once and clears needDH ; otherwise, it transmits HDR 0. Line 11 
+
+advances the sending chain to obtain a fresh one-time message key M K and computes the AEAD nonce from the current counter ns. Line 12 encrypts under AEAD with associated data AD ∥ hdr , then erases M K and increments ns. Line 13 
+
+transmits MSG = ( hdr, C ).Upon reception, line 14 parses the header to recover the message index n and, in the case of HDR 1, the peer DH public key and the peer’s previous message number P N peer ;for HDR 0, the receiver instead relies on its locally stored peer DH public key cpk . Line 15 copies the complete receive state into a temporary candidate state S′. If a rekey header contains a new peer DH public key, the DHRatchet procedure operates only on this candidate state. Therefore, an unauthenticated rekey header cannot immediately change the persistent root key, chain keys, counters, DH keys, or skip-cache. 
+
+Line 16 checks whether the message key is available in the candidate skip-cache, allowing out-of-order processing. If the message index exceeds the bounded skip window, line 17 
+
+discards the candidate state, drops and rate-limits the record, and permits resynchronization only through an authenticated control path; an unauthenticated header no longer triggers Protocol 1. If n < n r and no corresponding skipped key exists, line 18 rejects the message as a replay. Otherwise, line 18 advances the candidate receiving chain to index n and caches intermediate keys for skipped messages. Line 19 then performs authenticated decryption using associated data AD ∥ hdr .6
+
+The candidate state is committed only after successful AEAD verification; on failure, it is discarded without changing the persistent ratchet state. If DHRatchet is invoked, line 20 derives and caches at most 
+
+W remaining keys from the old receive chain up to P N peer 
+
+and aborts the candidate ratchet if the bound is exceeded. 
+
+Line 21 installs the new peer DH public key and resets the receive counter. Line 22 performs a DH computation with the current local DH secret key and the new peer public key to refresh (RK, CK r). Line 23 immediately prepares the next sending epoch by generating a fresh local DH keypair, refreshing (RK, CK s) again, and setting needDH ← 1 so the next outbound message advertises the new DH public key using 
+
+HDR 1. When invoked during message reception, these updates remain temporary and are committed only after the associated ciphertext passes AEAD verification in line 19 .IV. P ROPOSED ENTROPY ATTACK SUITE (EAS) We evaluate the APQKE handshake under two SGN-side entropy-failure conditions and analyze their impact on the DR channel: an early-boot entropy hole and RNG-path subversion. Experiments ran on a Raspberry Pi Compute Module 5 as outlined in Section V. Fig. 4 shows the injection points on the SGN side: Aseed affects boot-time DRBG initialization, whereas Arng replaces bytes returned by the RNG API; server-side randomness remains healthy. In our implementation, all SGN side randomness obtained by the APQKE handshake (SGN nonce, ML-KEM ephemeral key generation, and encapsulation coins) is obtained using the SGN platform RNG interface shown in Fig. 4 (operating system (OS) cryptographically secure pseudorandom number generator (CSPRNG)/ deterministic random bit generator (DRBG) seeded from a hardware entropy source).                        
+
+> SGN: Hardware TRNG
+> Physical noise source
+> Entropy seeding interface
+> Critical injection point
+> CSPRNG / DRBG
+> Seeded + reseeded
+> APQKE Handshake
+> NSGN i, ephemerals, KEM coins
+> Derived root key RK 0
+> Double Ratchet
+> Server: Hardware TRNG
+> Physical noise source
+> Entropy seeding interface
+> Healthy RNG
+> CSPRNG / DRBG
+> Seeded + reseeded
+> APQKE Handshake
+> NS, ephemerals, KEM coins
+> Derived root key RK 0
+> Double Ratchet
+> Critical injection point
+> M1: params, ID i,NSGN i,
+> epm SGN i,σSGN
+> M2: NS,epm S,ct S,σS,F inished S
+> M3: ct SGN i,ECA
+> Fig. 4. Entropy seeding points in APQKE and the Double Ratchet (message fields aligned with APQKE protocol).
+
+A. Early-boot Entropy Hole 
+
+Smart-grid nodes may reset after outages, maintenance, or updates, creating an early-boot entropy risk if cryptographic operations begin before the endpoint DRBG/CSPRNG is securely initialized [22]. Whether this risk arises depends on the application’s randomness interface. On Linux, getrandom() 
+
+with zero flags waits for RNG initialization, whereas direct reads from /dev/urandom may return output earlier [36]. Seeding an application-level generator from a timestamp can also leave its output predictable if an attacker knows or controls the approximate reset time [37]. The APQKE handshake protocol requires device-side ran-domness for the SGN nonce, ephemeral ML-KEM key gen-eration, and the encapsulation coins. Predictability in these inputs can expose the handshake root key RK 0. To evaluate this failure mode in a controlled way, we implemented an early-boot RNG mode at the entropy boundary (i.e., we intercept the seeding interface in Fig. 4). The weak-RNG interval is injected into the experimental platform 1 and does not represent a measured failure of its normal Linux RNG. The model is parameterized by (i) an injected weak-RNG interval Tinj and (ii) an effective early-boot seed space of size 
+
+2b (where b is the number of unknown early-boot seed bits). During [0 , T inj ), the RNG output stream is deterministic given a boot seed s ∈ { 0, 1}b; after Tinj , the RNG behaves as a healthy source. Formally, letting RNG (·)2 output bytes and G
+
+denote the device DRBG/PRG, where U ({0, 1}8) denotes an idealized uniform random byte. 
+
+RNG( t) = 
+
+(
+
+G(s, t ), 0 ≤ t < T inj ,U ({0, 1}8), t ≥ Tinj . (1) 
+
+Boot-Window Seed Recovery Attack (BWSR): Fig. 5 shows how an attacker exploits the injected weak-RNG interval. The attacker records an APQKE handshake, enumerates possible boot seeds, and compares the regenerated handshake values with the transcript to identify a seed that permits reconstruction of RK 0. The attacker does not break ML-KEM or ML-DSA; it exploits a small effective seed space during the early-boot window. 
+
+1) Online transcript recording: The attacker passively records an APQKE protocol run initiated at a delay d after boot, observing (M1, M 2, M 3). In particular, it learns the public SGN nonce NSGN i and the SGN’s ephemeral KEM public key in M1, and later observes (epm pk S , ct S ) in M2 and the SGN’s ciphertext ct SGN i in M3.
+
+2) Offline boot-seed search: Because 
+
+(NSGN i , epm pk SGN i ) are derived from the early-boot RNG stream, the adversary can mount an offline search over candidate boot seeds s ∈ {0, 1}b. For each candidate seed, the adversary simulates the early-boot RNG output and regenerates the corresponding values 
+
+(N ′ 
+
+> SGN i
+
+, epm pk ′ 
+
+> SGN i
+
+, epm sk ′ 
+
+> SGN i
+
+) ← SimRNG (s), which are then validated against the values recorded during the APQKE handshake. A seed is accepted if the regenerated public values are consistent with the observed transcript; in particular, a prefix match on NSGN i serves as an efficient filter to eliminate most incorrect candidates.                              
+
+> 1Raspberry Pi Compute Module 5 serves as the experimental platform
+> 2We start APQKE after a configurable delay dfrom boot and measure whether the attacker recovers RK 0. The notation RNG (·)refers to the device RNG interface. 7
+> Boot-Window Seed Recovery Attack (BWSR)
+> Injected weak-RNG model Effective seed space 2b
+> Deterministic for t<Tinj
+> SGN
+> Early-boot RNG mode
+> Server
+> Healthy RNG
+> APQKE + Double Ratchet APQKE + Double Ratchet Derived root key RK 0Derived root key RK 0
+> Online (passive)
+> Record APQKE transcript (M1,M2,M3)
+> Offline seed search
+> Brute force 2bboot seeds simulate RNG stream match NSGN iprefix
+> Offline replay
+> Replay APQKE using the recovered RNG stream and recorded transcript
+> Measure pKR (d)
+> Repeat sessions with start delay d; count
+> RK 0recoveries
+> Observed threshold
+> Observed threshold Tinj
+> 0.5=
+> min {d:pKR (d)<0.5}
+> RK 0
+> SGN
+> RK 0
+> Server
+
+pKR 
+
+d(ms) 
+
+1
+
+Tinj     
+
+> Fig. 5. Boot-Window Seed Recovery Attack (BWSR): a passive attacker records an APQKE transcript, searches the 2bearly-boot seeds offline, and replays the handshake to recover RK 0.
+
+3) Offline APQKE protocol replay and RK 0 reconstruction: 
+
+Using any seed consistent with the transcript, the attacker reproduces the remaining device-side RNG draws used by APQKE protocol (including the KEM key generation and en-capsulation coins) and reconstructs the two KEM shared secrets: (i) decapsulate the recorded ct S using epm sk ′ 
+
+> SGN i
+
+to obtain 
+
+ss S , and (ii) recompute the SGN encapsulation toward the recorded epm pk S to obtain ss SGN i (and verify correctness by matching the resulting ct SGN i to the recorded ciphertext). Since 
+
+T H 1 is a deterministic function of the public handshake values, the attacker reconstructs T H 1 and derives the same session root key RK 0 = HKDF( ss SGN i ∥ ss S , "dr-root" ∥ T H 1) .
+
+This measures attack success with pKR (d), defined as the fraction of sessions started at delay d after boot in which the attacker recovers RK 0. We define the characteristic time 
+
+T inj 0.5 = min {d : pKR (d) < 0.5}, which is the smallest delay d
+
+at which the attacker’s success probability in recovering RK 0
+
+falls below 0.5.
+
+B. RNG Path Subversion 
+
+On the SGN, the handshake needs cryptographically secure random bytes to generate its nonce and ephemeral ML-KEM keys. These bytes come from the OS RNG API, ultimately seeded by a hardware entropy source. We refer to the chain from entropy source to OS generator to handshake code as the 
+
+RNG path . The early-boot entropy hole is a transient fault at the start of this path: shortly after reset, the generator may be seeded with low entropy, making its output feasibly enumerable. RNG-path subversion is a persistent fault near the end of the path: compromised firmware or software intercepts or replaces RNG API outputs with attacker-predictable bytes, regardless of the true entropy source. RNG subversion is a well-established threat model, previously analyzed in the context of TLS implementations [38] and noted in the Double Ratchet specification [17]. Below describes how an adversary who controls the RNG API output recovers the root key RK 0
+
+from a recorded handshake, and what this recovery implies for the confidentiality of later Double Ratchet message keys. Section V-D reports the experimental results, including the mitigation methods. In the reported experiment, the constrained attacker Arng 
+
+controls only the returned random bytes. The upstream entropy sources, server RNG, provisioned keys, and other process memory remain uncompromised. The controlled APQKE retrieves are the SGN nonce NSGN i , ephemeral ML-KEM key-generation randomness, and encapsulation coins. We instantiate the malicious provider as a diagnostic 16-bit linear congruential generator (LCG). This deliberately weak generator provides a reproducible failure condition for the experiments. Starting from st 0, it updates and outputs 
+
+st j+1 = (25173 st j + 13849) mod 2 16 , (2) 
+
+rj = st j+1 mod 2 8. (3) The RNG API returns the byte stream (r0, r 1, . . . ) in place of healthy randomness. Because 25173 mod 2 8 = 85 and 
+
+13849 mod 2 8 = 25 , the observable bytes satisfy rj+1 =(85 rj + 25) mod 2 8.
+
+Because 25 is odd and 85 ≡ 1 (mod 4) , the low-byte recurrence has full period 28, so its 28 possible initial values define distinct phases of the same sequence. The full LCG has 
+
+216 internal states, but the 28 states sharing a given initial low byte produce the same protocol-visible sequence. The attack therefore identifies an observable phase rather than a unique 16-bit state. The attacker supplies the generator in Eqs. (2)– (?? ) and knows both its constants and the order in which the handshake requests random bytes. With this knowledge, the attack proceeds in three steps (Fig. 6): record the handshake, identify the phase used by the SGN, and replay the handshake offline to recompute RK 0, without further device access. 
+
+1) Record the transcript: The attacker records (M1, M 2, M 3)
+
+and extracts NSGN i , the ephemeral ML-KEM public values, 
+
+ct S , and ct SGN i .
+
+2) Stream recovery: The attacker compares the first byte of 
+
+NSGN i with the first nonce byte of each of the 28 observable streams. Since Eq. (3) visits every byte value once per period, exactly one stream matches. The attacker confirms the match by regenerating the SGN’s ephemeral ML-KEM key pair and comparing its public key with the one in M1.
+
+3) Offline replay: The attacker decapsulates ct S using the regenerated secret key to obtain ss S . It then encapsulates 8                                                                                 
+
+> SGN: Hardware TRNG (Physical noise) Malicious RNG shim
+> 16-bit low-byte LCG
+> Protocol 1(APQKE) Uses RNG for NSGN i,ephem KEM, coins
+> RK 0(SGN)
+> RNG API bytes
+> Arng
+> RNG API replaced by a low-byte LCG.
+> Diagnostic low-byte LCG:
+> st j+1 = (25173 st j+ 13849) mod 2 16
+> rj=st j+1 mod 2 8
+> 28observable stream phases Server: Healthy RNG TRNG +CSPRNG Protocol 1(APQKE) (normal behavior)
+> RK 0(server)
+> same RK 0
+> M1 over network: params , ID i,NSGN i,epm SGN i, σ (1)
+> SGN
+> (NSGN iderived from LCG output )M2: NS,epm S, ct S, σ S,Finished S
+> M3: ct SGN i∥ECA (with ECA =AEAD hs (Finished SGN i))
+> Step 1: Observe transcript
+> Passive attacker records (M1, M 2, M 3)
+> extracts public NSGN ifrom M1
+> Step 2: Stream recovery
+> Enumerate 28observable streams match NSGN iand verify ct SGN i
+> Step 3: Offline replay
+> Replay Protocol 1 offline with recovered stream
+> ρ⋆(using the recorded transcript) reconstruct exact RK 0
+> NSGN iρ⋆
+> Outcome: RK offline 0=RK live 0;the transcript-verified observable stream reconstructs the session root key.
+> Fig. 6. RNG-path subversion and offline root-key recovery under the diagnostic 16-bit low-byte LCG
+
+to epm pk S with coins drawn from the same stream to obtain ss SGN i , and checks that the resulting ciphertext equals 
+
+ct SGN i . It computes T H 1 from M1 and M2 and derives 
+
+RK 0 = HKDF ( ss SGN i ∥ ss S , "dr-root" ∥ T H 1). Both shared secrets are recoverable from SGN-side randomness and the recorded transcript, so healthy server randomness does not protect RK 0.Recovery of RK 0 permits forgery of the Kboot authentica-tors and active interference with DR bootstrap. It does not, by itself, reveal chain keys to a passive classical attacker from an already completed honest bootstrap because initialization also mixes the fresh X25519 secret Z0, which remains unknown to that attacker. If the same RNG subversion also controls X25519 bootstrap or ratchet key generation, the corresponding DH secrets become predictable, and classical post-compromise recovery remains unavailable, while the attacker can predict secrets introduced by subsequent ratchet updates. The experiments evaluate mitigation of the RNG-path subversion attack and distinguish between insufficient seed entropy and substitution of RNG outputs after seeding. While TPM-based seeding injects entropy into the RNG, it cannot prevent software from replacing its outputs. In our evaluation, the enforced PCR policy prevented channel establishment when using the assessed modified firmware. Analogous evaluations can be conducted for additional protocols by adapting the attack implementation to each protocol’s sequence of RNG invocations, handshake message flow, and key-derivation steps. V. R ESULTS AND ANALYSIS 
+
+This section evaluates APQKE-DR under the threat model of Section II-A. We first present the security analysis results in Section V-A, then separately report performance measurements for APQKE and DR, and finally discuss the EAS results and their deployment implications. For this purpose, all experiments 3 were conducted on a two-node client/server testbed that simulates a utility head-end communicating with a field SGN. 
+
+A. ProVerif: Security Analysis 
+
+We evaluated APQKE protocol in ProVerif [25] under the standard Dolev-Yao attacker that fully controls the network (intercept, modify, replay, and inject messages), while crypto-graphic primitives are modeled as ideal (perfect ML-DSA signa-tures, perfect ML-KEM encapsulation/decapsulation, collision-resistant hashing, and standard models for HKDF/MAC/AEAD). APQKE handshake ensures secure communication by authenti-cating the ephemeral ML-KEM key exchange using long-term ML-DSA verification keys and binds the entire handshake context to the hash of the transcript T H 1. The SGN accepts the server after confirming the server’s signature on T H 1
+
+and verifying that the server’s message is complete. The server accepts the SGN only after verifying the encrypted finished message and then performing decapsulation. The key goal checked in ProVerif is secrecy of the derived RK 0
+
+(and intermediate handshake secrets), where RK 0 is com-puted from both KEM shared secrets and is transcript-bound as RK 0 = HKDF( ss SGN i ∥ ss S , "dr-root" ∥ T H 1).ProVerif proves secrecy queries (the attacker cannot derive RK 0
+
+or the KEM shared secrets) and authentication correspondence queries (whenever an entity reaches an accept event for T H 1,a matching peer begin event must have occurred with the same identities and transcript). In the symbolic model, these results rule out classic network attacks against the handshake, such as man-in-the-middle key substitution, replay-based transcript splicing, and impersonation without breaking ML-DSA/ML-KEM or forging the Finished MACs. DR data channel was modeled in ProVerif as a stateful process initialized from the shared RK 0 and bound to the                                                                                                                            
+
+> 3The server ran Ubuntu 22.04.5 on an Intel Core i9-14900 (32 cores) with 32 GB RAM. The SGN endpoint used a Raspberry Pi Compute Module 5 (Broadcom BCM2712 quad-core 64-bit Arm Cortex-A76 at 2.4 GHz) with Gigabit Ethernet. We connected a TPM 9670 via SPI as a hardware entropy source for entropy-failure experiments. 9
+> TABLE I COMPARISON OF APQKE-DR WITH SOTA SMART GRID PROTOCOLS .
+> Property APQKE-DR C
+> TLS 1.3 C
+> Hybrid TLS C
+> PQXDH  [18] H
+> PQC-SG  [39] H
+> Kyber-AMI  [29] A
+> PUF-Auth  [40] A
+> LLRA  [28] A
+> LSEG  [27] A
+> Handshake security
+> PQ-resistant authenticated key establishment ✓×∼∼✓∼×××
+> Mutual authentication and replay resistance ✓∼∼∼∼×✓✓✓
+> Transcript binding and explicit key confirmation ✓✓✓∼––––∼
+> Channel security
+> Authenticated application-data channel ✓✓✓––✓∼∼✓
+> Per-message forward secrecy ✓∼∼––×××∼
+> Ratcheted messaging ✓××––××××
+> Classical post-compromise recovery ✓××––××××
+> Post-quantum post-compromise recovery ×××––××××
+> Entropy robustness
+> Endpoint RNG-failure attacks evaluated ✓––––––––Entropy/boot mitigation evaluated ✓––––––––
+> Implementation evidence
+> Smart-grid endpoint/protocol integration ✓–––∼✓∼∼✓
+> Backend/gateway scalability evaluated ×–––✓∼–––
+> ✓= supported; ∼= partial or configuration-dependent; ×= not provided; – = outside the scheme’s stated scope or not evaluated. Superscripts denote primary scope: Ccomplete secure channel, Hhandshake/session establishment, and Asmart grid authentication and key establishment.
+
+authenticated handshake by setting AD := T H 1. Each message key is derived using the symmetric chain KDF and is explicitly treated as one-time: after encryption/decryption, the message key is erased, consistent with the protocol design in which derived M K values are deleted immediately after use. Each ciphertext is produced with AEAD using associated data that includes the handshake binding and the current header (e.g., 
+
+AAD = ( T H 1, hdr) ), so any header modification or any attempt to transplant a ciphertext into a different handshake transcript is detected by AEAD verification. ProVerif checks (i) secrecy of application plaintexts and per-message keys against an active attacker and (ii) authenticity/integrity via correspondence assertions linking a receiver decryption-accept 
+
+event to a unique sender encryption-send event with the same header/counter context, which captures both integrity and replay resistance in the symbolic setting. To model forward secrecy and classical post-compromise recovery, compromise is represented by revealing the current ratchet state at a chosen time. Since past M K values are erased and chains advance, ProVerif can verify that earlier messages remain secret under the symbolic assumptions. In the ProVerif model, even if an attacker knows the current ratchet state, confidentiality of later messages can be restored if a new DH-ratchet step introduces an X25519 shared secret that remains unknown to the attacker. Thus, this is a classical post-compromise recovery result and does not cover a quantum adversary that can break X25519. Table I compares handshake security, channel security, entropy robustness, and implementation evidence. APQKE-DR integrates an ML-KEM/ML-DSA handshake with transcript binding and explicit key confirmation, an authenticated data channel with per-message key evolution, classical X25519-based post-compromise recovery, entropy-failure evaluation with tested mitigations, and integration beneath ANSI C12.22 and DNP3. The PQC-SG scheme of [39] offers a strong post-quantum smart grid handshake and evaluates graphical process- 
+
+> TABLE II APQKE HANDSHAKE BANDWIDTH AND LATENCY IN BYTES .
+
+Role (sent) M1 M2 M3 Total payload Latency p50/p95 (ms) 
+
+SGN 3,690 – 1,144 4,834 1.990 / 3.060 Server – 4,776 – 4,776 0.821 / 1.113 Total 3,690 4,776 1,144 9,610 –
+
+ing unit (GPU) based gateway scalability but omits a long-lived ratcheted channel and entropy-failure analysis. TLS variants provide full transport security without continuous ratcheting, while PQXDH establishes an initial secure-messaging secret and leaves channel properties to a later ratchet. Similarly, LSEG [27] provides only classical security and lacks post-quantum protection. 
+
+B. Performance Analysis 
+
+APQKE Overhead Analysis: Table II summarizes the band-width and latency overhead of Protocol 1, which completes in three messages (M1 to M3) and outputs the root key RK 0 used to seed Algorithm 1. The bandwidth columns report payload 
+
+sizes of the handshake messages produced by our APQKE encoder (excluding transport framing). In this instantiation, the SGN sends M1 and M3 (3,690 B and 1,144 B), for a total of 4,834 B payload, while the server sends M2 (4,776 B), yielding 9,610 B payload per completed handshake. Message 
+
+M2 accounts for 49.7% of the total payload and includes the server nonce, ML-KEM public key, encapsulated ciphertext, post-quantum authentication, and the Finished MAC. This MAC allows the SGN to verify that SGN and the server derived the same handshake key and agree on the handshake transcript. Latency is reported as p50/p95 on repeated handshakes with timestamps per-endpoint. On the SGN, we report confirmed completion time as tack − tstart , where ACK is a benchmark-only confirmation sent by the server after it successfully validates M3 and derives RK 0; this avoids undercounting due to asynchronous sends and provides an unambiguous “channel ready” completion point. On the server, we report processing time as tdone − tm1 recv , covering M1 parsing and verification, M2 construction, reception and processing of M3, and final key derivation. In our measurements, the SGN reports 1.990/3.060 ms, while the server reports 0.821/1.113 ms at the p50/p95 levels. 
+
+DR Bandwidth Overhead: We measure the steady-state, per-message bandwidth overhead of the DR protocol at the application/transport boundary. In the DR implementation, each application message is transmitted as two framed records: 
+
+MSG_HDR (ratchet header) followed by MSG_DATA (AEAD ciphertext). To minimize bandwidth in steady state, MSG_HDR 
+
+uses the compact header format and carries only a one-byte type tag and a 32-bit message counter n, for a 5-byte ratchet-header payload. A longer rekey header (containing pk DH 
+
+and the previous-chain counter P N ) is sent only during session bootstrap/DH refresh and is not included in steady-state measurements. The payload is encrypted with ChaCha20-Poly1305, which expands a plaintext of length L by a 16-byte authentication tag 10  
+
+> TABLE III DR CHANNEL STEADY -STATE ON -WIRE OVERHEAD AND EFFICIENCY VS .
+> PLAINTEXT PAYLOAD SIZE .
+
+Payload bytes (L) Avg wire bytes/msg (W) Overhead bytes/msg (E) Overhead % of Payload (E/L) Overhead % of total bytes (E/W) Efficiency % (L/W) 
+
+16 47 31 193.8 66.0 34.0 32 63 31 96.9 49.2 50.8 64 95 31 48.4 32.6 67.4 128 159 31 24.2 19.5 80.5 256 287 31 12.1 10.8 89.2 512 543 31 6.1 5.7 94.3 
+
+(i.e., ciphertext length is L + 16 ). Finally, each record carries a 5-byte framing header ( type ∥ len ), so each application message pays 10 bytes of transport framing overhead in total. In the evaluated implementation, the AEAD nonce is not transmitted on the wire; it is derived deterministically from the per-direction message counter (Encode96 (n)). The on-wire cost per application message is W (L) = L+31 bytes/message. The constant overhead on the wire is E(L) = 31 bytes/message, which includes 5 bytes for the ratchet header, 16 bytes for AEAD expansion, and 10 bytes for the transport framing. Table III reports W (L) and derived overhead/efficiency metrics as a function of payload size. We report steady-state costs and exclude the one-time session bootstrap header observed once per run (an extra MSG_HDR frame of 46 wire bytes), which is negligible over long sessions. 
+
+Integration with ANSI C12.22 and DNP3: To demonstrate deployability within existing smart grid application protocols, we integrate APQKE-DR as a security shim beneath ANSI C12.22 [23] and DNP3 [24]. At the shim boundary, each application protocol data unit (PDU) is treated as plaintext: APQKE establishes (T H 1, RK 0), the Double Ratchet is bootstrapped from RK 0, and subsequent PDUs are transported as ratcheted AEAD records with associated data AD := T H 1.This binds the protected SCADA traffic to the authenticated handshake transcript without altering C12.22/DNP3 format. Table IV summarizes the costs of ANSI C12.22 and DNP3. In the current prototype run, the server generates five meter-reading responses consisting of a 64-byte ANSI C12.19 table payload (Table 27 as given in [23]) and a 154-byte DNP3 payload (Group 30 Var 1 analogs and Group 20 Var 1 counters [24]) per reading. The measured processing cost is dominated by the post-quantum handshake: 1.926 ms on the server and 1.872 ms on the client, while DR bootstrap costs 0.136 ms (server) and 0.246 ms (SGN). Protecting the five DNP3 readings (770 B total) costs 0.006 ms for encryption in the sender and 0.004 ms for decryption in the receiver. 
+
+SOTA comparison: Table V presents a comparison of the client-side execution times of the APQKE handshake with representative PQC-based smart grid protocols. Since reference implementations are publicly available only for [41] and [39], these two schemes were executed on the same testbed as APQKE to obtain directly comparable measurements. For the   
+
+> TABLE IV INTEGRATED ANSI C12.22/DNP3 PROTOTYPE RESULTS WITH
+> APQKE-DR ( FIVE READINGS ).
+
+Component (ms) Server SGN 
+
+Handshake 1.926 1.872 DR Bootstrap 0.136 0.246 DR Session Start 0.102 0.101 DR Data Protection (770 B total) 0.006 0.004 Total 2.170 2.223  
+
+> TABLE V APPROXIMATE COMPARISON OF CLIENT -SIDE TIMING USING FIRST -ORDER FREQUENCY NORMALIZATION TO 2.4 GH Z.
+
+Protocol Platform frep . (GHz) tnorm (ms) [44] RPi 4 (A72) 1.40 1.17 [42] RPi 4 (A72) 1.40 2.04 [43] RPi 4 (A72) 1.40 2.39 [39] RPi CM5 (A76) 2.40 2.29 [41] RPi CM5 (A76) 2.40 4.52 APQKE RPi CM5 (A76) 2.40 1.99 
+
+remaining protocols, whose implementations are unavailable or measured on different processors, we perform a first-order normalization with respect to CPU clock frequency as tnorm =
+
+treported × freported 
+
+> 2.4 GHz
+> 4
+
+.On the 2.4 GHz Cortex-A76 platform, the APQKE handshake attains a median SGN completion time of 1.99 ms. Its normalized client-side latency is lower than that of the three schemes of [42], [43] ( 2.04 and 2.39 ms), [39] ( 2.29 ms), and the authenticated configuration of [41] ( 4.52 ms). The scheme [44] reports a lower normalized execution time of 1.17 ms, but it omits several critical security properties. Overall, APQKE resides within the performance envelope of contemporary PQC-based smart grid handshakes. The comparison in Table V is restricted to timing, as the schemes differ in parameterization and in the extent of their security functionality. 
+
+C. Hardware-Anchored Entropy on the SGN (TPM 9670) 
+
+Since endpoint entropy failures can undermine key establish-ment on embedded devices, we evaluated a TPM 2.0 module (TPM 9670 over SPI [45]) on the SGN as an additional hardware-based entropy source. The TPM is not used as a bulk randomness generator; instead, it is queried only to obtain a small amount of seed data at the start of the session. Fig. 7 compares TPM2_GetRandom output with the OS CSPRNG on the Raspberry Pi SGN. A 32 B TPM entropy request takes 0.3 ms, while an OS RNG read completes in 0.1 ms. As a lightweight sanity check, we collect 8 KB of output from each source and compute Shannon entropy, obtaining 7.980 bits/B (TPM) and 7.975 bits/B (OS), close to 8.0 bits/B maximum. To quantify whether TPM seeding impacts APQKE latency, we run the APQKE protocol with TPM-seeded entropy and with OS-only entropy for 2000 confirmed handshakes (N) per setting. We report the SGN confirmed completion time as (tack −tstart ),where the server emits ACK after successfully processing 
+
+M3 and deriving RK 0. The SGN p50/p95 completion times remain comparable (TPM-seeded: 2.107/3.188 ms; OS-only:      
+
+> 4This normalization is approximate and does not account for differences in instruction set architecture, microarchitecture, memory hierarchies, or implementation-specific optimizations. 11 TPM OS
+> 00.10.20.3
+> Latency (ms) 32B entropy call TPM OS
+> 7.97.92 7.94 7.96 7.98 8
+> Shannon (bits/byte)  Shannon statistic (8 KB) TPM-seeded OS
+> 0123
+> Latency (ms) APQKE completion p50 p95
+> Fig. 7. Entropy-source comparison on the Raspberry Pi SGN (SPI TPM 2.0 vs OS CSPRNG): 32-byte call latency and 8 KB output-distribution sanity check; APQKE p50/p95 from 2000 confirmed handshakes.
+
+2.149/3.178 ms), indicating that injecting a small hardware-anchored seed can be done without a large per-handshake latency penalty in our prototype. 
+
+D. EAS Analysis 
+
+Early-boot entropy hole (BWSR): We have evaluated the early-boot entropy hole by starting APQKE at a controlled delay d after reset under the injected weak-RNG model described in Section IV-A, and measuring the attacker’s key-recovery success probability pKR (d). For each delay setting, we record R independent Protocol 1 transcripts and run the offline seed-recovery procedure. We then compute 
+
+pKR (d) = sessions in which the attacker recovers RK 0 
+
+> R
+
+. To characterize the observed transition, we define T0.5 as the earliest tested delay d at which pKR (d) falls below the fixed threshold τ = 0 .5.Intuitively, T0.5 separates the tested region in which recovery is more likely than not from the region in which it is less likely than not. This metric characterizes the controlled injected model; it is not an estimate of the time required for the underlying operating-system CSPRNG to become initialized. To characterize the feasibility of the offline phase, we also report the implied seed-search work factor 5: for an effective early-boot seed space 2b and measured per-try simulation time 
+
+ttry , the expected search time is E[Tsearch ] ≈ 2b−1ttry .On the SGN, we start APQKE after a fixed delay d and set the weak-RNG interval to Tinj . For each d, we collect 
+
+R = 20 independent handshakes and run the offline attacker on each transcript. We evaluate: (i) OS-only , where we inject the early-boot RNG failure at the SGN RNG interface, and (ii) 
+
+TPM-seeded , where hardware-derived seed material is mixed into the per-session RNG state before APQKE. Fig. 8(a) plots pKR (d) versus handshake start delay. In the OS-only configuration, key recovery remains reliable for handshakes starting within the weak-RNG interval and drops below τ = 0 .5 at about d = 2000 ms . At this point, recovery occurs in only a few of the R = 20 trials, and no recovery is seen at larger delays. Under this threshold, the injected experiment yields T inj 0.5 ≈ 2000 ms . In the TPM-seeded configuration, the attacker never recovers a root key (pKR (d) = 0 /20 for all d), so T tpm 0.5 = 0 ms .This controlled experiment shows that a weak early-boot RNG state, for example, from repeated resets or incomplete entropy initialization, can let a recorded APQKE transcript support offline reconstruction of RK 0. The ≈ 2000 ms 
+
+transition is specific to our injected failure setup and is not      
+
+> 5The attacker tests possible early-boot seeds sfrom a space of size 2b.Each attempt requires ttry seconds. The work factor is the expected number of trials or total time required to identify a consistent seed.
+
+a measurement of a Raspberry Pi OS RNG vulnerability or initialization time. TPM seeding removes the predictable boot-time dependence in this model. 
+
+Results: RNG path subversion (LCG): We have evaluated RNG-path subversion by interposing a malicious shim (i.e., an interposition layer that replaces RNG API outputs) at the SGN-side RNG API and forcing all device-side randomness con-sumed by APQKE protocol to be generated by a deterministic 16-bit LCG. We have executed R = 2000 APQKE handshakes per SGN configuration and logged the public transcript (in particular, M1 containing NSGN i ) and the resulting root-key material. We compared three builds on the same platform: (i) OS-only randomness ( USE_TPM=0 ) and (ii) TPM-seeded 
+
+randomness ( USE_TPM=1 ), and (iii) TPM-PCR (TPM-PCR in Fig. 8(c)), which adds a fail-closed TPM gate before APQKE use any randomness. Concretely, the SGN requests a short secret Kgate (16 bytes) from the TPM; this value is sealed to the platform’s measured-boot state (TPM-PCRs are registers that store hashes of boot components). If the boot state matches a known-good baseline, the TPM releases Kgate ; otherwise, the request fails. The SGN then XOR-mixes Kgate into the per-handshake seed used by APQKE (nonce generation, ML-KEM key generation, and encapsulation coins) and aborts the handshake if Kgate cannot be obtained. In (i) and (ii), the LCG shim is positioned after the seeding source (OS or TPM), so it replaces the bytes returned to APQKE regardless of where the seed was originally sourced. The shim maintains a nominal 16-bit internal register as in Fig. 8(b) and updates it using st j+1 = ( a · st j + c) mod 2 16 ,with (a, c ) = (25173 , 13849) , outputting each byte as the low 8 bits of the updated state. Because the protocol observes only byte outputs, the low-byte projection produces only 28 distinct observable streams. After observing the first byte of NSGN i ,the attacker directly identifies the corresponding observable stream. Although 28 internal states remain consistent with that byte, they form an equivalence class whose elements generate an identical output stream and therefore provide no additional attack resistance. Fig. 8(b) visualizes this internal-state aliasing. This LCG thus serves as an intentionally weak, 8-bit-observable diagnostic model for validating end-to-end key-recovery propagation and for evaluating the effectiveness and placement of mitigation mechanisms. Given a recorded transcript, the attacker identifies an observ-able stream representative consistent with the observed NSGN i
+
+prefix and replays the APQKE protocol offline while forcing the same deterministic RNG stream. This regenerates the SGN’s RNG dependent computations for nonce generation, ephemeral ML-KEM key generation, and encapsulation randomness, enabling the reconstruction of both ML-KEM shared secrets and, thus, the APQKE-derived root key. The attacker does not need to recover the unique 16-bit internal state because every state within the identified equivalence class generates the same protocol visible byte stream. Across the R = 2000 logged runs, the attacker succeeds with overwhelming probability, as shown in Fig. 8(c), for the OS-only and TPM-seeded builds. Importantly, TPM seeding does not reduce pKR in this threat model because subversion occurs after the TPM/OS entropy source; once the RNG 12                      
+
+> 0500 1,000 1,500 2,000 2,500 3,000
+> 0.25 0.5 0.75 11.25 Weak-RNG interval Handshake start delay after boot (ms)
+> pKR (d)
+> (a) Key-recovery probability
+> 0246810 12 14 16 8910 11 12 13 14 15 16
+> Observed nonce prefix length (bytes) Seed uncertainty (bits) (b) Prefix leakage OS TPM TPM-PCR
+> 00.511.5
+> Blocked
+> pKR
+> (c) Structural key recovery TPM OS
+> 0500 1,000 1,500 2,000
+> Unique  RK 0[0 .. 7]  prefixes  (d) Output collision check OS TPM
+> 20 30 40 50
+> Hamming weight of first 8 bytes of  RK 0
+> (e) HW sanity check
+> Fig. 8. (a) pKR (d)vs handshake start delay, (b) low-byte LCG aliasing: one nonce byte reduces 216 states to a 28-state equivalence class, (c) structural key recovery under RNG-path subversion, (d) output collision check: all R= 2000 observed RK 0[0 .. 7] prefixes were distinct in both configurations, and (e) HW sanity check for RK 0[0 .. 7] over R= 2000 handshakes.
+
+API is replaced, protocol consumes attacker-controlled bytes independent of upstream entropy quality. In contrast, under TPM PCRs gating, LCG-shim firmware changes the boot measurements reflected in TPM PCRs, so the TPM refuses to release Kgate . If Kgate is unavailable, the TPM PCR build fails closed, the SGN aborts before finishing APQKE, and no 
+
+accepted sessions are established under the shim image. A na¨ ıve output-only check is to count repeated RK 0 values across handshakes. In our logs ( R = 2000 per configuration), all observed RK 0[0 .. 7] prefixes were distinct for both OS-only and TPM-seeded runs, as shown in Fig. 8(d). Server-generated values and public transcript vary across sessions, so HKDF can produce distinct, apparently well-distributed root keys even when the SGN-side RNG is restricted to only 28 observable streams. For any recorded transcript, however, the attacker still enumerates at most these 28 possible streams of bytes and verifies the correct one using the public nonce and KEM ciphertexts. Therefore, absence of repeated RK 0 prefixes does not imply resistance to transcript-guided root-key recovery. 6
+
+To illustrate how distributional sanity checks can be mis-leading, Fig. 8(e) and Fig. 9 show that the Hamming weight of RK 0[0 .. 7] looks statistically similar between OS-only and TPM-seeded runs. Despite this apparent normality, deterministic replay still reconstructs RK 0 offline because the weakness is 
+
+structural , not a detectable bias in RK 0 outputs. However, the TPM-PCR mitigation does not rely on output “sanity”; it fails closed by refusing to establish any session under shim image. Recovery of RK 0 permits forgery of the Kboot authen-ticators and therefore enables active interference with DR bootstrap. It does not by itself reveal chain keys from an already completed honest bootstrap, because initialization also mixes the fresh X25519 secret Z0. If the RNG subversion affects X25519 key generation, DH secrets become predictable and post-compromise recovery is compromised. 
+
+E. Discussion and Limitations 
+
+APQKE-DR offers a practical post-quantum-initialized se-cure channel for smart grid endpoints. ProVerif analysis shows the APQKE handshake keeps RK 0 secret and resists active attacks like key substitution and replay. Since APQKE runs only during setup (e.g., initial association or after state loss), its communication overhead is spread over long-term operation. In   
+
+> 6TPM-PCR blocks the modified image before key establishment; therefore, no attacked sessions yield RK 0samples, and the corresponding metrics are reported as blocked.
+
+20 25 30 35 40 45 05 · 10 −2
+
+0.1
+
+Hamming weight of RK 0[0 .. 7]       
+
+> Probability  OS TPM
+> Fig. 9. OS and TPM empirical probability mass function of the Hamming weight of RK 0[0 .. 7] over R= 2000 handshakes.
+
+steady state, the Double Ratchet adds 31 B/message overhead, notable only for very small PDUs and negligible as payloads grow. ANSI C12.22 and DNP3 shim tests show the post-quantum handshake dominates setup cost, while ratcheted protection stays lightweight and requires no app. layer changes. Although we implement and evaluate APQKE-DR in a smart grid setting, the core construction is not tied to ANSI C12.22, DNP3, or any specific smart grid architecture. It applies to deployments with provisioned endpoint identities, managed backends, long-lived encrypted sessions, potential reboot or state loss, and a need for post-quantum initial key establish-ment combined with lightweight per-message key evolution. Examples include industrial control and SCADA, water and gas metering, remote environmental monitoring, edge-IoT and medical devices, transportation infrastructure, and other critical infrastructure. In these settings, APQKE-DR can protect existing application payloads using a security layer, as in our smart grid prototypes. However, domain-specific validation is required for each domain before large-scale implementation. EAS results show that long-session security depends on the quality of endpoint randomness and RNG-path integrity. In the controlled early-boot model, RK 0 is recoverable during the injected weak-RNG window, with T inj 0.5 ≈ 2000 ms at 
+
+τ = 0 .5. TPM seeding blocks recovery across tested delays with minimal latency impact, but cannot stop downstream RNG substitution, where APQKE accepts attacker-controlled bytes and output-only checks can still look normal. VI. C ONCLUSIONS 
+
+We presented APQKE-DR and evaluated its performance and resilience to endpoint randomness failures using EAS as proposed. The protocol combines authenticated post-quantum key establishment with an X25519 Double Ratchet, whose post-compromise recovery relies on classical assumptions. The prototype integrates beneath ANSI C12.22 and DNP3 without changing application payload formats. It achieves a 13 
+
+median confirmed handshake completion time of 1.990 ms and adds 31 B per message. Under fresh randomness and ideal cryptographic primitives, ProVerif verifies the modeled secrecy and authentication properties. The EAS experiments show that these properties can be undermined when endpoint randomness fails. In the tested cases, predictable randomness allowed recovery of the initial root key from public handshake transcripts. TPM seeding prevented recovery in the tested early-boot cases but did not prevent RNG substitution after seeding. Measured-boot gating blocked the tested modified firmware from establishing a session. REFERENCES [1] G. Alagic, Q. Dang, D. Moody et al. , “Module-lattice-based key-encapsulation mechanism standard,” 2024. [2] T. Dang, J. Lichtinger, Y.-K. Liu et al. , “Module-lattice-based digital signature standard,” 2024. [3] J. Gallegos, P. Ar´ evalo, C. Montaleza et al. , “Sustainable electrifica-tion—advances and challenges in electrical-distribution networks: a review,” Sustainability , vol. 16, no. 2, p. 698, 2024. [4] M. Amin, “Challenges in reliability, security, efficiency, and resilience of energy infrastructure: Toward smart self-healing electric power grid,” in 2008 IEEE Power and energy society general meeting-conversion and delivery of electrical energy in the 21st century . IEEE, 2008, pp. 1–5. [5] E. Kabalci and Y. Kabalci, “Introduction to smart grid architecture,” in 
+
+Smart grids and their communication systems . Springer, 2018, pp. 3–45. [6] M. Z. Gunduz and R. Das, “Cyber-security on smart grid: Threats and potential solutions,” Computer networks , vol. 169, p. 107094, 2020. [7] S. Goel and Y. Hong, “Security challenges in smart grid implementation,” in Smart grid security . Springer, 2015, pp. 1–39. [8] Idaho National Laboratory, “Cyber threat and vulnerability analysis of the U.S. electric sector,” Aug. 2016. [Online]. Available: https://www.en ergy.gov/sites/prod/files/2017/01/f34/Cyber%20Threat%20and%20Vuln erability%20Analysis%20of%20the%20U.S.%20Electric%20Sector.pdf [9] Y. Yan, “The overview of elliptic curve cryptography (ecc),” IOP Publishing, p. 012019, 2022. [10] H. Y. Wong, “Shor’s algorithm,” in Introduction to Quantum Computing: From a Layperson to a Programmer in 30 Steps . Springer, 2023, pp. 289–298. [11] A. A. Giron, “Migrating applications to post-quantum cryptography: Beyond algorithm replacement,” Cryptology ePrint Archive , 2023. [12] V. Piscopo, “Design of a true random number generator for post-quantum cryptography,” Ph.D. dissertation, Politecnico di Torino, 2024. [13] D. Han 1, Y. Ma, T. Chen et al. , “Min-entropy estimation for physical layer key generation: An empirical,” in Information Security and Cryptology: 21st International Conference, Inscrypt 2025, October 19-22, 2025, Revised Selected Papers, Part III . Springer Nature, 2026, p. 404. [14] E. Rescorla, “RFC 8446: The transport layer security (TLS) protocol version 1.3,” IETF, 2018. [Online]. Available: https: //www.rfc-editor.org/rfc/rfc8446 [15] E. Rescorla, “The transport layer security (tls) protocol version 1.3,” Tech. Rep., 2018. [16] K. Cohn-Gordon, C. Cremers, B. Dowling et al. , “A formal security analysis of the signal messaging protocol,” Journal of Cryptology , vol. 33, no. 4, pp. 1914–1983, 2020. [17] T. Perrin and M. Marlinspike, “The double ratchet algorithm,” GitHub wiki , vol. 112, no. 4, 2016. [18] E. Kret and R. Schmidt, “The pqxdh key agreement protocol,” Signal ,2023. [19] National Institute of Standards and Technology, “FIPS 203: Module-lattice-based key-encapsulation mechanism standard (ML-KEM),” Federal Information Processing Standards Publication, 2024. [Online]. Available: https://csrc.nist.gov/pubs/fips/203/final [20] National Institute of Standards and Technology, “FIPS 204: Module-lattice-based digital signature standard (ML-DSA),” Federal Information Processing Standards Publication, 2024. [Online]. Available: https: //csrc.nist.gov/pubs/fips/204/final [21] B. Dowling, M. Fischlin, F. G¨ unther et al. , “A cryptographic analysis of the tls 1.3 handshake protocol candidates,” in Proceedings of the 22nd ACM SIGSAC conference on computer and communications security ,2015, pp. 1197–1210. [22] National Institute of Standards and Technology, “Recommendation for the entropy sources used for random bit generation,” NIST Special Publication 800-90B, 2018. [Online]. Available: https: //csrc.nist.gov/publications/detail/sp/800-90b/final [23] A. Shees, M. A. Taher, and A. Sarwat, “Performance analysis of ansi c12. 22 protocol for secure smart meter communication in advanced metering infrastructure,” IEEE Open Journal of the Industrial Electronics Society ,vol. 6, pp. 1831–1847, 2025. [24] G. Clarke, D. Reynders, and E. Wright, Practical modern SCADA protocols: DNP3, 60870.5 and related systems . Newnes, 2004. [25] B. Blanchet, B. Smyth, V. Cheval et al. , “Proverif 2.00: automatic cryptographic protocol verifier, user manual and tutorial,” Version from ,vol. 16, pp. 05–16, 2018. [26] L. Nkenyereye, A. Thakare, P. Khataniar et al. , “Lightweight authentica-tion protocol for smart grids: An energy-efficient authentication scheme for resource-limited smart meters,” Mathematics , vol. 13, no. 4, p. 580, 2025. [27] A. Zafar, M. A. Hafeez, and A. Munir, “Lseg: A lightweight and secure key exchange protocol for smart grid communication,” arXiv preprint arXiv:2511.07548 , 2025. [28] R. Cheng, Y. Yang, Z. Zhang et al. , “Llra: A lightweight leakage-resilient authentication key exchange scheme for smart meters,” IEEE Transactions on Smart Grid , 2024. [29] V. Lagrota, M. d. L. Filomeno, L. de MBA Dib et al. , “A quantum-resistant advanced metering infrastructure,” in Simp´ osio Brasileiro de Seguranc ¸a da Informac ¸ ˜ ao e de Sistemas Computacionais (SBSeg) . SBC, 2025, pp. 32–48. [30] V. L. Da Costa, J. L´ opez, and M. V. Ribeiro, “A soc implementation of a pqc scheme for smart meter,” in XXXIX Brazilian Symposium on Telecommunications and Signal Processing-SBrT , 2021, pp. 26–29. [31] H. Shekhawat and D. S. Gupta, “Quantum-safe lattice-based mutual authentication and key-exchange scheme for the smart grid,” Transactions on Emerging Telecommunications Technologies , vol. 35, no. 7, p. e5017, 2024. [32] T. Perrin, “The noise protocol framework,” Specification, 2018. [Online]. Available: https://noiseprotocol.org/noise.html [33] J. Alwen, S. Coretti, and Y. Dodis, “The double ratchet: security notions, proofs, and modularization for the signal protocol,” in Annual Inter-national Conference on the Theory and Applications of Cryptographic Techniques . Springer, 2019, pp. 129–158. [34] C. Cremers, C. Jacomme, and A. Naska, “Formal analysis of session-handling in secure messaging: Lifting security from sessions to conver-sations,” in 32nd USENIX Security Symposium (USENIX Security 23) .USENIX Association, 2023, pp. 1235–1252. [35] J. Brendel, K. Fiedler, F. G¨ unther et al. , “Post-quantum asynchronous deniable key exchange and the signal handshake,” Journal of Cryptology ,vol. 35, no. 3, p. 17, 2022. [36] S. M¨ uller, “Entropy source and drng manager,” 2024. [37] D. Eastlake 3rd, J. Schiller, and S. Crocker, “Randomness requirements for security,” Tech. Rep., 2005. [38] S. Checkoway, R. Niederhagen, A. Everspaugh et al. , “On the practical exploitability of dual {EC } in {TLS } implementations,” in 23rd USENIX security symposium (USENIX security 14) , 2014, pp. 319–335. [39] M. A. Hafeez and A. Munir, “A novel post-quantum cryptography-based authentication and secret key establishment protocol for smart grid,” ACM Transactions on Cyber-Physical Systems , 2026. [40] H. M. S. Badar, S. Qadri, S. Shamshad et al. , “An identity based authentication protocol for smart grid environment using physical uncloneable function,” IEEE Transactions on Smart Grid , vol. 12, no. 5, pp. 4426–4434, 2021. [41] K. H. Shakib, M. A. Hafeez, and A. Munir, “Amphikey: A dual-mode secure authenticated key encapsulation protocol for smart grid,” arXiv preprint arXiv:2509.01701 , 2025. [42] H. Shekhawat and D. S. Gupta, “Quantum-safe lattice-based mutual authentication and key-exchange scheme for the smart grid,” Transactions on Emerging Telecommunications Technologies , vol. 35, no. 7, p. e5017, 2024. [43] H. Shekhawat and D. S. Gupta, “Quantum-resistance blockchain-assisted certificateless data authentication and key exchange scheme for the smart grid metering infrastructure,” Pervasive and Mobile Computing , vol. 100, p. 101919, 2024. [44] B. Bera and B. Sikdar, “Securing post-quantum communication for smart grid applications,” in 2024 IEEE International Conference on Communications, Control, and Computing Technologies for Smart Grids (SmartGridComm) . IEEE, 2024, pp. 555–561. [45] M. Festa, “Anchoring self-sovereign identity to a hardware tpm 2.0,” Ph.D. dissertation, Politecnico di Torino, 2025.
