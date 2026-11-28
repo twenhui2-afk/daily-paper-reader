@@ -1,0 +1,2618 @@
+MJOLNIR: Finding and Reproducing Vulnerabilities in Root-of-Trust Firmware
+and RTL with Project-Grounded Agents
+Collin MacDonald∗
+William & Mary
+cmacdonald01@wm.edu
+Carl Lundin∗
+Caliptra
+Stephen Herwig
+William & Mary
+smherwig@wm.edu
+Miguel Osorio∗
+Ricursive Intelligence
+miguel@ricursive.com
+Timothy Trippel∗
+Ricursive Intelligence
+tim@ricursive.com
+Abstract
+A root of trust (RoT) anchors secure boot and attestation for
+the system above it, so a bug in RoT firmware or hardware
+undermines every layer that trusts it. LLM agents now find
+real vulnerabilities in general-purpose software, but RoT code
+presents two challenges. First, many security-relevant bugs
+depend on project-specific trust boundaries and fault-injection
+countermeasures rather than generic vulnerability patterns,
+and may cause no crash. Second, without RoT hardware,
+agents must exercise RoT inputs through the project’s own
+hardware model, mocks, or RTL testbenches.
+We present MJOLNIR, an agentic pipeline that supplies
+each project’s threat model and design conventions to dis-
+covery and skeptical review agents, and reproduces surviv-
+ing findings as proof-of-concept tests in the project’s own
+toolchain. We evaluate MJOLNIR on six firmware and RTL
+targets in Caliptra, OpenTitan, and OpenPRoT. On Caliptra’s
+runtime firmware, it reaches 83.3%–100% precision across
+three models under blind expert labeling, including 100% on
+Gemini 3.8 Flash versus 66.7%–78.6% for four single-agent
+baselines on the same model. On 34 known security-relevant
+bugs in Caliptra’s core firmware fixed after the models’ train-
+ing cutoffs, it finds 10 with Gemini 3.8 Flash versus 7 for the
+best baseline, and 17 with Gemini 4 Argon versus 12. Across
+our evaluation scans, maintainers have confirmed 64 of MJOL-
+NIR’s findings as previously unknown security-relevant bugs:
+37 across three models on Caliptra’s runtime firmware and 27
+across single scans of the other five targets.
+1
+Introduction
+A bug in a root of trust (RoT) can undermine every system
+that relies on it, and some RoT bugs can never be patched.
+An RoT, either a discrete chip or a block within a system-on-
+chip (SoC), provides secure boot and attestation to the system
+around it. Open-source RoTs now ship in production: Caliptra
+provides an RoT for datacenter SoCs [53], OpenTitan ships
+∗Work done while the author was at Google.
+in Chromebooks [41], and OpenPRoT provides firmware for
+platform RoTs [54]. A flaw in RoT firmware or hardware can
+let an attacker bypass secure boot, extract secret keys, or forge
+attestation evidence. Flaws in the boot ROM or in the register-
+transfer level (RTL) hardware design are fixed at fabrication,
+so they persist in every deployed device [5,16,34,42]. RoT
+bugs must therefore be found before release.
+LLM agents now find real vulnerabilities in general-
+purpose software [4], but RoT firmware and RTL challenge
+the assumptions underlying existing approaches. Systems in
+DARPA’s AI Cyber Challenge (AIxCC) confirm bugs through
+crashes and sanitizer reports [14,77], while OpenAnt and Co-
+RedTeam reproduce vulnerabilities using proof-of-concept
+(PoC) exploits in their own containers [27, 32]. Neither ap-
+proach suffices for RoT code for two reasons.
+First, whether RoT code is buggy depends on the project’s
+trust boundaries, which generic vulnerability patterns do not
+encode. For example, Caliptra’s runtime firmware accepted
+certain mailbox commands without checking the caller’s priv-
+ilege level or the bus address it supplied, which enabled denial
+of service or arbitrary direct memory access (DMA) [11]. The
+bug involves no memory corruption. It violates Caliptra’s trust
+boundary because it lets unprivileged callers issue commands
+reserved for privileged callers. We call a bug security-relevant
+if it lets adversary-controlled input violate one of the project’s
+security objectives or if it omits a countermeasure that the
+project’s threat model requires. Of the 34 known security-
+relevant bugs we study in Caliptra’s core firmware, 15 fall
+under CWEs for missing authorization, improper authenti-
+cation, improper signature verification, or time-of-check-to-
+time-of-use races. To find such bugs, an agent must know
+which callers and inputs each part of the RoT trusts.
+Beyond trust boundaries, RoT code also contains counter-
+measures that resemble bugs, so an agent without the project’s
+design context errs in two directions. It flags intentional
+countermeasures as redundant code, a false positive, and it
+overlooks security checks that lack a required countermea-
+sure, a false negative. OpenTitan’s first mutable boot stage
+re-checks values immediately after a switch matches them,
+1
+arXiv:2611.27567v1  [cs.CR]  20 Nov 2026
+
+
+and it encodes booleans as 0x739 and 0x1d4 rather than 1
+and 0 [47,48]. These redundancies are designed to prevent a
+single glitched branch or flipped bit from bypassing a security
+check. To judge RoT code correctly, an agent must also know
+which countermeasures the project requires.
+Second, an agent without RoT hardware can exercise
+adversary-controlled inputs only through the project’s own
+test infrastructure. These inputs include mailbox commands,
+firmware images, and platform management messages, which
+generic HTTP, command-line, or file-based harnesses cannot
+supply [32]. A PoC must instead drive Caliptra’s hardware
+model, OpenTitan’s Bazel tests, or a Verilator RTL testbench.
+It must also check a security property rather than wait for
+a crash, because a logic flaw need not cause a crash or trig-
+ger the sanitizer checks that AIxCC systems rely on [77]. A
+PoC that replaces the target logic with ad hoc stubs demon-
+strates the behavior of those stubs, not a flaw in the project’s
+implementation. Maintainers already spend effort triaging
+unverified reports [3], so a useful PoC must run as a test in
+the project’s own harness, where maintainers can inspect and
+rerun it.
+Our insight is to ground every stage of vulnerability dis-
+covery, review, and reproduction in the RoT project’s own
+artifacts. We keep these stages from prior agentic systems
+such as OpenAnt [32] and Co-RedTeam [27] and change the
+evidence each stage uses. Discovery and review judge find-
+ings against the project’s threat model and design conventions,
+and reproduction runs PoCs on the project’s hardware model,
+mocks, or testbenches instead of an environment the agent
+builds.
+We present MJOLNIR,1 an agentic pipeline that applies this
+insight: it grounds each stage in project context and repro-
+duces surviving findings in the project’s own harness. Before
+scanning, a Project Expert agent summarizes the project’s
+execution stages, trust boundaries, and intentional counter-
+measures, and it later answers other agents’ questions. Every
+agent also receives a per-project threat model of at most 90
+lines. Source File Auditor agents propose candidate find-
+ings in parallel, a Deduplicator agent merges findings that
+share a root cause, and a skeptical Adversarial Reviewer
+agent rejects findings that the source code and threat model
+do not support. A PoC Exploit Generator agent then re-
+produces surviving findings as tests in the project’s toolchain.
+MJOLNIR checks whether each PoC triggers the reported
+flaw through unmodified production code, consistent with an
+adversary who controls the RoT’s inputs but not its code. An
+agent might otherwise manufacture a PoC by weakening a
+security check or mocking the code under test, without demon-
+strating a flaw in the original implementation. MJOLNIR there-
+fore checks each PoC twice. An automated diff check marks a
+PoC unverified unless it ran a harness command and changed
+only test files, and a final adversarial review rejects PoCs that
+1https://github.com/chipsalliance/mjolnir
+mock the code under test or make vacuous assertions, which
+pass whether or not the flaw exists. A failed or rejected PoC
+does not by itself refute a finding. MJOLNIR keeps the finding
+open as unverified unless the attempt reveals evidence that the
+reported flaw is not exploitable. Onboarding a project takes
+four configuration files and no changes to MJOLNIR, and the
+same agents audit SystemVerilog RTL with language-specific
+guidance.
+We evaluate MJOLNIR on six targets across Caliptra, Open-
+Titan, and OpenPRoT, covering C and Rust firmware and
+SystemVerilog RTL. Because the complete set of bugs in a
+real codebase is unknown, we cannot measure recall on previ-
+ously unknown bugs. We therefore combine three sources of
+evidence. First, Caliptra maintainers blindly label open find-
+ings on Caliptra’s runtime firmware. There, MJOLNIR reaches
+83.3%–100% precision across three models, and 100% on
+Gemini 3.8 Flash (24 of 24 findings) compared to 66.7%–
+78.6% for four single-agent baselines on the same model. Sec-
+ond, we use 34 known bugs in Caliptra’s core firmware, all
+fixed after the models’ published training cutoffs. MJOLNIR
+finds 10 of them with Gemini 3.8 Flash and 17 with Gemini 4
+Argon, compared to 7 and 12 for the best baseline on each
+model. Third, across our evaluation scans, maintainers have
+confirmed 64 of MJOLNIR’s findings as previously unknown
+security-relevant bugs (37 across the three models’ runs on
+Caliptra’s runtime firmware and 27 across single scans of the
+other five targets). The evaluation also shows limits. With
+Gemini 3.8 Flash, MJOLNIR’s review stages wrongly dismiss
+8 of the 18 known bugs that its auditors find, labeling them
+false positives or not exploitable: 7 in initial review, which re-
+ceive no PoC or further analysis, and 1 in final review. Across
+five Flash runs, 16 of 25 location-matched issues appear in
+only one run, so repeated scans find more bugs than a single
+scan.
+We make the following contributions:
+• Project-grounded discovery and reproduction. We de-
+sign MJOLNIR, which supplies each project’s threat model
+and design conventions to discovery and skeptical review,
+and reproduces surviving findings as tests in the project’s
+own toolchain. A diff check and final review reject PoCs
+that edit production code or mock the target (§3–§4).
+• Evaluation on RoT firmware and RTL. We evaluate
+MJOLNIR on six targets against four single-agent base-
+lines, two ablations, and three models. It includes 34
+known security-relevant bugs in Caliptra’s core firmware
+fixed after the models’ training cutoffs (§5, Appendix D).
+• Real-world findings and deployment. Maintainers have
+confirmed 64 of MJOLNIR’s findings as previously un-
+known security-relevant bugs. MJOLNIR also runs on pull
+requests in three RoT repositories, where it has scanned
+over 800 pull requests in four months (§4).
+2
+
+
+2
+Background and Threat Model
+2.1
+Root-of-Trust Firmware and Hardware
+An RoT establishes trust in a system through secure boot and
+attestation. In secure boot, immutable ROM code verifies a
+signature over the next firmware stage with a public key fixed
+in ROM, fuses, or one-time-programmable (OTP) memory,
+and each stage then verifies the next [53, 65]. In measured
+boot, each stage also hashes the next stage before running
+it. The Device Identifier Composition Engine (DICE) uses a
+Unique Device Secret (UDS) and firmware measurements to
+derive a stage-specific secret called a Compound Device Iden-
+tifier (CDI) [65, 69]. Modified firmware therefore receives
+different derived keys. For attestation, the RoT signs its mea-
+surements using CDI-derived keys, which a remote verifier
+checks [69]. An RoT must therefore keep its secrets confiden-
+tial and must never run or attest to unauthorized firmware.
+Caliptra. Caliptra is an RoT for datacenter SoCs whose
+Rust firmware boots in three stages: an immutable ROM, the
+First Mutable Code (FMC), and the Runtime [10, 53]. The
+ROM validates the signed firmware manifest and checks the
+FMC and Runtime images against it, and the FMC derives
+the Runtime’s DICE identity. The Runtime implements over
+100 mailbox commands that the SoC issues over its AXI
+bus. Caliptra’s hardware controls access to the mailbox, but
+the firmware defines what each command does and checks
+whether the caller may issue it [53]. Some commands in-
+voke the DICE Protection Environment (DPE), which derives
+identities for other SoC components [8]. Caliptra 2.0 adds
+a Manufacturer Control Unit (MCU), whose ROM brings
+up the firmware recovery interface and whose firmware re-
+ceives SoC firmware updates over the Management Compo-
+nent Transport Protocol (MCTP) and Platform Level Data
+Model (PLDM) [9,53].
+OpenTitan. OpenTitan’s Earl Grey is a discrete secure mi-
+crocontroller with a RISC-V core [40]. Its ROM, fixed at fabri-
+cation, authenticates the first mutable boot stage, ROM_EXT,
+against the Silicon Creator’s public keys in OTP mem-
+ory [42,44]. ROM_EXT authenticates the owner’s firmware
+and restricts its access to security-critical device assets be-
+fore handing it control [43]. Through boot-services requests,
+owner code can ask ROM_EXT to change the next boot
+slot, the minimum firmware security version, or the device’s
+owner [45, 46]. Our RTL target is Earl Grey’s top level,
+which connects the chip’s IP blocks and contains chip-specific
+blocks such as the flash controller and alert handler [40].
+OpenPRoT. OpenPRoT is an open-source firmware stack
+for platform RoTs, which verify the firmware of a server’s
+other components before releasing them from reset [55,56].
+Its services run on Pigweed’s pw_kernel microkernel and
+build with Bazel [57,67]. They exchange MCTP messages,
+handle attestation over the Security Protocol and Data Model
+(SPDM), and accept PLDM firmware updates [17–19].
+2.2
+LLM Agents
+An LLM agent alternates between model calls and tool calls,
+using results such as file contents or test output to guide
+subsequent steps [74, 76]. MJOLNIR uses Google’s Agent
+Development Kit (ADK) to compose agents with separate
+instructions, tools, and output schemas into workflows [25].
+Because model outputs are stochastic, repeated scans of the
+same code can produce different findings.
+2.3
+Threat Model and Analysis Scope
+Adversary. The adversary seeks to violate the guarantees
+that an RoT provides to the system above it, and controls every
+input that crosses the RoT’s external interfaces. In Caliptra,
+these inputs are mailbox commands, firmware images, fuse
+values, and the firmware recovery interface, plus MCTP and
+PLDM messages to the MCU [53]. In OpenTitan, they are
+boot images, boot-services requests, and ownership changes.
+In OpenPRoT, they are MCTP, SPDM, and PLDM messages
+from other platform components. The projects’ own threat
+models identify the assets to protect: secure boot and anti-
+rollback, the secrecy of device secrets and derived keys such
+as the UDS and CDIs, and the soundness of attestation [39,
+53,58]. For each target, we give MJOLNIR’s agents a threat
+model that extends the project’s own with one more security
+objective: the availability of RoT services.
+Security-relevant bugs. We call a bug security-relevant if
+it lets adversary-controlled input violate one of the project’s
+security objectives, or if it omits a countermeasure that the
+project’s threat model requires. The security objectives are
+properties the RoT must enforce: the integrity of secure boot
+and anti-rollback, the secrecy of device secrets and keys, priv-
+ilege separation across the RoT’s trust boundaries, and the
+availability of RoT services across resets. A countermeasure
+is code that the threat model requires to limit the damage of
+an attack, such as a hardened comparison that resists fault
+injection or the zeroization of a secret after use. A bug omits
+a countermeasure if the required code is missing, or if it pro-
+tects some paths to a security decision but not others. We label
+bugs of this second kind defense in depth, because exploiting
+them requires an additional capability, such as a physical at-
+tack. Neither kind requires a demonstrated attack on deployed
+hardware: a bug counts if the code fails to enforce an objec-
+tive or a required countermeasure, and expert labels and the
+known-bug set count both kinds.
+Physical attacks and assumptions. All three projects place
+physical attacks, such as fault injection and side channels,
+in scope and require countermeasures against them [38,53,
+58]. MJOLNIR does not mount these attacks, but it reports
+3
+
+
+code that omits a required countermeasure. We assume that
+cryptographic algorithms are secure and that hardware outside
+each target behaves according to its specification.
+Evidence standard. We consider a PoC valid evidence of a
+finding only if it triggers the reported flaw through adversary-
+controlled inputs to unmodified production code. A PoC may
+construct inputs, drive the code through the entry points an
+attacker reaches, and reuse the project’s existing mocks for
+hardware outside the target. It may not change production
+code or replace the code under test, because the adversary
+can do neither. A PoC that breaks this rule shows only that
+modified code is buggy, leaving the finding unverified rather
+than false.
+Operational assumptions. A project’s maintainers or se-
+curity reviewers run MJOLNIR on demand or on each pull
+request. MJOLNIR sends the code and threat model to a model
+provider that we assume is trusted, while projects that cannot
+share code can run open-weight models locally. We assume
+that the code under analysis does not attempt to manipulate
+MJOLNIR, for example through prompt injections in com-
+ments. This assumption may not hold for pull requests from
+untrusted contributors, so MJOLNIR supplements rather than
+replaces human review, which must also consider attacks di-
+rected at the analyzer. MJOLNIR runs PoCs only on devel-
+opment machines, as host-side tests or Verilator testbenches,
+and never on RoT hardware. In Re-Analysis mode, MJOL-
+NIR also verifies external vulnerability reports. Because such
+reports may misstate the project or its threat model, their find-
+ings pass through the same skeptical review and PoC stages
+as discovered findings.
+3
+System Design
+MJOLNIR structures its analysis as a multi-stage funnel
+that grounds discovery in project context, filters candidates
+through deduplication and skeptical adversarial review, and
+synthesizes executable PoCs in the project’s own test harness
+for surviving findings. Throughout the pipeline, agents com-
+bine a per-project threat model with scoped code search tools
+and on-demand answers from a Project Expert agent. De-
+signed primarily for RoT firmware, the same pipeline extends
+without code changes to SystemVerilog RTL.
+3.1
+System Design Goals
+MJOLNIR’s design goals follow from the requirements in
+§1, and from the need to support RoT projects with different
+languages and toolchains:
+• D1: Project-grounded discovery. Agents judge code
+against the project’s architecture, trust boundaries, and
+threat model, not against the contents of a single file alone.
+• D2: Staged review and native reproduction. Skepti-
+cal source-grounded review filters false positives before
+execution, and surviving findings are reproduced where
+possible as test-only PoCs in the project’s own harness.
+• D3: Portability across RoT projects. Onboarding a
+project requires only a Nix project definition, a threat
+model, scan jobs, and a development shell with the
+project’s toolchain [51], without changing MJOLNIR.
+3.2
+Pipeline Overview
+MJOLNIR orchestrates specialized agents alongside domain-
+specific tools, as shown in Figure 1. As input, MJOLNIR takes
+the project’s source code, its threat model, and a scan job:
+a configuration file, written when the project is onboarded,
+that names the model and selects the firmware or RTL files to
+analyze, such as all SystemVerilog sources except generated
+register files. We call the selected files in scope.
+The Project Expert agent first surveys the project and
+writes a summary of its architecture, which every later agent
+receives. The Source File Auditor agent then analyzes
+each in-scope file and reports candidate findings, and the
+Deduplicator agent merges findings that share a root cause.
+The Adversarial Reviewer agent audits each remaining
+finding as part of an initial review. For each finding that sur-
+vives, the PoC Exploit Generator agent writes a PoC and
+runs it in the project’s own test harness. The Adversarial
+Reviewer agent then inspects the PoC and its output as part
+of the final review process. Findings are closed and removed
+from the pipeline once they are marked as a duplicate, false
+positive, or non-exploitable result. As a result, later stages
+such as PoC creation process fewer findings than earlier ones.
+Re-Analysis mode changes only the start of this pipeline.
+Every stage reads and updates one record per finding. The
+record holds the finding’s file and location, severity, CWE,
+Common Vulnerability Scoring System (CVSS) vector, ver-
+dict, status, and PoC. MJOLNIR checks the CWE identifier
+against MITRE’s catalog and recomputes the CVSS score
+from the vector rather than trusting a score the model reports.
+Each stage merges its output into the record and appends a
+snapshot to the record’s history, so every verdict can be traced
+to the stage that made it. A False Positive or Not Exploitable
+verdict closes the finding, and the Deduplicator agent marks
+each merged finding as a duplicate of a canonical one.
+3.3
+Agents
+Each agent has its own instructions, a fixed set of tools, and
+a bounded number of model calls. Every agent except the
+Report Ingestor agent, which reads external vulnerability
+reports in Re-Analysis mode (described further in this sec-
+tion), receives the project’s threat model in its instructions.
+Each threat model is a Markdown document of 90 lines or
+4
+
+
+Source files
+External report
+Source File
+Auditor
+Report Ingestor
+Deduplicator
+Adversarial
+Reviewer (initial)
+PoC Exploit
+Generator
+Adversarial
+Reviewer (final)
+Verified findings
+Project Expert
+Project environment
+Nix toolchain + test harness
+Figure 1: MJOLNIR’s pipeline.
+less that lists the project’s trust boundaries, assets, and key
+threat categories, such as fault injection and privilege escala-
+tion. These agents also receive the Project Expert agent’s
+summary. Every agent other than the Project Expert agent
+returns its result in a fixed schema, which MJOLNIR merges
+into the finding record. We describe the agents in pipeline
+order, except for the PoC Exploit Generator agent, which we
+discuss alongside PoC reproduction and final review in §3.5.
+Project Expert agent. The Project Expert agent
+surveys a project before auditing begins, and other agents
+query it when they have project-specific questions (D1). It
+runs first and surveys the project with read-only code search
+tools, including its directory layout, READMEs, architecture
+documents, and build files. It then writes a summary of the
+project’s execution stages, trust boundaries and security in-
+variants, register maps and memory-mapped I/O conventions,
+and build and test targets. The summary also lists intentional
+design patterns that could resemble bugs to an unaware agent,
+such as OpenTitan’s hardened checks. MJOLNIR caches the
+summary per commit and threat model.
+Other agents ask the Project Expert agent questions
+through a tool. Each question starts a fresh instance of the
+agent, seeded with the threat model, the summary, and the
+run’s earlier questions and answers. A repeated question is
+answered from that history without a new instance. Because
+of this design, the Project Expert agent’s context stays
+bounded, even when many agents query it in parallel.
+Source File Auditor
+agent. The
+Source File
+Auditor agent is the entry point of Discovery mode and
+finds candidate bugs in one source file at a time (D1).
+MJOLNIR runs one Auditor per in-scope file in parallel, and
+gives each the file’s path and full contents. No cross-file
+context is precomputed. Instead, the Auditor retrieves callers,
+callees, and type definitions with code search tools, and
+asks the Project Expert agent about project conventions.
+Its instructions bound this exploration to what it needs to
+confirm or refute a suspected bug.
+The Auditor’s instructions also encode RoT-specific audit
+guidance. They direct it to check integer arithmetic, untrusted
+inputs from peripherals and host commands, concurrency,
+timing and power side channels in cryptographic code, the
+zeroization of secrets, and security decisions that must re-
+sist fault injection. Language-specific guidance, selected by
+file type, covers memory safety, unsafe code, error handling,
+and panics for C and Rust. For SystemVerilog, it covers bit-
+width and signedness hazards, register-lock bypass, clock-
+and reset-domain crossings, and state-machine integrity: a
+hardware state machine must never enter an undefined state or
+skip a required one. The instructions also state false-positive
+constraints for embedded targets: an in-order core without
+speculation or a data cache, a watchdog that resets the chip
+on a crash, and an attacker who reaches the firmware only
+through its communication interfaces. As a result, the Audi-
+tor reports a crash only if it leads to persistent control-flow
+hijacking or corrupts state that survives a reset, and a missing
+check in an internal helper only if untrusted input reaches
+it. When MJOLNIR scans a pull request, it audits only the
+changed files, adds each file’s diff, and instructs the Auditor
+not to report pre-existing bugs in untouched functions.
+Report Ingestor agent. In Re-Analysis mode, the
+Report Ingestor agent replaces the Auditor. It reads an
+external report file or directory, such as a Markdown report,
+spreadsheet, or log, and emits its findings in the Auditor’s
+schema. MJOLNIR loads the resulting findings directly and
+passes them through the same downstream stages.
+Deduplicator agent. The Deduplicator agent runs im-
+mediately after the entry agent, so duplicates never consume
+review or PoC time or tokens. Within a run, it collapses find-
+ings with the same root failure mechanism, such as several
+call sites of one unhardened helper, into one canonical finding.
+Across runs, it marks a finding as a duplicate if it matches
+an open finding from an earlier run of the same project, so
+repeated scans do not re-report known issues. When descrip-
+tions are ambiguous, it inspects shared helpers, macros, or
+structs with code search tools.
+Adversarial Reviewer agent. The Adversarial
+Reviewer agent critically reviews the findings of other agents
+and rejects those that are unlikely to represent an actual
+security-relevant bug (D1, D2). It reviews each finding twice:
+5
+
+
+Agent
+File Search CWE Expert Worktree Calls
+Project Expert
+✓
+✓
+150
+Source File Auditor
+✓
+✓
+✓
+✓
+150
+Report Ingestor
+✓
+✓
+150
+Deduplicator
+✓
+✓
+✓
+50
+Adversarial Reviewer
+✓
+✓
+✓
+✓
+200
+PoC Exploit Generator
+✓
+✓
+✓
+✓
+✓
+150
+Table 1: Tool categories available to each agent (Appendix A)
+and maximum LLM calls per invocation.
+the initial review sees only the finding, and the final review
+also sees the PoC, its diff, and its harness output. Its instruc-
+tions make it skeptical by default. It cannot rate a finding as
+exploitable from missing context and must assume any unlo-
+cated definition is implemented safely. To rate a finding as
+exploitable or assign high or critical severity, it must instead
+construct a step-by-step argument from the actual source code.
+It also recalibrates each finding’s severity, CVSS vector, and
+CWE, and has the largest call budget of any agent.
+3.4
+Agent Tools
+General-purpose agents can explore repositories and run build
+commands, but reproducing findings in RoT projects requires
+access to each project’s specialized toolchain and test harness.
+MJOLNIR provides a common execution interface that lets
+agents invoke these environments without project-specific
+agent tools. Table 1 lists each agent’s tool categories and
+LLM call limit, and Appendix A describes each tool. Beyond
+standard file access, these tools fall into four categories: code
+search, CWE lookup, Project Expert queries, and worktree
+execution. No agent has web access, so agents cannot look up
+known advisories.
+For code navigation, MJOLNIR wraps three external pro-
+grams in Python tools that scope each search to the project
+and limit its output. These code search tools let agents look up
+symbol definitions with Universal Ctags [70], match structural
+code patterns on Tree-sitter [68] syntax trees with ast-grep [2],
+and search file contents with ripgrep [21]. By chaining these
+tools, agents trace calls and definitions across files one step
+at a time. A CWE lookup tool searches a bundled copy of
+MITRE’s CWE catalog [50] by keyword, and MJOLNIR vali-
+dates every finding’s CWE against the same catalog.
+Rather than wrapping each project’s execution environ-
+ment in a dedicated tool, agents run build and test commands
+(e.g., Cargo, Bazel, and Verilator) through a single harness
+command inside the project’s own Nix development shell.
+As a result, adding a project means adding a new devel-
+opment shell, not a new tool (D3). Only the PoC Exploit
+Generator agent has this harness command, along with tools
+that write, patch, diff, and reset files in a scratch worktree.
+3.5
+PoC Reproduction and Final Review
+PoC Exploit Generator agent. The PoC Exploit
+Generator agent attempts to write a working PoC test for
+each finding that survives the initial review, or that enters
+through the Report Ingestor agent, attaching executable
+evidence for maintainers (D2). It writes each PoC as a test
+in the project’s own test infrastructure. Its instructions direct
+it to inspect the tests and build targets nearest the affected
+file first, and to reuse the project’s integration models, test
+helpers, and mocks rather than build a harness from scratch.
+Firmware PoCs run with Cargo for Caliptra (including full-
+firmware mailbox tests on Caliptra’s hardware model) and
+Bazel for OpenTitan’s ROM_EXT and OpenPRoT. RTL PoCs
+are testbenches that the agent compiles and runs with Veri-
+lator [64]. The agent works in a scratch Git worktree of the
+project, where it can write, patch, diff, and reset files and run
+build and test commands (§3.4). To bound cost, MJOLNIR
+attempts PoCs only for findings at or above a configurable
+severity, which defaults to Medium. Our evaluation sets this
+threshold to Informational, so every finding that survives the
+initial review receives a PoC attempt.
+Diff check. The agent reports whether its PoC verified the
+finding, and a gate checks that claim against the worktree. The
+gate marks the PoC unverified unless its diff is non-empty, at
+least one harness command ran, and the diff changes only test
+code. Test code is any file whose path contains a test token,
+such as test, mock, fuzz, or harness, along with build files.
+Projects can add their own tokens, and OpenTitan adds dv and
+tb for RTL testbenches. Because Rust places unit tests inside
+source files, a change to a production file also counts as test
+code if it deletes no lines and contains an inline test marker
+such as #[cfg(test)]. This rule is coarse, and would also
+accept a production change made alongside an inline test.
+The gate can only downgrade the agent’s claim, never up-
+grade it. It prevents an agent from manufacturing a proof by
+weakening a production check or deleting an assertion. The
+gate does not check the test’s exit code, because a test may
+pass either by triggering the bug or by asserting benign be-
+havior. Whether the PoC demonstrates the bug is instead left
+to the final review. MJOLNIR also validates each harness com-
+mand before running it. It rejects commands that reference
+paths outside the worktree, the run’s workspace, the project
+checkout, the Nix store, and /dev. It also rejects commands
+that start with file-exploration programs such as find, grep,
+or cat, for which agents must use the scoped search tools
+instead. Each command runs with a sanitized environment
+and times out after 900 s.
+Final review. In
+the
+final review, the
+Adversarial
+Reviewer agent receives the finding, the agent’s PoC expla-
+nation, the actual worktree diff, and the last harness command
+with its exit code and output. It rejects a PoC that modifies
+production code, mocks the target logic, or makes only vac-
+6
+
+
+uous assertions. It also rejects a PoC that calls an internal
+helper directly when the public entry point already sanitizes
+the input. Findings that depend only on debug-build behavior,
+such as arithmetic overflow traps, are marked not exploitable.
+A failed PoC alone does not close a finding. If the harness
+cannot exercise the flaw, for example because it depends on
+hardware registers or physical fault injection, the agent labels
+it a harness limitation, and the finding stays open as unverified.
+The Adversarial Reviewer agent closes a finding with a
+failed PoC only if the attempt uncovers a guard preventing
+exploitation.
+3.6
+Input Modes: Discovery vs. Re-Analysis
+MJOLNIR supports two input modes that share one pipeline.
+In Discovery mode, the Source File Auditor agent scans
+the project’s source files for new security-relevant bugs. In
+Re-Analysis mode, the Report Ingestor agent instead
+reads an externally generated report or collection of reports.
+MJOLNIR still relies on the project’s source files for context,
+but focuses on verifying the reported bugs, not identifying
+new ones. The same downstream stages process each reported
+finding, so it leaves the pipeline with the same verdict, PoC
+evidence, and recorded reasons as a discovered one.
+3.7
+Hardware Analysis
+MJOLNIR analyzes RTL with the same agents, tools, and
+pipeline as firmware. An RTL scan job differs only in its
+configuration and in the language-specific guidance that the
+Source File Auditor agent receives. It selects SystemVer-
+ilog sources, excludes generated register files and verification
+code, and adds test-path tokens for testbenches. For OpenTi-
+tan, the RTL job scans the Earl Grey top level (§2.1) and uses
+the same threat model as the firmware jobs. The Project
+Expert agent’s instructions already cover hardware concerns,
+including register maps, lock registers such as REGWEN, alert
+lines, and memory protection, so its summary carries them
+into every RTL audit. Universal Ctags indexes SystemVerilog,
+letting agents trace module, signal, and parameter definitions.
+RTL findings pass through the same verification as
+firmware findings. The PoC Exploit Generator agent
+writes a standalone C++ or SystemVerilog testbench in a
+test path, then compiles and runs it with Verilator through the
+same harness command and under the same gate. A Verila-
+tor testbench simulates individual modules, not the full chip.
+Findings that a module-level testbench cannot exercise, such
+as those that require full-chip simulation or FPGA infrastruc-
+ture, stay open as unverified harness limitations (§3.5).
+4
+Implementation
+We build MJOLNIR on Google’s Agent Development Kit
+(ADK) framework [25] for its multi-provider support, tunable
+system prompts, and structured input and output schemas.
+MJOLNIR is model-agnostic: besides Gemini, it supports
+Claude, OpenAI, and local models via Ollama [52]. All agents
+in a run use the same model, and our evaluation uses both
+Gemini and Claude models. We package MJOLNIR and each
+project’s build environment with Nix [51] so that dependency
+resolution and PoC builds are reproducible across hosts. In
+total, MJOLNIR comprises 6 agents and 12 tools in 2,837 lines
+of Python for orchestration, 1,705 for agents, 1,699 for tools,
+245 lines of prompts, and 697 of Nix.
+Orchestration. MJOLNIR builds each run as an ADK work-
+flow graph from an ordered list of phases, and passes the
+finding records from one phase to the next. The Auditor and
+review phases process their inputs in parallel batches of a
+configurable size, with staggered starts to avoid bursts of
+model requests. PoC creation instead processes one finding
+at a time, so PoCs do not contend for build locks and can
+reuse the project’s build caches. Every model call retries up to
+five times with exponential backoff and jitter, from 2 to 60 s.
+Each phase checkpoints its findings to disk, and an interrupted
+run falls back to its latest checkpoint. For Gemini models,
+MJOLNIR requests an explicit cache of each phase’s system
+instructions and tool declarations, with a two-hour lifetime.
+For other models, or if the provider rejects the cache request,
+MJOLNIR relies on the provider’s built-in prompt caching.
+Cache hit rates differ widely across models. MJOLNIR also
+records token usage and tool calls per phase and per agent,
+which we use to measure cost.
+Per-project configuration. Onboarding a project to MJOL-
+NIR requires four files: a Nix project definition, a development
+shell with the project’s toolchain, a threat model, and one or
+more scan jobs that select the files to analyze (D3). These files
+can live in the adopting project’s own repository, which makes
+integration simpler and does not require the involvement of
+MJOLNIR’s maintainers. Each Caliptra project definition is
+12 lines of Nix, and the three repositories share one 28-line
+development shell. OpenTitan’s configuration is the largest:
+its project definition is 55 lines, mostly lists of test files to
+exclude, and its 177-line shell configures Bazel and Verilator.
+Its 7 scan jobs, 29 lines in total, cover both C firmware and
+SystemVerilog RTL. Threat models range from 59 to 84 lines.
+For the evaluation, each target also has a configuration file
+that pins its commit and analysis scope.
+PoC execution. MJOLNIR runs every PoC in a single scratch
+Git worktree of the project. Before each finding, it resets the
+worktree to the project’s commit while keeping build out-
+puts and the Cargo cache, so consecutive PoCs do not rebuild
+the project from scratch. Agent tools resolve every file path
+inside the worktree and reject paths that escape it. Harness
+commands run with an allowlist of environment variables,
+such as PATH, HOME, and toolchain variables, so that creden-
+tials in MJOLNIR’s own environment do not reach the PoC.
+After each finding, MJOLNIR saves the PoC’s diff, a log of
+7
+
+
+Triggered by
+Model provider
+Execution environment
+Nix-managed execution
+Output results
+Scheduled Job
+Pull Request
+Manual Run
+Claude
+Gemini
+OpenAI
+GitHub CI
+MJOLNIR
+pipeline (ADK)
+Project
+configuration
+Project
+source code
+Cloud Storage
+Generated dashboard
+Figure 2: MJOLNIR’s deployment architecture.
+every harness command and its output, and a standalone script
+that applies the diff and reruns the last command. Developers
+can use this script to reproduce a PoC outside MJOLNIR.
+Deployment. Figure 2 shows how MJOLNIR is deployed to
+real-world RoT projects. An adopting project runs MJOLNIR
+from its own CI on pull requests, on a schedule, or manually.
+On a pull request, MJOLNIR runs over the changed files and
+can post its findings directly to the pull request as review
+comments. Each run writes its findings, logs, and token and
+tool usage to a run directory that MJOLNIR syncs to cloud
+storage. The Deduplicator agent reads open findings from
+earlier runs in this storage, so repeated scans do not re-report
+them. A static web dashboard built from the stored runs shows
+each finding’s verdict, CVSS score, history, duplicates, PoC
+status, and reproducer, along with the flow of findings through
+each phase. Three production RoT repositories have deployed
+this CI workflow, auditing over 800 pull requests over four
+months with maintainers inspecting findings in the external
+web dashboard during code review.
+5
+Evaluation
+Our evaluation answers five research questions:
+RQ1 Finding quality. How precise are MJOLNIR’s find-
+ings on Caliptra’s runtime firmware, compared to four
+single-agent baselines and two ablations?
+RQ2 Verification funnel. How many findings does each
+stage close, and how many surviving findings receive a
+verified PoC?
+RQ3 Stability. How consistent are MJOLNIR’s findings
+across repeated scans and across models?
+Table 2: Evaluation targets for MJOLNIR.
+Target
+Language
+Build & test
+Files
+Code
+Caliptra
+Runtime firmware
+Rust
+Cargo
+64
+12.5k
+MCU ROM, protocols
+Rust
+Cargo
+64
+12.8k
+DPE
+Rust
+Cargo
+37
+14.3k
+OpenTitan
+ROM_EXT firmware
+C
+Bazel
+23
+1.3k
+Earl Grey RTL
+SystemVerilog
+Verilator
+100
+23.5k
+OpenPRoT
+Platform services
+Rust
+Bazel, Pigweed
+56
+7.8k
+Total
+344
+72.2k
+Known-bug study (RQ4)
+Caliptra core firmware
+Rust
+Cargo
+201
+37.0k
+RQ4 Known bugs. How many of 34 known security-relevant
+bugs in Caliptra’s core firmware does MJOLNIR find,
+compared to the best of four single-agent baselines, and
+does any stage close them?
+RQ5 Generality. Does MJOLNIR find new security-relevant
+bugs in other RoT projects, languages, and RTL?
+We evaluate MJOLNIR in three parts: an in-depth study
+of Caliptra’s runtime firmware (RQ1–RQ3), a known-bug
+study on Caliptra’s core firmware (RQ4), and scans of five
+additional targets across Caliptra, OpenTitan, and OpenPRoT
+(RQ5). We then report what these scans cost.
+5.1
+Experimental Setup
+Targets and isolation. Table 2 lists our six evaluation tar-
+gets, which together contain 344 files and 72.2k lines of
+code, and the Caliptra core firmware release that we scan
+for known bugs. We scan each target at a fixed commit, in a
+fresh workspace that contains only that commit, with no Git
+history or remote branches available. Each trial runs with the
+outputs of other trials and MJOLNIR’s caches hidden, so trials
+cannot see each other’s findings. Agents have no web tools.
+For RQ1–RQ3 and RQ5, we count only previously unknown
+security-relevant bugs, whose fixes and advisories cannot ap-
+pear in model training data. For RQ4, we scan a commit with
+known bugs fixed after the models’ training cutoffs.
+Configurations. On every target, we run MJOLNIR with the
+PoC severity threshold set to Informational, so every finding
+that survives the initial review process receives a PoC attempt.
+From each run, we extract five checkpoints from the finding
+records’ history: after discovery, deduplication, initial review,
+PoC creation, and final review (§3.2). On Caliptra’s runtime
+firmware, we also run two ablations of MJOLNIR: one without
+the threat model and one without the Project Expert agent.
+Single-agent baseline. Our performance baseline is a sin-
+gle ADK agent that uses the same model as MJOLNIR but
+8
+
+
+none of its pipeline or prompts. It has no Project Expert
+agent, deduplication, review, or PoC execution. Its instruc-
+tions are a generic security-audit prompt that asks for concrete,
+exploitable vulnerabilities, excludes theoretical issues that ex-
+isting checks prevent, and requests the same report fields as
+MJOLNIR’s Auditor, with no RoT-specific guidance. We run
+it in four configurations, on Caliptra’s runtime firmware and
+in the known-bug study: two modes, each with and without
+the threat model. In whole-directory mode, one session audits
+the source directory with only file-listing, file-reading, and
+text-search tools. In per-file mode, each file gets its own ses-
+sion with no tools, and the agent receives the file’s contents
+in its prompt. Because the baseline shares MJOLNIR’s model,
+differences between them reflect MJOLNIR’s prompts and
+pipeline rather than a stronger model.
+Models and repetitions. All agents in a run use the same
+model, which defaults to Gemini 3.8 Flash for its availability
+and low list price.2 Both Gemini 3.8 Flash and Gemini 4 Ar-
+gon have a March 2026 training cutoff [23,24], and Claude
+Sonnet 5.5 has a June 2026 cutoff [1]. On Caliptra’s runtime
+firmware, we run MJOLNIR, each ablation, and each single-
+agent baseline three times with Gemini 3.8 Flash. We also
+run MJOLNIR three times each with Gemini 4 Argon and
+Claude Sonnet 5.5 to measure consistency across models. To
+measure consistency within one model at greater depth, we ex-
+tend the three MJOLNIR runs on Caliptra’s runtime firmware
+with two additional repetitions for a five-repetition stability
+study. On the remaining five targets, we run MJOLNIR once
+with Gemini 3.8 Flash to evaluate generality across projects,
+languages, and build harnesses. In the known-bug study, we
+run MJOLNIR and each single-agent configuration once with
+Gemini 3.8 Flash and once with Gemini 4 Argon. For config-
+urations with more than one run, we report per-run counts and
+costs as means across runs, whereas expert labels, cross-run
+issues, and safeguard events are aggregated across runs.
+Labeling and metrics. Because unknown bugs have no
+ground truth, we measure recall only on the known bugs in
+RQ4 and evaluate open findings by precision, TP/(TP+FP),
+over expert labels. Across the 27 runs (nine configurations) on
+Caliptra’s runtime firmware, 348 findings remain open, and
+three Caliptra maintainers from two organizations blindly la-
+bel 138 of them: all 102 from the six configurations averaging
+at most ten open findings per run, plus four randomly sam-
+pled per run (36 total) from the three averaging over twenty.
+Reviewers mark a finding as a true positive (TP) if it is a
+security-relevant bug (§2.3) and as a false positive (FP) oth-
+erwise. They work blind to configuration, stage, and model,
+with each reviewer’s findings grouped by source file. We
+count each maintainer-confirmed open finding of MJOLNIR
+as a confirmed finding rather than deduplicating bugs across
+runs, and we treat verified PoCs as evidence rather than la-
+2In our evaluation, Gemini 4 Argon was nonetheless cheaper per run than
+Gemini 3.8 Flash because it read fewer tokens (Appendix B).
+bels. Project maintainers label open findings on the other five
+targets under the same definition. Within each multi-agent
+run, stable per-finding identifiers track stage closures across
+checkpoints without labels.
+The primary Caliptra reviewer labels all 138 sampled find-
+ings, a second labels 56, and a third labels 9 of those 56. On
+the 56 multiply labeled findings, raw pairwise agreement is
+51% and Krippendorff’s α = −0.04 [33]: the second reviewer
+weighed standalone exploitability more heavily than missing
+countermeasures, marking 32 of 56 as false positives versus
+15 for the primary reviewer, and 13 of the 26 disputed findings
+recur at two code locations across runs. We adjudicate all 26
+against the pinned source code and threat model, resolving
+20 as true positives and 6 as false positives (5 where the dis-
+senting reviewer spotted an overlooked guard). If we exclude
+all 26 instead, MJOLNIR remains at 100% precision (18 of
+18) and the best baseline rises from 78.6% to 81.8%.
+5.2
+Caliptra Runtime Firmware
+RQ1–RQ3 study MJOLNIR in depth on Caliptra’s runtime
+firmware, where we compare it to single-agent baselines, ab-
+lations, and other models.
+5.2.1
+RQ1: Finding Quality
+Table 3 compares open findings per run, labeled true and false
+positives, precision, PoC-verified findings, and cost across
+configurations on Caliptra’s runtime firmware. Across the
+three models, maintainers confirm 37 of MJOLNIR’s labeled
+findings as true positives: all 24 open findings from the three
+Flash runs (18 directly from maintainer labels and 6 after adju-
+dication, for 100% precision), 10 of 12 sampled with Gemini 4
+Argon (83.3%), and all 3 with Claude Sonnet 5.5 (100%). The
+single-agent baselines fail in two different ways: per-file audit-
+ing reports the most findings, but one in four is a false positive
+because an agent that sees one file at a time misses checks
+enforced in callers and flags non-security checks, whereas
+whole-directory auditing is more precise (78.6%) but reports
+the fewest findings (4.7 (±0.6) per run). Removing the threat
+model lowers precision for the whole-directory baseline from
+78.6% to 66.7% (while the per-file baseline stays at 75% on
+its 12 sampled findings), and removing either the threat model
+or the Project Expert agent lowers MJOLNIR’s precision
+to 76.2% and 80%. In both ablations, the false positives are
+findings the Adversarial Reviewer agent rejects when it
+has project context, such as documented trust-boundary con-
+ventions reported as authentication bypasses.
+Overall, project context raises precision on the same model
+from 66.7%–78.6% for the single-agent baselines to 100%
+for MJOLNIR, and removing either component of that context
+reintroduces false positives.
+9
+
+
+Table 3: Results per configuration on Caliptra’s runtime firmware over three runs. Open, PoC, and Cost are per-run means
+(±SD). TP, FP, and Precision count expert-labeled findings across the three runs: all open findings, or a random sample of 4 per
+run (N = 12) for rows marked †.
+Expert-Labeled (3 runs)
+Configuration
+Open
+TP
+FP
+Precision
+PoC
+Cost
+MJOLNIR
+8 (±1.7)
+24
+0
+100%
+7 (±2)
+$180.03
+w/o Threat Model
+7 (±3)
+16
+5
+76.2%
+7 (±3)
+$162.02
+w/o Project Expert
+8.3 (±1.5)
+20
+5
+80%
+6.7 (±1.1)
+$214.57
+Single-Agent (Per-File, w/o TM)†
+26.3 (±2.1)
+9
+3
+75%
+–
+$4.29
+Single-Agent (Per-File)†
+33 (±3)
+9
+3
+75%
+–
+$4.60
+Single-Agent (Whole-Dir, w/o TM)
+5 (±1.7)
+10
+5
+66.7%
+–
+$3.79
+Single-Agent (Whole-Dir)
+4.7 (±0.6)
+11
+3
+78.6%
+–
+$3.50
+MJOLNIR (Gemini 4 Argon)†
+22.7 (±4.9)
+10
+2
+83.3%
+15 (±1.7)
+$31.16
+MJOLNIR (Claude Sonnet 5.5)
+1 (±1)
+3
+0
+100%
+1 (±1)
+$7.62
+Discovery
+Dedup.
+Initial
+review
+PoC
+creation
+Final
+review
+Verified
+PoC
+0
+20
+40
+Open findings per run
+Gemini 3.8 Flash
+Gemini 4 Argon
+Claude Sonnet 5.5
+Figure 3: Mean open findings per run after each stage of
+MJOLNIR on Caliptra’s runtime firmware.
+5.2.2
+RQ2: Verification Funnel
+RQ2 follows each MJOLNIR run through its five checkpoints
+without expert labels (Figure 3).
+The initial review is the only stage that closes many find-
+ings, removing 71.4% of findings entering it on Gemini 3.8
+Flash, 46.9% on Gemini 4 Argon, and 97% on Claude Son-
+net 5.5. Deduplication removes few findings because each run
+starts with an empty history (§5.1), and PoC creation and the
+final review attach executable evidence rather than filter: most
+surviving findings receive a verified PoC (Table 3). Findings
+that stay open without a verified PoC are mostly ones the
+Adversarial Reviewer agent keeps open as harness limita-
+tions, such as 6.7 of Gemini 4 Argon’s 7.7 unverified findings
+per run. Closing a finding does not prove it false, and RQ4
+measures how many known bugs the review closes.
+5.2.3
+RQ3: Stability Across Scans and Models
+RQ3 examines how stable MJOLNIR’s output is across re-
+peated runs of one model and across models. To check
+whether runs report the same bugs, not only similar counts
+(Table 3 and Figure 3), we match open findings across runs
+without expert labels: two findings match if they are in the
+same file and their line spans are within 10 lines of each other
+(or share a CWE when no line span is given), forming one
+issue. This matching is approximate and can merge distinct
+bugs in one function or split one bug located differently.
+Extending MJOLNIR’s three Gemini 3.8 Flash runs with
+two additional repetitions yields 30 candidate findings at dis-
+covery, 9 (±2.5) open findings after final review, and 7.4
+(±2.1) PoC-verified findings per run. Across the five runs,
+MJOLNIR reports 25 distinct issues: 9 recur across multiple
+runs (4 in at least three, including 3 in every run, and 5 in two
+runs), while 16 appear in only one (67% of a run’s issues recur
+in another run on average). Across models, all three propose
+similar numbers of candidate findings at discovery (Figure 3),
+but diverge during the initial review, where Sonnet’s agents
+invoke tools far less often than either Gemini model and filter
+aggressively. Across their three runs each, Gemini 4 Argon,
+Gemini 3.8 Flash, and Claude Sonnet 5.5 leave 35, 16, and
+3 distinct issues open (44 in total): 2 of Sonnet’s 3 issues
+are reported by all three models, 6 more are shared by two
+models, and 36 appear in only one model (mostly Argon’s
+broader retained set). A single run therefore covers only part
+of what MJOLNIR finds, and repeated scans or scans with
+several models find more.
+5.3
+RQ4: Known Bugs
+RQ4 asks how many known security-relevant bugs MJOLNIR
+finds, compared to a single-agent baseline. We scan Caliptra’s
+core firmware at release tag fw-2.1.0 (commit 7da3b01,
+March 2026), covering all ten on-target firmware crates, in-
+cluding the ROM, first mutable code (FMC), runtime, and
+shared drivers (201 files and 37.0k lines of code). To build a
+list of known bugs, we audit all 295 upstream commits merged
+after fw-2.1.0 through October 27, 2026, and keep each fix
+that was merged after both Gemini models’ March 2026 train-
+ing cutoff [23,24] and addresses a CWE-classified security
+defect whose defective code is already present at fw-2.1.0
+in these crates. This yields 34 known security-relevant bugs
+10
+
+
+Table 4: Known bugs found in Caliptra core firmware.
+Gemini 3.8 Flash
+Gemini 4 Argon
+Tier
+Bugs MJOLNIR Baseline MJOLNIR Baseline
+A: CVEs
+5
+4
+3
+5
+4
+B: Maintainer fixes
+22
+6
+4
+12
+8
+C: Hardening
+7
+0
+0
+0
+0
+All
+34
+10
+7
+17
+12
+MJOLNIR, all tiers
+Found at discovery
+18
+–
+19
+–
+Closed by a review
+8
+–
+2
+–
+With verified PoC
+8
+–
+17
+–
+in three tiers: 5 with published CVEs, 22 security bugs that
+maintainers fixed without a CVE, and 7 zeroization, attesta-
+tion, and side-channel hardening fixes (Appendix D). Only
+Tier A carries upstream security advisories. One Tier A bug,
+CVE-2026-7328, was originally found by an early MJOLNIR
+prototype that predates the pipeline described and evaluated
+here, none of which it used.
+We identify and classify Tiers B and C from the commit log
+using our definition of a security-relevant bug (§2.3), which
+also covers in-development features and defense-in-depth
+checks that do not warrant an advisory. We run MJOLNIR
+and the four single-agent configurations once each with Gem-
+ini 3.8 Flash and once each with Gemini 4 Argon (omitting
+Claude Sonnet 5.5, whose June 2026 cutoff postdates early
+fixes), in the same isolated workspaces as our other scans
+(§5.1). We compare each MJOLNIR run with the best single-
+agent configuration that uses the same model, rather than with
+the union of all four. A run finds a known bug if one of its
+open findings is in a file that contains the bug, overlaps the
+bug’s defective lines to within 30 lines or names one of its
+functions, and mentions at least one term from each of the
+bug’s keyword groups. Because every finding keeps its identi-
+fier across stages, matching the findings of each checkpoint
+in the same way also shows whether a known bug found at
+discovery is later closed, and by which stage (Table 4, bottom).
+The single-agent baseline has no such stages.
+Table 4 shows that MJOLNIR outperforms every single-
+agent baseline on both models, whereas the highest-recall
+baseline shifts from Per-File on Flash (7 bugs) to
+Whole-Dir, w/o TM on Argon (12). Deduplication closes no
+known bugs on either model. With Argon, the review stages
+retain all 17 discovered Tier A and Tier B bugs and close only
+two Tier C stack-zeroization items because Caliptra’s single-
+address-space M-mode firmware exposes no standalone stack-
+read primitive. With Flash, by contrast, initial review closes
+all three discovered Tier C items and four Tier B bugs, and
+final review closes CVE-2026-11835. The ten Tier B bugs
+missed by both MJOLNIR runs are mainly external speci-
+fication checks or cross-reset hardware invariants, such as
+Table 5: Results on the other five targets (Gemini 3.8 Flash).
+Maintainer
+Target
+Open PoC TP
+FP
+Cost
+Caliptra
+MCU ROM, protocols
+10
+8
+9
+1 $113.89
+DPE
+0
+0
+–
+–
+$39.36
+OpenTitan
+ROM_EXT firmware
+3
+2
+3
+0
+$47.34
+Earl Grey RTL
+5
+5
+5
+0 $146.16
+OpenPRoT
+Platform services
+11
+8
+10
+1
+$60.46
+FIPS 140-3 XTS key-half inequality, ML-DSA-87 signature
+padding, and Key Vault write-locks across resets.
+Training data contamination. All 34 fixes were merged in
+April 2026 or later, and the five CVEs were disclosed between
+June and August 2026, after both Gemini models’ March 2026
+cutoff. Because published cutoffs are approximate, we also
+evaluate each MJOLNIR run against same-model baselines
+under identical offline conditions, holding any residual pre-
+training exposure constant.
+5.4
+RQ5: Generality
+RQ5 asks whether MJOLNIR finds new security-relevant bugs
+beyond Caliptra’s runtime firmware. Table 5 reports, for each
+of the other five targets, the findings that remain open after
+the final review, how many have a verified PoC, how project
+maintainers classified them (TP vs. FP), and cost.
+The funnel behavior seen on Caliptra’s runtime firmware
+(§5.2.2) holds across the other five targets despite differ-
+ences in language and build harness. On each target, the
+initial review discards most candidate alerts, closing all 7
+on Caliptra’s DPE, while MJOLNIR attaches passing PoCs
+across Cargo, Bazel, Pigweed, and Verilator testbenches with-
+out changing its pipeline. Across OpenTitan and OpenPRoT,
+maintainers confirmed all 15 PoC-verified findings as true pos-
+itives, whereas the sole false positive came from one of the
+four open findings without a PoC. The other three unverified
+findings were still confirmed as true positives whose paths
+the host harnesses could not exercise: one on OpenTitan’s
+ROM_EXT firmware and two of the 3 unverified findings
+on OpenPRoT. On Caliptra’s MCU firmware, attempting a
+PoC also uncovered a guard in the code that static review had
+missed, allowing the final review to close 1 false alert. Two
+maintainers labeled all 10 remaining open findings, agreeing
+on 8 of the 10 (Krippendorff’s α = 0.41), with 9 true positives
+after adjudicating the two disagreements against the source
+code (§5.1). Both maintainers rejected the remaining alert
+because hardware RTL prevents the access exercised against
+the host-side mock. Across all six targets, maintainers have
+confirmed 64 of MJOLNIR’s labeled findings as previously
+unknown security-relevant bugs: 37 across the three models’
+11
+
+
+runs on Caliptra’s runtime firmware (§5.2.1, without cross-
+run deduplication) and 27 across the single-run scans of the
+other five targets (Table 5). We withhold identifying details
+across targets pending upstream fixes.
+Overall, without changes to its prompts or pipeline, MJOL-
+NIR transfers across C and Rust firmware and SystemVerilog
+RTL, reproduces findings across four build and simulation
+environments, and uncovers previously unknown security-
+relevant bugs.
+5.5
+Cost
+A MJOLNIR run on Caliptra’s runtime firmware costs between
+$7.62 and $180.03, depending on the model, and between
+$39.36 and $146.16 with Gemini 3.8 Flash on the other five
+targets (Tables 3 and 5). The single-agent baselines cost $3.50–
+$4.60 per run, more than an order of magnitude less than
+MJOLNIR on the same model, but run no review and produce
+no PoCs. Discovery accounts for the largest share of cost,
+and Appendix B breaks cost down by token type, stage, and
+model, showing that per-token price is a poor guide to cost
+per run.
+6
+Discussion
+6.1
+Limitations and Threats to Validity
+Execution environment. Firmware PoCs run as host-side
+tests against each project’s own mocks or, for Caliptra, its
+hardware model, and RTL PoCs run as module-level Verila-
+tor testbenches [64]. Neither replaces the hardware that the
+firmware runs on in production. Findings that depend on hard-
+ware registers, fault injection, or full-chip behavior therefore
+remain unverified even when they are real, and a missing fault-
+injection countermeasure can never receive a verified PoC.
+FPGA execution is one path toward higher-fidelity PoCs.
+Diff check. The diff check verifies that a PoC ran and
+changed only test code, not that it demonstrates the bug. Its
+rule for inline Rust tests would accept a production change
+made alongside an inline test, and because build files count as
+test code, a PoC could also change a build flag that disables a
+production check. The final review guards against such PoCs,
+but because we do not audit every PoC manually, we treat a
+verified PoC as evidence for maintainers, not proof.
+Per-file auditing. Each Source File Auditor agent au-
+dits one file, and learns about related code through the threat
+model, its tools, and the Project Expert agent. Multi-file
+bugs therefore depend on agents finding the related code
+themselves, which auditing file clusters could address.
+Evaluation scope. Our targets contain an unknown number
+of security-relevant bugs, and publicly known bugs may ap-
+pear in model training data [61, 80]. We therefore measure
+recall only on bugs fixed after the models’ training cutoffs
+(RQ4), and precision on a sample of open findings labeled
+by experts. Because experts label only open findings, we
+cannot measure how many real bugs the review closes on
+Caliptra’s runtime firmware. Our baselines run only on Calip-
+tra’s runtime firmware and in the known-bug study on its
+core firmware, and our ablations and Claude Sonnet 5.5 runs
+cover only its runtime firmware. The known-bug study and
+the other five targets run once per configuration, so small
+recall differences may reflect run-to-run variation (§5.2.3).
+6.2
+Future Research Directions
+Other RoT ecosystems. MJOLNIR is not designed around
+Caliptra, OpenTitan, or OpenPRoT, and in principle applies
+to any RoT project with firmware or RTL. Other ecosystems
+to explore include Oxide’s Hubris-based firmware [59] and
+Microsoft’s Project Cerberus [49].
+Learning across scans. Today, agents share knowledge
+within a run through the Project Expert agent, and across
+runs only through the Deduplicator agent’s record of past
+findings. A final, self-reflective stage could let agents propose
+changes to a project’s threat model and to their own prompts,
+so that scans of one codebase improve over time even with
+fixed models. Co-RedTeam keeps long-term memory of vul-
+nerability patterns across tasks [27], whereas we would evolve
+one project’s threat model over repeated scans.
+Synthetic vulnerability benchmark. A pipeline similar to
+MJOLNIR could inject realistic bugs into local copies of RoT
+projects, as AVIATOR [35] does for generic software. Injected
+bugs would be both absent from training data and fully known.
+However, while models rarely refused discovery or PoC tasks
+in our runs (Appendix C), they often refused to synthesize new
+vulnerabilities in our preliminary experiments. Less restricted
+or fine-tuned local models could make such a benchmark
+practical.
+Exploit understandability. MJOLNIR optimizes PoCs to
+run, not to be read. Optimizing PoCs for readability and con-
+ciseness would make findings easier for maintainers to triage.
+7
+Related Work
+Agentic vulnerability discovery. LLM agents now find
+real vulnerabilities in general-purpose software. Big Sleep
+found an exploitable memory-safety bug, a stack buffer un-
+derflow, in SQLite [4], and the cyber reasoning systems in
+DARPA’s AIxCC discover vulnerabilities in open-source soft-
+ware, prove them with proofs of vulnerability, and patch
+them [14,77]. Other systems combine LLMs with program
+analysis to reduce false positives. IRIS has an LLM label
+taint sources and sinks for a static analyzer [37], LLMSAN
+12
+
+
+validates the data-flow paths that an LLM reports [72], and
+Vulnhuntr traces call chains from remote input in Python
+code [60]. Chai discovers cryptographic misuse and validates
+it through differential testing across libraries [71].
+The closest systems also verify findings by execution.
+OpenAnt decomposes a codebase into units reachable from
+external input, verifies each finding adversarially, and runs
+PoCs in Docker containers [32]. Co-RedTeam pairs discovery
+with execution-grounded exploitation and long-term mem-
+ory, and its ablations find execution feedback critical [27].
+MJOLNIR shares this pipeline shape, which we do not claim
+as novel, but neither system reaches RoT code. Co-RedTeam
+is evaluated only on benchmarks, and OpenAnt analyzes only
+code reachable from HTTP, WebSocket, command-line, or
+file inputs, none of which our targets expose.
+PoC generation and security benchmarks. PAGENT
+steers a PoC-generation agent with rule-based static anal-
+ysis and with dynamic feedback from sanitizers and cover-
+age [15]. PoC-Gym accepts a Java PoC only if its execution
+arrives at the vulnerable sink, and finds that success markers
+alone are unreliable evidence that the vulnerability fired [22].
+CyberGym [73] and SEC-bench [36] benchmark agents on
+reproducing known vulnerabilities, and the best agents suc-
+ceed on only about 20% of tasks. These systems start from
+a known vulnerability or code location. MJOLNIR must first
+discover the bug, and its PoCs are tests that run against each
+project’s own mocks or testbenches. Bug-injection techniques
+such as LAVA [20], FixReverter [79], and AVIATOR [35], and
+ground-truth benchmarks such as Magma [26], could support
+a future RoT benchmark (§6.2).
+LLM firmware analysis. On the firmware side, LLMs have
+been used to find vulnerabilities in IoT devices. FirmAgent
+uses fuzzing to find taint sources in IoT firmware, and LLM
+agents to analyze the resulting paths and refine PoC test
+cases [30]. LIVA applies multi-agent LLM taint analysis to
+IoT device binaries [75], and FirmHive coordinates a run-
+time tree of agents over firmware images [78]. These systems
+analyze IoT firmware binaries for input-handling bugs. MJOL-
+NIR instead analyzes RoT firmware source, where security-
+relevant bugs often depend on boot-stage state and trust bound-
+aries.
+Hardware security. LLMs are also increasingly applied to
+hardware security. MARVEL uses a supervisor agent and
+tool-using executor agents to find RTL vulnerabilities in a
+buggy OpenTitan-based SoC from the Hack@DATE com-
+petition [12]. BugWhisperer fine-tunes an LLM to detect
+SoC vulnerabilities [66], and SV-LLM coordinates agents for
+SoC security verification, from threat modeling to simulation-
+based bug validation [63]. BugGen synthesizes realistic RTL
+bugs [29]. HWE-Bench benchmarks agents on repairing real
+hardware bugs, including in security roots of trust, and vali-
+dates repairs through each project’s own simulation flows [13].
+HardSecBench measures the security awareness of LLMs that
+generate hardware code [7]. Competition benchmarks such
+as Hack@DAC contain injected bugs [16], and AttackonCTF
+shows that LLMs can detect them through diff-style compar-
+ison rather than security reasoning [62]. RTL fuzzers find
+processor bugs through differential testing [28], golden refer-
+ence models [31], or formal assistance [6].
+To our knowledge, MJOLNIR is the first agentic system to
+ground vulnerability discovery and review in project-specific
+RoT security requirements and reproduce findings through
+native firmware and RTL test infrastructure, uncovering pre-
+viously unknown security-relevant bugs in production RoT
+projects.
+8
+Conclusion
+We presented MJOLNIR, a multi-stage agentic pipeline for dis-
+covering, reviewing, and reproducing security-relevant bugs
+in RoT firmware and SystemVerilog RTL. By combining off-
+the-shelf models with a Project Expert agent, per-project
+threat models, skeptical adversarial review, and toolchain-
+native PoC generation, MJOLNIR filters candidate alerts and
+attaches executable reproducers in each project’s own build
+environment. Across our evaluation scans on Caliptra, Open-
+Titan, and OpenPRoT, maintainers have confirmed 64 of
+MJOLNIR’s findings as previously unknown security-relevant
+bugs (37 across three models on Caliptra’s runtime firmware
+and 27 across single scans of the other five targets). On Calip-
+tra’s runtime firmware, it achieved 83.3%–100% precision
+across three models (100% on Gemini 3.8 Flash, vs. 66.7%–
+78.6% for the baselines). On known bugs, it reached 29.4%
+and 50% recall on Gemini 3.8 Flash and Gemini 4 Argon,
+compared to 20.6% and 35.3% for the best baseline.
+MJOLNIR demonstrates that grounding LLM agents in
+project-specific security requirements and native test infras-
+tructure enables the discovery, review, and reproduction of
+security-relevant bugs in RoT firmware and RTL. Executing
+PoCs on FPGAs, extending MJOLNIR to other RoT ecosys-
+tems, and building contamination-free synthetic RoT bench-
+marks are natural next steps toward continuous, evidence-
+backed security review of the firmware and hardware that
+modern systems trust.
+Acknowledgments
+We thank the Caliptra, OpenTitan, and OpenPRoT maintain-
+ers for triaging our reports and confirming the issues that
+MJOLNIR found. We also thank our colleagues at Google for
+their helpful feedback on earlier drafts of this paper.
+Ethical Considerations
+MJOLNIR focuses on the discovery, review, and PoC repro-
+duction of security-relevant bugs in open-source RoT projects.
+13
+
+
+All potential and confirmed bugs discussed in this work
+were responsibly disclosed to the maintainers of the affected
+projects prior to the submission of this paper. Some RoT
+components, such as boot ROM and RTL, cannot be fixed in
+deployed silicon, so a disclosed bug may remain present in
+deployed devices. We therefore withhold identifying details
+of new findings across targets in this paper while upstream
+remediation and coordinated disclosure are in progress.
+MJOLNIR’s pipeline includes the creation of PoC exploit
+code to reproduce potential bugs. The pipeline itself relies
+strictly on publicly available models and does not introduce a
+new model or fine-tune or in any way change the weights of
+existing models. MJOLNIR also supports open-weight mod-
+els run locally through Ollama, so vulnerability analysis can
+be run without data being sent to a third-party provider, if
+desired. We only run PoC exploits on non-production ma-
+chines, and never run them on hardware or production de-
+ployments. While the prompts and tooling that we use to
+steer models towards PoC exploit creation could be abused
+by malicious actors, we believe the benefits of vulnerability
+discovery outweigh the risk of abuse. Attackers can already
+use general-purpose LLMs to produce exploits with sufficient
+prompt engineering, and general-purpose vulnerability discov-
+ery tools such as OpenAnt [32] are already publicly available.
+In contrast, MJOLNIR enables CI-integrated reviews that help
+maintainers catch security-relevant bugs before they reach
+released code.
+Automated vulnerability scanners risk adding to the triage
+burden of open-source maintainers if they flood repositories
+with unverified alerts [3]. MJOLNIR’s skeptical review and
+toolchain-native PoC stages filter out speculative alerts and
+attach executable reproducers before humans inspect a re-
+port. In addition, projects run MJOLNIR inside their own CI
+pipelines so findings arrive through their normal code-review
+workflow rather than as unsolicited external submissions.
+References
+[1] Anthropic. How Up-to-Date Is Claude’s Training Data?,
+2026. URL: https://support.claude.com/en/ar
+ticles/8114494-how-up-to-date-is-claude-s
+-training-data.
+[2] ast-grep. ast-grep, 2026. URL: https://github.com
+/ast-grep/ast-grep.
+[3] Sebastian Baltes, Marc Cheong, and Christoph Treude.
+“An Endless Stream of AI Slop”: How Developers Dis-
+cuss the Burden of AI-Assisted Software Development,
+March 2026. arXiv:2603.27249.
+[4] Big Sleep team. From Naptime to Big Sleep: Using
+Large Language Models To Catch Vulnerabilities In
+Real-World Code, November 2024. URL: https://pr
+ojectzero.google/2024/10/from-naptime-to-b
+ig-sleep.html.
+[5] CERT Coordination Center. Apple Devices Vulnera-
+ble to Arbitrary Code Execution in SecureROM. Vul-
+nerability Note VU#941987, December 2019. URL:
+https://www.kb.cert.org/vuls/id/941987.
+[6] Chen Chen, Rahul Kande, Nathan Nguyen, Flemming
+Andersen, Aakash Tyagi, Ahmad-Reza Sadeghi, and
+Jeyavijayan Rajendran.
+HyPFuzz: Formal-Assisted
+Processor Fuzzing. In 32nd USENIX Security Sympo-
+sium (USENIX Security 23), pages 1361–1378, Ana-
+heim, CA, August 2023. USENIX Association. URL:
+https://www.usenix.org/conference/usenixse
+curity23/presentation/chen-chen.
+[7] Qirui Chen, Jingxian Shuai, Shuangwu Chen, Sheng-
+hao Ye, Zijian Wen, Xufei Su, Jie Jin, Jiangming Li,
+Jun Chen, Xiaobin Tan, and Jian Yang. HardSecBench:
+Benchmarking the Security Awareness of LLMs for
+Hardware Code Generation.
+In Proceedings of the
+Thirty-Fifth International Joint Conference on Artifi-
+cial Intelligence (IJCAI-26), volume 1, pages 500–508.
+International Joint Conferences on Artificial Intelli-
+gence Organization, September 2026. URL: https:
+//www.ijcai.org/proceedings/2026/57, doi:
+10.24963/ijcai.2026/57.
+[8] CHIPS Alliance. chipsalliance/caliptra-dpe, October
+2026. URL: https://github.com/chipsalliance
+/caliptra-dpe.
+[9] CHIPS Alliance. chipsalliance/caliptra-mcu-sw, Octo-
+ber 2026. URL: https://github.com/chipsallian
+ce/caliptra-mcu-sw.
+[10] CHIPS Alliance. chipsalliance/caliptra-sw, July 2026.
+URL: https://github.com/chipsalliance/calip
+tra-sw.
+[11] CHIPS Alliance. Unverified AXI Address in Subsys-
+tem Mode Commands Enables Denial of Service, July
+2026. GitHub Security Advisory GHSA-c5v4-q445-
+wv84, CVE-2026-7328. URL: https://github.com
+/chipsalliance/caliptra-sw/security/advisor
+ies/GHSA-c5v4-q445-wv84.
+[12] Luca Collini, Baleegh Ahmad, Joey Ah-kiow, and
+Ramesh Karri. MARVEL: Multi-Agent RTL Vulnerabil-
+ity Extraction using Large Language Models, February
+2026. arXiv:2505.11963.
+[13] Fan Cui, Hongyuan Hou, Zizhang Luo, Chenyun Yin,
+and Yun Liang.
+HWE-Bench: Benchmarking LLM
+Agents on Real-World Hardware Bug Repair Tasks, May
+2026. arXiv:2604.14709.
+14
+
+
+[14] DARPA. AI Cyber Challenge (AIxCC), 2026. URL:
+https://aicyberchallenge.com/.
+[15] Achintya Desai, Md Shafiuzzaman, Wenbo Guo, and
+Tevfik Bultan. PAGENT: Program Analysis Guided
+LLM Agent for Proof-of-Concept Generation. In Pro-
+ceedings of the 35th ACM SIGSOFT International Sym-
+posium on Software Testing and Analysis (ISSTA 2026),
+October 2026.
+Preprint: arXiv:2604.07624.
+URL:
+https://conf.researchr.org/details/issta
+-2026/issta-2026-research-papers/108/PAGENT
+-Program-Analysis-Guided-LLM-Agent-for-Pro
+of-of-Concept-Generation.
+[16] Ghada Dessouky, David Gens, Patrick Haney, Garrett
+Persyn, Arun Kanuparthi, Hareesh Khattri, Jason M.
+Fung, Ahmad-Reza Sadeghi, and Jeyavijayan Rajen-
+dran.
+HardFails: Insights into Software-Exploitable
+Hardware Bugs. In 28th USENIX Security Symposium
+(USENIX Security 19), pages 213–230, Santa Clara, CA,
+August 2019. USENIX Association.
+URL: https:
+//www.usenix.org/conference/usenixsecurity
+19/presentation/dessouky.
+[17] DMTF.
+Platform Level Data Model (PLDM) for
+Firmware Update Specification.
+DMTF Standard
+DSP0267, Distributed Management Task Force, Decem-
+ber 2023. Version 1.3.0. URL: https://www.dmtf.o
+rg/sites/default/files/standards/documents
+/DSP0267_1.3.0.pdf.
+[18] DMTF. Security Protocol and Data Model (SPDM)
+Specification. DMTF Standard DSP0274, Distributed
+Management Task Force, August 2024. Version 1.3.2.
+URL: https://www.dmtf.org/sites/default/fil
+es/standards/documents/DSP0274_1.3.2.pdf.
+[19] DMTF. Management Component Transport Protocol
+(MCTP) Base Specification. DMTF Standard DSP0236,
+Distributed Management Task Force, July 2026. Version
+1.4.0. URL: https://www.dmtf.org/sites/defau
+lt/files/standards/documents/DSP0236_1.4.0
+.pdf.
+[20] Brendan Dolan-Gavitt, Patrick Hulin, Engin Kirda, Tim
+Leek, Andrea Mambretti, Wil Robertson, Frederick Ul-
+rich, and Ryan Whelan. LAVA: Large-Scale Automated
+Vulnerability Addition. In 2016 IEEE Symposium on
+Security and Privacy (SP), pages 110–121, May 2016.
+URL: https://ieeexplore.ieee.org/abstract/d
+ocument/7546498, doi:10.1109/SP.2016.15.
+[21] Andrew Gallant. ripgrep, 2026. URL: https://gith
+ub.com/burntsushi/ripgrep.
+[22] Derin Gezgin, Amartya Das, Shinhae Kim, Zhengdong
+Huang, Nevena Stojkovic, and Claire Wang.
+PoC-
+Gym: Towards More Reliable LLM-Assisted Proof-of-
+Concept Exploit Generation, February 2026. arXiv:
+2602.04165.
+[23] Google DeepMind. Gemini 3.8 Flash Model Card, 2026.
+URL: https://deepmind.google/models/model-c
+ards/gemini-3-8-flash/.
+[24] Google DeepMind. Gemini 4 Argon Model Card, 2026.
+URL: https://deepmind.google/models/model-c
+ards/gemini-4-argon/.
+[25] Google LLC. Agent Development Kit (ADK), 2026.
+URL: https://adk.dev.
+[26] Ahmad Hazimeh, Adrian Herrera, and Mathias Payer.
+Magma: A Ground-Truth Fuzzing Benchmark. Pro-
+ceedings of the ACM on Measurement and Analysis of
+Computing Systems, 4(3):49:1–49:29, November 2020.
+URL: https://dl.acm.org/doi/10.1145/3428334,
+doi:10.1145/3428334.
+[27] Pengfei He, Ash Fox, Lesly Miculicich, Stefan Friedli,
+Daniel Fabian, Burak Gokturk, Jiliang Tang, Chen-Yu
+Lee, Tomas Pfister, and Long Le. Co-RedTeam: Orches-
+trated Security Discovery and Exploitation with LLM
+Agents. In Proceedings of the 43rd International Con-
+ference on Machine Learning (ICML), June 2026. URL:
+https://arxiv.org/abs/2602.02164.
+[28] Jaewon Hur, Suhwan Song, Dongup Kwon, Eunjin Baek,
+Jangwoo Kim, and Byoungyoung Lee.
+DifuzzRTL:
+Differential Fuzz Testing to Find CPU Bugs. In 2021
+IEEE Symposium on Security and Privacy (SP), pages
+1286–1303, May 2021. URL: https://ieeexplo
+re.ieee.org/abstract/document/9519470,
+doi:10.1109/SP40001.2021.00103.
+[29] Surya Jasper, Minh Luu, Evan Pan, Aakash Tyagi,
+Michael Quinn, Jiang Hu, and David Houngninou.
+BugGen: A Self-Correcting Multi-Agent LLM Pipeline
+for Realistic RTL Bug Synthesis. In 2025 ACM/IEEE
+7th Symposium on Machine Learning for CAD (ML-
+CAD), pages 1–9, September 2025.
+URL: https:
+//ieeexplore.ieee.org/document/11189127,
+doi:10.1109/MLCAD65511.2025.11189127.
+[30] Jiangan Ji, Chao Zhang, Shuitao Gan, Lin Jian, Hang-
+tian Liu, Tieming Liu, Lei Zheng, and Zhipeng Jia. Fir-
+mAgent: Leveraging Fuzzing to Assist LLM Agents
+with IoT Firmware Vulnerability Discovery. In Pro-
+ceedings 2026 Network and Distributed System Security
+Symposium, San Diego, CA, USA, 2026. Internet So-
+ciety. URL: https://www.ndss-symposium.org
+/wp-content/uploads/2026-s1943-paper.pdf,
+doi:10.14722/ndss.2026.231943.
+15
+
+
+[31] Rahul Kande, Addison Crump, Garrett Persyn, Patrick
+Jauernig, Ahmad-Reza Sadeghi, Aakash Tyagi, and
+Jeyavijayan Rajendran. TheHuzz: Instruction Fuzzing
+of Processors Using Golden-Reference Models for
+Finding Software-Exploitable Vulnerabilities. In 31st
+USENIX Security Symposium (USENIX Security 22),
+pages 3219–3236, Boston, MA, August 2022. USENIX
+Association. URL: https://www.usenix.org/confe
+rence/usenixsecurity22/presentation/kande.
+[32] Nahum Korda and Gadi Evron.
+OpenAnt: LLM-
+Powered Vulnerability Discovery Through Code Decom-
+position, Adversarial Verification, and Dynamic Testing,
+June 2026. arXiv:2606.19149.
+[33] Klaus Krippendorff. Content Analysis: An Introduction
+to Its Methodology. SAGE Publications, 4th edition,
+2019.
+[34] Mohit Kumar.
+Nintendo Switches Hacked to Run
+Linux—Unpatchable Exploit Released. The Hacker
+News, April 2018. URL: https://thehackernews.
+com/2018/04/nintendo-switch-linux-hack.ht
+ml.
+[35] Amine Lbath, Massih-Reza Amini, Aurelien Delaitre,
+and Vadim Okun. AVIATOR: Towards AI-Agentic Vul-
+nerability Injection Workflow for High-Fidelity, Large-
+Scale Code Security Dataset, February 2026.
+URL:
+https://papers.ssrn.com/abstract=6296409,
+doi:10.2139/ssrn.6296409.
+[36] Hwiwon Lee, Ziqi Zhang, Hanxiao Lu, and Lingming
+Zhang. SEC-bench: Automated Benchmarking of LLM
+Agents on Real-World Software Security Tasks. In Ad-
+vances in Neural Information Processing Systems, vol-
+ume 38, pages 116342–116378. Curran Associates, Inc.,
+December 2025. URL: https://proceedings.neur
+ips.cc/paper_files/paper/2025/hash/a9168f1
+c54e5147027f1e8cf83e1a775-Abstract-Confere
+nce.html, doi:10.52202/085713-3878.
+[37] Ziyang Li, Saikat Dutta, and Mayur Naik. IRIS: LLM-
+Assisted Static Analysis for Detecting Security Vul-
+nerabilities. In International Conference on Learning
+Representations (ICLR), April 2025.
+URL: https:
+//openreview.net/forum?id=9LdJDU7E91.
+[38] lowRISC. Device Life Cycle – OpenTitan Documenta-
+tion, October 2026. OpenTitan source, commit c5a58fb.
+URL: https://github.com/lowRISC/opentitan/b
+lob/c5a58fb8ad7b9e6c19164546a5e492975a77c4
+64/doc/security/specs/device_life_cycle/RE
+ADME.md.
+[39] lowRISC. Lightweight Threat Model – OpenTitan Doc-
+umentation, October 2026. OpenTitan source, commit
+c5a58fb. URL: https://github.com/lowRISC/ope
+ntitan/blob/c5a58fb8ad7b9e6c19164546a5e492
+975a77c464/doc/security/threat_model/READM
+E.md.
+[40] lowRISC.
+OpenTitan Earl Grey (Discrete Chip)
+Datasheet, October 2026. OpenTitan source, commit
+c5a58fb. URL: https://github.com/lowRISC/ope
+ntitan/blob/c5a58fb8ad7b9e6c19164546a5e492
+975a77c464/hw/top_earlgrey/doc/datasheet.m
+d.
+[41] lowRISC. OpenTitan History, 2026. URL: https:
+//opentitan.org/history/.
+[42] lowRISC. ROM – OpenTitan Documentation, 2026.
+URL: https://opentitan.org/book/sw/device/s
+ilicon_creator/rom/index.html.
+[43] lowRISC. ROM_EXT – OpenTitan Documentation, Oc-
+tober 2026. OpenTitan source, commit c5a58fb. URL:
+https://github.com/lowRISC/opentitan/blob/
+c5a58fb8ad7b9e6c19164546a5e492975a77c464/s
+w/device/silicon_creator/rom_ext/README.md.
+[44] lowRISC. Root Keys in OTP (Earl Grey) – OpenTitan
+Documentation, October 2026. OpenTitan source, com-
+mit c5a58fb. URL: https://github.com/lowRISC
+/opentitan/blob/c5a58fb8ad7b9e6c19164546a5
+e492975a77c464/sw/device/silicon_creator/r
+om/doc/root_keys.md.
+[45] lowRISC. Secure Boot – OpenTitan Documentation, Oc-
+tober 2026. OpenTitan source, commit c5a58fb. URL:
+https://github.com/lowRISC/opentitan/blob/
+c5a58fb8ad7b9e6c19164546a5e492975a77c464/d
+oc/security/specs/secure_boot/README.md.
+[46] lowRISC. rom_ext_boot_services.c, October 2026.
+OpenTitan source, commit c5a58fb, lines 137–183.
+URL: https://github.com/lowRISC/opentitan/b
+lob/c5a58fb8ad7b9e6c19164546a5e492975a77c4
+64/sw/device/silicon_creator/rom_ext/rom_e
+xt_boot_services.c#L137-L183.
+[47] lowRISC. rom_ext.c, October 2026. OpenTitan source,
+commit c5a58fb, lines 332–358. URL: https://gith
+ub.com/lowRISC/opentitan/blob/c5a58fb8ad7b
+9e6c19164546a5e492975a77c464/sw/device/sil
+icon_creator/rom_ext/rom_ext.c#L332-L358.
+[48] lowRISC. sw/device/lib/base/hardened.h, Octo-
+ber 2026. OpenTitan source, commit c5a58fb, lines
+23–80. URL: https://github.com/lowRISC/opent
+itan/blob/c5a58fb8ad7b9e6c19164546a5e49297
+5a77c464/sw/device/lib/base/hardened.h#L23
+-L80.
+16
+
+
+[49] Microsoft Azure. Project Cerberus, September 2026.
+URL: https://github.com/Azure/Project-Cerbe
+rus.
+[50] MITRE Corporation. Common Weakness Enumeration
+(CWE), 2026. URL: https://cwe.mitre.org/.
+[51] NixOS Foundation. Flakes — nix.dev documentation.
+nix.dev, 2026. URL: https://nix.dev/concepts/f
+lakes.html.
+[52] Ollama. Ollama, 2026. URL: https://ollama.com.
+[53] Open Compute Project. Caliptra: A Datacenter System
+on a Chip (SoC) Root of Trust (RoT). OCP Security
+Base Specification, Open Compute Project, July 2025.
+Version 2.0. URL: https://chipsalliance.github
+.io/Caliptra/2.0/specification/HEAD/.
+[54] OpenPRoT. OpenPRoT Documentation, 2026. URL:
+https://openprot.github.io/openprot/.
+[55] OpenPRoT.
+OpenPRoT Specification.
+Work-in-
+progress specification, OpenPRoT, October 2026. Ver-
+sion 0.5. URL: https://github.com/OpenPRoT/op
+enprot/blob/34d82b1f2360bcc43986f5a9846e5b
+85de94ba98/docs/src/specification/README.m
+d.
+[56] OpenPRoT. Orchestrator State Machine – OpenPRoT
+Documentation, October 2026. OpenPRoT source, com-
+mit 34d82b1. URL: https://github.com/OpenPRo
+T/openprot/blob/34d82b1f2360bcc43986f5a984
+6e5b85de94ba98/docs/src/design/orchestrato
+r/orchestrator-overview.md.
+[57] OpenPRoT. Pigweed Integration Overview – Open-
+PRoT Documentation, October 2026.
+OpenPRoT
+source, commit 34d82b1.
+URL: https://github
+.com/OpenPRoT/openprot/blob/34d82b1f2360bc
+c43986f5a9846e5b85de94ba98/docs/src/design
+/pigweed-overview.md.
+[58] OpenPRoT. Threat Model – OpenPRoT Specification,
+October 2026. OpenPRoT source, commit 34d82b1.
+URL: https://github.com/OpenPRoT/openprot/b
+lob/34d82b1f2360bcc43986f5a9846e5b85de94ba
+98/docs/src/specification/threat_model.md.
+[59] Oxide Computer Company. Hubris: A Lightweight,
+Memory-Protected, Message-Passing Kernel for Deeply
+Embedded Systems, 2026. URL: https://github.c
+om/oxidecomputer/hubris.
+[60] Protect AI. Vulnhuntr: Zero Shot Vulnerability Discov-
+ery Using LLMs, 2026. URL: https://github.com
+/protectai/vulnhuntr.
+[61] Manley Roberts, Himanshu Thakur, Christine Herlihy,
+Colin White, and Samuel Dooley. To the Cutoff... and
+Beyond? A Longitudinal Perspective on LLM Data Con-
+tamination. In International Conference on Learning
+Representations (ICLR), pages 10795–10862, May 2024.
+URL: https://proceedings.iclr.cc/paper_file
+s/paper/2024/hash/2d04d97593c8c33d415337f4
+08ed0e1b-Abstract-Conference.html.
+[62] Mohamadreza Rostami, Nikhilesh Singh, Stephen Mut-
+tathil, Lichao Wu, Chen Chen, Huimin Li, Jeyavijayan
+Rajendran, and Ahmad-Reza Sadeghi. AttackonCTF:
+Defending Hardware Security Competition Benchmarks
+in the Age of LLMs, June 2026. arXiv:2606.15809.
+[63] Dipayan
+Saha, Shams
+Tarek, Hasan
+Al Shaikh,
+Khan Thamid Hasan, Pavan Sai Nalluri, Md Ajoad
+Hasan, Nashmin Alam, Jingbo Zhou, Sujan Kumar Saha,
+Mark Tehranipoor, and Farimah Farahmandi. SV-LLM:
+An Agentic Approach for SoC Security Verification
+using Large Language Models, June 2025.
+arXiv:
+2506.20415.
+[64] Wilson Snyder, Paul Wasson, Duane Galbi, Geza Lore,
+et al. Verilator, 2026. URL: https://verilator.org.
+[65] Zhe Tao, Aseem Rastogi, Naman Gupta, Kapil Vaswani,
+and Aditya V. Thakur.
+DICE*: A formally verified
+implementation of DICE measured boot. In USENIX
+Security Symposium, 2021.
+[66] Shams Tarek, Dipayan Saha, Sujan Kumar Saha, and
+Farimah Farahmandi.
+BugWhisperer: Fine-Tuning
+LLMs for SoC Hardware Vulnerability Detection. In
+2025 IEEE 43rd VLSI Test Symposium (VTS), pages
+1–5, April 2025.
+URL: https://ieeexplore.i
+eee.org/abstract/document/11022958, doi:
+10.1109/VTS65138.2025.11022958.
+[67] The Pigweed Authors. Pigweed, 2026. URL: https:
+//pigweed.dev/.
+[68] tree-sitter. Tree-sitter, 2026. URL: https://tree-s
+itter.github.io/tree-sitter/.
+[69] Trusted Computing Group. TCG DICE Layering Archi-
+tecture. TCG Specification, Trusted Computing Group,
+July 2020. Version 1.0, Revision 0.19. URL: https://
+trustedcomputinggroup.org/wp-content/uploa
+ds/DICE-Layering-Architecture-r19_pub.pdf.
+[70] Universal Ctags. Universal Ctags, October 2026. URL:
+https://github.com/universal-ctags/ctags.
+[71] Corban Villa, Sohee Kim, Austin Chu, Alon Shakevsky,
+and Raluca Ada Popa.
+Chai: Agentic Discovery of
+Cryptographic Misuse Vulnerabilities, June 2026. arXi
+v:2606.26933.
+17
+
+
+[72] Chengpeng Wang, Wuqi Zhang, Zian Su, Xiangzhe Xu,
+and Xiangyu Zhang. Sanitizing Large Language Mod-
+els in Bug Detection with Data-Flow. In Findings of
+the Association for Computational Linguistics: EMNLP
+2024, pages 3790–3805, Miami, Florida, USA, Novem-
+ber 2024. Association for Computational Linguistics.
+URL: https://aclanthology.org/2024.findings
+-emnlp.217, doi:10.18653/v1/2024.findings-e
+mnlp.217.
+[73] Zhun Wang, Tianneng Shi, Jingxuan He, Matthew Cai,
+Jialin Zhang, and Dawn Song. CyberGym: Evaluat-
+ing AI Agents’ Real-World Cybersecurity Capabilities
+at Scale.
+In International Conference on Learning
+Representations (ICLR), April 2026.
+URL: https:
+//openreview.net/forum?id=2YvbLQEdYt.
+[74] John Yang, Carlos Jimenez, Alexander Wettig, Kilian
+Lieret, Shunyu Yao, Karthik Narasimhan, and Ofir Press.
+SWE-agent: Agent-Computer Interfaces Enable Auto-
+mated Software Engineering.
+In Advances in Neu-
+ral Information Processing Systems, volume 37, pages
+50528–50652. Curran Associates, Inc., 2024.
+URL:
+https://proceedings.neurips.cc/paper_f
+iles/paper/2024/hash/5a7c947568c1b1328
+ccc5230172e1e7c-Abstract-Conference.html,
+doi:10.52202/079017-1601.
+[75] Zhe Yang, Hao Peng, Yanling Jiang, Jianwei Liu, Hong-
+bin Luo, Mingsheng Tang, Jiahe Li, and Kun Zhang.
+LIVA: A Multi-Agent LLM-Assisted System for IoT
+Vulnerability Analysis. IEEE Transactions on Depend-
+able and Secure Computing, 23(3):6474–6489, May
+2026. URL: https://ieeexplore.ieee.org/do
+cument/11397462/, doi:10.1109/TDSC.2026.3665
+343.
+[76] Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak
+Shafran, Karthik Narasimhan, and Yuan Cao. ReAct:
+Synergizing reasoning and acting in language models.
+In International Conference on Learning Representa-
+tions (ICLR), 2023.
+[77] Cen Zhang, Younggi Park, Fabian Fleischer, Yu-Fu Fu,
+Jiho Kim, Dongkwan Kim, Youngjoon Kim, Qingxiao
+Xu, Andrew Chin, Ze Sheng, Hanqing Zhao, Michael
+Pelican, David J. Musliner, Jeff Huang, Jon Silliman,
+Mikel Mcdaniel, Jefferson Casavant, Isaac Goldthwaite,
+Nicholas Vidovich, Matthew Lehman, and Taesoo Kim.
+SoK: DARPA’s AI Cyber Challenge (AIxCC): Compe-
+tition Design, Architectures, and Lessons Learned. In
+35th USENIX Security Symposium (USENIX Security
+26), pages 2705–2724, Baltimore, MD, August 2026.
+USENIX Association. URL: https://www.usenix.o
+rg/conference/usenixsecurity26/presentatio
+n/zhang-cen.
+[78] Xiangrui Zhang, Zeyu Chen, Haining Wang, and Qiang
+Li. LLMs as Firmware Experts: A Runtime-Grown
+Tree-of-Agents Framework, November 2025. arXiv:
+2511.18438.
+[79] Zenong Zhang, Zach Patterson, Michael Hicks, and
+Shiyi Wei. FIXREVERTER: A Realistic Bug Injection
+Methodology for Benchmarking Fuzz Testing. In 31st
+USENIX Security Symposium (USENIX Security 22),
+pages 3699–3715, Boston, MA, August 2022. USENIX
+Association. URL: https://www.usenix.org/con
+ference/usenixsecurity22/presentation/zhan
+g-zenong.
+[80] Xin Zhou, Martin Weyssow, Ratnadira Widyasari, Ting
+Zhang, Junda He, Yunbo Lyu, Jianming Chang, Beiqi
+Zhang, Dan Huang, and David Lo. LessLeak-Bench:
+A First Investigation of Data Leakage in LLMs Across
+83 Software Engineering Benchmarks, February 2025.
+arXiv:2502.06215.
+A
+Agent Tools
+Table 6 describes each tool available to MJOLNIR’s agents,
+grouped by the categories used in Table 1.
+File access
+glob
+Lists file paths that match a glob pattern.
+read_file
+Reads a file, optionally limited to a line range.
+Code search
+ctags_search
+Looks up symbol definitions in a Universal
+Ctags index.
+ast_search
+Finds structural code patterns with ast-grep.
+grep_search
+Searches file contents for a pattern with ripgrep.
+CWE lookup
+search_cwe
+Searches the bundled MITRE CWE catalog by
+keyword.
+Expert query
+ask_project_expert
+Asks the Project Expert agent a
+project-level question.
+Worktree
+write_worktree_file
+Creates or overwrites a file in the scratch
+worktree.
+patch_worktree_file
+Replaces an exact block of text in a worktree
+file.
+run_harness_command
+Runs a build or test command (900 s timeout).
+get_worktree_diff
+Returns the diff of all changes in the worktree.
+reset_worktree
+Restores the worktree to its clean baseline.
+Table 6: Agent tools by category. Tool output is truncated to
+40,000 characters.
+B
+Cost Analysis
+This appendix breaks down the cost of MJOLNIR’s runs on
+Caliptra’s runtime firmware (§5.5) by token type, pipeline
+18
+
+
+stage, and model. Table 7 reports, per run and averaged over
+three runs, the input tokens, cache hit rate, tool calls, thinking
+and output tokens, list-price API cost, and wall-clock time of
+each configuration. Figure 4 shows how each model’s cost
+splits across pipeline stages on Caliptra’s runtime firmware
+(RT), and how Gemini 3.8 Flash’s cost splits on the other
+targets.
+0
+20
+40
+60
+80
+100
+Caliptra RT (Flash)
+Caliptra RT (Argon)
+Caliptra RT (Sonnet)
+Caliptra MCU
+Caliptra DPE
+OpenTitan ROM_EXT
+OpenTitan RTL
+OpenPRoT
+Share of API cost per run (%)
+Project Expert
+Discovery
+Dedup.
+Review
+PoC creation
+Figure 4: Share of API cost per run by pipeline stage.
+On Caliptra’s runtime firmware, uncached input tokens
+dominate API cost across configurations (Table 7), so a
+model’s tool-call volume and cache hit rate matter more than
+its per-token list price. Although Gemini 4 Argon has higher
+list prices than Gemini 3.8 Flash ($2.00 vs. $0.75 per mil-
+lion uncached input tokens), Flash makes more LLM calls
+(6,424 vs. 1,656) and tool calls (3,122 file reads and 2,690
+code searches), reading 5.4× as many input tokens per run
+with a lower cache hit rate (36.6% vs. 84.9%) while reporting
+fewer open findings (8 vs. 22.7). Claude Sonnet 5.5 makes the
+fewest tool calls (293 per run), reading the fewest tokens and
+finishing fastest (5.9 min) at the lowest cost ($7.62). Remov-
+ing the Project Expert agent increases cost from $180.03
+to $214.57 per run because the Source File Auditor and
+Adversarial Reviewer agents must explore the repository
+themselves in separate sessions with little cache reuse (4,056
+and 1,335 tool calls per run vs. 3,405 and 946 with it).
+Discovery accounts for the largest share of spend across
+every model and target (Figure 4), representing 68.3% of
+Flash’s cost per run ($122.99 of $180.03) and 36.4% of Ar-
+gon’s. Flash also spends most of its output on thinking, with
+2.47M thinking tokens and 0.44M output tokens per run (Ta-
+ble 7).
+C
+Model Safeguard Refusals
+MJOLNIR logs four categories of safeguard and output-
+validation events during execution (Table 8): provider-level
+safety filter blocks returned by the model API (API), plain-text
+safety-policy refusals emitted in place of structured output
+(Hard), valid structured responses that populate an optional
+refusal_reason field rather than completing the task (Soft),
+and non-refusal outputs rejected by Pydantic schema vali-
+dation (Drops). Total sums the three kinds of safety refusal,
+and the stability row lists only the two runs beyond the first
+three so each run is counted once. Refusals are rare overall
+(11 across the 34 runs on our six evaluation targets) and con-
+centrate in the PoC Exploit Generator and Adversarial
+Reviewer agents during full-pipeline runs, and in the Source
+File Auditor agent when the Project Expert agent is ab-
+lated. All 8 schema-validation drops occurred in the Source
+File Auditor agent under Claude Sonnet 5.5.
+D
+Known Caliptra Bugs
+Table 9 lists the 34 known security-relevant bugs in Caliptra’s
+core firmware at fw-2.1.0 against which we measure recall
+in RQ4 (§5.3). Each bug was fixed upstream in April 2026
+or later (across 33 pull requests, as #4148 fixes both SB-18
+and SH-05), after both Gemini models’ training cutoff. In
+Table 9, Sev. is the upstream advisory severity (Tier A only;
+Tiers B and C carry no upstream advisory), CWE omits the
+CWE- prefix (assigned by us across all three tiers under §2.3,
+as most Tier A GitHub advisories list no CWE), Fix is the
+upstream pull request, and Location lists the affected files at
+fw-2.1.0.
+19
+
+
+Table 7: Mean token use, tool calls, cost, and time per run on Caliptra’s runtime firmware.
+Configuration
+Input
+Cache
+Tools
+Thinking
+Output
+Cost
+Time
+MJOLNIR
+336.3M
+36.6%
+6,151
+2.47M
+0.44M
+$180.03
+120.8 min
+w/o Threat Model
+294.7M
+34.8%
+6,021
+2.30M
+0.42M
+$162.02
+131.1 min
+w/o Project Expert
+300.3M
+10.7%
+5,854
+2.61M
+0.33M
+$214.57
+155.6 min
+Single-Agent (Per-File, w/o TM)
+0.24M
+3.4%
+0
+1.09M
+0.01M
+$4.29
+7.3 min
+Single-Agent (Per-File)
+0.31M
+10.7%
+0
+1.16M
+0.01M
+$4.60
+13.9 min
+Single-Agent (Whole-Dir, w/o TM)
+26M
+91%
+180
+0.06M
+0.01M
+$3.79
+23.7 min
+Single-Agent (Whole-Dir)
+27.8M
+94%
+201
+0.07M
+0.01M
+$3.50
+30.1 min
+MJOLNIR (Gemini 4 Argon)
+62M
+84.9%
+2,050
+0.34M
+0.39M
+$31.16
+112.8 min
+MJOLNIR (Claude Sonnet 5.5)
+8.32M
+72.4%
+293
+0.05M
+0.13M
+$7.62
+5.9 min
+Target / Configuration
+Runs API Hard Soft Total Drops
+Caliptra runtime firmware
+MJOLNIR
+3
+0
+1
+0
+1
+0
+MJOLNIR (+2 stability)
+2
+1
+2
+0
+3
+0
+w/o Threat Model
+3
+0
+0
+0
+0
+0
+w/o Project Expert
+3
+1
+2
+1
+4
+0
+Per-File (w/o TM)
+3
+0
+0
+0
+0
+0
+Per-File
+3
+0
+0
+0
+0
+0
+Whole-Dir (w/o TM)
+3
+0
+0
+0
+0
+0
+Whole-Dir
+3
+0
+0
+0
+0
+0
+MJOLNIR (Gemini 4 Argon)
+3
+1
+0
+1
+2
+0
+MJOLNIR (Claude Sonnet 5.5)
+3
+0
+0
+0
+0
+8
+Other targets (Gemini 3.8 Flash)
+Caliptra MCU ROM, protocols
+1
+0
+0
+1
+1
+0
+Caliptra DPE
+1
+0
+0
+0
+0
+0
+OpenTitan ROM_EXT firmware
+1
+0
+0
+0
+0
+0
+OpenTitan Earl Grey RTL
+1
+0
+0
+0
+0
+0
+OpenPRoT platform services
+1
+0
+0
+0
+0
+0
+Total
+34
+3
+5
+3
+11
+8
+Table 8: Model safeguard refusals and schema-validation
+drops per configuration and target, summed across runs.
+20
+
+
+Table 9: Known security-relevant bugs in Caliptra’s core firmware at fw-2.1.0 (commit 7da3b01).
+ID
+Sev.
+CWE
+Fix
+Location
+Description
+Tier A: published CVEs (5)
+CVE-2026-5818
+High
+287
+#3719
+runtime/src/activate_firmware.rs
+MCU Firmware Update Authentication Bypass on Caliptra Core
+CVE-2026-6458
+Medium
+347
+#3790
+drivers/src/aes.rs
+AES-256-GCM Authentication Tag Does Not Cover First Ciphertext
+Blocks When AAD Is Empty
+CVE-2026-7328
+Medium
+862
+#3864
+runtime/src/cryptographic_mailbox.rs
+runtime/src/invoke_dpe.rs
+runtime/src/lib.rs
+Unverified AXI Address / Missing PL0 Check in Subsystem Mode
+Commands Enables DoS / Arbitrary DMA
+CVE-2026-11835
+Medium
+367
+#3702
+rom/dev/src/flow/cold_reset/fw_processor/
+mod.rs
+rom/dev/src/flow/update_reset.rs
+Caliptra Update-Reset / Subsystem Secure-Boot Bypass via External
+AXI Staging TOCTOU
+CVE-2026-11836
+Low
+290
+#3694
+common/src/debug_unlock.rs
+Production Debug-Unlock Token Verification Missing Device Binding
+Tier B: security bugs fixed by maintainers without a CVE (22)
+SB-01
+–
+287
+#3602
+common/src/debug_unlock.rs
+Production Debug Unlock Accepted When Public-Key Hash Fuse Is
+Uninitialized or Zeroized
+SB-02
+–
+326
+#3606
+runtime/src/ocp_lock/initialize_mek_secret.rs
+runtime/src/ocp_lock/mod.rs
+OCP-LOCK Accepts All-Zero (Zeroized) SEK and DPK Secrets
+SB-03
+–
+840
+#3619
+runtime/src/activate_firmware.rs
+ACTIVATE_FIRMWARE Indexes Activation Bitmap by fw_id Instead of
+exec_bit
+SB-04
+–
+841
+#3628
+runtime/src/debug_unlock.rs
+Runtime Production Debug Unlock Challenge Omits
+PROD_DBG_UNLOCK_IN_PROGRESS Hardware Bit
+SB-05
+–
+670
+#3675
+common/src/wdt.rs
+stop_wdt Fails to Stop Watchdog Timer After Production Debug Unlock
+SB-06
+–
+345
+#3688
+runtime/src/authorize_and_stash.rs
+AUTHORIZE_AND_STASH Stashes Unchecked Caller Measurement
+Instead of Verified DMA Digest
+SB-07
+–
+125
+#3732
+runtime/src/manifest.rs
+Auth Manifest Binary Search Ignores entry_count Over Fixed Backing
+Array
+SB-08
+–
+862
+#3734
+runtime/src/set_auth_manifest.rs
+SET_AUTH_MANIFEST Missing PL0 PAUSER Privilege Check
+SB-09
+–
+367
+#3766
+common/src/debug_unlock.rs
+Production Debug Unlock Public-Key Hash Computed Directly Over
+Shared Mailbox SRAM (TOCTOU)
+SB-10
+–
+284
+#3804
+rom/dev/src/flow/uds_programming.rs
+ROM UDS Programming Permitted While Debug Intent Strap Is Asserted
+SB-11
+–
+347
+#3803
+rom/dev/src/flow/cold_reset/fw_processor/
+ecdsa_verify.rs
+runtime/src/lib.rs
+Hash-Based ECDSA384 and LMS Signature Verification Improperly
+Report FIPS_APPROVED
+SB-12
+–
+252
+#3858
+common/src/uds_fe_programming.rs
+Silent Discard of OTP Verification Errors During UDS/FE Zeroization
+SB-13
+–
+276
+#3873
+rom/dev/src/flow/cold_reset/ldev_id.rs
+rom/dev/src/flow/update_reset.rs
+rom/dev/src/flow/warm_reset.rs
+ROM Fails to Write-Lock Stable IDevID and LDevID Identity Root Keys
+in Key Vault
+SB-14
+–
+862
+#4131
+runtime/src/activate_firmware.rs
+runtime/src/fe_programming.rs
+FE_PROG and ACTIVATE_FIRMWARE Missing PL0 PAUSER
+Privilege Checks
+SB-15
+–
+320
+#4111
+runtime/src/cryptographic_mailbox.rs
+CM_AES_ENCRYPT_INIT and CM_AES_DECRYPT_INIT Omit
+CMK key_usage Check
+SB-16
+–
+326
+#4141
+runtime/src/ocp_lock/mod.rs
+OCP-LOCK AES-XTS MEK Generation and Unwrap Omit Key-Half
+Distinctness Check
+SB-17
+–
+862
+#4197
+runtime/src/pcr.rs
+EXTEND_PCR Missing PL0 PAUSER Privilege Check and PCR31
+Reservation
+SB-18
+–
+347
+#4148
+common/src/debug_unlock.rs
+common/src/verify.rs
+runtime/src/cryptographic_mailbox.rs
+Missing Trailing Padding Byte Validation in ML-DSA-87 Signature
+Verification
+SB-19
+–
+862
+#4252
+runtime/src/cryptographic_mailbox.rs
+CM_DERIVE_STABLE_KEY Missing PL0 PAUSER Privilege Check
+SB-20
+–
+345
+#4215
+image/verify/src/verifier.rs
+ROM ImageVerifier Missing FMC Offset Contiguity and Update-Reset
+FMC Load-Address/Size Checks
+SB-21
+–
+822
+#4224
+image/verify/src/verifier.rs
+ROM ImageVerifier Validates FMC and Runtime Entry Points Against
+Global ICCM Rather Than Image Bounds
+SB-22
+–
+367
+#4271
+common/src/verifier.rs
+drivers/src/dma.rs
+image/verify/src/verifier.rs
+ROM Firmware Manifest Snapshot TOCTOU, AXI 64-Bit Address
+Overflow, Runtime Gap/Bundle Bounds, and SVN Cap Bypass
+Tier C: zeroization, attestation, and side-channel hardening fixes (7)
+SH-01
+–
+226
+#3807
+rom/dev/src/flow/cold_reset/fw_processor/
+mod.rs
+rom/dev/src/flow/cold_reset/fw_processor/
+shutdown.rs
+ROM SHUTDOWN Command Acknowledges Mailbox Response Before
+Zeroizing Critical Security Parameters
+SH-02
+–
+226
+#3808
+runtime/src/fips.rs
+Runtime FIPS Shutdown Omits ML-KEM/ML-DSA Zeroization and
+Ignores TRNG Zeroize Errors
+SH-03
+–
+290
+#3930
+common/src/dice.rs
+rom/dev/src/pcr.rs
+ROM DeviceStatus PCR0 and FMC Alias DICE Measurements Omit
+Subsystem Operating Mode
+SH-04
+–
+330
+#4106
+rom/dev/src/main.rs
+ROM Consumes CSRNG Output for CFI Initialization Before Running
+CsrngKat Self-Test
+SH-05
+–
+226
+#4148
+common/src/crypto.rs
+drivers/src/hpke/kem/mlkem.rs
+drivers/src/ml_kem.rs
+Missing Stack Zeroization of Decrypted CMK and ML-KEM Secret Key
+Material
+SH-06
+–
+226
+#4240
+drivers/src/hpke/kem/p384.rs
+Missing Stack Zeroization of Raw P-384 ECDH Shared Secret in HPKE
+KEM
+SH-07
+–
+755
+#4304
+fmc/src/main.rs
+FMC Invalid Handoff Table Fallback Calls ExitCtrl::exit Instead of
+handle_fatal_error
+21
